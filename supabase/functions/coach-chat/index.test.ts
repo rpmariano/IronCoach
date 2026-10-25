@@ -5773,3 +5773,19 @@ Deno.test("handler: MAX_TOKENS vazio numa ronda com ferramentas repete a ronda u
   // Uma vez por pedido: a bandeira nasce fora do ciclo das rondas.
   assert(src.indexOf("let truncatedRetried = false;") < src.indexOf("for (let round = 0; round <= MAX_TOOL_ROUNDS; round++) {"));
 });
+
+// As frases da resposta perdida (Carol, 2026-10-25): com mensagem dele há o
+// botão «Reenviar a mensagem»; quando foi ela a abrir, ou sem mensagem, não.
+import { CHAT_LOST_PROACTIVE_TEXT, CHAT_LOST_REPLY_TEXT, lostReplyText } from "./index.ts";
+
+Deno.test("resposta perdida: a frase depende de haver mensagem dele para reenviar", async () => {
+  assertEquals(lostReplyText("Prefiro 14 dias", null), CHAT_LOST_REPLY_TEXT);
+  assertEquals(lostReplyText("Prefiro 14 dias", "race_eve"), CHAT_LOST_PROACTIVE_TEXT);
+  assertEquals(lostReplyText("", null), CHAT_LOST_PROACTIVE_TEXT);
+  assertEquals(lostReplyText(undefined, null), CHAT_LOST_PROACTIVE_TEXT);
+  assertCarolVoice(CHAT_LOST_REPLY_TEXT);
+  assertCarolVoice(CHAT_LOST_PROACTIVE_TEXT);
+  const src = await Deno.readTextFile(new URL("./index.ts", import.meta.url));
+  assertEquals(src.includes("Perdi o fio a meio"), false);
+  assertEquals(src.split("lostReplyText(message, proactiveTrigger)").length - 1, 2);
+});

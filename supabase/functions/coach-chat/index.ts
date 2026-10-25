@@ -1670,6 +1670,19 @@ export const CHAT_SESSION_TEXT =
   "Não consegui confirmar que és tu. Sai da app e volta a entrar, e continuamos.";
 export const CHAT_MESSAGE_NOT_SAVED_TEXT =
   "A tua mensagem não ficou guardada, por isso não lhe respondi. Envia-a outra vez.";
+// A resposta perdeu-se a meio (vazia, ou JSON cortado) — frases da Carol
+// (2026-10-25). Com mensagem dele, o cliente mostra «Reenviar a mensagem»
+// (Coach.jsx, handleImmediateFailure com retry); quando foi ela que abriu a
+// conversa, ou num turno sem mensagem (check-in, mapa), não há o que reenviar.
+export const CHAT_LOST_REPLY_TEXT =
+  "Fiquei a meio da resposta e perdi-a. Toca em Reenviar a mensagem e eu respondo-te outra vez, sem precisares de escrever nada.";
+export const CHAT_LOST_PROACTIVE_TEXT =
+  "Fiquei a meio do que te queria dizer e perdi-o. Tenta outra vez daqui a bocado.";
+
+/** A frase do 502 da resposta perdida: há mensagem dele para reenviar? */
+export function lostReplyText(message: unknown, proactiveTrigger: unknown): string {
+  return !proactiveTrigger && typeof message === "string" && message.trim() ? CHAT_LOST_REPLY_TEXT : CHAT_LOST_PROACTIVE_TEXT;
+}
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -8043,7 +8056,7 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
       if (fallback) return fallback;
       // "Gerar uma resposta" é vocabulário de modelo, não dela
       // (specs/carol-frases-contexto.md).
-      return jsonResponse({ error: "Perdi o fio a meio. Manda outra vez." }, 502);
+      return jsonResponse({ error: lostReplyText(message, proactiveTrigger) }, 502);
     }
 
     let replyText: string;
@@ -8094,7 +8107,7 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
       const fallback = await replyAfterWritesWithoutText();
       if (fallback) return fallback;
       return jsonResponse({
-        error: "Perdi o fio a meio. Manda outra vez.",
+        error: lostReplyText(message, proactiveTrigger),
       }, 502);
     }
 
