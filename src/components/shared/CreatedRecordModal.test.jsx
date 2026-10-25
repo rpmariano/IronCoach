@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within, act } from '@testing-library/react';
 import { useAppStore } from '../../store';
 import { supabase } from '../../lib/supabase';
 import CreatedRecordModal from './CreatedRecordModal';
@@ -73,6 +73,23 @@ describe('CreatedRecordModal', () => {
     });
     expect(() => render(<CreatedRecordModal />)).not.toThrow();
     expect(screen.getByTestId('meal-card')).toBeInTheDocument();
+  });
+
+  // O «Registo Guardado» fica até o atleta o dispensar (pedido do Rui, 2026-10-25):
+  // nada o fecha sozinho, por mais tempo que passe.
+  it('nada fecha o aviso de registo guardado sozinho: passam 5 minutos e continua lá', () => {
+    vi.useFakeTimers();
+    try {
+      const clearNewlyCreatedRecord = vi.fn();
+      mockStore({ newlyCreatedRecord: { type: 'run', record: { id: 'r1', date: '2026-10-25' } }, clearNewlyCreatedRecord });
+      render(<CreatedRecordModal />);
+      expect(screen.getByText('O teu registo foi analisado e guardado com sucesso.')).toBeInTheDocument();
+      act(() => { vi.advanceTimersByTime(5 * 60 * 1000); });
+      expect(screen.getByText('O teu registo foi analisado e guardado com sucesso.')).toBeInTheDocument();
+      expect(clearNewlyCreatedRecord).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('devolve null sem registo novo', () => {

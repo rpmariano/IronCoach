@@ -627,6 +627,17 @@ html[data-page-hidden] .welcome-halo { animation-play-state: paused; }
    os dois chevrons a seguir, o preenchimento, e no fim o brasão brilha. Se a
    página ainda não chegou, o brilho respira devagar (não volta a desenhar).
    ~1,9 s até ao brilho. */
+/* A cena da Carol na espera das análises (shared/CarolCena.jsx): o traço SVG
+   desenha-se (pathLength normalizado a 1, como o logótipo) e a imagem final
+   aparece por cima com um crossfade. Movimento reduzido: sem desenho. */
+.carol-cena-traco svg { width: 100%; height: 100%; display: block; }
+.carol-cena-traco path, .carol-cena-traco line, .carol-cena-traco polyline, .carol-cena-traco polygon,
+.carol-cena-traco circle, .carol-cena-traco ellipse, .carol-cena-traco rect { stroke-dasharray: 1; stroke-dashoffset: 1; animation: carolCenaDesenha 1700ms cubic-bezier(.65,0,.35,1) forwards; }
+@keyframes carolCenaDesenha { to { stroke-dashoffset: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .carol-cena-traco path, .carol-cena-traco line, .carol-cena-traco polyline, .carol-cena-traco polygon,
+  .carol-cena-traco circle, .carol-cena-traco ellipse, .carol-cena-traco rect { animation: none; stroke-dashoffset: 0; }
+}
 .logo-loader { display: inline-flex; align-items: center; justify-content: center; }
 .logo-loader-hex, .logo-loader-hex-in, .logo-loader-chev { stroke-dasharray: 1; stroke-dashoffset: 1; }
 .logo-loader-hex    { animation: logoDraw 720ms cubic-bezier(.65,0,.35,1) 0ms forwards; }

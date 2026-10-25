@@ -3,6 +3,7 @@ import { RefreshCw } from 'lucide-react';
 import Warning, { WarningAction } from './Warning';
 import CoachAvatar from '../Coach/CoachAvatar';
 import LogoLoader from './LogoLoader';
+import CarolCena from './CarolCena';
 import { prefersReducedMotion } from '../../utils/coachBubbles';
 import { useAppStore } from '../../store';
 import { todayISO } from '../../lib/utils';
@@ -164,7 +165,12 @@ export function AnalysisSkeleton({
           loop lê-se como "está preso" (ver LogoLoader). Decorativo: quem
           anuncia a espera é o role="status" desta região. */}
       <div data-testid="analysis-logo" className="flex flex-col items-center" style={{ gap: 10, paddingTop: 4 }}>
-        <LogoLoader size={64} label={null} />
+        <CarolCena kind={kind} size={144} fallback={<LogoLoader size={64} label={null} />} />
+        {/* A Carol a trabalhar: a linha fixa por cima das frases (que descrevem o
+            que a análise faz). Quem anuncia a espera é o role="status" da região. */}
+        <span data-testid="analysis-carol-line" style={{ fontSize: 11, fontWeight: 800, letterSpacing: 'var(--tracking-label)', textTransform: 'uppercase', color: 'var(--text-4)' }}>
+          A Carol está a analisar
+        </span>
         {steps && (
           <div data-testid="analysis-step" className="flex items-center justify-center" style={{ gap: 10 }}>
             <span className="min-w-0 text-center" style={{ fontSize: 13, fontWeight: 700, color: 'var(--coach-soft)' }}>
