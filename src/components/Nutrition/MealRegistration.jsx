@@ -14,6 +14,7 @@ import { usePersistedFormDraft, restorePersistedFormDraft, clearPersistedFormDra
 import { normalizeStartTime, startTimeInputValue } from '../../utils/startTime';
 import { mealNominalTime } from '../../utils/dayOrder';
 import { usePersistedDraftMedia } from '../../utils/draftMediaPersistence';
+import { compatibleMealTypes } from '../../utils/nutrition';
 import { foodDefaultGrams, foodKey, habitualsForMealType, isKnownFood, isPantryComplete, markMealTemplateUsed, pantrySuggestions, portionText, templateItems, templatesForMealType } from '../../utils/pantry';
 import CarolInterventionActions from '../shared/CarolInterventionActions';
 import RegistrationShell from '../shared/registration/RegistrationShell';
@@ -520,7 +521,10 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
     // sem alimentos — nunca troca um tipo que o atleta já tem com comida.
     // A hora sugerida segue o tipo, como no chip (revisão pré-master: um
     // "Jantar leve" gravava-se às 13:00 do almoço sugerido).
-    if (!isEditing && manualItems.length === 0 && template.default_meal_type) {
+    // Bug #85: nunca troca por um tipo do mesmo grupo (um "Jantar" tocado ao
+    // almoço fica almoço); a lista já só traz as do grupo, isto é a rede.
+    if (!isEditing && manualItems.length === 0 && template.default_meal_type
+      && !compatibleMealTypes(mealType).includes(template.default_meal_type)) {
       setMealType(template.default_meal_type);
       if (!mealTimeTouchedRef.current) setMealTime(mealNominalTime(template.default_meal_type));
     }

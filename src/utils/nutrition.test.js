@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { dayNutrientStatus, dayWaterGoalMet, microCoverage, planAffectsDay } from './nutrition';
+import { dayNutrientStatus, dayWaterGoalMet, compatibleMealTypes, microCoverage, planAffectsDay } from './nutrition';
 
 const DAY = '2026-08-03';
 const OTHER_DAY = '2026-08-02';
@@ -175,5 +175,14 @@ describe('microCoverage', () => {
     expect(microCoverage(7 / 13)).toEqual({ atLeast: true, none: false, text: 'dado em 54% dos alimentos' });
     expect(microCoverage(0.996).text).toBe('dado em 99% dos alimentos');
     expect(microCoverage(0.004).text).toBe('dado em 1% dos alimentos');
+  });
+});
+
+describe('compatibleMealTypes (bug #85)', () => {
+  it('almoço e jantar formam um grupo; os outros ficam sozinhos', () => {
+    expect(compatibleMealTypes('almoco')).toEqual(['almoco', 'jantar']);
+    expect(compatibleMealTypes('jantar')).toEqual(['almoco', 'jantar']);
+    for (const t of ['pequeno-almoco', 'lanche-manha', 'lanche', 'ceia']) expect(compatibleMealTypes(t)).toEqual([t]);
+    expect(compatibleMealTypes(undefined)).toEqual([]);
   });
 });

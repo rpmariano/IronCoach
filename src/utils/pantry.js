@@ -1,4 +1,5 @@
 import { foodKey } from '@formulas/foodKey.ts';
+import { compatibleMealTypes } from './nutrition';
 import { supabase, invokeEdgeFunctionWithTimeout } from '../lib/supabase';
 import { ANALYZE_TIMEOUT_MS } from '../lib/edgeTimeouts';
 
@@ -127,13 +128,14 @@ export function pantrySuggestions(query, foods, limit = 5) {
  */
 export function habitualsForMealType({ meals, foods, mealType, today, days = 90, limit = 3 }) {
   if (!mealType || !today) return [];
+  const types = compatibleMealTypes(mealType);
   const since = new Date(`${today}T00:00:00Z`);
   since.setUTCDate(since.getUTCDate() - days);
   const sinceISO = since.toISOString().slice(0, 10);
   const byKey = new Map((foods || []).map((f) => [f.name_key, f]));
   const counts = new Map();
   for (const m of meals || []) {
-    if (m?.meal_type !== mealType || !m.date || m.date < sinceISO || m.date > today) continue;
+    if (!types.includes(m?.meal_type) || !m.date || m.date < sinceISO || m.date > today) continue;
     const seen = new Set();
     for (const it of m.meal_items || []) {
       const k = foodKey(it?.name);
@@ -338,9 +340,11 @@ export function templateTotals(template, foods) {
   return { kcal: Math.round(kcal), protein: r1(protein), carbs: r1(carbs), fat: r1(fat), known, total: items.length };
 }
 
-/** As refeições para o registo: as deste tipo primeiro, depois as mais usadas. */
+/** As refeições para o registo (bug #85): só as do grupo do tipo (almoço e
+ *  jantar juntos) e as sem tipo; as do tipo exato primeiro, depois as mais usadas. */
 export function templatesForMealType(templates, mealType) {
-  return [...(templates || [])].sort((a, b) =>
+  const types = compatibleMealTypes(mealType);
+  return (templates || []).filter((t) => !t.default_meal_type || types.includes(t.default_meal_type)).sort((a, b) =>
     (Number(b.default_meal_type === mealType) - Number(a.default_meal_type === mealType))
     || ((b.times_used || 0) - (a.times_used || 0))
     || String(a.name).localeCompare(String(b.name), 'pt'));
