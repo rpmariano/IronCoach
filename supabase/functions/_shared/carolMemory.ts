@@ -102,6 +102,7 @@ function warn(label: string, error: unknown) {
 const TRAINING_TYPE_LABELS: Record<string, string> = {
   continuo: "contínuo", longo: "longo", intervalos: "intervalos", fartlek: "fartlek",
   recuperacao: "recuperação", trail: "trail", caminhada: "caminhada",
+  ativacao: "ativação pré-prova", // bug #84
 };
 
 const MEAL_TYPE_LABELS: Record<string, string> = {

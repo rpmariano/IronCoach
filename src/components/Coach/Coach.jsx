@@ -108,7 +108,7 @@ const COACH_INITIATED_FAILURE = { timeout: COACH_INITIATED_LATER_TEXT };
 // a caminho" (revisão de 2026-09-26). Sem nome não há vocativo: "atleta,
 // isto está a demorar" lia-se como um formulário.
 const WAITING_MESSAGES = [
-  (n) => `${n ? `${n}, isto` : 'Isto'} está a levar mais tempo do que devia. Fico nisto e respondo-te aqui.`,
+  (n) => `${n ? `${n}, esta` : 'Esta'} resposta está a levar-me mais tempo do que contava. Não precisas de mandar nada outra vez: respondo-te aqui quando acabar.`,
   (n) => `${n ? `${n}, estou` : 'Estou'} a pensar nisto, preciso de mais tempo. Respondo-te aqui.`,
 ];
 
