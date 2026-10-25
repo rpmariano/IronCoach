@@ -1007,13 +1007,18 @@ describe('MealRegistration — a despensa ao escrever', () => {
   // Um teste que falhe a meio não deixa o <html> com o teclado "aberto".
   afterEach(() => document.documentElement.removeAttribute('data-keyboard'));
 
-  it('uma refeição predefinida num registo novo vazio traz o tipo dela; repetida não junta nem conta', () => {
-    useAppStore.setState({ mealTemplates: [{ id: 't1', name: 'Jantar leve', default_meal_type: 'jantar', items: [{ name: 'Iogurte grego 0%', grams: 170 }], times_used: 4 }] });
+  it('bug #85: ao almoço, uma predefinida de jantar junta-se sem mudar o tipo; a de pequeno-almoço nem aparece; repetida não junta nem conta', () => {
+    useAppStore.setState({ mealTemplates: [
+      { id: 't1', name: 'Jantar leve', default_meal_type: 'jantar', items: [{ name: 'Iogurte grego 0%', grams: 170 }], times_used: 4 },
+      { id: 't2', name: 'Pequeno-almoço de treino', default_meal_type: 'pequeno-almoco', items: [{ name: 'Aveia em flocos', grams: 50 }], times_used: 9 },
+    ] });
     render(<MealRegistration onClose={onClose} />);
+    fireEvent.click(screen.getByRole('button', { name: /^Almoço$/ }));
+    const horaAoAlmoco = screen.getByLabelText('Hora da refeição').value;
+    expect(screen.queryByRole('button', { name: /Juntar a refeição Pequeno-almoço de treino/ })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /Juntar a refeição Jantar leve/ }));
-    expect(screen.getByRole('button', { name: /^Jantar$/ })).toHaveAttribute('aria-pressed', 'true');
-    // A hora sugerida segue o tipo (revisão pré-master).
-    expect(screen.getByLabelText('Hora da refeição')).toHaveValue('20:00');
+    expect(screen.getByRole('button', { name: /^Almoço$/ })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByLabelText('Hora da refeição')).toHaveValue(horaAoAlmoco);
     expect(useAppStore.getState().mealTemplates[0].times_used).toBe(4); // a contagem chega depois (assíncrona)
     fireEvent.click(screen.getByRole('button', { name: /Juntar a refeição Jantar leve/ }));
     expect(screen.getByTestId('meal-items')).toHaveTextContent('Nesta refeição · 1');

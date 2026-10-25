@@ -170,6 +170,13 @@ export const MEAL_TYPE_OPTIONS = [
   { key: 'ceia', label: 'Ceia' },
 ];
 
+/** Os tipos que se aproveitam uns aos outros nas sugestões (bug #85): almoço e
+ *  jantar são intercambiáveis; os restantes não se misturam com nenhum. */
+export function compatibleMealTypes(type) {
+  if (type === 'almoco' || type === 'jantar') return ['almoco', 'jantar'];
+  return type ? [type] : [];
+}
+
 export function mealTypeLabel(type) {
   const labels = {
     'pequeno-almoco': 'Pequeno-Almoço',
