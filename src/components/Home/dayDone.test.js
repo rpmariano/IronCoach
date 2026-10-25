@@ -87,6 +87,11 @@ describe('doneLine', () => {
       expect(doneLine(ginasio(), { gymSessions: [sessao({ duration_seconds: 1740 })] }).verdict).toBe('Sessão curta: 29 min de ~60 estimados.');
     });
 
+    it('bug #84: a ativação pré-prova diz-se pelo nome, sem inventar um «ativacao»', () => {
+      const l = doneLine(corrida({ training_type: 'intervalos', target_distance_km: 4 }), { runs: [{ ...run(4, 4 * 360), training_type: 'ativacao' }] });
+      expect(l.verdict).toBe('O plano pedia intervalos; ficou registada como ativação pré-prova.');
+    });
+
     it('6 km de corrida contínua contra intervalos de 6 km: bate nos km, não é o treino pedido', () => {
       const l = doneLine(corrida({ training_type: 'intervalos', target_distance_km: 6 }), { runs: [{ ...run(6, 6 * 330), training_type: 'continuo' }] });
       expect(l.verdict).toBe('O plano pedia intervalos; ficou registada como corrida contínua.');

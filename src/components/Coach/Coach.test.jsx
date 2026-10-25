@@ -1837,10 +1837,9 @@ describe('Coach — "O mapa da época" pedido a partir do Início (coachIntent c
     await waitFor(() => expect(invokeEdgeFunctionWithTimeout).toHaveBeenCalledTimes(1));
     expect(invokeEdgeFunctionWithTimeout.mock.calls[0][0]).toBe('coach-chat');
     const body = JSON.parse(invokeEdgeFunctionWithTimeout.mock.calls[0][1].body);
-    expect(body).toMatchObject({ message: '', is_plan_checkin: true, cup_map: { first: true } });
-    // Nada de assinatura, de edição ou de motivos no corpo: o servidor monta
-    // o guião a partir do bloco da competição.
-    expect(JSON.stringify(body)).not.toContain('cup_map:');
+    // A assinatura vai, para o servidor não repetir o mapa (2026-10-25); nada
+    // de edição ou de motivos: o guião monta-se a partir do bloco da competição.
+    expect(body).toMatchObject({ message: '', is_plan_checkin: true, cup_map: { first: true, signature: SIGNATURE } });
     expect(body.plan_divergence).toBeUndefined();
     expect(useAppStore.getState().coachIntent).toBeNull();
 
@@ -1853,7 +1852,61 @@ describe('Coach — "O mapa da época" pedido a partir do Início (coachIntent c
     useAppStore.setState({ coachIntent: { kind: 'cup_map', signature: SIGNATURE, first: false } });
     renderCoach();
     await waitFor(() => expect(invokeEdgeFunctionWithTimeout).toHaveBeenCalledTimes(1));
-    expect(JSON.parse(invokeEdgeFunctionWithTimeout.mock.calls[0][1].body).cup_map).toEqual({ first: false });
+    expect(JSON.parse(invokeEdgeFunctionWithTimeout.mock.calls[0][1].body).cup_map).toEqual({ first: false, signature: SIGNATURE });
+  });
+
+  /* 2026-10-25: o turno de sexta passou dos 45 s e a resposta chegou por
+     sondagem, sem cup_map_shown: a assinatura nunca ficou tratada e o aviso
+     continuou ativo. Os três caminhos que a marcam. */
+  it('already_sent (o servidor já o tinha mostrado): marca a assinatura, sem mensagem nova', async () => {
+    invokeEdgeFunctionWithTimeout.mockResolvedValue({ data: { skipped: 'already_sent', cup_map_shown: true, model_message: null, suggestions: [] }, error: null });
+    useAppStore.setState({ coachIntent: { kind: 'cup_map', signature: SIGNATURE, first: false } });
+    renderCoach();
+    await waitFor(() => expect(JSON.parse(window.localStorage.getItem(STORAGE_KEY))).toEqual([SIGNATURE]));
+    expect(logImpression).toHaveBeenCalledWith({ kind: 'moment', key: SIGNATURE, title: null });
+    expect(useAppStore.getState().coachMessages.map((m) => m.content)).not.toContain(COACH_EMPTY_REPLY_TEXT);
+  });
+
+  it('already_sent sozinho (sem cup_map_shown) também marca', async () => {
+    invokeEdgeFunctionWithTimeout.mockResolvedValue({ data: { skipped: 'already_sent', model_message: null, suggestions: [] }, error: null });
+    useAppStore.setState({ coachIntent: { kind: 'cup_map', signature: SIGNATURE, first: false } });
+    renderCoach();
+    await waitFor(() => expect(JSON.parse(window.localStorage.getItem(STORAGE_KEY))).toEqual([SIGNATURE]));
+  });
+
+  it('a resposta do mapa chega por sondagem (timeout dos 45 s): marca a assinatura pendente', async () => {
+    invokeEdgeFunctionWithTimeout.mockResolvedValue({ data: null, error: 'timeout', isTimeout: true });
+    supabase.from.mockImplementation((table) => (table === 'coach_messages'
+      ? coachMessagesChain({ data: [{ id: 'm9', role: 'model', content: 'Aqui vai o mapa.', created_at: new Date().toISOString() }], error: null })
+      : profilesChain({ data: null, error: null })));
+    vi.useFakeTimers();
+    try {
+      useAppStore.setState({ coachIntent: { kind: 'cup_map', signature: SIGNATURE, first: false } });
+      renderCoach();
+      await act(async () => { await vi.advanceTimersByTimeAsync(4100 * 3); });
+      expect(useAppStore.getState().coachMessages.map((m) => m.content)).toContain('Aqui vai o mapa.');
+      expect(JSON.parse(window.localStorage.getItem(STORAGE_KEY))).toEqual([SIGNATURE]);
+      expect(logImpression).toHaveBeenCalledWith({ kind: 'moment', key: SIGNATURE, title: null });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('sondagem sem resposta (aviso de demora): nada fica marcado', async () => {
+    invokeEdgeFunctionWithTimeout.mockResolvedValue({ data: null, error: 'timeout', isTimeout: true });
+    supabase.from.mockImplementation((table) => (table === 'coach_messages'
+      ? coachMessagesChain({ data: [], error: null })
+      : profilesChain({ data: { coach_chat_busy_since: null }, error: null })));
+    vi.useFakeTimers();
+    try {
+      useAppStore.setState({ coachIntent: { kind: 'cup_map', signature: SIGNATURE, first: false } });
+      renderCoach();
+      await act(async () => { await vi.advanceTimersByTimeAsync(4100 * 3); });
+      expect(window.localStorage.getItem(STORAGE_KEY)).toBeNull();
+      expect(logImpression).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('se o pedido falhar, nada fica marcado — o aviso volta', async () => {
@@ -2068,5 +2121,145 @@ describe('Coach — fotos no chat (decisões 16 e 17)', () => {
     const body = JSON.parse(invokeEdgeFunctionWithTimeout.mock.calls[0][1].body);
     expect(body.message).toBe('Quantas calorias tem isto?');
     expect(body.images).toHaveLength(1);
+  });
+});
+
+/* Plano longo em partes (2026-10-25): a resposta que propõe a 1.ª semana traz
+   plan_continuation. Só pode haver uma proposta pendente (o servidor recusa a
+   anterior ao gravar outra), por isso o cliente só pede a parte seguinte
+   DEPOIS de o atleta aceitar a que está na folha; recusar pára a cadeia. */
+describe('Coach — plano longo em partes (plan_continuation)', () => {
+  const C1 = { from: '2026-11-02', to: '2026-11-08', part: 2, of: 3, until: '2026-12-20' };
+  const C2 = { from: '2026-11-09', to: '2026-11-15', part: 3, of: 3 };
+  const reply = (id, text, extra = {}) => ({ data: { model_message: { id, content: text }, suggestions: [], ...extra }, error: null });
+  const bodies = () => invokeEdgeFunctionWithTimeout.mock.calls.map((c) => JSON.parse(c[1].body));
+  const continuations = () => bodies().filter((b) => b.plan_continuation);
+  const send = async (text) => {
+    fireEvent.change(screen.getByPlaceholderText('Escreve a tua pergunta...'), { target: { value: text } });
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: /Enviar pergunta à Carol/i })); });
+  };
+  const PLAN = (n) => ({ id: `p${n}`, status: 'proposto', period_start: '2026-10-26', period_end: '2026-11-01', summary: `Semana ${n}` });
+  let respondToPlan;
+
+  beforeEach(() => {
+    invokeEdgeFunctionWithTimeout.mockReset();
+    supabase.from.mockReset();
+    window.localStorage.clear();
+    respondToPlan = vi.fn().mockResolvedValue(true);
+    useAppStore.setState({ ...baseCarolState(), respondToPlan, logImpression: vi.fn(), refreshCupAfterChat: vi.fn(), loadCup: vi.fn() });
+  });
+
+  // Responde pelo corpo, não pela ordem: cada pedido tem o seu guião.
+  const script = (fn) => invokeEdgeFunctionWithTimeout.mockImplementation((_n, { body }) => Promise.resolve(fn(JSON.parse(body))));
+  // A proposta pendente que o servidor teria nesse momento (só há uma).
+  let atual = 1;
+  const propoe = (n) => { atual = n; useAppStore.setState({ reloadCoachPlans: vi.fn().mockImplementation(() => Promise.resolve([PLAN(atual)])) }); };
+  const aceitar = async () => {
+    await act(async () => { fireEvent.click(await screen.findByRole('button', { name: /Aceitar plano/i })); });
+  };
+
+  it('a continuação NÃO sai enquanto a parte da folha não for aceite', async () => {
+    propoe(1);
+    script((b) => (b.plan_continuation ? reply('x', 'não devia') : reply('a1', 'Primeira semana proposta.', { plan_proposed: true, plan_continuation: C1 })));
+    renderCoach();
+    await send('Faz-me um plano de 3 semanas');
+    await screen.findByRole('button', { name: /Aceitar plano/i });
+    await act(async () => { await new Promise((r) => setTimeout(r, 80)); });
+    expect(continuations()).toHaveLength(0);
+    expect(invokeEdgeFunctionWithTimeout).toHaveBeenCalledTimes(1);
+  });
+
+  it('depois de aceitar, manda sozinha cada parte (sem texto do atleta) e pára quando já não vem plan_continuation', async () => {
+    propoe(1);
+    script((b) => {
+      if (b.plan_continuation?.part === 2) { atual = 2; return reply('a2', 'Segunda semana.', { plan_proposed: true, plan_continuation: C2 }); }
+      if (b.plan_continuation?.part === 3) { atual = 3; return reply('a3', 'Terceira e última.', { plan_proposed: true }); }
+      if (b.message === 'Aceitei o plano.') return reply('ok', 'Boa, aceite.');
+      return reply('a1', 'Primeira semana proposta. Depois vêm as outras.', { plan_proposed: true, plan_continuation: C1 });
+    });
+    renderCoach();
+    await send('Faz-me um plano de 3 semanas');
+    await aceitar();
+    expect(respondToPlan).toHaveBeenCalledWith('p1', true);
+    await waitFor(() => expect(continuations()).toHaveLength(1));
+    // O until (dia da prova) volta tal como veio.
+    expect(continuations()[0]).toMatchObject({ message: '', plan_continuation: C1 });
+    expect(continuations()[0].plan_continuation.until).toBe('2026-12-20');
+
+    // A parte 2 propõe-se (folha própria); só depois de aceitar sai a 3.
+    await screen.findByRole('button', { name: /Aceitar plano/i });
+    await act(async () => { await new Promise((r) => setTimeout(r, 80)); });
+    expect(continuations()).toHaveLength(1);
+    await aceitar();
+    expect(respondToPlan).toHaveBeenCalledWith('p2', true);
+    await waitFor(() => expect(continuations()).toHaveLength(2));
+    expect(continuations()[1]).toMatchObject({ message: '', plan_continuation: C2 });
+    await waitFor(() => expect(useAppStore.getState().coachMessages.map((m) => m.content)).toContain('Terceira e última.'));
+    // Acabou (a parte 3 não trouxe continuação): nada a mais, mesmo aceitando.
+    await aceitar();
+    expect(respondToPlan).toHaveBeenCalledWith('p3', true);
+    await act(async () => { await new Promise((r) => setTimeout(r, 80)); });
+    expect(continuations()).toHaveLength(2);
+    expect(useAppStore.getState().coachLoading).toBe(false);
+  });
+
+  it('recusar a parte da folha pára a cadeia', async () => {
+    propoe(1);
+    script((b) => (b.message === 'Recusei o plano.' ? reply('r', 'Sem problema.') : reply('a1', 'Primeira semana proposta.', { plan_proposed: true, plan_continuation: C1 })));
+    renderCoach();
+    await send('Plano de 3 semanas');
+    await act(async () => { fireEvent.click(await screen.findByRole('button', { name: /Recusar/i })); });
+    expect(respondToPlan).toHaveBeenCalledWith('p1', false);
+    await waitFor(() => expect(useAppStore.getState().coachMessages.map((m) => m.content)).toContain('Sem problema.'));
+    await act(async () => { await new Promise((r) => setTimeout(r, 80)); });
+    expect(continuations()).toHaveLength(0);
+  });
+
+  it('uma continuação que falha não insiste', async () => {
+    propoe(1);
+    script((b) => {
+      if (b.plan_continuation) return { data: null, error: 'boom', isTimeout: false, isNetwork: false };
+      if (b.message === 'Aceitei o plano.') return reply('ok', 'Boa.');
+      return reply('a1', 'Primeira semana proposta.', { plan_proposed: true, plan_continuation: C1 });
+    });
+    renderCoach();
+    await send('Plano de 3 semanas');
+    await aceitar();
+    await waitFor(() => expect(continuations()).toHaveLength(1));
+    await act(async () => { await new Promise((r) => setTimeout(r, 120)); });
+    expect(continuations()).toHaveLength(1);
+    expect(useAppStore.getState().coachLoading).toBe(false);
+  });
+
+  it('sem plan_continuation, nada além do pedido do atleta, mesmo aceitando', async () => {
+    propoe(1);
+    script((b) => (b.message === 'Aceitei o plano.' ? reply('ok', 'Boa.') : reply('a1', 'Aqui vai a semana.', { plan_proposed: true })));
+    renderCoach();
+    await send('Plano para esta semana');
+    await aceitar();
+    await waitFor(() => expect(useAppStore.getState().coachMessages.map((m) => m.content)).toContain('Boa.'));
+    await act(async () => { await new Promise((r) => setTimeout(r, 80)); });
+    expect(continuations()).toHaveLength(0);
+  });
+
+  it('enquanto a continuação corre, o que o atleta escreve fica no campo e não se perde', async () => {
+    propoe(1);
+    let soltarSegunda;
+    script((b) => {
+      if (b.plan_continuation) return new Promise((r) => { soltarSegunda = () => r(reply('a2', 'Segunda semana.')); });
+      if (b.message === 'Aceitei o plano.') return reply('ok', 'Boa.');
+      return reply('a1', 'Primeira semana.', { plan_proposed: true, plan_continuation: C1 });
+    });
+    renderCoach();
+    await send('Plano de 2 semanas');
+    await aceitar();
+    await waitFor(() => expect(continuations()).toHaveLength(1));
+    const campo = screen.getByPlaceholderText('Escreve a tua pergunta...');
+    fireEvent.change(campo, { target: { value: 'Espera, troca o dia de descanso' } });
+    expect(campo).toHaveValue('Espera, troca o dia de descanso');
+    await act(async () => { soltarSegunda(); });
+    await waitFor(() => expect(useAppStore.getState().coachLoading).toBe(false));
+    expect(campo).toHaveValue('Espera, troca o dia de descanso');
+    expect(bodies().filter((b) => b.message === 'Espera, troca o dia de descanso')).toHaveLength(0);
   });
 });

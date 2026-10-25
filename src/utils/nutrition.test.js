@@ -179,10 +179,13 @@ describe('microCoverage', () => {
 });
 
 describe('compatibleMealTypes (bug #85)', () => {
-  it('almoço e jantar formam um grupo; os outros ficam sozinhos', () => {
+  it('almoço e jantar formam um grupo, os dois lanches outro; o resto fica sozinho', () => {
     expect(compatibleMealTypes('almoco')).toEqual(['almoco', 'jantar']);
     expect(compatibleMealTypes('jantar')).toEqual(['almoco', 'jantar']);
-    for (const t of ['pequeno-almoco', 'lanche-manha', 'lanche', 'ceia']) expect(compatibleMealTypes(t)).toEqual([t]);
+    // Os dois lanches (manhã e tarde) partilham.
+    expect(compatibleMealTypes('lanche-manha')).toEqual(['lanche-manha', 'lanche']);
+    expect(compatibleMealTypes('lanche')).toEqual(['lanche-manha', 'lanche']);
+    for (const t of ['pequeno-almoco', 'ceia']) expect(compatibleMealTypes(t)).toEqual([t]);
     expect(compatibleMealTypes(undefined)).toEqual([]);
   });
 });

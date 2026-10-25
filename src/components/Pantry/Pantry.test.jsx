@@ -68,6 +68,64 @@ describe('PantrySection', () => {
     expect(within(screen.getByRole('list', { name: 'Alimentos da despensa' })).getAllByRole('button')).toHaveLength(1);
   });
 
+  describe('variantes (bug #87)', () => {
+    const COXA = { id: 'p', name: 'Coxa de frango', name_key: 'coxa de frango', times_seen: 8, portion_grams: 120, calories_per_100g: 216, protein_per_100g: 17, carbs_per_100g: 0, fat_per_100g: 16 };
+    const COM = { id: 'v1', parent_id: 'p', variant_label: 'com pele', name: 'Coxa de frango com pele', name_key: 'coxa de frango com pele', times_seen: 6, portion_grams: 120, calories_per_100g: 216 };
+    const SEM = { id: 'v2', parent_id: 'p', variant_label: 'sem pele', name: 'Coxa de frango sem pele', name_key: 'coxa de frango sem pele', times_seen: 2, portion_grams: 100, calories_per_100g: 144 };
+    beforeEach(() => useAppStore.setState({ pantryFoods: [...FOODS, COXA, COM, SEM] }));
+
+    it('o genérico mostra as variantes por baixo; só ele conta e se lista; a procura encontra-o por elas', () => {
+      render(<PantrySection />);
+      expect(screen.getByRole('tab', { name: /Alimentos · 3/ })).toBeInTheDocument();
+      const lista = screen.getByRole('list', { name: 'Alimentos da despensa' });
+      expect(within(lista).queryByText('Coxa de frango com pele')).not.toBeInTheDocument();
+      const variantes = screen.getByRole('list', { name: 'Variantes de Coxa de frango' });
+      expect(variantes).toHaveTextContent('sem pele');
+      expect(variantes).toHaveTextContent('144 kcal/100 g');
+      expect(variantes).toHaveTextContent('com pele');
+      fireEvent.change(screen.getByPlaceholderText('Procurar alimento'), { target: { value: 'sem pele' } });
+      expect(screen.getByText('Coxa de frango')).toBeInTheDocument();
+      expect(screen.queryByText('Aveia em flocos')).not.toBeInTheDocument();
+    });
+
+    it('editar os valores de uma variante grava só essa linha, com o nome a seguir ao rótulo', async () => {
+      render(<PantrySection />);
+      fireEvent.click(within(screen.getByRole('list', { name: 'Variantes de Coxa de frango' })).getByRole('button', { name: /sem pele/ }));
+      const sheet = await screen.findByTestId('pantry-food-sheet');
+      expect(within(sheet).getByLabelText('Variante')).toHaveValue('sem pele');
+      fireEvent.change(within(sheet).getByLabelText('kcal por 100 g'), { target: { value: '150' } });
+      fireEvent.click(within(sheet).getByRole('button', { name: 'Guardar alterações' }));
+      await waitFor(() => expect(mocks.calls.find((c) => c.table === 'athlete_foods' && c.op === 'update')).toBeTruthy());
+      expect(mocks.calls.find((c) => c.op === 'update').row).toMatchObject({ name: 'Coxa de frango sem pele', variant_label: 'sem pele', calories_per_100g: 150, parent_id: 'p' });
+    });
+
+    it('acrescentar uma variante: parte dos valores do genérico, sem chamar a Carol', async () => {
+      render(<PantrySection />);
+      fireEvent.click(within(screen.getByRole('list', { name: 'Variantes de Coxa de frango' })).getByRole('button', { name: '+ Variante' }));
+      const sheet = await screen.findByTestId('pantry-food-sheet');
+      expect(within(sheet).getByLabelText('kcal por 100 g')).toHaveValue('216');
+      fireEvent.change(within(sheet).getByLabelText('Variante'), { target: { value: 'assada' } });
+      fireEvent.click(within(sheet).getByRole('button', { name: 'Guardar' }));
+      await waitFor(() => expect(mocks.calls.find((c) => c.table === 'athlete_foods' && c.op === 'insert')).toBeTruthy());
+      expect(mocks.calls.find((c) => c.op === 'insert').row).toMatchObject({ parent_id: 'p', variant_label: 'assada', name: 'Coxa de frango assada', calories_per_100g: 216 });
+      expect(mocks.invoke).not.toHaveBeenCalled();
+    });
+
+    it('apagar uma variante apaga só essa linha', async () => {
+      render(<PantrySection />);
+      fireEvent.click(within(screen.getByRole('list', { name: 'Variantes de Coxa de frango' })).getByRole('button', { name: /com pele/ }));
+      fireEvent.click(await screen.findByRole('button', { name: 'Apagar variante' }));
+      await waitFor(() => expect(mocks.calls.find((c) => c.table === 'athlete_foods' && c.op === 'delete')).toBeTruthy());
+    });
+
+    it('um alimento normal também pode ganhar uma variante, a partir da ficha dele', async () => {
+      render(<PantrySection />);
+      fireEvent.click(within(screen.getByRole('list', { name: 'Alimentos da despensa' })).getByRole('button', { name: /Aveia em flocos/ }));
+      fireEvent.click(await screen.findByRole('button', { name: '+ Acrescentar variante' }));
+      expect(await screen.findByLabelText('Variante')).toBeInTheDocument();
+    });
+  });
+
   it('"Como cozinhas" mostra as confirmadas e as que variam — não as por confirmar', () => {
     render(<PantrySection />);
     fireEvent.click(screen.getByRole('tab', { name: /Como cozinhas · 2/ }));

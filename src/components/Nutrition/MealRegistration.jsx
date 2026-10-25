@@ -15,7 +15,7 @@ import { normalizeStartTime, startTimeInputValue } from '../../utils/startTime';
 import { mealNominalTime } from '../../utils/dayOrder';
 import { usePersistedDraftMedia } from '../../utils/draftMediaPersistence';
 import { compatibleMealTypes } from '../../utils/nutrition';
-import { foodDefaultGrams, foodKey, habitualsForMealType, isKnownFood, isPantryComplete, markMealTemplateUsed, pantrySuggestions, portionText, templateItems, templatesForMealType } from '../../utils/pantry';
+import { foodDefaultGrams, foodKey, habitualsForMealType, isKnownFood, isPantryComplete, markMealTemplateUsed, pantrySuggestions, portionText, templateItems, templatesForMealType, variantsOf } from '../../utils/pantry';
 import CarolInterventionActions from '../shared/CarolInterventionActions';
 import RegistrationShell from '../shared/registration/RegistrationShell';
 import RegistrationSection from '../shared/registration/RegistrationSection';
@@ -415,8 +415,30 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
   /* Um alimento da despensa: entra com o nome dela e a porção habitual (ou
      as gramas já escritas). O servidor reconhece-o pelo nome e usa os
      valores dela, sem o voltar a analisar (analyze-meal/pantry.ts). */
+  /* Bug #87: um genérico com variantes ("coxa de frango": com pele, sem
+     pele) pergunta sempre qual — chips com as variantes guardadas, sem
+     chamada à API. O item entra com o nome da variante, e é por esse nome
+     que o servidor lhe põe os valores dela. */
+  /* Vale para qualquer entrada — escrita, hábito ou predefinida: um item que
+     é um genérico com variantes, ou uma variante dele, pergunta sempre qual
+     (decisão do Rui). Fila, porque uma predefinida pode trazer vários. */
+  const [variantQueue, setVariantQueue] = useState([]); // [{ food (o genérico), variants, typed }]
+  const variantPick = variantQueue[0] || null;
+  const genericOf = (food) => {
+    const generic = food?.parent_id ? (pantryFoods || []).find((f) => f.id === food.parent_id) : food;
+    const variants = generic ? variantsOf(pantryFoods, generic) : [];
+    return variants.length ? { generic, variants } : null;
+  };
   const addPantryFood = (food) => {
     const typed = itemGrams.trim() ? Number(itemGrams) : null;
+    const grouped = genericOf(food);
+    if (grouped) {
+      setErrorMsg('');
+      setVariantQueue((q) => [...q, { food: grouped.generic, variants: grouped.variants, typed: typed > 0 ? typed : null }]);
+      setItemName('');
+      setItemGrams('');
+      return;
+    }
     // Bug #75: o peso habitual (duas vezes o mesmo) ganha à porção da despensa.
     const grams = typed > 0 ? typed : foodDefaultGrams(food, foodRules).grams;
     setErrorMsg('');
@@ -424,6 +446,13 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
     setIsFormDirty(true);
     setItemName('');
     setItemGrams('');
+  };
+  const chooseVariant = (variant) => {
+    const grams = variantPick.typed > 0 ? variantPick.typed : foodDefaultGrams(variant, foodRules).grams;
+    setManualItems(prev => [...prev, { key: `${Date.now()}-${prev.length}`, name: variant.name, grams }]);
+    setIsFormDirty(true);
+    setVariantQueue((q) => q.slice(1));
+    itemNameRef.current?.focus();
   };
   /* Desde 2026-10-05 só um alimento da despensa COMPLETO (os 7
      micronutrientes dados) fica de fora da análise; um com micronutrientes
@@ -514,7 +543,16 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
      continua editável. Os da despensa registam-se sem estimativa. */
   const templates = templatesForMealType(mealTemplates, mealType).slice(0, 6);
   const applyTemplate = (template) => {
-    const toAdd = templateItems(template).filter((it) => !manualItems.some((m) => foodKey(m.name) === foodKey(it.name)));
+    // Um item do grupo de um genérico (ele ou uma variante) conta como já junto.
+    const groupKeys = (name) => {
+      const food = (pantryFoods || []).find((f) => f.name_key === foodKey(name));
+      const g = genericOf(food);
+      return g ? [g.generic, ...g.variants].map((f) => f.name_key) : [foodKey(name)];
+    };
+    const toAdd = templateItems(template).filter((it) => {
+      const keys = groupKeys(it.name);
+      return !manualItems.some((m) => keys.includes(foodKey(m.name)));
+    });
     setErrorMsg('');
     if (!toAdd.length) return; // já estava tudo: não junta nem conta
     // O tipo dela (§5.1, "sugere o tipo ao usar"): só num registo novo ainda
@@ -528,7 +566,15 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
       setMealType(template.default_meal_type);
       if (!mealTimeTouchedRef.current) setMealTime(mealNominalTime(template.default_meal_type));
     }
-    setManualItems(prev => [...prev, ...toAdd.map((it, i) => ({ key: `${Date.now()}-${prev.length + i}`, name: it.name, grams: it.grams }))]);
+    const asks = [];
+    const direct = [];
+    for (const it of toAdd) {
+      const g = genericOf((pantryFoods || []).find((f) => f.name_key === foodKey(it.name)));
+      if (g) asks.push({ food: g.generic, variants: g.variants, typed: it.grams > 0 ? it.grams : null });
+      else direct.push(it);
+    }
+    if (asks.length) setVariantQueue((q) => [...q, ...asks]);
+    if (direct.length) setManualItems(prev => [...prev, ...direct.map((it, i) => ({ key: `${Date.now()}-${prev.length + i}`, name: it.name, grams: it.grams }))]);
     setIsFormDirty(true);
     markMealTemplateUsed(template).then((times_used) => {
       if (times_used == null) return;
@@ -939,6 +985,21 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
                 <Plus size={20} />
               </button>
             </div>
+            {variantPick && (
+              <div role="group" aria-label={`Qual era: ${variantPick.food.name}`} data-testid="meal-variant-pick" className="rounded-xl mt-2 p-3" style={{ border: '1px solid var(--tint-nutrition-bd)', background: 'var(--tint-nutrition-bg)' }}>
+                <p className="text-[12.5px] font-extrabold mb-2" style={{ color: 'var(--text-1)' }}>{variantPick.food.name}: qual era?</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {variantPick.variants.map((v) => (
+                    <button key={v.id ?? v.name_key} type="button" onClick={() => chooseVariant(v)}
+                      className="min-h-[44px] px-3 rounded-full text-[12.5px] font-bold"
+                      style={{ border: '1px solid var(--tint-nutrition-bd)', background: 'var(--surface-strong)', color: 'var(--text-1)' }}>
+                      {v.variant_label}<span className="font-normal" style={{ color: 'var(--text-4)' }}> · {Math.round(Number(v.calories_per_100g) || 0)} kcal/100 g</span>
+                    </button>
+                  ))}
+                  <button type="button" onClick={() => setVariantQueue((q) => q.slice(1))} className="min-h-[44px] px-3 rounded-full text-[12.5px] font-bold" style={{ color: 'var(--text-3)' }}>Cancelar</button>
+                </div>
+              </div>
+            )}
             {suggestions.length > 0 && (
               <div role="listbox" aria-label="Da tua despensa" data-testid="pantry-suggestions" className="rounded-xl overflow-hidden mt-2" style={{ border: '1px solid var(--border-glass-strong)', background: 'var(--surface-strong)' }}>
                 <p className="px-3 pt-2 pb-1 text-[10.5px] font-extrabold uppercase" style={{ letterSpacing: 'var(--tracking-label)', color: 'var(--text-4)' }}>Da tua despensa — toca para juntar</p>

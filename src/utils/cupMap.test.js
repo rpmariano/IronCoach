@@ -176,6 +176,69 @@ describe('cupMapCandidate — o que se tratou noutro dispositivo (impressões)',
   });
 });
 
+describe('cupMapCandidate — só jornadas novas e por decidir voltam a convidar (2026-10-25)', () => {
+  // O mapa da inscrição: duas jornadas confirmadas, uma "vou" ainda sem papel.
+  const primeiro = view({ rounds: [
+    conf('j1', '2026-12-06', { participation: { decision: 'vou', intent: null } }),
+    conf('j2', '2027-01-10'),
+  ] });
+  // Visto pelo Início (cupMapCandidate) e tratado na conversa.
+  beforeEach(() => {
+    expect(candidate(primeiro)).toMatchObject({ first: true });
+    markCupMapHandled(USER, cupMapSignature(primeiro));
+  });
+
+  it('uma data mudada numa jornada que o mapa já cobria não volta a chamar', () => {
+    const mudada = view({ rounds: [
+      conf('j1', '2026-12-13', { participation: { decision: 'vou', intent: null } }),
+      conf('j2', '2027-01-10'),
+    ] });
+    expect(cupMapSignature(mudada)).not.toBe(cupMapSignature(primeiro));
+    expect(candidate(mudada)).toBeNull();
+  });
+
+  it('um «vou» ainda sem papel, numa jornada coberta, também não', () => {
+    const igualMasOutraData = view({ rounds: [
+      conf('j1', '2026-12-06', { participation: { decision: 'vou', intent: null } }),
+      conf('j2', '2027-01-17', { participation: { decision: 'vou', intent: null } }),
+    ] });
+    expect(candidate(igualMasOutraData)).toBeNull();
+  });
+
+  it('uma jornada confirmada NOVA e por decidir volta a chamar', () => {
+    const nova = view({ rounds: [
+      conf('j1', '2026-12-06', { participation: { decision: 'vou', intent: null } }),
+      conf('j2', '2027-01-10'),
+      conf('j3', '2027-02-14'),
+    ] });
+    expect(candidate(nova)).toMatchObject({ first: false });
+  });
+
+  it('uma jornada nova mas já decidida (ou já passada) não chama', () => {
+    const decidida = view({ rounds: [
+      conf('j1', '2026-12-06'), conf('j2', '2027-01-10'),
+      conf('j3', '2027-02-14', { participation: { decision: 'vou', intent: 'atacar' } }),
+      conf('j4', '2026-11-01'),
+    ] });
+    expect(candidate(decidida)).toBeNull();
+  });
+
+  it('o que o mapa tratado cobria acumula-se: depois de tratar a nova, só uma ainda mais nova chama', () => {
+    const nova = view({ rounds: [conf('j1', '2026-12-06'), conf('j2', '2027-01-10'), conf('j3', '2027-02-14')] });
+    expect(candidate(nova)).not.toBeNull();
+    markCupMapHandled(USER, cupMapSignature(nova));
+    const outraData = view({ rounds: [conf('j1', '2026-12-06'), conf('j2', '2027-01-10'), conf('j3', '2027-02-21')] });
+    expect(candidate(outraData)).toBeNull();
+    expect(candidate(view({ rounds: [conf('j1', '2026-12-06'), conf('j2', '2027-01-10'), conf('j3', '2027-02-14'), conf('j4', '2027-03-07')] }))).not.toBeNull();
+  });
+
+  it('sem registo do que o mapa cobria (tratado antes desta regra): a regra antiga, uma vez', () => {
+    window.localStorage.clear();
+    markCupMapHandled(USER, 'cup_map:ed-teste:antigo');
+    expect(candidate(view({ rounds: [conf('j1', '2026-12-06')] }))).toMatchObject({ first: false });
+  });
+});
+
 describe('wasCupMapHandled / markCupMapHandled', () => {
   it('por conta, e só a assinatura exata', () => {
     markCupMapHandled(USER, 'cup_map:a:1');

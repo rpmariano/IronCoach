@@ -45,6 +45,7 @@ function runKindLabel(run) {
       fartlek: 'Fartlek',
       intervalos: 'Intervalos',
       subidas: 'Subidas',
+      ativacao: 'Ativação pré-prova',
       trail: 'Trail',
       tecnico: 'Técnico (trilho)',
       caminhada: 'Caminhada',

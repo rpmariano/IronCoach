@@ -155,6 +155,18 @@ export default function Coach() {
   const pendingGoalProposals = coachGoalProposals || [];
 
   const [activeProposalSheetPlan, setActiveProposalSheetPlan] = useState(null);
+  /* Plano longo em partes: a resposta traz `plan_continuation: { from, to,
+     part, of }` (a Carol avisou e propôs a 1.ª semana). Só pode haver uma
+     proposta pendente — o servidor recusa a anterior quando grava outra —, por
+     isso a continuação fica pendente (`armed: false`) e só sai DEPOIS de o
+     atleta aceitar a parte que está na folha (handleRespond a arma). Recusar
+     pára a cadeia. Armada, com o chat livre o cliente manda sozinho o pedido da
+     parte seguinte, sem texto do atleta; cada resposta pode trazer a seguinte.
+     Se o atleta escrever entretanto (coachLoading), espera a vez — nunca se
+     perde a mensagem dele. */
+  const [pendingContinuation, setPendingContinuation] = useState(null);
+  const continuationRunsRef = useRef(0);
+  const lastProposedPlanIdRef = useRef(null);
   const [activeGoalProposal, setActiveGoalProposal] = useState(null);
 
   useEffect(() => {
@@ -186,6 +198,26 @@ export default function Coach() {
   // "escreve" quando a mensagem chega, como sempre (revealMessage).
   // `failure`: as frases do fim — as de um aviso do Início
   // (HOME_ALERT_FAILURE) só quando esse aviso lá está.
+  // Uma continuação válida: { from, to } (datas) e a parte x de y. No máximo
+  // 12 seguidas sem o atleta escrever — rede de segurança contra um ciclo.
+  const queuePlanContinuation = (data, { fromAthlete = false } = {}) => {
+    if (fromAthlete) continuationRunsRef.current = 0;
+    const c = data?.plan_continuation;
+    const valid = c && typeof c.from === 'string' && typeof c.to === 'string'
+      && Number.isFinite(Number(c.part)) && Number.isFinite(Number(c.of)) && Number(c.part) <= Number(c.of);
+    if (valid && continuationRunsRef.current < 12) {
+      // Desarmada, atada à proposta desta resposta: só o aceite dela a arma.
+      setPendingContinuation({
+        from: c.from, to: c.to, part: Number(c.part), of: Number(c.of),
+        ...(typeof c.until === 'string' ? { until: c.until } : null),
+        planId: lastProposedPlanIdRef.current, armed: false,
+      });
+    } else if (!fromAthlete) {
+      // A resposta da continuação sem a seguinte: acabou.
+      setPendingContinuation(null);
+    }
+  };
+
   const sendCoachInitiatedPayload = (payload, options = {}) => {
     if (coachLoading) return Promise.resolve(null);
     const run = runCoachInitiatedPayload(payload, options);
@@ -245,9 +277,14 @@ export default function Coach() {
       }
       if (data?.plan_proposed) {
         const freshPlans = await reloadCoachPlans();
+        // Cada parte de um plano longo abre a folha como proposta própria (o
+        // atleta acabou de aceitar a anterior: nada fica por cima).
         if (freshPlans && freshPlans.length > 0) {
           const pending = freshPlans.filter(p => p.status === 'proposto');
-          if (pending.length > 0) setActiveProposalSheetPlan(pending[0]);
+          if (pending.length > 0) {
+            lastProposedPlanIdRef.current = pending[0].id;
+            setActiveProposalSheetPlan(pending[0]);
+          }
         }
       }
       if (data?.goal_proposed) {
@@ -258,6 +295,7 @@ export default function Coach() {
         }
       }
       await refreshAfterTurn(data);
+      queuePlanContinuation(data);
       // A silenciosa não o ligou — e o pedido do atleta que esteja à espera
       // dela ainda está em curso.
       if (!silent) setCoachLoading(false);
@@ -442,22 +480,35 @@ export default function Coach() {
      (`cup_map_unavailable`): uma frase para o toque não ficar sem resposta,
      e a competição relê-se — se a inscrição já não está ativa (saiu noutro
      dispositivo), o aviso do Início desaparece. */
-  const handleCupMapCheckin = ({ signature = null, first = false } = {}) => sendCoachInitiatedPayload({
+  const cupMapPendingRef = useRef(null);
+  const markCupMapDone = (signature) => {
+    markCupMapHandled(profile?.id, signature);
+    useAppStore.getState().logImpression?.({ kind: 'moment', key: signature, title: null });
+  };
+  const handleCupMapCheckin = ({ signature = null, first = false } = {}) => {
+    // Se o turno passar dos 45 s a resposta chega por sondagem, sem os sinais
+    // do servidor: a assinatura fica pendente para o handleAsyncFallback.
+    if (!coachLoading) cupMapPendingRef.current = signature;
+    return sendCoachInitiatedPayload({
     message: '',
     is_plan_checkin: true,
-    cup_map: { first: !!first },
+    cup_map: { first: !!first, signature },
     userData: profile || {},
     activeInsights: activeInsightsPayload(),
   }).then((data) => {
-    if (data?.cup_map_shown === true && signature) {
-      markCupMapHandled(profile?.id, signature);
-      useAppStore.getState().logImpression?.({ kind: 'moment', key: signature, title: null });
+    cupMapPendingRef.current = null;
+    // Mostrado agora, ou "already_sent" (o servidor já o tinha mostrado a esta
+    // assinatura): tratado nos dois casos. Chegado por sondagem fica em
+    // handleAsyncFallback, que lê a assinatura pendente.
+    if ((data?.cup_map_shown === true || data?.skipped === 'already_sent') && signature) {
+      markCupMapDone(signature);
     } else if (data?.skipped && data.reason === 'cup_map_unavailable') {
       addCoachMessage({ id: (Date.now() + 1).toString(), role: 'assistant', content: COACH_EMPTY_REPLY_TEXT });
       useAppStore.getState().loadCup?.({ force: true })?.catch?.(() => {});
     }
     return data;
   });
+  };
 
   // Vindo do Início, botão "Falar com a Carol" no aviso "O balanço da
   // prova" (utils/coachProactive.js, pendingRaceBalanceCandidate): ao
@@ -685,6 +736,13 @@ export default function Coach() {
   const [planStart, setPlanStart] = useState(null);
   const handleRespond = async (planId, accept) => {
     const ok = await respondToPlan(planId, accept);
+    // Plano longo em partes: aceitar a parte da folha arma a continuação;
+    // recusar pára a cadeia.
+    if (ok && accept) {
+      setPendingContinuation((c) => (c && (!c.planId || c.planId === planId) ? { ...c, armed: true } : c));
+    } else if (ok) {
+      setPendingContinuation(null);
+    }
     if (ok && accept) {
       const st = useAppStore.getState();
       const plan = (st.coachPlans || []).find((p) => p.id === planId);
@@ -955,6 +1013,12 @@ export default function Coach() {
     }
 
     if (modelRow) {
+      // A resposta do mapa da época chegou por sondagem: sem cup_map_shown, mas
+      // foi o turno do mapa — marca-se (uma resposta de erro não conta).
+      if (cupMapPendingRef.current && !modelRow.is_error) {
+        markCupMapDone(cupMapPendingRef.current);
+        cupMapPendingRef.current = null;
+      }
       addCoachMessage({
         id: modelRow.id, role: 'assistant', content: modelRow.content, mood: modelRow.mood, live: true,
         ...(modelRow.is_error && retry ? retry : {}),
@@ -1189,7 +1253,10 @@ export default function Coach() {
         const freshPlans = await reloadCoachPlans();
         if (freshPlans && freshPlans.length > 0) {
           const pending = freshPlans.filter(p => p.status === 'proposto');
-          if (pending.length > 0) setActiveProposalSheetPlan(pending[0]);
+          if (pending.length > 0) {
+            lastProposedPlanIdRef.current = pending[0].id;
+            setActiveProposalSheetPlan(pending[0]);
+          }
         }
       }
       if (data?.goal_proposed) {
@@ -1200,6 +1267,7 @@ export default function Coach() {
         }
       }
       await refreshAfterTurn(data);
+      queuePlanContinuation(data, { fromAthlete: true });
       setCoachLoading(false);
     } catch (err) {
       // Se a própria espera rebentar (recarregar planos/objetivos depois de
@@ -1213,6 +1281,24 @@ export default function Coach() {
       }
     }
   };
+
+  // A continuação do plano longo: com o chat livre, manda a parte seguinte
+  // (sem texto do atleta). Limpa-se ANTES de enviar: se falhar, não insiste —
+  // a Carol já disse o que vem e o atleta pode pedir "e a semana seguinte?".
+  useEffect(() => {
+    if (!pendingContinuation?.armed || coachLoading) return;
+    const { from, to, part, of, until } = pendingContinuation;
+    setPendingContinuation(null);
+    continuationRunsRef.current += 1;
+    sendCoachInitiatedPayload({
+      message: '',
+      // `until` (o dia da prova) volta tal como veio no turno da parte.
+      plan_continuation: { from, to, part, of, ...(until ? { until } : null) },
+      userData: profile || {},
+      activeInsights: activeInsightsPayload(),
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingContinuation, coachLoading]);
 
   // O botão "Reenviar": só na última bolha, e só se for uma falha a uma
   // mensagem do atleta (`retryText`, ver sendUserMessage) — depois de outra
