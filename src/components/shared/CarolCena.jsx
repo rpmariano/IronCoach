@@ -25,7 +25,12 @@ import { publicUrl } from '../../lib/utils';
 
 export const CENA_AREAS = { run: 'corrida', gym: 'ginasio', body: 'corporal', meal: 'alimentacao' };
 export const cenaAreaOf = (kind) => CENA_AREAS[kind] || null;
-export const CENA_DESENHO_MS = 1800;
+// O contrato da Carol: cada traço demora 0,6 s e o conjunto ~2 s (o atraso de cada um é
+// i × (2 s − 0,6 s) / max(i), com o i do style="--i:N" do ficheiro — caminhos com o mesmo
+// i desenham-se juntos). O crossfade para a imagem começa quando o desenho acaba.
+export const CENA_TRACO_MS = 600;
+export const CENA_TOTAL_MS = 2000;
+export const CENA_DESENHO_MS = CENA_TOTAL_MS + 100;
 const GEOMETRIAS = 'path,line,polyline,polygon,circle,ellipse,rect';
 // Só estes elementos passam (lista de permitidos): nada que execute código, carregue recursos ou anime atributos.
 const PERMITIDOS = new Set(['svg', 'g', 'defs', 'path', 'line', 'polyline', 'polygon', 'circle', 'ellipse', 'rect', 'lineargradient', 'radialgradient', 'stop', 'clippath', 'mask']);
@@ -42,9 +47,20 @@ export function resolverModo(prop) {
   return CENA_MODO_PADRAO;
 }
 
-// Passo entre o início de dois traços da máscara, e o teto do atraso (a máscara toda cabe em ~2 s).
-const MASCARA_PASSO_MS = 220;
-const MASCARA_ATRASO_MAX_MS = 800;
+/** Põe o pathLength=1 e o atraso (--atraso, em ms) de cada forma. A ordem é o --i do
+ *  style do ficheiro (agrupa as que se desenham juntas); sem ele, o índice. */
+function animarFormas(formas) {
+  const ordem = formas.map((el, idx) => {
+    const m = /--i\s*:\s*(\d+(?:\.\d+)?)/.exec(el.getAttribute('style') || '');
+    return m ? Number(m[1]) : idx;
+  });
+  const max = Math.max(0, ...ordem);
+  const passo = max > 0 ? (CENA_TOTAL_MS - CENA_TRACO_MS) / max : 0;
+  formas.forEach((el, k) => {
+    el.setAttribute('pathLength', '1');
+    el.setAttribute('style', `--atraso:${Math.round(ordem[k] * passo)}ms`);
+  });
+}
 
 /** Parse + limpeza: só formas (lista de permitidos), sem handlers nem ligações; a
  *  raiz também. Devolve o elemento <svg> limpo, ou null. */
@@ -68,10 +84,7 @@ export function prepararMascara(texto) {
     if (!svg) return null;
     const formas = [...svg.querySelectorAll(GEOMETRIAS)];
     if (!formas.length) return null;
-    formas.forEach((el, i) => {
-      el.setAttribute('pathLength', '1');
-      el.setAttribute('style', `--atraso:${Math.min(i * MASCARA_PASSO_MS, MASCARA_ATRASO_MAX_MS)}ms`);
-    });
+    animarFormas(formas);
     const vb = (svg.getAttribute('viewBox') || '').trim().split(/[\s,]+/).map(Number);
     const viewBox = vb.length === 4 && vb.every(Number.isFinite) && vb[2] > 0 && vb[3] > 0 ? vb : [0, 0, 256, 256];
     const ser = new XMLSerializer();
@@ -86,7 +99,7 @@ export function prepararTraco(texto) {
   try {
     const svg = limparSvg(texto);
     if (!svg) return null;
-    svg.querySelectorAll(GEOMETRIAS).forEach((el) => el.setAttribute('pathLength', '1'));
+    animarFormas([...svg.querySelectorAll(GEOMETRIAS)]);
     svg.removeAttribute('width');
     svg.removeAttribute('height');
     svg.setAttribute('aria-hidden', 'true');
@@ -100,7 +113,7 @@ export function prepararTraco(texto) {
 function carregarImagem(src) {
   return new Promise((resolve, reject) => {
     const img = new Image();
-    img.onload = () => resolve(src);
+    img.onload = () => resolve({ w: img.naturalWidth || 0, h: img.naturalHeight || 0 });
     img.onerror = () => reject(new Error('imagem'));
     img.src = src;
   });
@@ -110,7 +123,7 @@ const buscarTexto = (url) => (typeof fetch === 'function'
   ? fetch(url).then((r) => (r.ok ? r.text() : Promise.reject(new Error('svg'))))
   : Promise.reject(new Error('sem fetch')));
 
-export default function CarolCena({ kind, size = 160, fallback = null, modo: modoProp }) {
+export default function CarolCena({ kind, size = 200, fallback = null, modo: modoProp }) {
   const area = cenaAreaOf(kind);
   const reduced = prefersReducedMotion();
   const pedido = resolverModo(modoProp);
@@ -118,6 +131,8 @@ export default function CarolCena({ kind, size = 160, fallback = null, modo: mod
   const [estado, setEstado] = useState('a-carregar'); // a-carregar | pronta | falhou
   const [cena, setCena] = useState(null); // { modo, traco } | { modo, mascara }
   const [final, setFinal] = useState(false);
+  // A proporção da imagem (a da Carol é 600×804): `size` é a ALTURA e a largura segue-a.
+  const [proporcao, setProporcao] = useState(1);
 
   useEffect(() => {
     if (!area) { setEstado('falhou'); return undefined; }
@@ -135,8 +150,9 @@ export default function CarolCena({ kind, size = 160, fallback = null, modo: mod
     const trazCena = reduced
       ? Promise.resolve(null)
       : (pedido === 'mascara' ? trazMascara().catch(() => trazTraco()) : trazTraco());
-    Promise.all([carregarImagem(webp), trazCena]).then(([, c]) => {
+    Promise.all([carregarImagem(webp), trazCena]).then(([dim, c]) => {
       if (cancelado) return;
+      if (dim.w > 0 && dim.h > 0) setProporcao(dim.w / dim.h);
       setCena(c);
       setEstado('pronta');
     }).catch(falhar);
@@ -165,7 +181,7 @@ export default function CarolCena({ kind, size = 160, fallback = null, modo: mod
       data-modo={cena?.modo || 'imagem'}
       data-fase={final ? 'final' : 'desenho'}
       aria-hidden="true"
-      style={{ position: 'relative', width: size, height: size }}
+      style={{ position: 'relative', width: Math.round(size * proporcao), height: size }}
     >
       {cena?.modo === 'traco' && (
         <div
@@ -197,7 +213,7 @@ export default function CarolCena({ kind, size = 160, fallback = null, modo: mod
         data-testid="carol-cena-final"
         src={imagem}
         alt=""
-        width={size}
+        width={Math.round(size * proporcao)}
         height={size}
         style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain', opacity: final ? 1 : 0, transition: 'opacity 500ms ease' }}
       />

@@ -631,8 +631,9 @@ html[data-page-hidden] .welcome-halo { animation-play-state: paused; }
    desenha-se (pathLength normalizado a 1, como o logótipo) e a imagem final
    aparece por cima com um crossfade. Movimento reduzido: sem desenho. */
 .carol-cena-traco svg { width: 100%; height: 100%; display: block; }
+.carol-cena-traco { color: var(--run, #2ee0ff); }
 .carol-cena-traco path, .carol-cena-traco line, .carol-cena-traco polyline, .carol-cena-traco polygon,
-.carol-cena-traco circle, .carol-cena-traco ellipse, .carol-cena-traco rect { stroke-dasharray: 1; stroke-dashoffset: 1; animation: carolCenaDesenha 1700ms cubic-bezier(.65,0,.35,1) forwards; }
+.carol-cena-traco circle, .carol-cena-traco ellipse, .carol-cena-traco rect { fill: none; stroke-dasharray: 1; stroke-dashoffset: 1; animation: carolCenaDesenha 600ms ease-out var(--atraso, 0ms) forwards; }
 @keyframes carolCenaDesenha { to { stroke-dashoffset: 0; } }
 @media (prefers-reduced-motion: reduce) {
   .carol-cena-traco path, .carol-cena-traco line, .carol-cena-traco polyline, .carol-cena-traco polygon,
@@ -642,7 +643,7 @@ html[data-page-hidden] .welcome-halo { animation-play-state: paused; }
    um, pela ordem do ficheiro (--atraso, posto em JS). O fill e a cor do ficheiro
    são ignorados. */
 .carol-cena-mascara mask path, .carol-cena-mascara mask line, .carol-cena-mascara mask polyline, .carol-cena-mascara mask polygon,
-.carol-cena-mascara mask circle, .carol-cena-mascara mask ellipse, .carol-cena-mascara mask rect { fill: none; stroke: #fff; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 1; stroke-dashoffset: 1; animation: carolCenaDesenha 1200ms cubic-bezier(.65,0,.35,1) var(--atraso, 0ms) forwards; }
+.carol-cena-mascara mask circle, .carol-cena-mascara mask ellipse, .carol-cena-mascara mask rect { fill: none; stroke: #fff; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 1; stroke-dashoffset: 1; animation: carolCenaDesenha 600ms ease-out var(--atraso, 0ms) forwards; }
 @media (prefers-reduced-motion: reduce) {
   .carol-cena-mascara mask path, .carol-cena-mascara mask line, .carol-cena-mascara mask polyline, .carol-cena-mascara mask polygon,
   .carol-cena-mascara mask circle, .carol-cena-mascara mask ellipse, .carol-cena-mascara mask rect { animation: none; stroke-dashoffset: 0; }

@@ -165,7 +165,7 @@ export function AnalysisSkeleton({
           loop lê-se como "está preso" (ver LogoLoader). Decorativo: quem
           anuncia a espera é o role="status" desta região. */}
       <div data-testid="analysis-logo" className="flex flex-col items-center" style={{ gap: 10, paddingTop: 4 }}>
-        <CarolCena kind={kind} size={144} fallback={<LogoLoader size={64} label={null} />} />
+        <CarolCena kind={kind} size={200} fallback={<LogoLoader size={64} label={null} />} />
         {/* A Carol a trabalhar: a linha fixa por cima das frases (que descrevem o
             que a análise faz). Quem anuncia a espera é o role="status" da região. */}
         <span data-testid="analysis-carol-line" style={{ fontSize: 11, fontWeight: 800, letterSpacing: 'var(--tracking-label)', textTransform: 'uppercase', color: 'var(--text-4)' }}>

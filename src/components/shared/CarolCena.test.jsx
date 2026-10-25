@@ -23,6 +23,8 @@ beforeEach(() => {
   global.Image = class {
     set src(v) {
       imagensPedidas.push(v);
+      this.naturalWidth = 600;
+      this.naturalHeight = 804;
       queueMicrotask(() => (imagemFalha ? this.onerror?.() : this.onload?.()));
     }
   };
@@ -51,6 +53,16 @@ describe('cenaAreaOf — a área certa por kind', () => {
     expect(cenaAreaOf('meal')).toBe('alimentacao');
     expect(cenaAreaOf('outra')).toBeNull();
     expect(cenaAreaOf(null)).toBeNull();
+  });
+});
+
+describe('CarolCena — proporção da imagem', () => {
+  it('size é a altura e a largura segue a proporção do webp (600×804)', async () => {
+    render(<CarolCena kind="run" size={200} fallback={FALLBACK} />);
+    await flush();
+    const cena = screen.getByTestId('carol-cena');
+    expect(cena).toHaveStyle({ height: '200px', width: '149px' });
+    expect(screen.getByTestId('carol-cena-final')).toHaveAttribute('width', '149');
   });
 });
 
@@ -190,19 +202,27 @@ describe('CarolCena — modo máscara', () => {
     });
   });
 
-  it('prepararMascara: viewBox, formas pela ordem com o atraso de cada uma (com teto), pathLength=1 e só formas', () => {
+  it('prepararMascara: viewBox, formas pela ordem com o atraso de cada uma (2 s no total), pathLength=1 e só formas', () => {
     const m = prepararMascara(MASCARA);
     expect(m.viewBox).toEqual([0, 0, 1024, 512]);
     expect(m.inner).not.toMatch(/script|onload|image|href/i);
     const formas = [...new DOMParser().parseFromString(`<svg xmlns="http://www.w3.org/2000/svg">${m.inner}</svg>`, 'image/svg+xml').documentElement.children];
     expect(formas.map((f) => f.nodeName)).toEqual(['path', 'circle', 'line']);
-    expect(formas.map((f) => f.getAttribute('style'))).toEqual(['--atraso:0ms', '--atraso:220ms', '--atraso:440ms']);
+    // Sem --i no ficheiro, a ordem é a do ficheiro: 0, 1, 2 → atrasos de 0, 700 e 1400 ms (600 ms cada: ~2 s no total).
+    expect(formas.map((f) => f.getAttribute('style'))).toEqual(['--atraso:0ms', '--atraso:700ms', '--atraso:1400ms']);
     expect(formas.every((f) => f.getAttribute('pathLength') === '1')).toBe(true);
-    // Muitas formas: o atraso não passa do teto.
-    const muitas = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10">${'<path d="M0 0 L1 1"/>'.repeat(10)}</svg>`;
-    const inner = prepararMascara(muitas).inner;
-    expect(inner).toContain('--atraso:800ms');
-    expect(inner).not.toContain('--atraso:2000ms');
+    // Muitas formas (43 caminhos): o último continua a começar a 1,4 s — nunca ~9 s.
+    const muitas = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10">${'<path d="M0 0 L1 1"/>'.repeat(43)}</svg>`;
+    const atrasos = [...prepararMascara(muitas).inner.matchAll(/--atraso:(\d+)ms/g)].map((x) => Number(x[1]));
+    expect(Math.max(...atrasos)).toBe(1400);
+    expect(atrasos[0]).toBe(0);
+    // O --i do ficheiro agrupa os caminhos que se desenham juntos (contrato da Carol).
+    const grupos = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 804"><path d="M0 0" style="--i:0"/><path d="M1 1" style="--i:0"/><path d="M2 2" style="--i:1"/><path d="M3 3" style="--i:2"/></svg>';
+    const g = [...prepararMascara(grupos).inner.matchAll(/--atraso:(\d+)ms/g)].map((x) => Number(x[1]));
+    expect(g).toEqual([0, 0, 700, 1400]);
+    // Um único grupo (tudo --i:0): tudo junto, sem atraso.
+    const um = '<svg xmlns="http://www.w3.org/2000/svg"><path d="M0 0" style="--i:0"/><path d="M1 1" style="--i:0"/></svg>';
+    expect([...prepararMascara(um).inner.matchAll(/--atraso:(\d+)ms/g)].map((x) => Number(x[1]))).toEqual([0, 0]);
     // Sem formas, ou sem viewBox válido: null / o padrão.
     expect(prepararMascara('<svg xmlns="http://www.w3.org/2000/svg"><g/></svg>')).toBeNull();
     expect(prepararMascara('<svg xmlns="http://www.w3.org/2000/svg"><path d="M0 0"/></svg>').viewBox).toEqual([0, 0, 256, 256]);
