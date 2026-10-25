@@ -326,7 +326,11 @@ async function handler(req: Request): Promise<Response> {
               .flatMap((p) => (p.coach_plan_items || []).map((i: { planned_date?: string }) => i?.planned_date).filter(Boolean)),
             userMessagesAfter: after || [],
           }, now.getTime(), today);
-          if (resume) candidates = [...candidates, resume];
+          if (resume) {
+            // A prova do plano: a do dia em que o plano acaba (o until).
+            resume.resume.raceName = (races || []).find((r: { date?: string; name?: string }) => r.date === resume.resume.until)?.name ?? null;
+            candidates = [...candidates, resume];
+          }
         }
       } catch (e) {
         console.warn("coach-proactive-tick: plano a meio não verificado", userId, e instanceof Error ? e.message : e);

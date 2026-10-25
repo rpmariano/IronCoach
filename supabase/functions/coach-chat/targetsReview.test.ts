@@ -172,7 +172,7 @@ Deno.test("handler: a revisão é um turno à parte — nada no race_after; uma 
   assertEquals(src.split("if (targetsReviewLogKey) suggestions = [TARGETS_UPDATE_ANSWER, TARGETS_KEEP_ANSWER];").length - 1, 1);
   assertEquals((src.match(/targetsReviewLogKey = /g) ?? []).length, 1); // só no turno pedido pelo cliente
   // Só leitura na revisão e na confirmação; o registo leva a proposta e vem com a mensagem gravada.
-  assertStringIncludes(src, "const allowedTools = proactiveTrigger || chatImages.length || targetsReviewPrompt || targetsUpdateAsked ? new Set(READ_TOOL_NAMES) : allowedToolsFor(turnCase);");
+  assertStringIncludes(src, "const allowedTools = proactiveTrigger || chatImages.length || targetsReviewPrompt || targetsUpdateAsked || planResumeLaterAsked ? new Set(READ_TOOL_NAMES) : allowedToolsFor(turnCase);");
   assert(src.indexOf('if (targetsReviewLogKey && !modelMsgErr) await recordProactiveDelivered(sb, userId, "targets_review", targetsReviewLogKey, targetsReviewPayload);') >
     src.indexOf("const { data: modelMsg, error: modelMsgErr } = await insertModelMessage("));
 });

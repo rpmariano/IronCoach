@@ -77,7 +77,9 @@ import {
 } from "./targetsReview.ts";
 // Só a chave no header (x-goog-api-key); o coach-chat continua no alias.
 import { geminiHeaders, thinkingConfig } from "../_shared/geminiModel.ts";
-import { isPlanRequest, messageIdOfPlanResumeKey, PLAN_RESUME_LATER, PLAN_RESUME_SEND, planResumeFacts, parseStoredContinuation } from "../_shared/formulas/planResume.ts";
+import {
+  isPlanRequest, messageIdOfPlanResumeKey, PLAN_RESUME_LATER, PLAN_RESUME_LATER_REPLY, PLAN_RESUME_SEND, planResumeFacts, parseStoredContinuation, previousWeekOf,
+} from "../_shared/formulas/planResume.ts";
 
 // Alias que segue sempre o modelo flash estável mais recente — evita 404s
 // quando a Google descontinua uma versão fixa (confirmado em produção: fixar
@@ -948,7 +950,20 @@ export async function planResumeFactsFor(sb: any, userId: string, key: string | 
     const { data } = await sb.from("coach_messages").select("plan_continuation")
       .eq("id", id).eq("user_id", userId).eq("role", "model").maybeSingle();
     const c = parseStoredContinuation(data?.plan_continuation);
-    return c ? planResumeFacts(c) : null;
+    if (!c) return null;
+    // Está no calendário: há itens de planos ACEITES desde o início da cadeia
+    // até à véspera da semana que falta (as duas variantes do texto dela).
+    const chainStart = new Date(Date.parse(`${c.from}T00:00:00Z`) - 7 * (c.part - 1) * 86400000).toISOString().slice(0, 10);
+    const [{ data: accepted, error: accErr }, { data: race }] = await Promise.all([
+      sb.from("coach_plans").select("coach_plan_items(planned_date)").eq("user_id", userId).eq("status", "aceite")
+        .gte("period_end", chainStart),
+      sb.from("race_events").select("name").eq("user_id", userId).eq("date", c.until).limit(1).maybeSingle(),
+    ]);
+    // deno-lint-ignore no-explicit-any
+    const dates: string[] = ((accepted ?? []) as any[]).flatMap((p) => (p.coach_plan_items || []).map((i: { planned_date?: string }) => i?.planned_date)).filter(Boolean);
+    const prev = previousWeekOf(c, dates);
+    // Sem saber o calendário, a linha não vai (e ela não fala dele).
+    return planResumeFacts({ ...c, prevFrom: prev.prevFrom, prevTo: prev.prevTo, ...(accErr ? {} : { applied: prev.applied }), raceName: race?.name ?? null });
   } catch {
     return null;
   }
@@ -1108,12 +1123,16 @@ const PROACTIVE_INSTRUCTIONS: Record<ProactiveTrigger, string> = {
     `inventar lugar nem tempo. Nunca fales de outros atletas, do clube, da posição do clube nem do dorsal. Fecha com o papel da ` +
     `próxima jornada, se o bloco da competição o tiver.`,
   // Um plano partido que ficou a meio (planResume.ts, coach-proactive-tick).
-  // Os factos vêm no bloco PLANO A MEIO; a frase é dela. PROVISÓRIO: a
-  // formulação definitiva desta instrução vem da Carol especialista.
+  // Texto da Carol (carol-plan-resume-textos.md, com a revisão dos dois
+  // casos); os factos vêm no bloco PLANO A MEIO.
   plan_resume:
-    `Ele pediu-te um plano em partes de 7 dias e a última parte que propuseste ficou sem seguimento (bloco PLANO A MEIO). ` +
-    `Em duas frases: diz-lhe o que falta — as datas da semana seguinte e até onde vai o plano — e pergunta-lhe se ta mandas. ` +
-    `Não proponhas o plano neste turno; só depois de ele dizer «${PLAN_RESUME_SEND}». Sem sermão sobre a parte que ficou por pedir.`,
+    `O plano em partes dele ficou a meio: a semana seguinte nunca foi preparada. As datas e a prova estão no bloco PLANO A MEIO. ` +
+    `Em duas ou três frases curtas: diz que o plano ficou a meio, que semana está feita e qual falta, e até onde vai o plano ` +
+    `(a prova pelo nome e a data, se houver). O Contexto diz se a semana anterior está no calendário (sim/não). Sim: diz que ele ` +
+    `já a tem no calendário. Não: diz que a semana está preparada mas nada entra no calendário enquanto o plano não estiver ` +
+    `completo. Sem esse dado, não fales do calendário. Acaba a perguntar se lhe mandas já a semana seguinte, com as datas. NÃO ` +
+    `proponhas o plano neste turno: espera pelo sim. Nada de culpas (nem dele, nem da app): o plano ficou a meio, ponto. ` +
+    `Sugestões: exatamente «${PLAN_RESUME_SEND}» e «${PLAN_RESUME_LATER}».`,
 };
 
 // ── Balanço da prova (race_after com a corrida registada) ─────────────────
@@ -6929,7 +6948,9 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
     // (plan_resume): a continuação vem da mensagem dela que ficou a meio
     // (coach_messages.plan_continuation), sem o cliente precisar de a ter.
     let planResumeAsked = false;
-    if (message && message.trim().replace(/[.!]+$/, "").toLowerCase() === PLAN_RESUME_SEND.toLowerCase()) {
+    const chipText = message ? message.trim().replace(/[.!]+$/, "").toLowerCase() : "";
+    const planResumeLaterAsked = chipText === PLAN_RESUME_LATER.toLowerCase() && !!(await planContinuationFromResume(sb, userId));
+    if (chipText === PLAN_RESUME_SEND.toLowerCase()) {
       const resumed = await planContinuationFromResume(sb, userId);
       if (resumed) {
         planContinuationIn = parsePlanContinuation(resumed);
@@ -8056,6 +8077,11 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
       const facts = await planResumeFactsFor(sb, userId, proactiveKey);
       if (facts) finalSystemInstruction += "\n\nPLANO A MEIO: " + facts + ".";
     }
+    // «Agora não» depois de um retomar (últimos 7 dias): a frase dela, sem insistir.
+    if (planResumeLaterAsked) {
+      finalSystemInstruction += `\n\nO atleta respondeu «${PLAN_RESUME_LATER}» ao plano a meio. Responde exatamente: «${PLAN_RESUME_LATER_REPLY}» ` +
+        `— sem propor nada e sem insistir.`;
+    }
     // O chip «Manda a próxima semana»: é um turno de continuação.
     if (planResumeAsked && planContinuationIn) {
       finalSystemInstruction += "\n\nO atleta pediu-te agora a parte seguinte do plano que ficou a meio. " + buildPlanContinuationTurn(planContinuationIn);
@@ -8092,7 +8118,7 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
     const turnCase = classifyTurn(message, history);
     // Num turno por iniciativa dela não se propõe nada — só leitura e notas.
     // Com fotos, só leitura, notas e a Despensa: o texto de uma imagem não pode levar a Carol a mexer em planos, metas ou provas.
-    const allowedTools = proactiveTrigger || chatImages.length || targetsReviewPrompt || targetsUpdateAsked ? new Set(READ_TOOL_NAMES) : allowedToolsFor(turnCase);
+    const allowedTools = proactiveTrigger || chatImages.length || targetsReviewPrompt || targetsUpdateAsked || planResumeLaterAsked ? new Set(READ_TOOL_NAMES) : allowedToolsFor(turnCase);
 
     // Observabilidade do pedido ao Gemini. Sem isto, o incidente de
     // 2026-09-05 foi impossível de atribuir a partir dos logs: o modelo real
