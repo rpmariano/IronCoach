@@ -323,7 +323,7 @@ const PROPOSE_PLAN_TOOL = {
     type: "OBJECT",
     properties: {
       period_start: { type: "STRING", description: "Primeiro dia do plano, formato YYYY-MM-DD" },
-      period_end: { type: "STRING", description: "Último dia do plano (inclusive), formato YYYY-MM-DD. Com race_id, TEM de ser a data da prova — o plano acaba no dia dela." },
+      period_end: { type: "STRING", description: "Último dia do plano (inclusive), formato YYYY-MM-DD. Com race_id, TEM de ser a data da prova — o plano acaba no dia dela. Numa PARTE de um plano partido (plan_until), period_start/period_end são os da semana dessa parte, com o mesmo race_id; só a parte que chega à prova acaba no dia dela." },
       race_id: {
         type: "STRING",
         description:
@@ -3169,8 +3169,8 @@ export function nextPlanContinuation(args: any, current: PlanContinuation | null
 export function buildPlanContinuationTurn(c: PlanContinuation): string {
   const last = c.part >= c.of;
   return `Continuação do plano (parte ${c.part} de ${c.of}): o atleta aceitou a parte anterior e a app pediu-te a seguinte. ` +
-    `Propõe JÁ, com propose_training_plan, só os treinos de ${c.from} a ${c.to} — o mesmo objetivo e a mesma prova (race_id) ` +
-    `da parte anterior, sem repetir os dias dela${last ? "" : `, e com plan_until=${c.until}`}. ` +
+    `Propõe JÁ, com propose_training_plan, só os treinos de ${c.from} a ${c.to}, com period_start=${c.from} e period_end=${c.to} — ` +
+    `o mesmo objetivo e a mesma prova (race_id) da parte anterior, sem repetir os dias dela${last ? "" : `, e com plan_until=${c.until}`}. ` +
     `No texto, uma frase curta de ligação (ex.: «Aqui tens a semana de … a …»)` +
     (last ? " e diz-lhe que o plano fica completo." : ", e diz-lhe que a seguinte vem depois de aceitar esta.") +
     ` Não cumprimentes nem repitas o que já disseste.`;
@@ -3223,7 +3223,7 @@ export async function runProposeTrainingPlan(
   // deno-lint-ignore no-explicit-any
   sb: any, userId: string, args: any, seriesIntents: Record<string, SeriesIntent> | null = null,
   // Num turno de continuação, os treinos só podem cair nesta semana.
-  partWindow: { from: string; to: string } | null = null,
+  partWindow: PlanContinuation | null = null,
 ): Promise<string> {
   const { period_start, period_end, summary, items, replace_active_plan } = args || {};
   const raceId = typeof args?.race_id === "string" && args.race_id.trim() ? args.race_id.trim() : null;
@@ -3264,6 +3264,21 @@ export async function runProposeTrainingPlan(
       }
     }
   }
+  /* Uma PARTE de um plano partido (Frontend, opção A, 2026-10-25): a aceitação
+     com o mesmo race_id funde no bloco e apaga os itens do alvo DENTRO do
+     período da proposta — por isso cada parte grava como período só a sua
+     semana. Parte = a continuação (partWindow) ou a primeira, com plan_until
+     para lá do fim dela. O bloco cresce na aceitação (finalStart/finalEnd). */
+  const planUntil = typeof args?.plan_until === "string" && ISO_DATE_RE.test(args.plan_until) ? args.plan_until : null;
+  const isPart = !!partWindow || (planUntil !== null && planUntil > period_end);
+  if (partWindow && (period_start !== partWindow.from || period_end !== partWindow.to)) {
+    return `Erro: esta parte é a semana de ${partWindow.from} a ${partWindow.to} — period_start=${partWindow.from} e period_end=${partWindow.to} ` +
+      `(estão ${period_start} e ${period_end}); o bloco junta as partes sozinho quando o atleta as aceita.`;
+  }
+  if (isPart && !partWindow && daysBetweenISO(period_start, period_end) + 1 > MAX_PLAN_SPAN_DAYS) {
+    return `Erro: numa parte de um plano partido, o período é o da semana dela — period_end tem de ser no máximo ` +
+      `${addDaysISO(period_start, MAX_PLAN_SPAN_DAYS - 1)} (está ${period_end}). Mantém o race_id e o plan_until; o bloco junta as partes sozinho quando o atleta as aceita.`;
+  }
 
   // As provas agendadas no período (e até 2 dias depois — 3 com uma jornada
   // para atacar —, para a véspera de uma prova logo a seguir ao plano): o dia
@@ -3300,8 +3315,12 @@ export async function runProposeTrainingPlan(
       return `Erro: a prova "${target.name}" já está concluída — um plano prepara uma prova por correr. Se o atleta quer o plano seguinte, usa a próxima prova agendada.`;
     }
     targetRace = target;
-    if (target.date !== period_end) {
-      return `Erro: o plano para a prova "${target.name}" tem de acabar no dia dela. period_end tem de ser ${target.date} (está ${period_end}) — nesse dia o plano termina.`;
+    // Numa parte, o período é a semana dela: acaba no dia da prova só a parte
+    // que lá chega, e nenhuma passa dele.
+    if (isPart ? period_end > target.date : target.date !== period_end) {
+      return isPart
+        ? `Erro: esta parte do plano para a prova "${target.name}" passa do dia dela — period_end tem de ser no máximo ${target.date} (está ${period_end}).`
+        : `Erro: o plano para a prova "${target.name}" tem de acabar no dia dela. period_end tem de ser ${target.date} (está ${period_end}) — nesse dia o plano termina.`;
     }
     // Só UMA principal entre hoje e o objetivo. O taper de uma prova 'a'
     // (10-21 dias) é incompatível com treinar para outra no mesmo período.
@@ -6218,7 +6237,8 @@ export function buildSystemInstruction(
     `PLANOS COM MAIS DE 7 DIAS: cada propose_training_plan leva no máximo 7 dias de treinos (do primeiro ao último ` +
     `planned_date; o período pode ir até à prova). Se o atleta pedir mais (ex.: 14 dias), AVISA-O PRIMEIRO no texto ` +
     `deste turno — «Faço-te isto em duas partes: primeiro a semana de 26/10 a 1/11, logo a seguir a de 2 a 8/11.» — e ` +
-    `propõe só a primeira semana, com plan_until = o último dia que ele pediu. A parte seguinte pede-ta a app depois ` +
+    `propõe só a primeira semana, com plan_until = o último dia que ele pediu. Numa parte, period_start/period_end são os ` +
+    `da semana dela (com o mesmo race_id, se o plano é para uma prova). A parte seguinte pede-ta a app depois ` +
     `de ele aceitar esta: não a proponhas antes.\n\n` +
     WALKING_DOCTRINE +
     `DETALHE DOS TREINOS DE CORRIDA NO PLANO (notes de propose_training_plan): uma zona de FC ` +

@@ -5875,3 +5875,64 @@ Deno.test("handler: plano partido — o pedido de continuação, o guião, a jan
   assertStringIncludes(sys, "Faço-te isto em duas partes");
   assertStringIncludes(JSON.stringify(buildTools(allowedToolsFor("E"))), '"plan_until"');
 });
+
+// Plano partido para uma prova (Frontend, opção A): cada parte grava o
+// período da SUA semana com o mesmo race_id; a aceitação funde no bloco.
+// deno-lint-ignore no-explicit-any
+function planSbWithRacesAndActive(races: any[], activePlans: any[]) {
+  const { sb, calls } = makePlanSb({ activePlans });
+  const withRaces = makePlanSbWithRaces(races).sb;
+  const inner = sb.from.bind(sb);
+  // deno-lint-ignore no-explicit-any
+  sb.from = (table: string): any => table === "race_events" ? withRaces.from(table) : inner(table);
+  return { sb, calls };
+}
+const PORTO = [{ id: "r1", name: "Maratona do Porto", date: "2026-11-08", distance_km: 42.2, race_priority: "a" }];
+
+Deno.test("plano partido para uma prova: períodos por semana, e só a parte que chega à prova acaba no dia dela", async () => {
+  // Parte 1: a semana dela, com o race_id e plan_until = o dia da prova.
+  const p1 = { race_id: "r1", period_start: "2026-10-26", period_end: "2026-11-01", plan_until: "2026-11-08", summary: "semana 1", items: dayItems("2026-10-26", 6) };
+  const a = planSbWithRacesAndActive(PORTO, []);
+  assertStringIncludes(await runProposeTrainingPlan(a.sb, "user-1", p1), "Plano criado");
+  assertEquals([a.calls.planInserts[0].period_start, a.calls.planInserts[0].period_end, a.calls.planInserts[0].race_id], ["2026-10-26", "2026-11-01", "r1"]);
+  assertEquals(a.calls.itemInserts.some((i) => i.training_type === "prova"), false); // a prova não cai nesta semana
+  const c2 = nextPlanContinuation(p1, null)!;
+  assertEquals(c2, { from: "2026-11-02", to: "2026-11-08", part: 2, of: 2, until: "2026-11-08" });
+
+  // Parte 2 (a última): a semana dela, a acabar no dia da prova, que entra como prova.
+  const p2 = { race_id: "r1", period_start: "2026-11-02", period_end: "2026-11-08", summary: "semana 2", items: dayItems("2026-11-02", 5) };
+  const b = planSbWithRacesAndActive(PORTO, []);
+  assertStringIncludes(await runProposeTrainingPlan(b.sb, "user-1", p2, null, c2), "Plano criado");
+  assertEquals([b.calls.planInserts[0].period_start, b.calls.planInserts[0].period_end], ["2026-11-02", "2026-11-08"]);
+  assertEquals(b.calls.itemInserts.filter((i) => i.training_type === "prova").map((i) => i.planned_date), ["2026-11-08"]);
+
+  // Na continuação, o período tem de ser o da semana dela.
+  const wrongPeriod = await runProposeTrainingPlan(planSbWithRacesAndActive(PORTO, []).sb, "user-1", { ...p2, period_start: "2026-10-26" }, null, c2);
+  assertStringIncludes(wrongPeriod, "Erro: esta parte é a semana de 2026-11-02 a 2026-11-08 — period_start=2026-11-02 e period_end=2026-11-08");
+  // Uma parte nunca passa do dia da prova.
+  const past = await runProposeTrainingPlan(planSbWithRacesAndActive(PORTO, []).sb, "user-1", { ...p1, period_start: "2026-11-05", period_end: "2026-11-10", plan_until: "2026-11-15", items: dayItems("2026-11-05", 3) });
+  assertStringIncludes(past, "passa do dia dela — period_end tem de ser no máximo 2026-11-08");
+  // A primeira parte com o período da prova inteira é recusada (a aceitação apagaria a semana 1).
+  const wholeBlock = await runProposeTrainingPlan(planSbWithRacesAndActive(PORTO, []).sb, "user-1", { ...p1, period_end: "2026-11-08", plan_until: "2026-11-15" });
+  assertStringIncludes(wholeBlock, "numa parte de um plano partido, o período é o da semana dela");
+  // Sem partes, a regra de sempre: o plano da prova acaba no dia dela.
+  const noParts = await runProposeTrainingPlan(planSbWithRacesAndActive(PORTO, []).sb, "user-1", { ...p1, plan_until: undefined });
+  assertStringIncludes(noParts, "tem de acabar no dia dela. period_end tem de ser 2026-11-08");
+});
+
+Deno.test("plano partido para uma prova: a sobreposição com o bloco da mesma prova passa; sem race_id continua recusada", async () => {
+  const bloco = [{ id: "p0", period_start: "2026-10-19", period_end: "2026-11-01", race_id: "r1", coach_plan_items: [{ kind: "corrida" }] }];
+  const c2 = { from: "2026-11-02", to: "2026-11-08", part: 2, of: 2, until: "2026-11-08" };
+  const p2 = { race_id: "r1", period_start: "2026-11-02", period_end: "2026-11-08", summary: "semana 2", items: dayItems("2026-11-02", 5) };
+  const ok = await runProposeTrainingPlan(planSbWithRacesAndActive(PORTO, [{ ...bloco[0], period_end: "2026-11-08" }]).sb, "user-1", p2, null, c2);
+  assertStringIncludes(ok, "Plano criado");
+  // A mesma semana sem race_id fecharia o bloco da prova: recusada como sempre
+  // (aqui pela principal dentro do período; sem ela, pela guarda do bloco vinculado).
+  const semRace = await runProposeTrainingPlan(planSbWithRacesAndActive(PORTO, [{ ...bloco[0], period_end: "2026-11-08" }]).sb, "user-1", { ...p2, race_id: undefined }, null, c2);
+  assertStringIncludes(semRace, 'chama outra vez com race_id="r1"');
+  const c1 = { from: "2026-10-26", to: "2026-11-01", part: 2, of: 3, until: "2026-11-08" };
+  const semanaAntes = await runProposeTrainingPlan(planSbWithRacesAndActive(PORTO, [{ ...bloco[0], period_end: "2026-11-08" }]).sb, "user-1", {
+    period_start: "2026-10-26", period_end: "2026-11-01", summary: "x", items: dayItems("2026-10-26", 5),
+  }, null, c1);
+  assertStringIncludes(semanaAntes, 'o plano ativo prepara a prova "Maratona do Porto"');
+});
