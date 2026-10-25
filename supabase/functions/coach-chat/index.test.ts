@@ -5742,3 +5742,34 @@ Deno.test("chat: o teto de saída é 32768 e é o que vai no pedido ao Gemini (l
   assertStringIncludes(call, "maxOutputTokens: CHAT_MAX_OUTPUT_TOKENS,");
   assertEquals(src.includes("maxOutputTokens: 8192"), false);
 });
+
+import { isTruncatedEmpty, SHORTER_REPLY_RETRY_INSTRUCTION } from "./index.ts";
+
+Deno.test("isTruncatedEmpty: a resposta de 25/10 (MAX_TOKENS, content vazio) é cortada e vazia; o resto não", () => {
+  // O que o Gemini devolveu ao Rui às 16:35 e às 16:39 UTC.
+  const rui = { candidates: [{ finishReason: "MAX_TOKENS", content: {} }], usageMetadata: { promptTokenCount: 54979, thoughtsTokenCount: 3963 } };
+  assertEquals(isTruncatedEmpty(rui), true);
+  assertEquals(isTruncatedEmpty({ candidates: [{ finishReason: "MAX_TOKENS", content: { parts: [{ text: "pensamento", thought: true }] } }] }), true);
+  // Cortada mas com uma chamada de ferramenta ou texto: aproveita-se.
+  assertEquals(isTruncatedEmpty({ candidates: [{ finishReason: "MAX_TOKENS", content: { parts: [{ functionCall: { name: "x" } }] } }] }), false);
+  assertEquals(isTruncatedEmpty({ candidates: [{ finishReason: "MAX_TOKENS", content: { parts: [{ text: '{"reply":"Olá"}' }] } }] }), false);
+  // Vazia sem MAX_TOKENS é outro problema (o 502 de sempre).
+  assertEquals(isTruncatedEmpty({ candidates: [{ finishReason: "STOP", content: {} }] }), false);
+  assertEquals(isTruncatedEmpty(undefined), false);
+  assertStringIncludes(SHORTER_REPLY_RETRY_INSTRUCTION, "no máximo 7 dias e sem meal_suggestion");
+});
+
+Deno.test("handler: MAX_TOKENS vazio numa ronda com ferramentas repete a ronda uma vez, mais curta, antes do 502 (ligações no código)", async () => {
+  const src = await Deno.readTextFile(new URL("./index.ts", import.meta.url));
+  const retry = src.indexOf("if (!isFinalRound && !truncatedRetried && isTruncatedEmpty(parsedRes) && hasTimeFor(chatDeadline)) {");
+  assert(retry > 0);
+  const block = src.slice(retry, retry + 900);
+  assertStringIncludes(block, "truncatedRetried = true;");
+  assertStringIncludes(block, String.raw`finalSystemInstruction += "\n\n" + SHORTER_REPLY_RETRY_INSTRUCTION;`);
+  assertStringIncludes(block, "round--;");
+  // Antes de a ronda se dar por acabada (e do 502 da resposta vazia).
+  assert(retry < src.indexOf("if (functionCalls.length === 0 || isFinalRound) {"));
+  assert(retry < src.indexOf("const rawText = extractReplyText(geminiJson);"));
+  // Uma vez por pedido: a bandeira nasce fora do ciclo das rondas.
+  assert(src.indexOf("let truncatedRetried = false;") < src.indexOf("for (let round = 0; round <= MAX_TOOL_ROUNDS; round++) {"));
+});

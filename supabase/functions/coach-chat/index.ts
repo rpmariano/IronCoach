@@ -98,6 +98,25 @@ const GEMINI_ATTEMPT_MS = 100000;
  *  32768 dá folga a um plano de 14 dias com refeições sem deixar uma resposta
  *  descontrolada gastar o prazo do pedido (GEMINI_ATTEMPT_MS). */
 export const CHAT_MAX_OUTPUT_TOKENS = 32768;
+
+/** A resposta bateu no teto de saída e não trouxe nada aproveitável — nem
+ *  texto nem uma chamada de ferramenta (o caso de 25/10: finishReason
+ *  MAX_TOKENS, content {}). */
+// deno-lint-ignore no-explicit-any
+export function isTruncatedEmpty(parsedRes: any): boolean {
+  const candidate = parsedRes?.candidates?.[0];
+  if (candidate?.finishReason !== "MAX_TOKENS") return false;
+  // deno-lint-ignore no-explicit-any
+  const parts: any[] = candidate?.content?.parts || [];
+  return !parts.some((p) => p?.functionCall || (!p?.thought && typeof p?.text === "string" && p.text.trim()));
+}
+
+/** O que a Carol recebe (no system instruction) para a repetição depois de um
+ *  isTruncatedEmpty: o mesmo pedido, com a resposta a caber no teto. */
+export const SHORTER_REPLY_RETRY_INSTRUCTION =
+  "ATENÇÃO — A TUA RESPOSTA ANTERIOR FOI CORTADA por ser demasiado longa e não chegou ao atleta. Responde de forma " +
+  "mais curta. Se fores propor um plano com propose_training_plan, propõe no máximo 7 dias e sem meal_suggestion " +
+  "(as sugestões de refeição podem vir depois, com save_meal_suggestions); diz-lhe numa frase que o resto vem a seguir.";
 // Prazo do pedido inteiro, todas as rondas de ferramentas incluídas, com
 // folga para o limite rígido da plataforma (~150 s): passado ele, a função
 // era morta sem libertar o lock e sem resposta legível.
@@ -7834,6 +7853,8 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
     };
 
     let geminiJson: Record<string, unknown> | undefined;
+    // A repetição depois de um MAX_TOKENS vazio faz-se uma vez por pedido.
+    let truncatedRetried = false;
     // Rondas 0..MAX_TOOL_ROUNDS-1 podem executar ferramentas; a ronda
     // MAX_TOOL_ROUNDS é a final e vai SEM ferramentas, forçando texto — que é
     // o que o nome da constante sempre prometeu ("antes de forçar resposta
@@ -7918,6 +7939,22 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
         calls: functionCalls.map((p: any) => p.functionCall?.name),
         hasText: Boolean(extractReplyText(parsedRes)),
       }));
+
+      /* A rede do MAX_TOKENS (2026-10-25): a resposta bateu no teto de saída e
+         veio vazia — o Rui levou 502 duas vezes a pedir um plano de 14 dias.
+         Numa ronda com ferramentas repete-se esta mesma ronda UMA vez, com a
+         instrução de responder mais curto (plano de 7 dias, sem refeições), em
+         vez de devolver o erro. Vai no system instruction: o histórico
+         (contents) fica como estava, sem a resposta cortada. */
+      if (!isFinalRound && !truncatedRetried && isTruncatedEmpty(parsedRes) && hasTimeFor(chatDeadline)) {
+        truncatedRetried = true;
+        console.error("coach-chat: MAX_TOKENS sem resposta — a repetir com uma resposta mais curta", JSON.stringify({
+          round, turnCase, usage: parsedRes?.usageMetadata ?? null, elapsedMs: Date.now() - requestStartedAt,
+        }));
+        finalSystemInstruction += "\n\n" + SHORTER_REPLY_RETRY_INSTRUCTION;
+        round--;
+        continue;
+      }
 
       if (functionCalls.length === 0 || isFinalRound) {
         geminiJson = parsedRes;
