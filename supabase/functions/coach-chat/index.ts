@@ -7624,7 +7624,11 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
               // nos argumentos da function call. A resposta ficava truncada
               // a meio do JSON, rawText saía vazio, e o cliente via "O coach
               // não conseguiu gerar uma resposta" sem pista nenhuma da causa.
-              maxOutputTokens: 8192,
+              // Subido de 8192 para 32768 (2026-10-25, hotfix): um plano de 14
+              // dias com refeições completas + ~4000 tokens de raciocínio
+              // esgotava as 8192 (finishReason MAX_TOKENS, resposta vazia,
+              // 502 "Perdi o fio a meio"). O Flash aceita até 65536.
+              maxOutputTokens: 32768,
               response_mime_type: "application/json",
               response_schema: useRecommendationsSchema ? RESPONSE_SCHEMA : RESPONSE_SCHEMA_BASE,
             },
