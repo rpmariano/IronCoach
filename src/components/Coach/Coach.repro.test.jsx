@@ -125,4 +125,83 @@ describe('repro pssmartins 25/10', () => {
       vi.useRealTimers();
     }
   });
+
+  it('um envio novo cancela as leituras tardias: a resposta ao pedido seguinte não passa pelo pós-sondagem antigo', async () => {
+    let n = 0;
+    invokeEdgeFunctionWithTimeout.mockImplementation(() => {
+      n += 1;
+      return Promise.resolve(n === 1
+        ? { data: null, error: 'timeout', isTimeout: true }
+        : { data: { model_message: { id: 'r2', content: 'Resposta ao segundo pedido.' }, suggestions: [] }, error: null });
+    });
+    let rowReady = false;
+    supabase.from.mockImplementation((table) => {
+      if (table === 'coach_messages') {
+        return chain(() => (rowReady
+          ? { data: [{ id: 'm1', role: 'model', content: 'Resposta tardia ao primeiro.', created_at: new Date().toISOString(), plan_continuation: CONT }], error: null }
+          : { data: [], error: null }));
+      }
+      return { select: () => ({ eq: () => ({ single: () => Promise.resolve({ data: { coach_chat_busy_since: null }, error: null }) }) }) };
+    });
+    vi.useFakeTimers();
+    try {
+      render(<ToastProvider><Coach /></ToastProvider>);
+      fireEvent.change(screen.getByPlaceholderText('Escreve a tua pergunta...'), { target: { value: 'Primeiro pedido' } });
+      await act(async () => { fireEvent.click(screen.getByRole('button', { name: /Enviar pergunta à Carol/i })); });
+      await act(async () => { await vi.advanceTimersByTimeAsync(9000); });
+      // O atleta não espera e envia outra: as releituras do primeiro caem.
+      fireEvent.change(screen.getByPlaceholderText('Escreve a tua pergunta...'), { target: { value: 'Segundo pedido' } });
+      await act(async () => { fireEvent.click(screen.getByRole('button', { name: /Enviar pergunta à Carol/i })); });
+      await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
+      rowReady = true;
+      await act(async () => { await vi.advanceTimersByTimeAsync(100000); });
+      const falas = useAppStore.getState().coachMessages.map((m) => m.content);
+      expect(falas).toContain('Resposta ao segundo pedido.');
+      expect(falas).not.toContain('Resposta tardia ao primeiro.');
+      expect(screen.queryByTestId('plan-part-note')).not.toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('a resposta tardia retira a bolha de falha («Não consegui responder»)', async () => {
+    invokeEdgeFunctionWithTimeout.mockResolvedValue({ data: null, error: 'timeout', isTimeout: true });
+    let rowReady = false;
+    supabase.from.mockImplementation((table) => {
+      if (table === 'coach_messages') {
+        return chain(() => (rowReady
+          ? { data: [{ id: 'm1', role: 'model', content: 'Aqui tens a primeira semana.', created_at: new Date().toISOString(), plan_continuation: CONT }], error: null }
+          : { data: [], error: null }));
+      }
+      return { select: () => ({ eq: () => ({ single: () => Promise.resolve({ data: { coach_chat_busy_since: null }, error: null }) }) }) };
+    });
+    vi.useFakeTimers();
+    try {
+      render(<ToastProvider><Coach /></ToastProvider>);
+      fireEvent.change(screen.getByPlaceholderText('Escreve a tua pergunta...'), { target: { value: 'Quero um plano' } });
+      await act(async () => { fireEvent.click(screen.getByRole('button', { name: /Enviar pergunta à Carol/i })); });
+      await act(async () => { await vi.advanceTimersByTimeAsync(9000); });
+      expect(useAppStore.getState().coachMessages.some((m) => /Não consegui responder/.test(m.content))).toBe(true);
+      rowReady = true;
+      await act(async () => { await vi.advanceTimersByTimeAsync(16000); });
+      const falas = useAppStore.getState().coachMessages.map((m) => m.content);
+      expect(falas).toContain('Aqui tens a primeira semana.');
+      expect(falas.some((c) => /Não consegui responder/.test(c))).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('o select ao abrir a folha devolve erro: avisa na consola e a proposta fica normal', async () => {
+    const aviso = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    supabase.from.mockImplementation((table) => (table !== 'coach_messages'
+      ? { select: () => ({ eq: () => ({ single: () => Promise.resolve({ data: null, error: null }) }) }) }
+      : { select: () => ({ eq: () => ({ eq: () => ({ not: () => ({ order: () => ({ limit: () => Promise.resolve({ data: null, error: { message: 'rls' } }) }) }) }) }) }) }));
+    useAppStore.setState({ coachPlans: [PLAN], coachPlanItems: ITENS, coachMessages: [] });
+    render(<ToastProvider><Coach /></ToastProvider>);
+    await act(async () => { fireEvent.click(await screen.findByRole('button', { name: /Proposta de plano por rever [(]1[)]/ })); });
+    expect(await screen.findByRole('button', { name: 'Aceitar plano' })).toBeInTheDocument();
+    await vi.waitFor(() => expect(aviso).toHaveBeenCalledWith(expect.stringContaining('procura da continuação'), expect.anything()));
+    aviso.mockRestore();
+  });
 });
