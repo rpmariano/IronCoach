@@ -2249,6 +2249,20 @@ describe('Coach — plano longo em partes (plan_continuation, tudo-ou-nada)', ()
       expect(falas.filter((c) => c && c !== 'Boa.' && c !== 'Aqui vai a semana.' && c !== 'Aceitei o plano.' && c !== 'Plano para esta semana')).toEqual([]);
     });
 
+    it('um skip (targets_ok) manda suggestions: [] e NÃO apaga os chips do «Aceitei o plano.»', async () => {
+      script((b) => {
+        if (b.targets_review) return { data: { skipped: 'targets_ok', model_message: null, suggestions: [] }, error: null };
+        if (b.message === 'Aceitei o plano.') return reply('ok', 'Boa.', { suggestions: ['Chip A', 'Chip B'] });
+        return reply('a1', 'Aqui vai a semana.', { plan_proposed: true });
+      });
+      renderCoach();
+      await send('Plano para esta semana');
+      await clicar('Aceitar plano');
+      await waitFor(() => expect(revisoes()).toHaveLength(1));
+      await act(async () => { await new Promise((r) => setTimeout(r, 80)); });
+      expect(useAppStore.getState().coachSuggestions).toEqual(['Chip A', 'Chip B']);
+    });
+
     it('uma falha da revisão não mostra nada', async () => {
       script((b) => {
         if (b.targets_review) return { data: null, error: 'boom', isTimeout: false, isNetwork: false };
@@ -2568,5 +2582,65 @@ describe('Coach — plano longo em partes (plan_continuation, tudo-ou-nada)', ()
     await waitFor(() => expect(useAppStore.getState().coachLoading).toBe(false));
     expect(campo).toHaveValue('Espera, troca o dia de descanso');
     expect(bodies().filter((b) => b.message === 'Espera, troca o dia de descanso')).toHaveLength(0);
+  });
+});
+
+/* A revisão dos objetivos depois do balanço da prova (reason 'race_after'): o
+   Coach pede-a em silêncio quando o balanço chega com um resultado válido. */
+describe('Coach — revisão dos objetivos depois do balanço da prova (targets_review race_after)', () => {
+  const CANDIDATE = {
+    trigger: 'race_after',
+    key: 'race_after:race-1:run-1',
+    details: 'Prova "Corrida do Tejo" foi há 1 dia (2026-09-13). Corrida registada: 45:00.',
+    raceOutcome: { verdict: 'superado', officialSeconds: 2700 },
+    raceId: 'race-1',
+    runId: 'run-1',
+  };
+  const bodies = () => invokeEdgeFunctionWithTimeout.mock.calls.map((c) => JSON.parse(c[1].body));
+  const revisoes = () => bodies().filter((b) => b.targets_review);
+
+  beforeEach(() => {
+    invokeEdgeFunctionWithTimeout.mockReset();
+    supabase.from.mockReset();
+    window.localStorage.clear();
+    useAppStore.setState(baseCarolState());
+  });
+
+  const balanco = (candidate, resposta) => {
+    invokeEdgeFunctionWithTimeout.mockImplementation((_n, { body }) => {
+      const b = JSON.parse(body);
+      if (b.targets_review) return Promise.resolve({ data: { model_message: { id: 'rev', content: 'Revê os objetivos.' }, suggestions: ['Atualiza os objetivos', 'Mantém'] }, error: null });
+      return Promise.resolve(resposta);
+    });
+    useAppStore.setState({ coachIntent: { kind: 'race_balance', candidate } });
+    renderCoach();
+  };
+
+  it('balanço entregue com resultado válido: pede em silêncio { reason: race_after, race_id }', async () => {
+    balanco(CANDIDATE, { data: { model_message: { id: 'm1', content: 'Superaste o objetivo.' }, suggestions: [] }, error: null });
+    await waitFor(() => expect(revisoes()).toHaveLength(1));
+    expect(revisoes()[0]).toMatchObject({ message: '', targets_review: { reason: 'race_after', race_id: 'race-1' } });
+    await waitFor(() => expect(screen.getByText('Revê os objetivos.')).toBeInTheDocument());
+  });
+
+  it('balanço sem registo (sem_registo) ou sem resultado (corrida por ligar): não pede', async () => {
+    balanco({ ...CANDIDATE, raceOutcome: { verdict: 'sem_registo' } }, { data: { model_message: { id: 'm1', content: 'Como correu?' }, suggestions: [] }, error: null });
+    await waitFor(() => expect(screen.getByText('Como correu?')).toBeInTheDocument());
+    await act(async () => { await new Promise((r) => setTimeout(r, 80)); });
+    expect(revisoes()).toHaveLength(0);
+  });
+
+  it('corrida por ligar (sem raceOutcome): não pede', async () => {
+    balanco({ ...CANDIDATE, raceOutcome: undefined }, { data: { model_message: { id: 'm1', content: 'Falta ligar a corrida.' }, suggestions: [] }, error: null });
+    await waitFor(() => expect(screen.getByText('Falta ligar a corrida.')).toBeInTheDocument());
+    await act(async () => { await new Promise((r) => setTimeout(r, 80)); });
+    expect(revisoes()).toHaveLength(0);
+  });
+
+  it('balanço saltado (already_sent): não pede', async () => {
+    balanco(CANDIDATE, { data: { skipped: true, reason: 'already_sent', model_message: null, suggestions: [] }, error: null });
+    await waitFor(() => expect(invokeEdgeFunctionWithTimeout).toHaveBeenCalledTimes(1));
+    await act(async () => { await new Promise((r) => setTimeout(r, 80)); });
+    expect(revisoes()).toHaveLength(0);
   });
 });
