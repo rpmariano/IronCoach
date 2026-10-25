@@ -5652,3 +5652,79 @@ Deno.test("previsão de tempo, caso do Rui a 21/10: perto dos 49:28 que ele corr
   assertEquals(predicted, 50 * 60 + 52);
   assert(Math.abs(predicted - 2968) / 2968 < 0.05, `${predicted}s está a mais de 5% dos 49:28`);
 });
+
+// ─── O mapa da época uma vez por assinatura (2026-10-25) ──────────────────
+// A Carol mandou o mapa duas vezes com 30 s de diferença (turno > 45 s,
+// chegou por sondagem, o cliente não marcou). O servidor regista a entrega
+// quando grava a mensagem e recusa a mesma assinatura nas 24 h seguintes.
+import { CUP_MAP_RESEND_MS, cupMapAlreadySent, cupMapKey, recordCupMapDelivered } from "./index.ts";
+
+function proactiveLogSb() {
+  // deno-lint-ignore no-explicit-any
+  const rows: any[] = [];
+  const sb = {
+    from: (_t: string) => ({
+      select: () => {
+        const f: Record<string, unknown> = {};
+        // deno-lint-ignore no-explicit-any
+        const chain: any = {
+          eq: (c: string, v: unknown) => { f[c] = v; return chain; },
+          maybeSingle: () => Promise.resolve({ data: rows.find((r) => r.user_id === f.user_id && r.key === f.key) ?? null, error: null }),
+        };
+        return chain;
+      },
+      // deno-lint-ignore no-explicit-any
+      upsert: (row: any) => {
+        const i = rows.findIndex((r) => r.user_id === row.user_id && r.key === row.key);
+        if (i >= 0) rows[i] = { ...rows[i], ...row };
+        else rows.push(row);
+        return Promise.resolve({ error: null });
+      },
+    }),
+  };
+  return { sb, rows };
+}
+
+/** O que o handler faz com o mapa: o portão à entrada, o turno, o registo ao gravar. */
+// deno-lint-ignore no-explicit-any
+async function cupMapRequest(sb: any, signature: string, nowMs: number, turns: string[]) {
+  const key = cupMapKey(signature)!;
+  if (await cupMapAlreadySent(sb, "u1", key, nowMs)) return { skipped: "already_sent", cup_map_shown: true };
+  turns.push(signature);
+  await recordCupMapDelivered(sb, "u1", key, new Date(nowMs).toISOString());
+  return { cup_map_shown: true };
+}
+
+Deno.test("mapa da época: dois pedidos seguidos com a mesma assinatura → um só turno", async () => {
+  const { sb, rows } = proactiveLogSb();
+  const turns: string[] = [];
+  const t0 = Date.parse("2026-10-23T18:00:00Z");
+  assertEquals(await cupMapRequest(sb, "ed1:1shvrz6", t0, turns), { cup_map_shown: true });
+  assertEquals(await cupMapRequest(sb, "ed1:1shvrz6", t0 + 30_000, turns), { skipped: "already_sent", cup_map_shown: true });
+  assertEquals(turns.length, 1);
+  assertEquals(rows, [{ user_id: "u1", key: "cup_map:ed1:1shvrz6", trigger: "cup_map", sent_at: "2026-10-23T18:00:00.000Z" }]);
+  // Jornadas novas (outra assinatura) → o mapa é outro e mostra-se.
+  await cupMapRequest(sb, "ed1:9xyz", t0 + 60_000, turns);
+  // Passadas 24 h, a mesma assinatura volta a poder sair.
+  await cupMapRequest(sb, "ed1:1shvrz6", t0 + CUP_MAP_RESEND_MS + 1, turns);
+  assertEquals(turns, ["ed1:1shvrz6", "ed1:9xyz", "ed1:1shvrz6"]);
+});
+
+Deno.test("mapa da época: assinatura inválida não registra nada; leitura falhada deixa passar", async () => {
+  assertEquals(cupMapKey("ed1:0"), "cup_map:ed1:0");
+  for (const bad of [undefined, "", "   ", "x".repeat(181), "ed1; drop table"]) assertEquals(cupMapKey(bad), null);
+  const broken = { from: () => ({ select: () => ({ eq: () => ({ eq: () => ({ maybeSingle: () => Promise.resolve({ data: null, error: { message: "rede" } }) }) }) }) }) };
+  assertEquals(await cupMapAlreadySent(broken, "u1", "cup_map:ed1:0"), false);
+});
+
+Deno.test("handler: o portão do mapa vem antes do Gemini e o registo vem com a mensagem gravada (ligações no código)", async () => {
+  const src = await Deno.readTextFile(new URL("./index.ts", import.meta.url));
+  const gate = src.indexOf("if (cupMapLogKey && await cupMapAlreadySent(sb, userId, cupMapLogKey)) {");
+  assert(gate > 0);
+  assert(gate > src.indexOf("const cupMapShown = cupMapPrompt !== null"));
+  assert(gate < src.indexOf("const contents: any[] = ["));
+  assertStringIncludes(src.slice(gate, gate + 300), 'skipped: "already_sent",');
+  const save = src.indexOf("const { data: modelMsg, error: modelMsgErr } = await insertModelMessage(");
+  const record = src.indexOf("if (cupMapLogKey && !modelMsgErr) await recordCupMapDelivered(sb, userId, cupMapLogKey);");
+  assert(save > 0 && record > save);
+});

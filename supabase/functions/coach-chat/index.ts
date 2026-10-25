@@ -866,6 +866,55 @@ export async function recordProactiveDelivered(sb: any, userId: string, trigger:
   }
 }
 
+/* O mapa da época, uma vez por assinatura (bug de 2026-10-25): a Carol
+   mandou o mapa do Troféu duas vezes com 30 s de diferença. O turno passou
+   dos 45 s, chegou ao cliente por sondagem e o cliente não marcou o aviso
+   (coach_impressions) — e o servidor não sabia que já o tinha dito. Agora o
+   cliente manda cup_map.signature (a edição e o estado das jornadas: muda
+   quando as jornadas mudam, e aí o mapa é outro) e o servidor regista a
+   entrega em coach_proactive_log quando grava a mensagem, não quando a
+   resposta chega ao cliente. A mesma assinatura nas 24 h seguintes não gera
+   turno novo. O lock por utilizador (coach_chat_busy_since) põe os pedidos
+   em fila, por isso o segundo já encontra a entrega do primeiro. */
+export const CUP_MAP_RESEND_MS = 24 * 3600 * 1000;
+
+/** A chave do registo para uma assinatura do mapa, ou null se não serve. */
+export function cupMapKey(signature: unknown): string | null {
+  const s = typeof signature === "string" ? signature.trim() : "";
+  return s && s.length <= 180 && /^[\w:.-]+$/.test(s) ? `cup_map:${s}` : null;
+}
+
+/** Esta assinatura já foi entregue nas últimas 24 h? Uma falha a ler dá
+ *  false: mais vale repetir o mapa do que nunca o mostrar. */
+// deno-lint-ignore no-explicit-any
+export async function cupMapAlreadySent(sb: any, userId: string, key: string, nowMs = Date.now()): Promise<boolean> {
+  try {
+    const { data, error } = await sb.from("coach_proactive_log")
+      .select("sent_at").eq("user_id", userId).eq("key", key).maybeSingle();
+    if (error) {
+      console.warn("coach_proactive_log (mapa): leitura falhou:", error.message ?? error);
+      return false;
+    }
+    const at = Date.parse(String(data?.sent_at ?? ""));
+    return Number.isFinite(at) && nowMs - at < CUP_MAP_RESEND_MS;
+  } catch (e) {
+    console.warn("coach_proactive_log (mapa): leitura falhou:", e);
+    return false;
+  }
+}
+
+/** Regista a entrega do mapa (sent_at renova-se: as 24 h contam da última). */
+// deno-lint-ignore no-explicit-any
+export async function recordCupMapDelivered(sb: any, userId: string, key: string, nowISO = new Date().toISOString()): Promise<void> {
+  try {
+    const { error } = await sb.from("coach_proactive_log")
+      .upsert({ user_id: userId, key, trigger: "cup_map", sent_at: nowISO }, { onConflict: "user_id,key" });
+    if (error) console.warn("coach_proactive_log (mapa): gravação falhou:", error.message ?? error);
+  } catch (e) {
+    console.warn("coach_proactive_log (mapa): gravação falhou:", e);
+  }
+}
+
 const PROACTIVE_INSTRUCTIONS: Record<ProactiveTrigger, string> = {
   // P.10: com check-ins depois do último registo, ele está por cá — o que
   // falta são os treinos. O Contexto (do cliente) diz se é o caso.
@@ -7596,6 +7645,22 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
     // Plano" e o mapa não se pode perder por isso (J.7 do desenho).
     const cupMapShown = cupMapPrompt !== null && !message && !body.is_intervention_start && !!body.is_plan_checkin &&
       planCheckinPrompt === cupMapPrompt;
+    // O mesmo mapa já dito nas últimas 24 h: nenhum turno novo, e o cliente
+    // dá o aviso por tratado (ver CUP_MAP_RESEND_MS).
+    const cupMapLogKey = cupMapShown ? cupMapKey((body.cup_map as { signature?: unknown }).signature) : null;
+    if (cupMapLogKey && await cupMapAlreadySent(sb, userId, cupMapLogKey)) {
+      return jsonResponse({
+        skipped: "already_sent",
+        cup_map_shown: true,
+        user_message: null,
+        model_message: null,
+        suggestions: [],
+        usage: null,
+        plan_proposed: false,
+        goals_updated: false,
+        goal_proposed: false,
+      });
+    }
 
     if (chatImages.length) finalSystemInstruction += "\n\n" + imagesTurnSection(chatImages.length);
 
@@ -8032,6 +8097,9 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
     // A mensagem já foi escrita e vai chegar ao atleta: a chave fica
     // registada, para nenhum outro dispositivo a repetir.
     if (proactiveTrigger && proactiveKey) await recordProactiveDelivered(sb, userId, proactiveTrigger, proactiveKey);
+    // O mapa fica entregue quando a mensagem fica gravada — chegue a resposta
+    // ao cliente ou não (sondagem depois dos 45 s).
+    if (cupMapLogKey && !modelMsgErr) await recordCupMapDelivered(sb, userId, cupMapLogKey);
 
     if (modelMsgErr) {
       console.error("Falha a guardar resposta:", modelMsgErr);
