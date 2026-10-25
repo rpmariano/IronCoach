@@ -638,6 +638,15 @@ html[data-page-hidden] .welcome-halo { animation-play-state: paused; }
   .carol-cena-traco path, .carol-cena-traco line, .carol-cena-traco polyline, .carol-cena-traco polygon,
   .carol-cena-traco circle, .carol-cena-traco ellipse, .carol-cena-traco rect { animation: none; stroke-dashoffset: 0; }
 }
+/* O modo máscara: traços largos, em branco, que revelam a imagem por baixo; um a
+   um, pela ordem do ficheiro (--atraso, posto em JS). O fill e a cor do ficheiro
+   são ignorados. */
+.carol-cena-mascara mask path, .carol-cena-mascara mask line, .carol-cena-mascara mask polyline, .carol-cena-mascara mask polygon,
+.carol-cena-mascara mask circle, .carol-cena-mascara mask ellipse, .carol-cena-mascara mask rect { fill: none; stroke: #fff; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 1; stroke-dashoffset: 1; animation: carolCenaDesenha 1200ms cubic-bezier(.65,0,.35,1) var(--atraso, 0ms) forwards; }
+@media (prefers-reduced-motion: reduce) {
+  .carol-cena-mascara mask path, .carol-cena-mascara mask line, .carol-cena-mascara mask polyline, .carol-cena-mascara mask polygon,
+  .carol-cena-mascara mask circle, .carol-cena-mascara mask ellipse, .carol-cena-mascara mask rect { animation: none; stroke-dashoffset: 0; }
+}
 .logo-loader { display: inline-flex; align-items: center; justify-content: center; }
 .logo-loader-hex, .logo-loader-hex-in, .logo-loader-chev { stroke-dasharray: 1; stroke-dashoffset: 1; }
 .logo-loader-hex    { animation: logoDraw 720ms cubic-bezier(.65,0,.35,1) 0ms forwards; }

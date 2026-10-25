@@ -1,7 +1,7 @@
 import React from 'react';
 import { render, screen, act } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import CarolCena, { cenaAreaOf, prepararTraco, CENA_DESENHO_MS } from './CarolCena';
+import CarolCena, { cenaAreaOf, prepararTraco, prepararMascara, resolverModo, CENA_DESENHO_MS } from './CarolCena';
 import { AnalysisSkeleton } from './AnalysisState';
 
 /* A cena da Carol na espera das análises: o traço desenha-se e a imagem final
@@ -71,7 +71,7 @@ describe('CarolCena', () => {
     render(<CarolCena kind="run" fallback={FALLBACK} />);
     await flush();
     const cena = screen.getByTestId('carol-cena');
-    expect(cena).toHaveAttribute('data-fase', 'traco');
+    expect(cena).toHaveAttribute('data-fase', 'desenho');
     expect(screen.getByTestId('carol-cena-final')).toHaveStyle({ opacity: '0' });
     expect(screen.getByTestId('carol-cena-traco')).toHaveStyle({ opacity: '1' });
     // O SVG inline levou pathLength=1 em cada forma; sem width/height fixos.
@@ -175,5 +175,99 @@ describe('AnalysisSkeleton com a cena', () => {
     await flush();
     expect(screen.getByTestId('logo-loader')).toBeInTheDocument();
     expect(screen.queryByTestId('carol-cena')).not.toBeInTheDocument();
+  });
+});
+
+/* O modo máscara: traços largos que revelam o webp por baixo (SVG mask); no fim,
+   crossfade para a imagem inteira. Sem o -mascara.svg da área, cai no -traco.svg. */
+describe('CarolCena — modo máscara', () => {
+  const MASCARA = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 512" stroke="#f00" stroke-width="80" fill="#0f0" onload="alert(1)"><path d="M0 0 L9 9"/><circle cx="5" cy="5" r="2" fill="red"/><line x1="0" y1="0" x2="5" y2="5"/><image href="http://x/y.png"/><script>alert(2)</script></svg>';
+
+  beforeEach(() => {
+    global.fetch = vi.fn((url) => {
+      fetchPedidos.push(url);
+      return Promise.resolve({ ok: true, text: () => Promise.resolve(url.endsWith('-mascara.svg') ? MASCARA : SVG_OK) });
+    });
+  });
+
+  it('prepararMascara: viewBox, formas pela ordem com o atraso de cada uma (com teto), pathLength=1 e só formas', () => {
+    const m = prepararMascara(MASCARA);
+    expect(m.viewBox).toEqual([0, 0, 1024, 512]);
+    expect(m.inner).not.toMatch(/script|onload|image|href/i);
+    const formas = [...new DOMParser().parseFromString(`<svg xmlns="http://www.w3.org/2000/svg">${m.inner}</svg>`, 'image/svg+xml').documentElement.children];
+    expect(formas.map((f) => f.nodeName)).toEqual(['path', 'circle', 'line']);
+    expect(formas.map((f) => f.getAttribute('style'))).toEqual(['--atraso:0ms', '--atraso:220ms', '--atraso:440ms']);
+    expect(formas.every((f) => f.getAttribute('pathLength') === '1')).toBe(true);
+    // Muitas formas: o atraso não passa do teto.
+    const muitas = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10">${'<path d="M0 0 L1 1"/>'.repeat(10)}</svg>`;
+    const inner = prepararMascara(muitas).inner;
+    expect(inner).toContain('--atraso:800ms');
+    expect(inner).not.toContain('--atraso:2000ms');
+    // Sem formas, ou sem viewBox válido: null / o padrão.
+    expect(prepararMascara('<svg xmlns="http://www.w3.org/2000/svg"><g/></svg>')).toBeNull();
+    expect(prepararMascara('<svg xmlns="http://www.w3.org/2000/svg"><path d="M0 0"/></svg>').viewBox).toEqual([0, 0, 256, 256]);
+  });
+
+  it('resolverModo: a prop manda, depois o URL, depois o padrão (traço)', () => {
+    expect(resolverModo('mascara')).toBe('mascara');
+    expect(resolverModo(undefined)).toBe('traco');
+    expect(resolverModo('lixo')).toBe('traco');
+    window.history.replaceState({}, '', '/?cena=mascara');
+    expect(resolverModo(undefined)).toBe('mascara');
+    expect(resolverModo('traco')).toBe('traco');
+    window.history.replaceState({}, '', '/');
+  });
+
+  it('modo mascara: pede o -mascara.svg, a imagem fica por baixo de uma <mask>, e no fim cruza-se com a imagem inteira', async () => {
+    vi.useFakeTimers();
+    render(<CarolCena kind="run" modo="mascara" fallback={FALLBACK} />);
+    await flush();
+    expect(fetchPedidos.some((u) => u.endsWith('carol-cenas/corrida-mascara.svg'))).toBe(true);
+    expect(fetchPedidos.some((u) => u.endsWith('-traco.svg'))).toBe(false);
+    const cena = screen.getByTestId('carol-cena');
+    expect(cena).toHaveAttribute('data-modo', 'mascara');
+    expect(cena).toHaveAttribute('data-fase', 'desenho');
+    const svg = screen.getByTestId('carol-cena-mascara');
+    expect(svg).toHaveAttribute('viewBox', '0 0 1024 512');
+    const mask = svg.querySelector('mask');
+    expect(mask.querySelectorAll('path,circle,line')).toHaveLength(3);
+    const image = svg.querySelector('image');
+    expect(image.getAttribute('href')).toMatch(/carol-cenas\/corrida\.webp$/);
+    expect(image.getAttribute('mask')).toBe(`url(#${mask.id})`);
+    expect(screen.queryByTestId('carol-cena-traco')).not.toBeInTheDocument();
+    act(() => { vi.advanceTimersByTime(CENA_DESENHO_MS + 50); });
+    expect(screen.getByTestId('carol-cena')).toHaveAttribute('data-fase', 'final');
+    expect(screen.getByTestId('carol-cena-final')).toHaveStyle({ opacity: '1' });
+    expect(screen.getByTestId('carol-cena-mascara')).toHaveStyle({ opacity: '0' });
+  });
+
+  it('sem o -mascara.svg da área, o modo máscara cai no -traco.svg dela', async () => {
+    global.fetch = vi.fn((url) => {
+      fetchPedidos.push(url);
+      return url.endsWith('-mascara.svg')
+        ? Promise.resolve({ ok: false, text: () => Promise.resolve('') })
+        : Promise.resolve({ ok: true, text: () => Promise.resolve(SVG_OK) });
+    });
+    render(<CarolCena kind="gym" modo="mascara" fallback={FALLBACK} />);
+    await flush();
+    expect(fetchPedidos.map((u) => u.split('/').pop())).toEqual(['ginasio-mascara.svg', 'ginasio-traco.svg']);
+    expect(screen.getByTestId('carol-cena')).toHaveAttribute('data-modo', 'traco');
+  });
+
+  it('nem máscara nem traço: o logótipo; movimento reduzido: só a imagem, sem pedir nenhum SVG', async () => {
+    global.fetch = vi.fn(() => Promise.resolve({ ok: false, text: () => Promise.resolve('') }));
+    const { unmount } = render(<CarolCena kind="body" modo="mascara" fallback={FALLBACK} />);
+    await flush();
+    expect(screen.getByTestId('fallback')).toBeInTheDocument();
+    unmount();
+
+    fetchPedidos = [];
+    global.fetch = vi.fn((u) => { fetchPedidos.push(u); return Promise.resolve({ ok: true, text: () => Promise.resolve(MASCARA) }); });
+    window.matchMedia = () => ({ matches: true });
+    render(<CarolCena kind="body" modo="mascara" fallback={FALLBACK} />);
+    await flush();
+    expect(screen.getByTestId('carol-cena')).toHaveAttribute('data-fase', 'final');
+    expect(fetchPedidos).toHaveLength(0);
+    expect(screen.queryByTestId('carol-cena-mascara')).not.toBeInTheDocument();
   });
 });
