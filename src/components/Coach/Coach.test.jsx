@@ -460,7 +460,7 @@ describe('Coach — resposta assíncrona quando o pedido síncrono falha', () =>
 
     const aviso = screen.getByTestId('coach-waiting-message').textContent;
     expect(aviso).not.toMatch(/atleta/i);
-    expect(aviso).toMatch(/^(Isto|Estou) /);
+    expect(aviso).toMatch(/^(Esta|Estou) /);
   });
 
   // Revisão de 2026-09-26: as variantes antigas mandavam alongar os gémeos
