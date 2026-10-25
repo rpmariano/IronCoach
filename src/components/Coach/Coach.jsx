@@ -156,13 +156,17 @@ export default function Coach() {
 
   const [activeProposalSheetPlan, setActiveProposalSheetPlan] = useState(null);
   /* Plano longo em partes: a resposta traz `plan_continuation: { from, to,
-     part, of }` (a Carol avisou e propôs a 1.ª semana). Fica aqui até o chat
-     estar livre; então o cliente manda sozinho o pedido da parte seguinte, sem
-     texto do atleta. Cada resposta pode trazer a seguinte; quando já não vem
-     nenhuma, pára. Se o atleta escrever entretanto (coachLoading), a
-     continuação espera pela vez dela — nunca se perde a mensagem dele. */
+     part, of }` (a Carol avisou e propôs a 1.ª semana). Só pode haver uma
+     proposta pendente — o servidor recusa a anterior quando grava outra —, por
+     isso a continuação fica pendente (`armed: false`) e só sai DEPOIS de o
+     atleta aceitar a parte que está na folha (handleRespond a arma). Recusar
+     pára a cadeia. Armada, com o chat livre o cliente manda sozinho o pedido da
+     parte seguinte, sem texto do atleta; cada resposta pode trazer a seguinte.
+     Se o atleta escrever entretanto (coachLoading), espera a vez — nunca se
+     perde a mensagem dele. */
   const [pendingContinuation, setPendingContinuation] = useState(null);
   const continuationRunsRef = useRef(0);
+  const lastProposedPlanIdRef = useRef(null);
   const [activeGoalProposal, setActiveGoalProposal] = useState(null);
 
   useEffect(() => {
@@ -202,7 +206,11 @@ export default function Coach() {
     const valid = c && typeof c.from === 'string' && typeof c.to === 'string'
       && Number.isFinite(Number(c.part)) && Number.isFinite(Number(c.of)) && Number(c.part) <= Number(c.of);
     if (valid && continuationRunsRef.current < 12) {
-      setPendingContinuation({ from: c.from, to: c.to, part: Number(c.part), of: Number(c.of) });
+      // Desarmada, atada à proposta desta resposta: só o aceite dela a arma.
+      setPendingContinuation({
+        from: c.from, to: c.to, part: Number(c.part), of: Number(c.of),
+        planId: lastProposedPlanIdRef.current, armed: false,
+      });
     } else if (!fromAthlete) {
       // A resposta da continuação sem a seguinte: acabou.
       setPendingContinuation(null);
@@ -268,11 +276,14 @@ export default function Coach() {
       }
       if (data?.plan_proposed) {
         const freshPlans = await reloadCoachPlans();
-        // As partes de um plano longo (continuação) não abrem a folha por
-        // cima do atleta: cada uma fica como proposta própria, à vista.
-        if (freshPlans && freshPlans.length > 0 && !payload?.plan_continuation) {
+        // Cada parte de um plano longo abre a folha como proposta própria (o
+        // atleta acabou de aceitar a anterior: nada fica por cima).
+        if (freshPlans && freshPlans.length > 0) {
           const pending = freshPlans.filter(p => p.status === 'proposto');
-          if (pending.length > 0) setActiveProposalSheetPlan(pending[0]);
+          if (pending.length > 0) {
+            lastProposedPlanIdRef.current = pending[0].id;
+            setActiveProposalSheetPlan(pending[0]);
+          }
         }
       }
       if (data?.goal_proposed) {
@@ -724,6 +735,13 @@ export default function Coach() {
   const [planStart, setPlanStart] = useState(null);
   const handleRespond = async (planId, accept) => {
     const ok = await respondToPlan(planId, accept);
+    // Plano longo em partes: aceitar a parte da folha arma a continuação;
+    // recusar pára a cadeia.
+    if (ok && accept) {
+      setPendingContinuation((c) => (c && (!c.planId || c.planId === planId) ? { ...c, armed: true } : c));
+    } else if (ok) {
+      setPendingContinuation(null);
+    }
     if (ok && accept) {
       const st = useAppStore.getState();
       const plan = (st.coachPlans || []).find((p) => p.id === planId);
@@ -1234,7 +1252,10 @@ export default function Coach() {
         const freshPlans = await reloadCoachPlans();
         if (freshPlans && freshPlans.length > 0) {
           const pending = freshPlans.filter(p => p.status === 'proposto');
-          if (pending.length > 0) setActiveProposalSheetPlan(pending[0]);
+          if (pending.length > 0) {
+            lastProposedPlanIdRef.current = pending[0].id;
+            setActiveProposalSheetPlan(pending[0]);
+          }
         }
       }
       if (data?.goal_proposed) {
@@ -1264,13 +1285,13 @@ export default function Coach() {
   // (sem texto do atleta). Limpa-se ANTES de enviar: se falhar, não insiste —
   // a Carol já disse o que vem e o atleta pode pedir "e a semana seguinte?".
   useEffect(() => {
-    if (!pendingContinuation || coachLoading) return;
-    const next = pendingContinuation;
+    if (!pendingContinuation?.armed || coachLoading) return;
+    const { from, to, part, of } = pendingContinuation;
     setPendingContinuation(null);
     continuationRunsRef.current += 1;
     sendCoachInitiatedPayload({
       message: '',
-      plan_continuation: next,
+      plan_continuation: { from, to, part, of },
       userData: profile || {},
       activeInsights: activeInsightsPayload(),
     });

@@ -2125,77 +2125,133 @@ describe('Coach — fotos no chat (decisões 16 e 17)', () => {
 });
 
 /* Plano longo em partes (2026-10-25): a resposta que propõe a 1.ª semana traz
-   plan_continuation e o cliente pede sozinho as seguintes, sem texto do
-   atleta, até a resposta já não trazer nenhuma. */
+   plan_continuation. Só pode haver uma proposta pendente (o servidor recusa a
+   anterior ao gravar outra), por isso o cliente só pede a parte seguinte
+   DEPOIS de o atleta aceitar a que está na folha; recusar pára a cadeia. */
 describe('Coach — plano longo em partes (plan_continuation)', () => {
   const C1 = { from: '2026-11-02', to: '2026-11-08', part: 2, of: 3 };
   const C2 = { from: '2026-11-09', to: '2026-11-15', part: 3, of: 3 };
   const reply = (id, text, extra = {}) => ({ data: { model_message: { id, content: text }, suggestions: [], ...extra }, error: null });
   const bodies = () => invokeEdgeFunctionWithTimeout.mock.calls.map((c) => JSON.parse(c[1].body));
+  const continuations = () => bodies().filter((b) => b.plan_continuation);
   const send = async (text) => {
     fireEvent.change(screen.getByPlaceholderText('Escreve a tua pergunta...'), { target: { value: text } });
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: /Enviar pergunta à Carol/i })); });
   };
+  const PLAN = (n) => ({ id: `p${n}`, status: 'proposto', period_start: '2026-10-26', period_end: '2026-11-01', summary: `Semana ${n}` });
+  let respondToPlan;
 
   beforeEach(() => {
     invokeEdgeFunctionWithTimeout.mockReset();
     supabase.from.mockReset();
     window.localStorage.clear();
-    useAppStore.setState({ ...baseCarolState(), logImpression: vi.fn(), refreshCupAfterChat: vi.fn(), loadCup: vi.fn() });
+    respondToPlan = vi.fn().mockResolvedValue(true);
+    useAppStore.setState({ ...baseCarolState(), respondToPlan, logImpression: vi.fn(), refreshCupAfterChat: vi.fn(), loadCup: vi.fn() });
   });
 
-  it('é automática: manda sozinha cada parte, sem texto do atleta, e pára quando já não vem plan_continuation', async () => {
-    invokeEdgeFunctionWithTimeout
-      .mockResolvedValueOnce(reply('a1', 'Primeira semana proposta. Depois vêm as outras.', { plan_proposed: true, plan_continuation: C1 }))
-      .mockResolvedValueOnce(reply('a2', 'Segunda semana.', { plan_proposed: true, plan_continuation: C2 }))
-      .mockResolvedValueOnce(reply('a3', 'Terceira e última.', { plan_proposed: true }));
+  // Responde pelo corpo, não pela ordem: cada pedido tem o seu guião.
+  const script = (fn) => invokeEdgeFunctionWithTimeout.mockImplementation((_n, { body }) => Promise.resolve(fn(JSON.parse(body))));
+  // A proposta pendente que o servidor teria nesse momento (só há uma).
+  let atual = 1;
+  const propoe = (n) => { atual = n; useAppStore.setState({ reloadCoachPlans: vi.fn().mockImplementation(() => Promise.resolve([PLAN(atual)])) }); };
+  const aceitar = async () => {
+    await act(async () => { fireEvent.click(await screen.findByRole('button', { name: /Aceitar plano/i })); });
+  };
+
+  it('a continuação NÃO sai enquanto a parte da folha não for aceite', async () => {
+    propoe(1);
+    script((b) => (b.plan_continuation ? reply('x', 'não devia') : reply('a1', 'Primeira semana proposta.', { plan_proposed: true, plan_continuation: C1 })));
     renderCoach();
     await send('Faz-me um plano de 3 semanas');
-    await waitFor(() => expect(invokeEdgeFunctionWithTimeout).toHaveBeenCalledTimes(3));
-    const [primeiro, segundo, terceiro] = bodies();
-    expect(primeiro).toMatchObject({ message: 'Faz-me um plano de 3 semanas' });
-    expect(primeiro.plan_continuation).toBeUndefined();
-    expect(segundo).toMatchObject({ message: '', plan_continuation: C1 });
-    expect(terceiro).toMatchObject({ message: '', plan_continuation: C2 });
-    await waitFor(() => expect(useAppStore.getState().coachMessages.map((m) => m.content)).toContain('Terceira e última.'));
-    // Acabou: nenhum pedido a mais.
-    await act(async () => { await new Promise((r) => setTimeout(r, 50)); });
-    expect(invokeEdgeFunctionWithTimeout).toHaveBeenCalledTimes(3);
-    expect(useAppStore.getState().coachLoading).toBe(false);
-  });
-
-  it('uma continuação que falha não insiste', async () => {
-    invokeEdgeFunctionWithTimeout
-      .mockResolvedValueOnce(reply('a1', 'Primeira semana proposta.', { plan_proposed: true, plan_continuation: C1 }))
-      .mockResolvedValue({ data: null, error: 'boom', isTimeout: false, isNetwork: false });
-    renderCoach();
-    await send('Plano de 3 semanas');
-    await waitFor(() => expect(invokeEdgeFunctionWithTimeout).toHaveBeenCalledTimes(2));
-    await act(async () => { await new Promise((r) => setTimeout(r, 100)); });
-    expect(invokeEdgeFunctionWithTimeout).toHaveBeenCalledTimes(2);
-    expect(useAppStore.getState().coachLoading).toBe(false);
-  });
-
-  it('sem plan_continuation, nada além do pedido do atleta', async () => {
-    invokeEdgeFunctionWithTimeout.mockResolvedValue(reply('a1', 'Aqui vai a semana.', { plan_proposed: true }));
-    renderCoach();
-    await send('Plano para esta semana');
-    await waitFor(() => expect(useAppStore.getState().coachMessages.map((m) => m.content)).toContain('Aqui vai a semana.'));
-    await act(async () => { await new Promise((r) => setTimeout(r, 50)); });
+    await screen.findByRole('button', { name: /Aceitar plano/i });
+    await act(async () => { await new Promise((r) => setTimeout(r, 80)); });
+    expect(continuations()).toHaveLength(0);
     expect(invokeEdgeFunctionWithTimeout).toHaveBeenCalledTimes(1);
   });
 
+  it('depois de aceitar, manda sozinha cada parte (sem texto do atleta) e pára quando já não vem plan_continuation', async () => {
+    propoe(1);
+    script((b) => {
+      if (b.plan_continuation?.part === 2) { atual = 2; return reply('a2', 'Segunda semana.', { plan_proposed: true, plan_continuation: C2 }); }
+      if (b.plan_continuation?.part === 3) { atual = 3; return reply('a3', 'Terceira e última.', { plan_proposed: true }); }
+      if (b.message === 'Aceitei o plano.') return reply('ok', 'Boa, aceite.');
+      return reply('a1', 'Primeira semana proposta. Depois vêm as outras.', { plan_proposed: true, plan_continuation: C1 });
+    });
+    renderCoach();
+    await send('Faz-me um plano de 3 semanas');
+    await aceitar();
+    expect(respondToPlan).toHaveBeenCalledWith('p1', true);
+    await waitFor(() => expect(continuations()).toHaveLength(1));
+    expect(continuations()[0]).toMatchObject({ message: '', plan_continuation: C1 });
+
+    // A parte 2 propõe-se (folha própria); só depois de aceitar sai a 3.
+    await screen.findByRole('button', { name: /Aceitar plano/i });
+    await act(async () => { await new Promise((r) => setTimeout(r, 80)); });
+    expect(continuations()).toHaveLength(1);
+    await aceitar();
+    expect(respondToPlan).toHaveBeenCalledWith('p2', true);
+    await waitFor(() => expect(continuations()).toHaveLength(2));
+    expect(continuations()[1]).toMatchObject({ message: '', plan_continuation: C2 });
+    await waitFor(() => expect(useAppStore.getState().coachMessages.map((m) => m.content)).toContain('Terceira e última.'));
+    // Acabou (a parte 3 não trouxe continuação): nada a mais, mesmo aceitando.
+    await aceitar();
+    expect(respondToPlan).toHaveBeenCalledWith('p3', true);
+    await act(async () => { await new Promise((r) => setTimeout(r, 80)); });
+    expect(continuations()).toHaveLength(2);
+    expect(useAppStore.getState().coachLoading).toBe(false);
+  });
+
+  it('recusar a parte da folha pára a cadeia', async () => {
+    propoe(1);
+    script((b) => (b.message === 'Recusei o plano.' ? reply('r', 'Sem problema.') : reply('a1', 'Primeira semana proposta.', { plan_proposed: true, plan_continuation: C1 })));
+    renderCoach();
+    await send('Plano de 3 semanas');
+    await act(async () => { fireEvent.click(await screen.findByRole('button', { name: /Recusar/i })); });
+    expect(respondToPlan).toHaveBeenCalledWith('p1', false);
+    await waitFor(() => expect(useAppStore.getState().coachMessages.map((m) => m.content)).toContain('Sem problema.'));
+    await act(async () => { await new Promise((r) => setTimeout(r, 80)); });
+    expect(continuations()).toHaveLength(0);
+  });
+
+  it('uma continuação que falha não insiste', async () => {
+    propoe(1);
+    script((b) => {
+      if (b.plan_continuation) return { data: null, error: 'boom', isTimeout: false, isNetwork: false };
+      if (b.message === 'Aceitei o plano.') return reply('ok', 'Boa.');
+      return reply('a1', 'Primeira semana proposta.', { plan_proposed: true, plan_continuation: C1 });
+    });
+    renderCoach();
+    await send('Plano de 3 semanas');
+    await aceitar();
+    await waitFor(() => expect(continuations()).toHaveLength(1));
+    await act(async () => { await new Promise((r) => setTimeout(r, 120)); });
+    expect(continuations()).toHaveLength(1);
+    expect(useAppStore.getState().coachLoading).toBe(false);
+  });
+
+  it('sem plan_continuation, nada além do pedido do atleta, mesmo aceitando', async () => {
+    propoe(1);
+    script((b) => (b.message === 'Aceitei o plano.' ? reply('ok', 'Boa.') : reply('a1', 'Aqui vai a semana.', { plan_proposed: true })));
+    renderCoach();
+    await send('Plano para esta semana');
+    await aceitar();
+    await waitFor(() => expect(useAppStore.getState().coachMessages.map((m) => m.content)).toContain('Boa.'));
+    await act(async () => { await new Promise((r) => setTimeout(r, 80)); });
+    expect(continuations()).toHaveLength(0);
+  });
+
   it('enquanto a continuação corre, o que o atleta escreve fica no campo e não se perde', async () => {
+    propoe(1);
     let soltarSegunda;
-    invokeEdgeFunctionWithTimeout
-      .mockResolvedValueOnce(reply('a1', 'Primeira semana.', { plan_proposed: true, plan_continuation: C1 }))
-      .mockImplementationOnce(() => new Promise((r) => { soltarSegunda = () => r(reply('a2', 'Segunda semana.')); }))
-      .mockResolvedValue(reply('a3', 'Resposta a ele.'));
+    script((b) => {
+      if (b.plan_continuation) return new Promise((r) => { soltarSegunda = () => r(reply('a2', 'Segunda semana.')); });
+      if (b.message === 'Aceitei o plano.') return reply('ok', 'Boa.');
+      return reply('a1', 'Primeira semana.', { plan_proposed: true, plan_continuation: C1 });
+    });
     renderCoach();
     await send('Plano de 2 semanas');
-    // A continuação está em curso (à espera do servidor): enviar não é possível
-    // enquanto escreve — o texto dele fica no campo, não se perde.
-    await waitFor(() => expect(invokeEdgeFunctionWithTimeout).toHaveBeenCalledTimes(2));
+    await aceitar();
+    await waitFor(() => expect(continuations()).toHaveLength(1));
     const campo = screen.getByPlaceholderText('Escreve a tua pergunta...');
     fireEvent.change(campo, { target: { value: 'Espera, troca o dia de descanso' } });
     expect(campo).toHaveValue('Espera, troca o dia de descanso');
