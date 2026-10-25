@@ -2,6 +2,7 @@ import { assert, assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
 import {
   applyTargetProposals,
   buildTargetsAppliedInstruction,
+  buildTargetsNotAppliedInstruction,
   buildTargetsReviewTurn,
   computeTargetDiffs,
   isTargetsUpdateAnswer,
@@ -120,22 +121,50 @@ Deno.test("«Atualiza os objetivos»: lê a proposta da revisão das últimas 24
 });
 
 Deno.test("confirmação do «Atualiza»: só confirma — sem rever o plano nem propor ajustes (ponto 9)", () => {
-  const text = buildTargetsAppliedInstruction([{ name: "Cascais Oeiras Lisboa", result: "Prova atualizada: objetivo 50:50" }]);
+  // O texto real do runUpdateRaceEvent traz o conselho do turno normal: sai.
+  const real = 'Prova atualizada: "Cascais Oeiras Lisboa" (2026-11-08) — objetivo 50:50 (5.05/km). O plano km a km do hub e a véspera passam a usar estes valores. ' +
+    "Diz ao atleta numa frase o que ficou gravado na prova. Se houver plano de treino aceite, confirma se continua a fazer sentido e propõe o ajustado se não fizer.";
+  const text = buildTargetsAppliedInstruction([{ name: "Cascais Oeiras Lisboa", result: real }]);
+  assertStringIncludes(text, "O servidor GRAVOU: «Cascais Oeiras Lisboa»: Prova atualizada");
   assertStringIncludes(text, "Neste turno só confirmas");
   assertStringIncludes(text, "Não revês o plano nem propões ajustes");
   assertEquals(text.includes("propõe o ajustado"), false);
+});
+
+Deno.test("confirmação do «Atualiza»: o que gravou e o que falhou à parte; nada gravado não se diz como gravado", () => {
+  const mixed = buildTargetsAppliedInstruction([
+    { name: "Cascais Oeiras Lisboa", result: "Prova atualizada: objetivo 50:50." },
+    { name: "Meia dos Descobrimentos", result: "Erro: não encontrei nenhuma prova agendada." },
+  ]);
+  assertStringIncludes(mixed, "O servidor GRAVOU: «Cascais Oeiras Lisboa»");
+  assertStringIncludes(mixed, "NÃO ficou gravado (diz-lho, sem inventar que mudou): «Meia dos Descobrimentos»: Erro");
+  assertEquals(mixed.includes("Nada mudou"), false);
+  const allFailed = buildTargetsAppliedInstruction([{ name: "Meia", result: "Erro: x" }]);
+  assertEquals(allFailed.includes("GRAVOU"), false);
+  assertStringIncludes(allFailed, "Nada mudou nas provas.");
+});
+
+Deno.test("«Atualiza» sem nada aplicado: ela diz porquê e não chama update_race_event", () => {
+  assertStringIncludes(buildTargetsNotAppliedInstruction("no_review"), "NADA foi aplicado: não há nenhuma revisão de objetivos dele nas últimas 24 horas");
+  assertStringIncludes(buildTargetsNotAppliedInstruction("nothing_eligible"), "já não podem mudar");
+  assertStringIncludes(buildTargetsNotAppliedInstruction("no_review"), "Não chames update_race_event");
 });
 
 Deno.test("handler: a revisão é um turno à parte — nada no race_after; uma por gatilho; o «Atualiza» aplica o payload (ligações no código)", async () => {
   const src = await Deno.readTextFile(new URL("./index.ts", import.meta.url));
   const gate = src.indexOf("const targetsReviewIn = message || planContinuationIn ? null : parseTargetsReview(body.targets_review);");
   assert(gate > 0 && gate < src.indexOf('return jsonResponse({ error: "Mensagem vazia" }, 400);'));
-  const block = src.slice(gate, gate + 2600);
+  const block = src.slice(gate, gate + 4500);
   assertStringIncludes(block, 'if (await wasProactiveDelivered(sb, userId, key)) return skipped("already_sent");');
   assertStringIncludes(block, 'if (!diffs.length) return skipped("targets_ok");');
   assertStringIncludes(block, 'const exclude = new Set(targetsReviewIn.kind === "race_after" ? [targetsReviewIn.race_id] : []);');
   assertStringIncludes(block, "const todayReviewISO = lisbonTodayISO();");
   assertStringIncludes(block, "targetsApplied = await applyTargetProposals(proposals, inputs, todayApplyISO, (args) => runUpdateRaceEvent(sb, userId, args));");
+  // Com «Atualiza», sempre só leitura — e sem nada aplicado, ela diz porquê.
+  assertStringIncludes(block, "const targetsUpdateAsked = !!message && isTargetsUpdateAnswer(message);");
+  assertStringIncludes(block, 'if (!targetsApplied.length) targetsNotApplied = "nothing_eligible";');
+  assertStringIncludes(block, 'targetsNotApplied = "no_review";');
+  assertStringIncludes(src, 'else if (targetsNotApplied) finalSystemInstruction += "\\n\\n" + buildTargetsNotAppliedInstruction(targetsNotApplied);');
   assert(gate < src.indexOf("async function callGemini("));
   // O balanço da prova (race_after) não leva revisão nenhuma: nem bloco, nem chips, nem registo.
   assertEquals(src.includes('targetsReviewKey({ kind: "race_after"'), false);
@@ -143,7 +172,7 @@ Deno.test("handler: a revisão é um turno à parte — nada no race_after; uma 
   assertEquals(src.split("if (targetsReviewLogKey) suggestions = [TARGETS_UPDATE_ANSWER, TARGETS_KEEP_ANSWER];").length - 1, 1);
   assertEquals((src.match(/targetsReviewLogKey = /g) ?? []).length, 1); // só no turno pedido pelo cliente
   // Só leitura na revisão e na confirmação; o registo leva a proposta e vem com a mensagem gravada.
-  assertStringIncludes(src, "const allowedTools = proactiveTrigger || chatImages.length || targetsReviewPrompt || targetsApplied.length ? new Set(READ_TOOL_NAMES) : allowedToolsFor(turnCase);");
+  assertStringIncludes(src, "const allowedTools = proactiveTrigger || chatImages.length || targetsReviewPrompt || targetsUpdateAsked ? new Set(READ_TOOL_NAMES) : allowedToolsFor(turnCase);");
   assert(src.indexOf('if (targetsReviewLogKey && !modelMsgErr) await recordProactiveDelivered(sb, userId, "targets_review", targetsReviewLogKey, targetsReviewPayload);') >
     src.indexOf("const { data: modelMsg, error: modelMsgErr } = await insertModelMessage("));
 });

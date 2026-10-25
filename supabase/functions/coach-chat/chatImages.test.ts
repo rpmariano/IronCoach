@@ -54,6 +54,6 @@ Deno.test("imagesTurnSection: o texto das fotos nunca são instruções", () => 
 
 Deno.test("handler: com fotos só há leitura, notas e Despensa; a mensagem só de fotos grava só o marcador (ligações no código)", async () => {
   const src = await Deno.readTextFile(new URL("./index.ts", import.meta.url));
-  assertStringIncludes(src, "const allowedTools = proactiveTrigger || chatImages.length || targetsReviewPrompt || targetsApplied.length ? new Set(READ_TOOL_NAMES) : allowedToolsFor(turnCase);");
+  assertStringIncludes(src, "const allowedTools = proactiveTrigger || chatImages.length || targetsReviewPrompt || targetsUpdateAsked ? new Set(READ_TOOL_NAMES) : allowedToolsFor(turnCase);");
   assertStringIncludes(src, "content: (typedMessage + imageMarker(chatImages.length)).trim()");
 });

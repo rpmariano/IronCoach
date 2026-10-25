@@ -71,7 +71,8 @@ import { buildRaceConflictPrompt } from "../_shared/raceConflictPrompt.ts";
 import { addUsage, emptyUsage, type GeminiUsage, usageFromGemini } from "../_shared/geminiUsage.ts";
 import { withUsageRecording } from "../_shared/usageRecorder.ts";
 import {
-  applyTargetProposals, buildTargetsAppliedInstruction, buildTargetsReviewTurn, computeTargetDiffs, fetchTargetsInputs, isTargetsUpdateAnswer,
+  applyTargetProposals, buildTargetsAppliedInstruction, buildTargetsNotAppliedInstruction, buildTargetsReviewTurn, computeTargetDiffs, fetchTargetsInputs,
+  isTargetsUpdateAnswer, type TargetsNotApplied,
   latestTargetsProposals, parseTargetsReview, targetsPayload, targetsReviewKey, TARGETS_KEEP_ANSWER, TARGETS_UPDATE_ANSWER,
 } from "./targetsReview.ts";
 // Só a chave no header (x-goog-api-key); o coach-chat continua no alias.
@@ -6891,13 +6892,21 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
     // servidor grava EXATAMENTE o que se propôs (o payload da revisão), só nas
     // provas que ainda não foram corridas — sem refazer as contas e sem esperar
     // que o modelo chame update_race_event.
+    // Com «Atualiza os objetivos», o turno é SEMPRE só de leitura (revisão do
+    // b32d0211): sem nada aplicado, a Carol não pode ir ela própria ao
+    // update_race_event — diz porquê.
+    const targetsUpdateAsked = !!message && isTargetsUpdateAnswer(message);
     let targetsApplied: { race_id: string; name: string; result: string }[] = [];
-    if (message && isTargetsUpdateAnswer(message)) {
+    let targetsNotApplied: TargetsNotApplied | null = null;
+    if (targetsUpdateAsked) {
       const proposals = await latestTargetsProposals(sb, userId);
       if (proposals?.length) {
         const todayApplyISO = lisbonTodayISO();
         const inputs = await fetchTargetsInputs(sb, userId, todayApplyISO);
         targetsApplied = await applyTargetProposals(proposals, inputs, todayApplyISO, (args) => runUpdateRaceEvent(sb, userId, args));
+        if (!targetsApplied.length) targetsNotApplied = "nothing_eligible";
+      } else {
+        targetsNotApplied = "no_review";
       }
     }
     if (!message && !body.is_intervention_start && !body.is_plan_checkin && !proactiveTrigger) return jsonResponse({ error: "Mensagem vazia" }, 400);
@@ -7966,6 +7975,7 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
     if (chatImages.length) finalSystemInstruction += "\n\n" + imagesTurnSection(chatImages.length);
     // O «Atualiza os objetivos» aplicado: ela só confirma o que ficou.
     if (targetsApplied.length) finalSystemInstruction += "\n\n" + buildTargetsAppliedInstruction(targetsApplied);
+    else if (targetsNotApplied) finalSystemInstruction += "\n\n" + buildTargetsNotAppliedInstruction(targetsNotApplied);
 
     // deno-lint-ignore no-explicit-any
     const contents: any[] = [
@@ -7995,7 +8005,7 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
     const turnCase = classifyTurn(message, history);
     // Num turno por iniciativa dela não se propõe nada — só leitura e notas.
     // Com fotos, só leitura, notas e a Despensa: o texto de uma imagem não pode levar a Carol a mexer em planos, metas ou provas.
-    const allowedTools = proactiveTrigger || chatImages.length || targetsReviewPrompt || targetsApplied.length ? new Set(READ_TOOL_NAMES) : allowedToolsFor(turnCase);
+    const allowedTools = proactiveTrigger || chatImages.length || targetsReviewPrompt || targetsUpdateAsked ? new Set(READ_TOOL_NAMES) : allowedToolsFor(turnCase);
 
     // Observabilidade do pedido ao Gemini. Sem isto, o incidente de
     // 2026-09-05 foi impossível de atribuir a partir dos logs: o modelo real
