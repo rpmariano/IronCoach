@@ -17,6 +17,7 @@
 // registo da refeição.
 
 import { foodKey } from "../_shared/formulas/foodKey.ts";
+import { fetchVariants, linkVariants, type VariantIndex, variantKnowledge } from "./variants.ts";
 
 export const NUTRIENT_COLUMNS = [
   "calories_per_100g", "protein_per_100g", "carbs_per_100g", "fat_per_100g",
@@ -180,7 +181,8 @@ export type FoodRule = {
 
 export type CookingFact = { topic: string; value: string };
 
-export type Pantry = { foods: PantryFood[]; rules: FoodRule[]; byKey: Map<string, PantryFood> };
+// variants (bug #87): os genéricos com variantes (variants.ts).
+export type Pantry = { foods: PantryFood[]; rules: FoodRule[]; byKey: Map<string, PantryFood>; variants?: VariantIndex };
 
 export const EMPTY_PANTRY: Pantry = { foods: [], rules: [], byKey: new Map() };
 
@@ -196,7 +198,7 @@ const num = (v: unknown): number => {
 // deno-lint-ignore no-explicit-any
 export async function fetchPantry(sb: any, userId: string): Promise<Pantry> {
   try {
-    const [foodsRes, rulesRes] = await Promise.all([
+    const [foodsRes, rulesRes, variants] = await Promise.all([
       sb.from("athlete_foods")
         .select(FOOD_SELECT)
         .eq("user_id", userId)
@@ -210,12 +212,14 @@ export async function fetchPantry(sb: any, userId: string): Promise<Pantry> {
       sb.from("athlete_food_rules")
         .select("topic, topic_key, value, value_key, confirmations, status, source")
         .eq("user_id", userId),
+      // Bug #87: as variantes e os genéricos delas (nunca rejeita).
+      fetchVariants(sb, userId),
     ]);
     const foods: PantryFood[] = foodsRes?.error ? [] : (foodsRes?.data ?? []);
     const rules: FoodRule[] = rulesRes?.error ? [] : (rulesRes?.data ?? []);
     if (foodsRes?.error) console.warn("Despensa não lida:", foodsRes.error.message);
     if (rulesRes?.error) console.warn("Regras de cozinha não lidas:", rulesRes.error.message);
-    return { foods, rules, byKey: new Map(foods.map((f) => [f.name_key, f])) };
+    return { foods, rules, byKey: new Map(foods.map((f) => [f.name_key, f])), variants };
   } catch (e) {
     console.warn("Despensa não lida:", e instanceof Error ? e.message : e);
     return EMPTY_PANTRY;
@@ -224,7 +228,7 @@ export async function fetchPantry(sb: any, userId: string): Promise<Pantry> {
 
 /** A secção do pedido de análise com o que ela já sabe. "" sem nada — o
  *  pedido de quem ainda não tem despensa fica igual ao de sempre. */
-export function knowledgeSection(foods: PantryFood[], rules: FoodRule[]): string {
+export function knowledgeSection(foods: PantryFood[], rules: FoodRule[], variants?: VariantIndex): string {
   // Um hábito de PREPARAÇÃO aprendido sem prato ("tempero: 1 colher de
   // azeite") já não diz a que prato se aplica: não entra — ela pergunta e
   // aprende-o por prato. Ficam:
@@ -235,7 +239,8 @@ export function knowledgeSection(foods: PantryFood[], rules: FoodRule[]): string
   //   dele — confirmada, não se volta a perguntar (revisão pré-master).
   const certas = rules.filter((r) => r.status === "confirmado" && !isDishlessHabit(r));
   const variam = rules.filter((r) => r.status === "varia");
-  if (!foods.length && !certas.length && !variam.length) return "";
+  const comVariantes = variantKnowledge(variants);
+  if (!foods.length && !certas.length && !variam.length && !comVariantes) return "";
   let s = "\n\nO QUE JÁ SABES DESTE ATLETA (aprendido com ele):";
   if (certas.length) {
     // Fase C dos #58/#66 (2026-10-17): também quanto costuma pôr ("manteiga ·
@@ -262,7 +267,7 @@ export function knowledgeSection(foods: PantryFood[], rules: FoodRule[]): string
         .map((f) => `- ${f.name}${f.portion_grams ? ` (porção habitual ${f.portion_label ? `${f.portion_label}, ` : ""}${Math.round(f.portion_grams)} g)` : ""}`)
         .join("\n");
   }
-  return s;
+  return s + comVariantes;
 }
 
 /** Os valores por 100 g da despensa, no lugar dos estimados; o nome passa a
@@ -457,6 +462,8 @@ export async function learnFromMeal(sb: any, userId: string, items: any[], facts
       for (const [k, it] of byKey) {
         if (it?.from_label && !prev.get(k)?.edited_by_athlete) fromLabel.push(String(it.name));
       }
+      // Bug #87: a variante fica ligada ao genérico (criado se ainda não existe).
+      await linkVariants(sb, userId, [...byKey.values()].filter((it) => it?.variant_of && it?.variant_label), nowISO);
     }
 
     if (facts.length) await learnRules(sb, userId, facts, "observacao", nowISO);
@@ -517,7 +524,11 @@ export type CarolQuestion = {
   // "preparacao" (como foi feito/temperado) ou "quantidade" (quanto — as
   // opções trazem as gramas, "(~N g)"). As gravadas antes de 2026-10-17 não
   // têm o campo: são de preparação. specs/carol-quantidades-habitos-refeicoes.md §4.1.
-  kind: "preparacao" | "quantidade";
+  // "variante" (bug #87, 2026-10-25): qual foi a variante de um genérico da
+  // despensa («Coxa de frango: com pele ou sem pele?»). Gerada pelo servidor
+  // a partir da base de dados (variants.ts), nunca pelo modelo; as opções
+  // são os variant_label e o topic é o nome do genérico.
+  kind: "preparacao" | "quantidade" | "variante";
   topic: string;
   item_name: string;
   question: string;
@@ -599,6 +610,30 @@ export function quantityTopic(raw: unknown): string {
  * "<alimento> · quantidade" — é assim que fica nas regras e que, confirmado,
  * deixa de se perguntar.
  */
+/**
+ * Bug #86: «que % de gordura tem a carne?» — quem comeu não sabe responder a
+ * percentagens, teores nem valores nutricionais; isso é a Carol que estima
+ * (vai para assumed). O prompt já o proíbe (QUESTIONS_RULE); isto é a rede de
+ * segurança para quando o modelo pergunta à mesma. O "(~N g)" das opções de
+ * quantidade sai antes de olhar — essas são para responder.
+ */
+const UNANSWERABLE_RE = new RegExp(
+  [
+    "%",
+    "percent",
+    "\\bteor",
+    "\\bkcal\\b",
+    "\\bcalorias?\\b",
+    "valor(?:es)? nutricion",
+    "(?:\\bgramas?|\\bg)\\s+de\\s+(?:gordura|prote[íi]na|hidratos|a[çc][úu]car|fibra)",
+  ].join("|"),
+  "i",
+);
+
+export function isUnanswerableQuestion(question: string, options: string[]): boolean {
+  return [question, ...options].some((t) => UNANSWERABLE_RE.test(t.replace(/\(\s*~?\s*\d+(?:[.,]\d+)?\s*g\s*\)/gi, "")));
+}
+
 export function parseQuestions(
   raw: unknown,
   // deno-lint-ignore no-explicit-any
@@ -633,6 +668,7 @@ export function parseQuestions(
     // Da despensa, só se há perguntas em aberto sobre ele (pantry_pending,
     // 2026-10-05) — foi por isso que o modelo foi chamado.
     if (!topicKey || !question || options.length < 2 || !item || (item.from_pantry && !item.pantry_pending)) continue;
+    if (isUnanswerableQuestion(question, options)) continue;
     if (impact < MIN_QUESTION_IMPACT_KCAL && impactProtein < MIN_QUESTION_IMPACT_PROTEIN_G) continue;
     if (confirmed.has(topicKey) || seenTopics.has(topicKey)) continue;
     if (!options.some((o) => foodKey(o) === foodKey(assumed))) continue;

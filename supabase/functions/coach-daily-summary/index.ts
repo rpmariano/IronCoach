@@ -194,6 +194,7 @@ const CORRIDA_FALADA: Record<string, [string, string]> = {
   continuo: ["uma", "corrida contínua"],
   rodagem: ["uma", "rodagem"],
   recuperacao: ["uma", "corrida de recuperação"],
+  ativacao: ["uma", "ativação pré-prova"],
   regenerativo: ["uma", "corrida regenerativa"],
   tempo: ["um", "treino de ritmo"],
   fartlek: ["um", "fartlek"],

@@ -107,3 +107,28 @@ Deno.test("runSavePantryFood: o crédito de polióis chega pela ferramenta; um a
   assertEquals(msg.includes("abre o alimento na Despensa"), false);
   assertEquals(edited.calls.upserts.length, 0);
 });
+
+// Bug #87: uma embalagem com versões (gordo/meio-gordo/magro) fica como variante do genérico.
+import { FakeFoodsDb } from "../analyze-meal/foodsTestkit.ts";
+import { foodKey } from "../_shared/formulas/foodKey.ts";
+
+Deno.test("runSavePantryFood: com generic_name + variant guarda a variante e liga-a ao genérico (bug #87)", async () => {
+  const db = new FakeFoodsDb();
+  const r = await runSavePantryFood(db, "u1", {
+    ...ARGS, name: "Leite Mimosa Meio-Gordo", generic_name: "Leite Mimosa", variant: "Meio-Gordo",
+    calories_per_100g: 46, protein_per_100g: 3.3, carbs_per_100g: 4.8, fat_per_100g: 1.6,
+  }, "2026-10-25T12:00:00.000Z");
+  assertStringIncludes(r, "«Leite Mimosa meio-gordo» (variante «meio-gordo» de «Leite Mimosa»)");
+  const rows = db.tables.athlete_foods;
+  const g = rows.find((x) => x.name_key === "leite mimosa")!;
+  const v = rows.find((x) => x.name_key === foodKey("Leite Mimosa meio-gordo"))!;
+  assertEquals([v.parent_id, v.variant_label, v.in_pantry, v.calories_per_100g], [g.id, "meio-gordo", true, 46]);
+  // O genérico entra na Despensa sem contar como refeição.
+  assertEquals([g.parent_id, g.in_pantry, g.times_seen, g.calories_per_100g], [null, true, 0, 46]);
+});
+
+Deno.test("runSavePantryFood: sem variant, generic_name sozinho não muda nada", async () => {
+  const db = new FakeFoodsDb();
+  await runSavePantryFood(db, "u1", { ...ARGS, generic_name: "Barra" });
+  assertEquals(db.tables.athlete_foods.map((x) => [x.name_key, x.parent_id]), [["barra proteica choco", null]]);
+});

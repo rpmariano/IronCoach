@@ -31,6 +31,9 @@ import {
   isMicroColumn, microFromModel, optionGrams, parseCookingFacts, portionFacts, quantityAnswerGrams, parseQuestions, pickMealItem, remapQuestionItems, splitKnownWritten,
   withPantryValues, withWrittenFoods,
 } from "./pantry.ts";
+import {
+  learnVariantFood, mergeVariantQuestions, normalizeVariantLabel, renameQuestionItems, resolveVariants, variantAnswer, variantName,
+} from "./variants.ts";
 import { foodKey } from "../_shared/formulas/foodKey.ts";
 import { NOTES_EMPTY_MESSAGE, NOTES_ITEMS_SCHEMA, notesAreAnalyzable, notesItemsPrompt, parseNotesItems } from "./notesItems.ts";
 import { isWalk } from "../_shared/formulas/runKinds.ts";
@@ -77,6 +80,11 @@ export const RESPONSE_SCHEMA = {
           // Bug #48 (fase A): os valores vêm de uma tabela nutricional lida
           // numa foto, não de uma estimativa — o produto entra logo na despensa.
           from_label: { type: "BOOLEAN" },
+          // Bug #87: o alimento genérico e a variante (VARIANT_RULE). null sem
+          // uma qualificação que mude os valores; o servidor resolve o resto.
+          generic_name: { type: "STRING", nullable: true },
+          variant: { type: "STRING", nullable: true },
+          variant_options: { type: "ARRAY", items: { type: "STRING" }, nullable: true },
         },
         required: [
           "name",
@@ -166,6 +174,19 @@ const LABEL_RULE =
   "esse produto usa os valores POR 100 g LIDOS da tabela (não estimes), o nome comercial do produto " +
   "se estiver visível, e from_label=true. Nos outros itens, from_label=false.";
 
+// Bug #87 (2026-10-25): «coxa de frango com pele» ficava na despensa e a
+// coxa sem pele herdava os valores dela. O modelo separa o genérico da
+// variante; a pergunta da variante faz-a o servidor (variants.ts).
+export const VARIANT_RULE =
+  "\n\nVARIANTES (generic_name, variant, variant_options): quando um alimento tem uma qualificação que muda os " +
+  "valores por 100 g — com ou sem pele, a gordura da carne ou do leite (gordo, meio-gordo, magro), com ou sem " +
+  "açúcar — devolve generic_name = o alimento sem a qualificação (\"Coxa de frango\"), variant = a qualificação " +
+  "curta, em minúsculas (\"sem pele\"), e variant_options = 2 a 4 variantes habituais desse alimento, incluindo " +
+  "a escolhida ([\"com pele\", \"sem pele\"]); name continua a ser o nome completo (\"Coxa de frango sem pele\"). " +
+  "Quando não se vê nem foi escrito qual é, escolhe a mais provável. A forma de cozinhar (frito, grelhado) não é " +
+  "variante. Sem qualificação destas, generic_name, variant e variant_options ficam null. Não faças pergunta " +
+  "(questions) sobre a variante: essa faz-a o servidor.";
+
 // D6 da Evolução (2026-10-05): os micronutrientes deixaram de ser
 // obrigatórios no schema — o que o modelo não sabe fica null em meal_items, e
 // a app pode dizer "dado em X% dos alimentos". 0 só quando é mesmo zero.
@@ -200,11 +221,18 @@ function cookingFactsRule(notes: string | null): string {
 // ao modelo (specs/carol-quantidades-habitos-refeicoes.md §4.1).
 const QUESTIONS_RULE =
   "\n\nPERGUNTAS (questions): as que forem precisas, até 5 — mais vale perguntar do que assumir algo muito errado —, " +
-  "só quando isso muda a energia em 40 kcal ou mais OU a proteína em 4 g ou mais. De dois tipos (kind):\n" +
+  "só quando isso muda a energia em 40 kcal ou mais OU a proteína em 4 g ou mais.\n" +
+  // Bug #86: perguntava «que % de gordura tem a carne?», que ninguém sabe.
+  "Só perguntas que quem comeu SABE responder sem pesar nem consultar nada: o que se vê, como cozinhou, quanto pôs, " +
+  "que tipo ou que peça era. NUNCA percentagens, teores, calorias, gramas de gordura ou de proteína nem valores " +
+  "nutricionais — isso estimas tu e dizes em assumed. Pergunta e opções em linguagem do dia a dia.\n" +
+  "De dois tipos (kind):\n" +
   "- \"preparacao\": não se vê nem se sabe como um alimento desta refeição foi preparado ou temperado — a gordura " +
-  "usada para fritar ou saltear, o tempero da salada, o molho, a pele ou o corte da carne, o leite gordo ou magro, " +
-  "açúcar no café. Ex.: question \"Os ovos foram estrelados em quê?\", options [\"Azeite\", \"Manteiga\", \"Óleo\", " +
-  "\"Sem gordura\"].\n" +
+  "usada para fritar ou saltear, o tempero da salada, o molho, se o frango levava pele, que peça de carne era " +
+  "(peito ou coxa, lombo ou entremeada), o leite gordo ou magro, açúcar no café. Ex.: question \"Os ovos foram " +
+  "estrelados em quê?\", options [\"Azeite\", \"Manteiga\", \"Óleo\", \"Sem gordura\"]; carne picada → question " +
+  "\"A carne picada era de quê?\", options [\"Vaca\", \"Porco e vaca\", \"Peru ou frango\"] — nunca \"Que % de " +
+  "gordura tinha?\".\n" +
   "- \"quantidade\": a quantidade de um alimento não se vê bem nem foi escrita — a espessura das fatias, a camada de " +
   "manteiga ou de doce, quanto molho ou azeite, o tamanho da porção. Cada opção descreve a quantidade E diz as " +
   "gramas, SEMPRE no formato \"(~N g)\". Ex.: manteiga → question \"Quanta manteiga levou o pão?\", options " +
@@ -227,6 +255,7 @@ function buildPrompt(notes: string | null, knowledge = ""): string {
     "nutricionais padrão. O sódio é em mg por 100g. Usa nomes em português de Portugal." +
     LABEL_RULE +
     MICROS_RULE +
+    VARIANT_RULE +
     notesSection(notes) +
     knowledge +
     cookingFactsRule(notes) +
@@ -259,6 +288,7 @@ export function buildPhotosAndItemsPrompt(items: { name: string; grams: number |
     "de dados nutricionais padrão. O sódio é em mg por 100g. Usa nomes em português de Portugal." +
     LABEL_RULE +
     MICROS_RULE +
+    VARIANT_RULE +
     notesSection(notes) +
     knowledge +
     cookingFactsRule(notes) +
@@ -327,7 +357,7 @@ export function buildManualItemsPrompt(items: { name: string; grams: number | nu
     "de fiambre (aprox. 20g). Outros exemplos de bom senso: \"1 banana\" ≈ 120g, \"1 ovo\" ≈ 50g, " +
     '"uma posta de bacalhau" ≈ 150g. Nunca devolvas 0 nem null nesta chave — escolhe sempre o ' +
     "valor mais plausível para uma porção normal do alimento descrito." +
-    MICROS_RULE + "\n";
+    MICROS_RULE + VARIANT_RULE + "\n";
   if (notes && notes.trim()) {
     prompt += `\nObservações gerais desta refeição, escritas pelo utilizador: "${notes.trim()}"\n`;
   }
@@ -461,6 +491,10 @@ async function runGeminiItemsRequest(
       ...(withSource ? { source_index: Math.round(num(it?.source_index)) } : {}),
       // Não é coluna de meal_items: pickMealItem tira-o antes de gravar.
       from_label: it?.from_label === true,
+      // Bug #87 (variants.ts, resolveVariants). Também não são colunas.
+      generic_name: typeof it?.generic_name === "string" && it.generic_name.trim() ? it.generic_name.trim().slice(0, 120) : null,
+      variant: normalizeVariantLabel(it?.variant) || null,
+      variant_options: Array.isArray(it?.variant_options) ? it.variant_options.map(normalizeVariantLabel).filter(Boolean).slice(0, 4) : null,
     }));
 
   if (items.length === 0) {
@@ -1465,7 +1499,12 @@ Deno.serve(withUsageRecording("analyze-meal", async (req) => {
       // deno-lint-ignore no-explicit-any
       const mealItems: any[] = meal.meal_items || [];
       // deno-lint-ignore no-explicit-any
-      type Change = { item: any; answers: string[]; facts: string[]; grams: number | null; reestimate: boolean; estimateGrams: boolean };
+      type Change = {
+        item: any; answers: string[]; facts: string[]; grams: number | null; reestimate: boolean; estimateGrams: boolean;
+        // Bug #87: a variante escolhida (com a linha dela, se já tem valores) e o nome novo do alimento.
+        // deno-lint-ignore no-explicit-any
+        variant?: { generic: string; label: string; stored: any | null }; rename?: string;
+      };
       const changes = new Map<string, Change>();
       for (const q of answered) {
         if (foodKey(q.answer) === foodKey(q.assumed)) continue;
@@ -1473,7 +1512,17 @@ Deno.serve(withUsageRecording("analyze-meal", async (req) => {
         if (!item) continue;
         const c = changes.get(item.id) ?? { item, answers: [], facts: [], grams: null, reestimate: false, estimateGrams: false };
         const answerGrams = q.kind === "quantidade" ? optionGrams(q.answer) : null;
-        if (answerGrams != null) {
+        if (q.kind === "variante") {
+          // Bug #87: os valores da variante escolhida vêm da base de dados, sem o
+          // modelo. Só uma variante sem valores guardados («Outro…») vai ao modelo.
+          const { generic, label, stored, rename } = variantAnswer(q.topic, q.answer, (await pantryPromise).variants);
+          c.variant = { generic, label, stored };
+          c.rename = rename;
+          if (!stored) {
+            c.reestimate = true;
+            c.facts.push(`${q.topic}: ${q.answer}`);
+          }
+        } else if (answerGrams != null) {
           // Aplica-se a DIFERENÇA entre a resposta e o que ela assumiu, não as
           // gramas da resposta: num prato que veio num só item ("Tosta mista",
           // 120 g) a pergunta "quanto fiambre?" mexe só na parte do fiambre —
@@ -1489,10 +1538,23 @@ Deno.serve(withUsageRecording("analyze-meal", async (req) => {
         changes.set(item.id, c);
       }
 
+      // O nome com que o alimento fica: o da variante, e as respostas de preparação entre parênteses.
+      const newName = (c: Change) => {
+        const base = c.rename ?? c.item.name;
+        return (c.answers.length ? `${base} (${c.answers.join(", ")})` : base).slice(0, 120);
+      };
+      // deno-lint-ignore no-explicit-any
+      const variantLearn: any[] = [];
       for (const c of changes.values()) {
-        if (c.reestimate || c.grams == null) continue;
-        const { error: upErr } = await sb.from("meal_items").update({ quantity_grams: c.grams }).eq("id", c.item.id);
+        if (c.reestimate || (c.grams == null && !c.variant?.stored)) continue;
+        // Uma variante guardada: os valores dela, sem o modelo (e as gramas, se também mudaram).
+        const next = c.variant?.stored
+          ? withPantryValues({ ...c.item, quantity_grams: c.grams ?? c.item.quantity_grams }, c.variant.stored)
+          : null;
+        const patch = next ? pickMealItem({ ...next, name: newName(c) }) : { quantity_grams: c.grams };
+        const { error: upErr } = await sb.from("meal_items").update(patch).eq("id", c.item.id);
         if (upErr) return jsonResponse({ error: `Falha a gravar o alimento: ${upErr.message}` }, 500);
+        if (next && c.variant) variantLearn.push({ ...next, name: c.variant.stored.name, variant_of: c.variant.generic, variant_label: c.variant.label });
       }
 
       let usage: GeminiUsage = emptyUsage();
@@ -1500,7 +1562,7 @@ Deno.serve(withUsageRecording("analyze-meal", async (req) => {
       if (list.length) {
         const pantry = await pantryPromise;
         const written = list.map((c) => ({
-          name: `${c.item.name} (${c.answers.join(", ")})`.slice(0, 120),
+          name: c.variant ? variantName(c.variant.generic, c.variant.label) : `${c.item.name} (${c.answers.join(", ")})`.slice(0, 120),
           // Sem gramas na resposta ("Outro…" numa quantidade), o modelo estima a porção.
           grams: c.estimateGrams ? null : (c.grams ?? (Number(c.item.quantity_grams) || null)),
         }));
@@ -1509,7 +1571,7 @@ Deno.serve(withUsageRecording("analyze-meal", async (req) => {
         try {
           est = await analyzeManualItems(
             written, [meal.notes, answersNote].filter(Boolean).join("\n"), geminiKey, extractionDeadline,
-            knowledgeSection(pantry.foods, pantry.rules),
+            knowledgeSection(pantry.foods, pantry.rules, pantry.variants),
           );
         } catch (e) {
           return jsonResponse({ error: e instanceof Error ? e.message : "Falha na estimativa." }, 502);
@@ -1517,10 +1579,18 @@ Deno.serve(withUsageRecording("analyze-meal", async (req) => {
         usage = est.usage;
         for (let i = 0; i < list.length; i++) {
           const grams = list[i].estimateGrams ? est.items[i].quantity_grams : (list[i].grams ?? list[i].item.quantity_grams);
+          const c = list[i];
           const { error: upErr } = await sb.from("meal_items")
-            .update(pickMealItem({ ...est.items[i], quantity_grams: grams }))
-            .eq("id", list[i].item.id);
+            .update(pickMealItem({ ...est.items[i], quantity_grams: grams, ...(c.variant ? { name: newName(c) } : {}) }))
+            .eq("id", c.item.id);
           if (upErr) return jsonResponse({ error: `Falha a gravar o alimento: ${upErr.message}` }, 500);
+          // Uma variante nova: os valores estimados agora ficam guardados nela.
+          if (c.variant) {
+            variantLearn.push({
+              ...est.items[i], quantity_grams: grams, name: variantName(c.variant.generic, c.variant.label),
+              variant_of: c.variant.generic, variant_label: c.variant.label,
+            });
+          }
         }
       }
 
@@ -1530,7 +1600,7 @@ Deno.serve(withUsageRecording("analyze-meal", async (req) => {
       // por responder sobre ele passa a apontar para o nome novo — senão,
       // respondida mais tarde, já não o encontrava (revisão pré-master).
       const renamed = new Map(
-        list.map((c) => [foodKey(c.item.name), `${c.item.name} (${c.answers.join(", ")})`.slice(0, 120)]),
+        [...changes.values()].filter((c) => c.reestimate || c.variant?.stored).map((c) => [foodKey(c.item.name), newName(c)]),
       );
       const updatedQuestions = questions.map((q) => {
         if (byId.has(q.id)) return { ...q, answer: byId.get(q.id)!.answer, answered_at: nowISO };
@@ -1549,7 +1619,11 @@ Deno.serve(withUsageRecording("analyze-meal", async (req) => {
             questions: updatedQuestions.filter((q) => !q.answer),
           }, geminiKey, coachDeadline)
           : Promise.resolve(null),
-        learnRules(sb, userId, answered.map((q) => ({ topic: q.topic, value: q.answer })), "resposta", nowISO),
+        // A variante pergunta-se sempre: a resposta não vira regra (uma regra por
+        // confirmar sobre o genérico mandava-o ao modelo em todos os registos).
+        learnRules(sb, userId, answered.filter((q) => q.kind !== "variante").map((q) => ({ topic: q.topic, value: q.answer })), "resposta", nowISO),
+        // Bug #87: a variante escolhida fica na despensa, ligada ao genérico.
+        Promise.all(variantLearn.map((it) => learnVariantFood(sb, userId, it, nowISO, { countSeen: false }))),
       ]);
       const { data: freshMeal } = await sb.from("meals").select("*").eq("id", meal.id).maybeSingle();
       return jsonResponse({
@@ -1617,14 +1691,21 @@ Deno.serve(withUsageRecording("analyze-meal", async (req) => {
       try {
         if (unknown.length) {
           const est = await analyzeManualItems(
-            unknown.map((u) => u.item), rawNotes, geminiKey, extractionDeadline, knowledgeSection(pantry.foods, pantry.rules),
+            unknown.map((u) => u.item), rawNotes, geminiKey, extractionDeadline, knowledgeSection(pantry.foods, pantry.rules, pantry.variants),
           );
           const byIndex = new Map(unknown.map((u, i) => [u.index, u.food ? withPantryValues(est.items[i], u.food, u.pending) : est.items[i]]));
           // grams_explicit: as gramas são do atleta — sem pergunta de quantidade.
           const all = items.map((w, i) => ({ ...(known.get(i) ?? byIndex.get(i)), ...(w.grams != null ? { grams_explicit: true } : {}) }));
-          estimated = { items: all, usage: est.usage, facts: est.facts, questions: parseQuestions(est.questions, all, pantry.rules) };
+          // Bug #87: a variante de cada genérico, e a pergunta dela (sempre).
+          const v = resolveVariants(all, pantry.variants);
+          estimated = {
+            items: v.items, usage: est.usage, facts: est.facts,
+            questions: mergeVariantQuestions(parseQuestions(renameQuestionItems(est.questions, v.renames), v.items, pantry.rules), v.questions, v.renames),
+          };
         } else {
-          estimated = { items: items.map((_, i) => known.get(i)), usage: emptyUsage(), facts: [], questions: [] };
+          // Só da despensa, sem o modelo: a pergunta da variante sai na mesma (da base de dados).
+          const v = resolveVariants(items.map((_, i) => known.get(i)!), pantry.variants);
+          estimated = { items: v.items, usage: emptyUsage(), facts: [], questions: v.questions };
         }
       } catch (e) {
         return jsonResponse({ error: e instanceof Error ? e.message : "Falha na estimativa." }, 502);
@@ -1825,21 +1906,30 @@ Deno.serve(withUsageRecording("analyze-meal", async (req) => {
     // alimento que reconhece da despensa fica com os valores dela, e um
     // rótulo lido nas fotos entra logo na despensa.
     const pantry = await withWrittenFoods(sb, userId, await pantryPromise, written.map((w) => w.name));
-    const knowledge = knowledgeSection(pantry.foods, pantry.rules);
+    const knowledge = knowledgeSection(pantry.foods, pantry.rules, pantry.variants);
     // deno-lint-ignore no-explicit-any
     let items: any[], usage: GeminiUsage, facts: CookingFact[], rawQuestions: unknown;
+    let variantsOut: ReturnType<typeof resolveVariants> = { items: [], questions: [], renames: [] };
     try {
       ({ items, usage, facts, questions: rawQuestions } = written.length
         ? await analyzePhotosWithItems(images, mime, written, rawNotes, geminiKey, extractionDeadline, knowledge)
         : await analyzeWithGemini(images, mime, rawNotes, geminiKey, extractionDeadline, knowledge));
-      items = applyPantry(items, pantry.byKey, pantry.rules);
+      // Bug #87: as variantes primeiro — uma variante nova fica com os valores
+      // que o modelo estimou para ela, não com os do genérico da despensa.
+      variantsOut = resolveVariants(items, pantry.variants);
+      items = applyPantry(variantsOut.items, pantry.byKey, pantry.rules);
     } catch (e) {
       await sb.storage.from("meal-photos").remove(photoPaths);
       return jsonResponse({ error: e instanceof Error ? e.message : "Falha na análise." }, 502);
     }
 
     // 3. Gravar refeição + itens
-    const questions = parseQuestions(rawQuestions, items, pantry.rules);
+    // A pergunta da variante faz-se sempre e não conta para as 5 do modelo.
+    const questions = mergeVariantQuestions(
+      parseQuestions(renameQuestionItems(rawQuestions, variantsOut.renames), items, pantry.rules),
+      variantsOut.questions,
+      variantsOut.renames,
+    );
     const { data: meal, error: mealError } = await sb
       .from("meals")
       .insert({

@@ -42,6 +42,7 @@ import { resolveMaxHR, resolveHrZones, zoneOf } from "../_shared/formulas/heartR
 import { ageFromBirthDate } from "../_shared/formulas/age.ts";
 import { computeCalendarWeeklyVolume } from "../_shared/formulas/weeklyVolume.ts";
 import { isWalk, WALK_TRAINING_TYPE } from "../_shared/formulas/runKinds.ts";
+import { PRE_RACE_ACTIVATION_TYPE } from "../_shared/formulas/vocabulary.ts";
 import { FONTE_NAO_RECONHECIDA, normalizarFonte, opcoesDeFonte } from "../_shared/sourceApps.ts";
 import { fetchFrameRace, type FrameRace, frameRaceSentence } from "../_shared/frameRace.ts";
 import {
@@ -78,12 +79,12 @@ const GEMINI_RETRIES = 1;
 // runs.training_type) ANTES deste deploy.
 export const TRAINING_TYPE_KEYS = [
   "continuo", "longo", "recuperacao", "tempo", "fartlek",
-  "intervalos", "subidas", "trail", "tecnico", WALK_TRAINING_TYPE,
+  "intervalos", "subidas", "trail", "tecnico", WALK_TRAINING_TYPE, PRE_RACE_ACTIVATION_TYPE,
 ];
 const TRAINING_TYPE_LABELS: Record<string, string> = {
   continuo: "Contínuo", longo: "Longo", recuperacao: "Recuperação", tempo: "Ritmo (Tempo)",
   fartlek: "Fartlek", intervalos: "Intervalos", subidas: "Subidas", trail: "Trail", tecnico: "Técnico (trilho)",
-  caminhada: "Caminhada",
+  caminhada: "Caminhada", ativacao: "Ativação pré-prova",
 };
 const RACE_TYPE_KEYS = ["estrada", "trail", "ultra", "5k", "10k", "21k", "42k", "outro"];
 const RACE_TYPE_LABELS: Record<string, string> = {

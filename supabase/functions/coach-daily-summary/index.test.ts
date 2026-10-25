@@ -604,3 +604,7 @@ Deno.test("caminhada: a regra do prompt diz que não é corrida nem carga, e nã
 Deno.test("caminhada: o plano de hoje diz caminhada com a intensidade", () => {
   assertEquals(treinoFalado({ kind: "corrida", training_type: "caminhada", categories: ["leve"], target_duration_min: 40 }), "uma caminhada leve de 40 minutos");
 });
+
+Deno.test("treinoFalado: a ativação pré-prova diz-se pelo nome, não como «corrida» (bug #84)", () => {
+  assertEquals(treinoFalado({ kind: "corrida", training_type: "ativacao", target_duration_min: 20 }), "uma ativação pré-prova de 20 minutos");
+});

@@ -9,7 +9,7 @@ import { UNLINKED_RUN_DETAILS_PREFIX } from "../_shared/formulas/proactiveTrigge
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { imageMarker, imagesTurnSection, parseChatImages, userTurnParts } from "./chatImages.ts";
 import { runSavePantryFood, SAVE_PANTRY_FOOD_TOOL } from "./pantryFromChat.ts";
-import { normalizeGender, categorizeDistance as sharedCategorizeDistance, MIN_PREP_WEEKS as SHARED_MIN_PREP_WEEKS, MIN_VOLUME_KM as SHARED_MIN_VOLUME_KM, PRE_RACE_HARD_RUN_TYPES, PRE_RACE_EASY_DAYS } from "../_shared/formulas/vocabulary.ts";
+import { normalizeGender, categorizeDistance as sharedCategorizeDistance, MIN_PREP_WEEKS as SHARED_MIN_PREP_WEEKS, MIN_VOLUME_KM as SHARED_MIN_VOLUME_KM, PRE_RACE_HARD_RUN_TYPES, PRE_RACE_EASY_DAYS, PRE_RACE_ACTIVATION_TYPE } from "../_shared/formulas/vocabulary.ts";
 import { classifyVisceralFat as sharedClassifyVisceralFat } from "../_shared/formulas/bodyComposition.ts";
 import { focusRace, isPrincipalRace, nextRaceByDate, selectRaces } from "../_shared/formulas/mainRace.ts";
 import { parseRecommendations } from "../_shared/formulas/recommendations.ts";
@@ -94,6 +94,29 @@ const MAX_TOOL_ROUNDS = 4;  // idas-e-voltas de function calling antes de força
 // Gemini diz que está ocupado (503), dentro do prazo do pedido
 // (_shared/geminiFetch.ts, o mesmo dos registos).
 const GEMINI_ATTEMPT_MS = 100000;
+/** O teto de saída do chat (raciocínio incluído). O Flash aceita até 65536;
+ *  32768 dá folga a um plano de 14 dias com refeições sem deixar uma resposta
+ *  descontrolada gastar o prazo do pedido (GEMINI_ATTEMPT_MS). */
+export const CHAT_MAX_OUTPUT_TOKENS = 32768;
+
+/** A resposta bateu no teto de saída e não trouxe nada aproveitável — nem
+ *  texto nem uma chamada de ferramenta (o caso de 25/10: finishReason
+ *  MAX_TOKENS, content {}). */
+// deno-lint-ignore no-explicit-any
+export function isTruncatedEmpty(parsedRes: any): boolean {
+  const candidate = parsedRes?.candidates?.[0];
+  if (candidate?.finishReason !== "MAX_TOKENS") return false;
+  // deno-lint-ignore no-explicit-any
+  const parts: any[] = candidate?.content?.parts || [];
+  return !parts.some((p) => p?.functionCall || (!p?.thought && typeof p?.text === "string" && p.text.trim()));
+}
+
+/** O que a Carol recebe (no system instruction) para a repetição depois de um
+ *  isTruncatedEmpty: o mesmo pedido, com a resposta a caber no teto. */
+export const SHORTER_REPLY_RETRY_INSTRUCTION =
+  "ATENÇÃO — A TUA RESPOSTA ANTERIOR FOI CORTADA por ser demasiado longa e não chegou ao atleta. Responde de forma " +
+  "mais curta. Se fores propor um plano com propose_training_plan, propõe no máximo 7 dias e sem meal_suggestion " +
+  "(as sugestões de refeição podem vir depois, com save_meal_suggestions); diz-lhe numa frase que o resto vem a seguir.";
 // Prazo do pedido inteiro, todas as rondas de ferramentas incluídas, com
 // folga para o limite rígido da plataforma (~150 s): passado ele, a função
 // era morta sem libertar o lock e sem resposta legível.
@@ -166,9 +189,12 @@ const RUNNING_TOOL = {
 // "caminhada" (2026-10-05): tipo de treino da corrida para recuperações e para
 // quem não pode correr (_shared/formulas/runKinds.ts). Exige a migração
 // 20261005120000 no check de runs.training_type.
+// "ativacao" (bug #84, 2026-10-25): o treino curto da véspera/antevéspera de
+// uma prova (15-30 min fáceis com 3-4 acelerações), que até aqui saía como
+// "recuperação". Exige a migração 20261025100000 no check de runs.training_type.
 const RUN_TRAINING_TYPES = [
   "continuo", "longo", "recuperacao", "tempo", "fartlek",
-  "intervalos", "subidas", "trail", "tecnico", WALK_TRAINING_TYPE,
+  "intervalos", "subidas", "trail", "tecnico", WALK_TRAINING_TYPE, PRE_RACE_ACTIVATION_TYPE,
 ];
 // No PLANO há mais um tipo: "prova" — o dia da prova é a prova, não um
 // treino (specs/plano-de-prova.md, "O plano tem de saber da prova"). Só é
@@ -290,14 +316,14 @@ const PROPOSE_PLAN_TOOL = {
     "Se houver outra PRINCIPAL dentro do período, não proponhas o plano: fala primeiro com o atleta e propõe-lhe as duas saídas — passar essa para secundária (ofereces-te para o fazer com update_race_event) ou fazer o plano até essa prova, que passa a ser o objetivo. A decisão é dele; tu explicas que dois polimentos seguidos são incompatíveis. " +
     // As guardas do servidor, ditas antes de ele as bater (2026-09-26): o
     // modelo gastava uma volta a descobrir cada uma pelo erro.
-    "O SERVIDOR RECUSA (e o erro diz porquê): mais de 14 itens; um item fora do período; no dia de uma prova agendada, outra coisa que não a prova (kind=corrida — o servidor põe training_type=prova, e acrescenta o dia se o omitires); training_type=prova num dia sem prova; " +
-    "nos 2 dias antes de qualquer prova agendada (mesmo a 1-2 dias do fim do período), treino forte ou ginásio — só recuperação curta ou descanso; um descanso sem meal_suggestion nem notes; " +
+    "O SERVIDOR RECUSA (e o erro diz porquê): mais de 14 itens; treinos espalhados por mais de 7 dias (do primeiro ao último planned_date — parte o plano em semanas, ver plan_until); um item fora do período; no dia de uma prova agendada, outra coisa que não a prova (kind=corrida — o servidor põe training_type=prova, e acrescenta o dia se o omitires); training_type=prova num dia sem prova; " +
+    "nos 2 dias antes de qualquer prova agendada (mesmo a 1-2 dias do fim do período), treino forte ou ginásio — só ativação curta ou descanso (na véspera e na antevéspera, prefere training_type=ativacao a recuperacao); um descanso sem meal_suggestion nem notes; " +
     "e, com histórico de corrida suficiente, um plano que cumprido leve o ACWR acima de 1,50 (o erro diz o dia e o teto de km).",
   parameters: {
     type: "OBJECT",
     properties: {
       period_start: { type: "STRING", description: "Primeiro dia do plano, formato YYYY-MM-DD" },
-      period_end: { type: "STRING", description: "Último dia do plano (inclusive), formato YYYY-MM-DD. Com race_id, TEM de ser a data da prova — o plano acaba no dia dela." },
+      period_end: { type: "STRING", description: "Último dia do plano (inclusive), formato YYYY-MM-DD. Com race_id, TEM de ser a data da prova — o plano acaba no dia dela. Numa PARTE de um plano partido (plan_until), period_start/period_end são os da semana dessa parte, com o mesmo race_id; só a parte que chega à prova acaba no dia dela." },
       race_id: {
         type: "STRING",
         description:
@@ -306,6 +332,12 @@ const PROPOSE_PLAN_TOOL = {
           "sobrepõe a um plano ativo que prepara uma principal (aí é o race_id desse plano). Omite-o num " +
           "plano sem objetivo (base aeróbica, regresso de lesão), mesmo que passe por provas secundárias " +
           "ou de treino — o dia delas entra no plano como prova.",
+      },
+      plan_until: {
+        type: "STRING",
+        description:
+          "Só quando o atleta pediu mais de 7 dias: o último dia que ele pediu (YYYY-MM-DD). Os items desta " +
+          "chamada cobrem no máximo 7 dias; a app pede-te a parte seguinte depois de ele aceitar esta.",
       },
       replace_active_plan: {
         type: "BOOLEAN",
@@ -323,7 +355,9 @@ const PROPOSE_PLAN_TOOL = {
           "1. CAUSA DA ALTERAÇÃO: o finding ou desvio concreto que originou este ajuste (ex.: corrida de 25 km quando estavam previstos 7 km, somada à carga de 40 km e ginásio do dia anterior); " +
           "2. O QUE SE PRETENDE CORRIGIR: o objetivo fisiológico da adaptação (ex.: baixar a fadiga aguda, prevenir lesões musculares e garantir supercompensação sem comprometer a prova); " +
           "3. O QUE É ALTERADO: o resumo direto dos treinos ajustados (ex.: conversão de amanhã em descanso ativo, redução de volume no fim de semana e reforço de hidratos de recuperação). " +
-          "Separa os pontos com quebras de linha para uma leitura perfeita na persiana de proposta.",
+          "Separa os pontos com quebras de linha para uma leitura perfeita na persiana de proposta. " +
+          "Fala dos dias que os items cobrem (\"os próximos 14 dias\"), nunca do período inteiro como \"plano de N dias\": " +
+          "se o período vai até à prova e há semanas sem items, diz que essas se planeiam depois.",
       },
       items: {
         type: "ARRAY",
@@ -349,6 +383,8 @@ const PROPOSE_PLAN_TOOL = {
               description:
                 "Só para kind=corrida. Tipo de treino de corrida. \"prova\" é o dia de uma prova " +
                 "agendada (o servidor exige-o nesse dia e recusa treinos fortes e ginásio na véspera e na antevéspera). " +
+                "\"ativacao\" é a ativação pré-prova da véspera ou da antevéspera: 15-30 min fáceis com 3-4 acelerações curtas " +
+                "(target_duration_min) — é esse o treino desses dias, não recuperacao. " +
                 "\"caminhada\" é um dia de CAMINHADA (recuperação de lesão/cirurgia, pós-prova, regresso, descanso ativo, " +
                 "indicação médica para não correr): leva target_duration_min ou target_distance_km e walk_intensity, e não conta para a carga de corrida.",
             },
@@ -858,6 +894,59 @@ export async function recordProactiveDelivered(sb: any, userId: string, trigger:
     if (error) console.warn("coach_proactive_log: gravação falhou:", error.message ?? error);
   } catch (e) {
     console.warn("coach_proactive_log: gravação falhou:", e);
+  }
+}
+
+/* O mapa da época, uma vez por assinatura (bug de 2026-10-25): a Carol
+   mandou o mapa do Troféu duas vezes com 30 s de diferença. O turno passou
+   dos 45 s, chegou ao cliente por sondagem e o cliente não marcou o aviso
+   (coach_impressions) — e o servidor não sabia que já o tinha dito. Agora o
+   cliente manda cup_map.signature (a edição e o estado das jornadas: muda
+   quando as jornadas mudam, e aí o mapa é outro) e o servidor regista a
+   entrega em coach_proactive_log quando grava a mensagem, não quando a
+   resposta chega ao cliente. A mesma assinatura nas 24 h seguintes à PRIMEIRA
+   entrega não gera turno novo (o registo só se insere; a RLS não deixa
+   renová-lo). O lock por utilizador (coach_chat_busy_since) devolve 409 a um
+   segundo pedido enquanto o primeiro corre: quando o segundo passa, o
+   primeiro já gravou a entrega. */
+export const CUP_MAP_RESEND_MS = 24 * 3600 * 1000;
+
+/** A chave do registo para uma assinatura do mapa, ou null se não serve. */
+export function cupMapKey(signature: unknown): string | null {
+  const s = typeof signature === "string" ? signature.trim() : "";
+  return s && s.length <= 180 && /^[\w:.-]+$/.test(s) ? `cup_map:${s}` : null;
+}
+
+/** Esta assinatura já foi entregue nas últimas 24 h? Uma falha a ler dá
+ *  false: mais vale repetir o mapa do que nunca o mostrar. */
+// deno-lint-ignore no-explicit-any
+export async function cupMapAlreadySent(sb: any, userId: string, key: string, nowMs = Date.now()): Promise<boolean> {
+  try {
+    const { data, error } = await sb.from("coach_proactive_log")
+      .select("sent_at").eq("user_id", userId).eq("key", key).maybeSingle();
+    if (error) {
+      console.warn("coach_proactive_log (mapa): leitura falhou:", error.message ?? error);
+      return false;
+    }
+    const at = Date.parse(String(data?.sent_at ?? ""));
+    return Number.isFinite(at) && nowMs - at < CUP_MAP_RESEND_MS;
+  } catch (e) {
+    console.warn("coach_proactive_log (mapa): leitura falhou:", e);
+    return false;
+  }
+}
+
+/** Regista a entrega do mapa. Só insere (ignoreDuplicates): a RLS de
+ *  coach_proactive_log não deixa UPDATE, e um upsert que atualizasse falhava
+ *  sempre — as 24 h contam da primeira entrega (revisão do lote, 2026-10-25). */
+// deno-lint-ignore no-explicit-any
+export async function recordCupMapDelivered(sb: any, userId: string, key: string, nowISO = new Date().toISOString()): Promise<void> {
+  try {
+    const { error } = await sb.from("coach_proactive_log")
+      .upsert({ user_id: userId, key, trigger: "cup_map", sent_at: nowISO }, { onConflict: "user_id,key", ignoreDuplicates: true });
+    if (error) console.warn("coach_proactive_log (mapa): gravação falhou:", error.message ?? error);
+  } catch (e) {
+    console.warn("coach_proactive_log (mapa): gravação falhou:", e);
   }
 }
 
@@ -1516,7 +1605,19 @@ export async function saveRecommendations(sb: any, userId: string, messageId: st
 // isso, se o insert com a emoção falhar, seja porquê, grava-se sem ela; o
 // cliente deduz a emoção do texto.
 // deno-lint-ignore no-explicit-any
-async function insertModelMessage(sb: any, userId: string, content: string, mood: CarolMood | null) {
+export async function insertModelMessage(sb: any, userId: string, content: string, mood: CarolMood | null, planContinuation: unknown = null) {
+  // A continuação de um plano partido vai também na linha da mensagem: um
+  // turno de mais de 45 s chega ao cliente por sondagem, sem a resposta, e o
+  // plan_continuation perdia-se com ela (migração 20261025180000). Sem a
+  // coluna, grava-se sem ela, como a emoção.
+  if (planContinuation) {
+    const withPlan = await sb.from("coach_messages")
+      .insert({ user_id: userId, role: "model", content, ...(mood ? { mood } : {}), plan_continuation: planContinuation })
+      .select()
+      .single();
+    if (!withPlan.error) return withPlan;
+    console.warn("Resposta gravada sem plan_continuation (coach_messages.plan_continuation):", withPlan.error.code, withPlan.error.message);
+  }
   if (mood) {
     const withMood = await sb.from("coach_messages")
       .insert({ user_id: userId, role: "model", content, mood })
@@ -1593,6 +1694,28 @@ export const CHAT_SESSION_TEXT =
   "Não consegui confirmar que és tu. Sai da app e volta a entrar, e continuamos.";
 export const CHAT_MESSAGE_NOT_SAVED_TEXT =
   "A tua mensagem não ficou guardada, por isso não lhe respondi. Envia-a outra vez.";
+// A resposta perdeu-se a meio (vazia, ou JSON cortado) — frases da Carol
+// (2026-10-25). Com mensagem dele, o cliente mostra «Reenviar a mensagem»
+// (Coach.jsx, handleImmediateFailure com retry); quando foi ela que abriu a
+// conversa, ou num turno sem mensagem (check-in, mapa), não há o que reenviar.
+export const CHAT_LOST_REPLY_TEXT =
+  "Fiquei a meio da resposta e perdi-a. Toca em Reenviar a mensagem e eu respondo-te outra vez, sem precisares de escrever nada.";
+// Foi ela que abriu (proactiveTrigger): não se pede nada ao atleta. É verdade
+// que ela volta — num 502 o servidor não regista a chave (recordProactiveDelivered
+// só corre com a mensagem gravada) e o cliente não a marca (markProactiveSent
+// só com resposta), por isso o turno volta a disparar na próxima abertura.
+export const CHAT_LOST_PROACTIVE_TEXT =
+  "Perdi o fio ao que te queria dizer. Deixa-me arrumar as ideias, que eu volto a falar contigo.";
+// Um turno sem mensagem dele que não é dela (Adaptar Plano, o mapa da época, a
+// intervenção, a continuação do plano): não volta sozinho — é ele que toca de novo.
+export const CHAT_LOST_CHECKIN_TEXT =
+  "Fiquei a meio do que te queria dizer e perdi-o. Tenta outra vez daqui a bocado.";
+
+/** A frase do 502 da resposta perdida: há mensagem dele para reenviar? foi ela que abriu? */
+export function lostReplyText(message: unknown, proactiveTrigger: unknown): string {
+  if (proactiveTrigger) return CHAT_LOST_PROACTIVE_TEXT;
+  return typeof message === "string" && message.trim() ? CHAT_LOST_REPLY_TEXT : CHAT_LOST_CHECKIN_TEXT;
+}
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -3020,6 +3143,71 @@ export function extractReplyText(geminiJson: any): string | undefined {
 // linhas na base de dados.
 const MAX_PLAN_ITEMS = 14;
 
+/* Um plano longo parte-se em semanas (decisão do Rui, 2026-10-25): a 25/10 um
+   plano de 14 dias com refeições levou ~64 s e nem chegou (MAX_TOKENS). Cada
+   propose_training_plan leva no máximo 7 dias de TREINOS — do primeiro ao
+   último planned_date; o período pode ir até à prova. Pedidos mais, a Carol
+   avisa e propõe a primeira semana com plan_until (o último dia pedido); a
+   resposta do turno traz plan_continuation com a semana seguinte, e o cliente
+   pede-a (sem texto do atleta) DEPOIS de ele aceitar a parte — a regra de uma
+   só proposta pendente fica como está. */
+export const MAX_PLAN_SPAN_DAYS = 7;
+/** O que falta de um plano partido: a próxima parte (from..to), o número dela
+ *  e de quantas, e o último dia que o atleta pediu (until). */
+export type PlanContinuation = { from: string; to: string; part: number; of: number; until: string };
+// Um plano partido não vai além disto (13 semanas), venha o until de onde vier.
+const MAX_PLAN_UNTIL_DAYS = 92;
+
+/** A continuação que o cliente devolve, validada; null se não serve. */
+export function parsePlanContinuation(raw: unknown): PlanContinuation | null {
+  if (!raw || typeof raw !== "object") return null;
+  // deno-lint-ignore no-explicit-any
+  const r = raw as any;
+  const part = Number(r.part), of = Number(r.of);
+  if (![r.from, r.to, r.until].every((d) => typeof d === "string" && ISO_DATE_RE.test(d))) return null;
+  if (!Number.isInteger(part) || !Number.isInteger(of) || part < 2 || part > of || of > 13) return null;
+  if (r.from > r.to || r.to > r.until || daysBetweenISO(r.from, r.to) + 1 > MAX_PLAN_SPAN_DAYS) return null;
+  return { from: r.from, to: r.to, part, of, until: r.until };
+}
+
+/** Depois de uma parte proposta: a seguinte, ou null se o plano ficou completo. */
+// deno-lint-ignore no-explicit-any
+export function nextPlanContinuation(args: any, current: PlanContinuation | null): PlanContinuation | null {
+  const dates = (Array.isArray(args?.items) ? args.items : [])
+    // deno-lint-ignore no-explicit-any
+    .map((i: any) => i?.planned_date)
+    .filter((d: unknown): d is string => typeof d === "string" && ISO_DATE_RE.test(d))
+    .sort();
+  if (!dates.length) return null;
+  const first = current?.from ?? dates[0];
+  const rawUntil = current?.until ?? (typeof args?.plan_until === "string" && ISO_DATE_RE.test(args.plan_until) ? args.plan_until : null);
+  if (!rawUntil) return null;
+  const until = rawUntil < addDaysISO(first, MAX_PLAN_UNTIL_DAYS) ? rawUntil : addDaysISO(first, MAX_PLAN_UNTIL_DAYS - 1);
+  const thisTo = current?.to ?? addDaysISO(first, MAX_PLAN_SPAN_DAYS - 1);
+  if (until <= thisTo) return null;
+  const from = addDaysISO(thisTo, 1);
+  const to = addDaysISO(from, MAX_PLAN_SPAN_DAYS - 1) < until ? addDaysISO(from, MAX_PLAN_SPAN_DAYS - 1) : until;
+  const part = (current?.part ?? 1) + 1;
+  const of = current?.of ?? Math.ceil((daysBetweenISO(first, until) + 1) / MAX_PLAN_SPAN_DAYS);
+  return { from, to, part, of: Math.max(of, part), until };
+}
+
+/** O turno da continuação: o que a Carol recebe no lugar da mensagem dele. */
+export function buildPlanContinuationTurn(c: PlanContinuation): string {
+  const last = c.part >= c.of;
+  // As partes anteriores têm 7 dias cada: começaram 7 × (parte − 1) dias antes desta.
+  const chainStart = addDaysISO(c.from, -MAX_PLAN_SPAN_DAYS * (c.part - 1));
+  return `Continuação do plano (parte ${c.part} de ${c.of}): o atleta aceitou a parte anterior e a app pediu-te a seguinte. ` +
+    `As partes anteriores (de ${chainStart} a ${addDaysISO(c.from, -1)}) estão ACEITES PROVISORIAMENTE: continuam pendentes na ` +
+    `base de dados porque o plano só se aplica quando ele aceitar a última parte — não as trates como recusadas nem por ` +
+    `decidir, não as repitas nem as voltes a propor. ` +
+    `Propõe JÁ, com propose_training_plan, só os treinos de ${c.from} a ${c.to}, com period_start=${c.from} e period_end=${c.to} — ` +
+    `o mesmo objetivo e a mesma prova (race_id) da parte anterior, sem repetir os dias dela${last ? "" : `, e com plan_until=${c.until}`}. ` +
+    `No texto, uma frase curta de ligação que diga os dias desta parte (ex.: «Aqui tens a semana de … a …») — nunca o período até à prova` +
+    (last ? " e diz-lhe que, ao aceitar esta, o plano todo fica em vigor." : ", e diz-lhe que a seguinte vem depois de aceitar esta.") +
+    ` Não cumprimentes nem repitas o que já disseste.`;
+}
+
 // Executa a function call propose_training_plan: grava o plano com estado
 // 'proposto' e os respetivos itens. Ao contrário das outras três ferramentas,
 // esta ESCREVE — daí a validação apertada de cada campo antes do insert.
@@ -3063,7 +3251,12 @@ export async function fetchScheduledRaces(sb: any, userId: string, fromISO: stri
 // jornada para atacar pede 3 dias fáceis antes em vez de 2 (#6, getTaperDays
 // por intenção). null = a guarda de sempre, a mesma consulta, byte a byte.
 // deno-lint-ignore no-explicit-any
-export async function runProposeTrainingPlan(sb: any, userId: string, args: any, seriesIntents: Record<string, SeriesIntent> | null = null): Promise<string> {
+export async function runProposeTrainingPlan(
+  // deno-lint-ignore no-explicit-any
+  sb: any, userId: string, args: any, seriesIntents: Record<string, SeriesIntent> | null = null,
+  // Num turno de continuação, os treinos só podem cair nesta semana.
+  partWindow: PlanContinuation | null = null,
+): Promise<string> {
   const { period_start, period_end, summary, items, replace_active_plan } = args || {};
   const raceId = typeof args?.race_id === "string" && args.race_id.trim() ? args.race_id.trim() : null;
 
@@ -3076,6 +3269,47 @@ export async function runProposeTrainingPlan(sb: any, userId: string, args: any,
   }
   if (items.length > MAX_PLAN_ITEMS) {
     return `Erro: demasiados treinos no plano (máximo ${MAX_PLAN_ITEMS}).`;
+  }
+  // No máximo 7 dias de treinos por proposta (MAX_PLAN_SPAN_DAYS): recusado
+  // antes de qualquer leitura, com a instrução para partir o plano.
+  {
+    // O dia de uma prova não é um treino: um item training_type=prova (o dia
+    // da prova-objetivo, lá no fim do período) não conta para os 7 dias.
+    const itemDates = items
+      // deno-lint-ignore no-explicit-any
+      .filter((i: any) => i?.training_type !== "prova")
+      // deno-lint-ignore no-explicit-any
+      .map((i: any) => i?.planned_date)
+      .filter((d: unknown): d is string => typeof d === "string" && ISO_DATE_RE.test(d))
+      .sort();
+    if (itemDates.length) {
+      const first = itemDates[0], last = itemDates[itemDates.length - 1];
+      const span = daysBetweenISO(first, last) + 1;
+      if (span > MAX_PLAN_SPAN_DAYS) {
+        return `Erro: no máximo ${MAX_PLAN_SPAN_DAYS} dias de treinos por proposta — estes vão de ${first} a ${last} (${span} dias). ` +
+          `Parte o plano em semanas: propõe agora só os treinos de ${first} a ${addDaysISO(first, MAX_PLAN_SPAN_DAYS - 1)}, com plan_until=${last}, ` +
+          `e avisa o atleta no texto deste turno de que o plano vem em partes (ex.: «Faço-te isto em partes, 7 dias de cada vez: primeiro a semana de …, ` +
+          `logo a seguir a de …»). A parte seguinte faz-se depois de ele aceitar esta.`;
+      }
+      if (partWindow && (first < partWindow.from || last > partWindow.to)) {
+        return `Erro: esta é a continuação do plano — só os treinos de ${partWindow.from} a ${partWindow.to} (estes vão de ${first} a ${last}).`;
+      }
+    }
+  }
+  /* Uma PARTE de um plano partido (Frontend, opção A, 2026-10-25): a aceitação
+     com o mesmo race_id funde no bloco e apaga os itens do alvo DENTRO do
+     período da proposta — por isso cada parte grava como período só a sua
+     semana. Parte = a continuação (partWindow) ou a primeira, com plan_until
+     para lá do fim dela. O bloco cresce na aceitação (finalStart/finalEnd). */
+  const planUntil = typeof args?.plan_until === "string" && ISO_DATE_RE.test(args.plan_until) ? args.plan_until : null;
+  const isPart = !!partWindow || (planUntil !== null && planUntil > period_end);
+  if (partWindow && (period_start !== partWindow.from || period_end !== partWindow.to)) {
+    return `Erro: esta parte é a semana de ${partWindow.from} a ${partWindow.to} — period_start=${partWindow.from} e period_end=${partWindow.to} ` +
+      `(estão ${period_start} e ${period_end}); o bloco junta as partes sozinho quando o atleta as aceita.`;
+  }
+  if (isPart && !partWindow && daysBetweenISO(period_start, period_end) + 1 > MAX_PLAN_SPAN_DAYS) {
+    return `Erro: numa parte de um plano partido, o período é o da semana dela — period_end tem de ser no máximo ` +
+      `${addDaysISO(period_start, MAX_PLAN_SPAN_DAYS - 1)} (está ${period_end}). Mantém o race_id e o plan_until; o bloco junta as partes sozinho quando o atleta as aceita.`;
   }
 
   // As provas agendadas no período (e até 2 dias depois — 3 com uma jornada
@@ -3113,8 +3347,12 @@ export async function runProposeTrainingPlan(sb: any, userId: string, args: any,
       return `Erro: a prova "${target.name}" já está concluída — um plano prepara uma prova por correr. Se o atleta quer o plano seguinte, usa a próxima prova agendada.`;
     }
     targetRace = target;
-    if (target.date !== period_end) {
-      return `Erro: o plano para a prova "${target.name}" tem de acabar no dia dela. period_end tem de ser ${target.date} (está ${period_end}) — nesse dia o plano termina.`;
+    // Numa parte, o período é a semana dela: acaba no dia da prova só a parte
+    // que lá chega, e nenhuma passa dele.
+    if (isPart ? period_end > target.date : target.date !== period_end) {
+      return isPart
+        ? `Erro: esta parte do plano para a prova "${target.name}" passa do dia dela — period_end tem de ser no máximo ${target.date} (está ${period_end}).`
+        : `Erro: o plano para a prova "${target.name}" tem de acabar no dia dela. period_end tem de ser ${target.date} (está ${period_end}) — nesse dia o plano termina.`;
     }
     // Só UMA principal entre hoje e o objetivo. O taper de uma prova 'a'
     // (10-21 dias) é incompatível com treinar para outra no mesmo período.
@@ -3181,7 +3419,7 @@ export async function runProposeTrainingPlan(sb: any, userId: string, args: any,
     const raceSoon = racesInPeriodOrAfter.find((r) => r.date > item.planned_date && daysBetweenISO(item.planned_date, r.date) <= easyDaysBefore(r));
     if (raceSoon && ((item.kind === "corrida" && HARD_RUN_TYPES.has(item.training_type)) || item.kind === "ginasio")) {
       const attacked = easyDaysBefore(raceSoon) > PRE_RACE_EASY_DAYS ? ` (é uma jornada para atacar: ${easyDaysBefore(raceSoon)} dias fáceis antes)` : "";
-      return `Erro no treino ${n}: ${item.planned_date} está a ${daysBetweenISO(item.planned_date, raceSoon.date)} dia(s) da prova "${raceSoon.name}"${attacked} — só recuperação curta ou descanso; nada de ${item.kind === "ginasio" ? "ginásio" : item.training_type}.`;
+      return `Erro no treino ${n}: ${item.planned_date} está a ${daysBetweenISO(item.planned_date, raceSoon.date)} dia(s) da prova "${raceSoon.name}"${attacked} — só ativação curta (training_type=ativacao) ou descanso; nada de ${item.kind === "ginasio" ? "ginásio" : item.training_type}.`;
     }
     const mealSuggestion = typeof item.meal_suggestion === "string" && item.meal_suggestion.trim()
       ? item.meal_suggestion.trim()
@@ -3276,7 +3514,11 @@ export async function runProposeTrainingPlan(sb: any, userId: string, args: any,
   );
 
   let supersedesPlanId: string | null = null;
-  if (replace_active_plan === true) {
+  // Só a parte 1 de um plano partido pode substituir o plano ativo (2.ª revisão
+  // do lote, B1): a continuação que voltasse a apontar para ele, ao aplicar a
+  // cadeia, ficava como bloco próprio ao lado da parte 1 — dois blocos aceites
+  // da mesma prova.
+  if (replace_active_plan === true && !partWindow) {
     /* O plano a substituir é o que se SOBREPÕE à proposta — de preferência
        o vinculado. trainingPlans[0] vinha de uma consulta sem ordem nem
        filtro: depois de um bloco novo a começar no futuro há dois planos de
@@ -3388,14 +3630,54 @@ export async function runProposeTrainingPlan(sb: any, userId: string, args: any,
   // real (corrida/ginásio) — a mesma regra usada acima para
   // supersedes_plan_id; uma proposta de só-refeições não bloqueia nem é
   // bloqueada por esta.
+  //
+  // A exceção são as partes de um plano partido (pedido do Rui, 2026-10-25): o
+  // plano só se aplica quando ele aceita a última, por isso as anteriores
+  // ficam pendentes na BD («aceites provisoriamente») enquanto a cadeia
+  // corre. Um turno de continuação (partWindow) não recusa as partes da
+  // MESMA cadeia: as pendentes com o mesmo race_id (ou ambas sem) que acabam
+  // antes da semana desta parte. Não é preciso um id de cadeia: a primeira
+  // parte não é continuação e recusou todas as pendentes que havia, por isso
+  // o que fica pendente antes da semana desta é a cadeia. Uma proposta que
+  // não é continuação recusa tudo, as partes incluídas.
   const { data: pendingPlans } = await sb
     .from("coach_plans")
-    .select("id, coach_plan_items(kind)")
+    .select("id, race_id, period_end, coach_plan_items(kind)")
     .eq("user_id", userId)
     .eq("status", "proposto");
+  // Uma pendente só é parte da cadeia se uma mensagem da Carol a deu como
+  // parte (2.ª revisão do lote, R4): a coach_messages.plan_continuation dessa
+  // parte começa no dia a seguir ao fim dela. Sem isso — uma pendente qualquer
+  // da mesma prova —, recusa-se como sempre. Uma falha a ler (ou a coluna por
+  // criar) não isenta nada.
+  const chainFroms = new Set<string>();
+  if (partWindow) {
+    try {
+      const { data: msgs, error: msgErr } = await sb.from("coach_messages")
+        .select("plan_continuation")
+        .eq("user_id", userId)
+        .not("plan_continuation", "is", null)
+        .order("created_at", { ascending: false })
+        .limit(30);
+      if (msgErr) console.warn("coach_messages.plan_continuation não lida:", msgErr.message);
+      // deno-lint-ignore no-explicit-any
+      for (const m of (msgs ?? []) as any[]) {
+        const from = m?.plan_continuation?.from;
+        if (typeof from === "string" && ISO_DATE_RE.test(from)) chainFroms.add(from);
+      }
+    } catch (e) {
+      console.warn("coach_messages.plan_continuation não lida:", e instanceof Error ? e.message : e);
+    }
+  }
+  // deno-lint-ignore no-explicit-any
+  const inThisChain = (p: any) =>
+    !!partWindow && (p.race_id ?? null) === raceId && typeof p.period_end === "string" && ISO_DATE_RE.test(p.period_end) &&
+    p.period_end < partWindow.from && chainFroms.has(addDaysISO(p.period_end, 1));
   const stalePendingIds = (pendingPlans || [])
     // deno-lint-ignore no-explicit-any
     .filter((p: any) => (p.coach_plan_items || []).some((i: any) => i.kind === "corrida" || i.kind === "ginasio"))
+    // deno-lint-ignore no-explicit-any
+    .filter((p: any) => !inThisChain(p))
     // deno-lint-ignore no-explicit-any
     .map((p: any) => p.id);
   if (stalePendingIds.length > 0) {
@@ -4524,6 +4806,42 @@ function formatHms(totalSeconds: number): string {
 // Inclui explicitamente "dias até à prova" para o modelo não ter de calcular
 // datas por conta própria.
 // deno-lint-ignore no-explicit-any
+/**
+ * As corridas da previsão de tempo (bug #89): o histórico completo do
+ * atleta, como o store do frontend o carrega para o hub da prova
+ * (src/store/index.js, runs por date desc, id desc), só com as colunas que a
+ * previsão usa. Por páginas de 1000 (o max_rows do PostgREST), com o id a
+ * desempatar. Um erro devolve null — a previsão cai para os 30 dias, como
+ * antes, em vez de a Carol ficar sem número.
+ */
+export async function fetchForecastRuns(
+  // deno-lint-ignore no-explicit-any
+  sb: any,
+  userId: string,
+  // deno-lint-ignore no-explicit-any
+): Promise<any[] | null> {
+  const PAGE = 1000;
+  // deno-lint-ignore no-explicit-any
+  const out: any[] = [];
+  for (let start = 0;; start += PAGE) {
+    const { data, error } = await sb
+      .from("runs")
+      .select("id, date, kind, training_type, distance_km, duration_seconds")
+      .eq("user_id", userId)
+      .gt("distance_km", 0)
+      .gt("duration_seconds", 0)
+      .order("date", { ascending: false })
+      .order("id", { ascending: false })
+      .range(start, start + PAGE - 1);
+    if (error) {
+      warnIfQueryFailed("runs(previsão)", error);
+      return null;
+    }
+    out.push(...(data ?? []));
+    if (!data || data.length < PAGE) return out;
+  }
+}
+
 export function buildRaceEventsContext(
   events: any[],
   todayISO: string,
@@ -4535,17 +4853,18 @@ export function buildRaceEventsContext(
   // COMPETIÇÃO POR JORNADAS — só com inscrição ativa. null = o texto de
   // sempre, byte a byte (Fase 2 do Troféu).
   seriesIntents: Record<string, SeriesIntent> | null = null,
+  // As corridas da PREVISÃO DE TEMPO: o histórico completo, o mesmo conjunto
+  // que o hub da prova usa (fetchForecastRuns). null = as `runs` de 30 dias
+  // (os testes antigos e um erro a ler).
+  // deno-lint-ignore no-explicit-any
+  forecastRuns: any[] | null = null,
 ): string | null {
   if (events.length === 0) return null;
   // Mesma janela de 30 dias que o resto do contexto já usa (recentRuns) —
-  // cobre as 4 semanas rolantes que o motor de triagem precisa (Bloco 8)
-  // sem uma query extra. Nota honesta: RaceLevelSuggestion.jsx, no
-  // formulário, usa o histórico COMPLETO para a previsão de tempo (é o que
-  // já estava carregado no store) — aqui é só 30 dias, por isso o número
-  // pode divergir num atleta com um recorde antigo fora desta janela. Uma
-  // query de histórico completo aqui seria mais uma chamada à BD em TODAS
-  // as invocações do coach-chat; o atleta já tem get_running_history para
-  // ir buscar mais para trás se precisar.
+  // cobre as 4 semanas rolantes que o motor de triagem precisa (Bloco 8).
+  // A previsão de tempo NÃO sai daqui (bug #89, 2026-10-25): com 30 dias, a
+  // Carol disse 1:03:32 para uns 10 km em que o ecrã, com o histórico todo,
+  // mostrava 50:52 — o atleta via os dois números. Sai de forecastRuns.
   // Só corridas: o map perde o training_type (runKinds.ts, 2026-10-05).
   const flattenedRuns = runsOnly(runs).map((r) => ({
     date: r.date,
@@ -4557,6 +4876,9 @@ export function buildRaceEventsContext(
     duration_seconds: r.duration_seconds,
     elevation_gain_m: r.details?.elevation_gain_m ?? null,
   }));
+  const predictionRuns = forecastRuns
+    ? runsOnly(forecastRuns).map((r) => ({ date: r.date, distance_km: r.distance_km, duration_seconds: r.duration_seconds }))
+    : flattenedRuns;
   const today = new Date(todayISO + "T00:00:00Z");
   const lines = events.map((e) => {
     const eventDate = new Date(e.date + "T00:00:00Z");
@@ -4643,13 +4965,10 @@ export function buildRaceEventsContext(
        preparação como quando se conclui a prova (...) sempre com o tempo
        total e o pace".
 
-       Sai do mesmo getRacePrediction que o hub usa, mas NÃO é forçosamente o
-       mesmo número: aqui as corridas vêm de uma janela de 30 dias (ver o
-       comentário de `flattenedRuns` acima) e o hub lê o histórico todo. Num
-       atleta com um recorde antigo fora da janela, os dois divergem — e a
-       partir desta entrega o atleta vê ambos, um dito por ela e outro
-       impresso no ecrã. Por isso o próprio bloco diz sobre que período foi
-       calculado, em vez de se apresentar como a verdade única. */
+       Sai do mesmo getRacePrediction que o hub usa E das mesmas corridas (o
+       histórico completo, forecastRuns — bug #89): o número dela e o do ecrã
+       são o mesmo. A linha cita a corrida de referência, para ela poder dizer
+       de onde vem o número em vez de o atleta ter de adivinhar. */
     let forecastSuffix = "";
     if (e.distance_km) {
       const raceForPrediction = {
@@ -4658,14 +4977,21 @@ export function buildRaceEventsContext(
         race_type: e.race_type,
         experience_level: effectiveLevel,
       };
-      const prediction = sharedGetRacePrediction(raceForPrediction, { experience_level: profileLevel }, flattenedRuns);
+      const prediction = sharedGetRacePrediction(raceForPrediction, { experience_level: profileLevel }, predictionRuns);
       if (prediction.predictedSeconds > 0) {
         const predSeconds = Math.round(prediction.predictedSeconds);
         // O ritmo é sempre sobre a distância REAL da prova, mesmo no trail,
         // onde a previsão corre sobre a distância equivalente em plano.
         const predPace = formatPaceMinKm(Math.round(predSeconds / e.distance_km));
         const targetSeconds = Number(e.target_time_seconds) > 0 ? Math.round(Number(e.target_time_seconds)) : 0;
-        const parts = [`pelas corridas dos últimos 30 dias, o treino aponta para ${formatHms(predSeconds)} (${predPace}/km)`];
+        const source = forecastRuns ? "pelo histórico de corridas (o mesmo número que o ecrã da prova mostra)" : "pelas corridas dos últimos 30 dias";
+        const parts = [`${source}, o treino aponta para ${formatHms(predSeconds)} (${predPace}/km)`];
+        const ref = prediction.basedOn;
+        if (ref) {
+          const refDate = ref.date ? `a de ${ref.date.slice(8, 10)}/${ref.date.slice(5, 7)}/${ref.date.slice(0, 4)}, ` : "";
+          const refKm = String(Math.round(Number(ref.distance) * 100) / 100).replace(".", ",");
+          parts.push(`corrida de referência: ${refDate}${refKm} km em ${formatHms(Math.round(Number(ref.time)))} — é dela que sai o número; cita-a quando o deres`);
+        }
         if (targetSeconds > 0) {
           /* Exatamente a comparação do plano do dia da prova
              (buildRacePacingPlan) e a do hub (raceTimes.js, stanceOf): o
@@ -5459,6 +5785,9 @@ export function buildSystemInstruction(
     `- Planos, explicações técnicas, enumerações → estruturado (negrito, listas, secções breves).\n` +
     `- Situações emocionais (frustração, desmotivação, lesão) → texto corrido e humano, sem bullet points.\n` +
     `- Responde **apenas ao que foi perguntado** — não expandas para temas não pedidos.\n` +
+    // Bug #88: a palavra-chave do objetivo de prova perdia-se no meio do texto.
+    // Uma palavra ou valor só: o CoachText parte o negrito num ". Maiúscula".
+    `- Quando enuncias o objetivo, o papel ou a estratégia de uma prova, a palavra-chave ou o valor vai a negrito — **atacar**, **controlar**, **trote**, **49:30** —, uma só palavra ou valor, nunca a frase inteira.\n` +
     `- Se a resposta ou plano for potencialmente muito longo, pergunta primeiro: "Queres o detalhe completo ou só o sumário?"\n\n` +
     // ── Abertura da Conversa ──────────────────────────────────────────────────
     `## Abertura de Conversa\n` +
@@ -5977,9 +6306,20 @@ export function buildSystemInstruction(
     `se não fizer.\n\n` +
     `A PROVA NO PLANO: se houver prova agendada dentro do período, o dia da prova leva um item ` +
     `kind=corrida com training_type=prova (distância da prova; a notes aponta para o plano de ritmo do hub) — ` +
-    `nunca um treino. A véspera e a antevéspera levam recuperação curta ou descanso: o servidor recusa ` +
+    `nunca um treino. A véspera e a antevéspera levam ativação curta ou descanso — a ativação é training_type=ativacao ` +
+    `(15-30 min fáceis com 3-4 acelerações curtas), não recuperacao: o servidor recusa ` +
     `longo, tempo, fartlek, intervalos, subidas e ginásio nesses dois dias. As sugestões alimentares desses ` +
     `dias seguem o bloco VÉSPERA E MANHÃ DA PROVA quando existir.\n\n` +
+    `PLANOS COM MAIS DE 7 DIAS: cada propose_training_plan leva no máximo 7 dias de treinos (do primeiro ao último ` +
+    `planned_date; o período pode ir até à prova). Se o atleta pedir mais (ex.: 14 dias), AVISA-O PRIMEIRO no texto ` +
+    `deste turno — «Faço-te isto em partes, 7 dias de cada vez: primeiro a semana de 26/10 a 1/11, logo a seguir a de 2 a 8/11.» — e ` +
+    `propõe só a primeira semana, com plan_until = o último dia que ele pediu. Numa parte, period_start/period_end são os ` +
+    `da semana dela (com o mesmo race_id, se o plano é para uma prova). A parte seguinte pede-ta a app depois ` +
+    `de ele aceitar esta: não a proponhas antes.\n\n` +
+    `O QUE O PLANO COBRE: no texto e no summary, fala dos dias que os items cobrem — «os próximos 14 dias», «esta semana» —, ` +
+    `nunca do período inteiro: um plano que vai até à prova mas só tem treinos nas primeiras semanas NÃO é «um plano de 35 dias ` +
+    `até à meia». Se há semanas sem treinos até à prova, diz-lhe que essas combinam depois («as semanas até à meia combinamos ` +
+    `depois»). Num plano em partes, isto vai junto com o aviso de que vem em partes.\n\n` +
     WALKING_DOCTRINE +
     `DETALHE DOS TREINOS DE CORRIDA NO PLANO (notes de propose_training_plan): uma zona de FC ` +
     `sozinha ("Z2, fácil") não chega — o atleta precisa de saber a que ritmo correr, não só o ` +
@@ -6497,6 +6837,11 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
       const { caption, usage } = await generateRaceCaption(geminiKey!, captionOutcome, captionProfile?.display_name || null, requestStartedAt + CAPTION_BUDGET_MS);
       return jsonResponse({ caption, usage });
     }
+    // A parte seguinte de um plano partido (MAX_PLAN_SPAN_DAYS): o cliente pede-a
+    // sem texto, depois de o atleta aceitar a anterior. Segue pelo canal do
+    // check-in do plano (as ferramentas de propor estão abertas).
+    const planContinuationIn = message ? null : parsePlanContinuation(body.plan_continuation);
+    if (planContinuationIn) body.is_plan_checkin = true;
     if (!message && !body.is_intervention_start && !body.is_plan_checkin && !proactiveTrigger) return jsonResponse({ error: "Mensagem vazia" }, 400);
 
     // ── Perfil do utilizador (contexto + metas + biometria) ──────────────
@@ -7287,6 +7632,10 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
     const turnDetails = proactiveTrigger === "cup_results"
       ? [turnProactiveDetails, cupFacts ?? "Os números não foram lidos: diz só que saiu e onde a ver (ecrã do Troféu)."].filter(Boolean).join(" ")
       : cupFacts ? [turnProactiveDetails, cupFacts].filter(Boolean).join(" ") : turnProactiveDetails;
+    // Só com uma prova com distância há previsão: sem ela, nem se lê.
+    const forecastRuns = (upcomingRaces || []).some((e: any) => Number(e?.distance_km) > 0)
+      ? await fetchForecastRuns(sb, userId)
+      : null;
     const raceEventsContext = buildRaceEventsContext(
       upcomingRaces || [],
       todayISO,
@@ -7294,6 +7643,7 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
       (profile?.experience_level as string | null) ?? null,
       recentRuns || [],
       seriesBlock?.active ? seriesBlock.intentByRaceId : null,
+      forecastRuns,
     );
 
     // ── Construir pedido ao Gemini ───────────────────────────────────────
@@ -7515,7 +7865,7 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
       });
     }
 
-    const planCheckinPrompt = onboardingStartPrompt ? onboardingStartPrompt : raceConflictPrompt ? raceConflictPrompt : cupMapPrompt ? cupMapPrompt : planDivergence.length > 0
+    const planCheckinPrompt = planContinuationIn ? buildPlanContinuationTurn(planContinuationIn) : onboardingStartPrompt ? onboardingStartPrompt : raceConflictPrompt ? raceConflictPrompt : cupMapPrompt ? cupMapPrompt : planDivergence.length > 0
       ? `A app detetou que o plano já não bate certo com a realidade e chamou-te — o atleta abriu o chat a partir desse aviso. ` +
         `Motivos: ${planDivergence.map((t) => `"${t}"`).join("; ")}. Começa por estes pontos, por ordem de gravidade: explica em duas frases o que muda e porquê, ` +
         `e propõe já o plano ajustado com propose_training_plan (replace_active_plan=true se houver plano aceite) — o dia da prova como prova, a véspera leve, ` +
@@ -7538,6 +7888,22 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
     // Plano" e o mapa não se pode perder por isso (J.7 do desenho).
     const cupMapShown = cupMapPrompt !== null && !message && !body.is_intervention_start && !!body.is_plan_checkin &&
       planCheckinPrompt === cupMapPrompt;
+    // O mesmo mapa já dito nas últimas 24 h: nenhum turno novo, e o cliente
+    // dá o aviso por tratado (ver CUP_MAP_RESEND_MS).
+    const cupMapLogKey = cupMapShown ? cupMapKey((body.cup_map as { signature?: unknown }).signature) : null;
+    if (cupMapLogKey && await cupMapAlreadySent(sb, userId, cupMapLogKey)) {
+      return jsonResponse({
+        skipped: "already_sent",
+        cup_map_shown: true,
+        user_message: null,
+        model_message: null,
+        suggestions: [],
+        usage: null,
+        plan_proposed: false,
+        goals_updated: false,
+        goal_proposed: false,
+      });
+    }
 
     if (chatImages.length) finalSystemInstruction += "\n\n" + imagesTurnSection(chatImages.length);
 
@@ -7624,11 +7990,12 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
               // nos argumentos da function call. A resposta ficava truncada
               // a meio do JSON, rawText saía vazio, e o cliente via "O coach
               // não conseguiu gerar uma resposta" sem pista nenhuma da causa.
-              // Subido de 8192 para 32768 (2026-10-25, hotfix): um plano de 14
-              // dias com refeições completas + ~4000 tokens de raciocínio
-              // esgotava as 8192 (finishReason MAX_TOKENS, resposta vazia,
-              // 502 "Perdi o fio a meio"). O Flash aceita até 65536.
-              maxOutputTokens: 32768,
+              // Subido de 8192 para 32768 (2026-10-25): a 25/10 o Rui pediu um plano de
+              // 14 dias e a ronda 0 acabou duas vezes em finishReason MAX_TOKENS com o
+              // content vazio (prompt 54979, thoughts 3963) — os 8192 não davam para o
+              // raciocínio mais o propose_training_plan com 14 meal_suggestion. Ver
+              // CHAT_MAX_OUTPUT_TOKENS.
+              maxOutputTokens: CHAT_MAX_OUTPUT_TOKENS,
               response_mime_type: "application/json",
               response_schema: useRecommendationsSchema ? RESPONSE_SCHEMA : RESPONSE_SCHEMA_BASE,
             },
@@ -7651,6 +8018,8 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
     // Sinaliza ao cliente que esta resposta criou um plano — o Início tem de
     // recarregar os itens para a proposta aparecer sem refrescar a página.
     let planWasProposed = false;
+    // A próxima parte de um plano partido, para o cliente pedir depois da aceitação.
+    let planContinuationOut: PlanContinuation | null = null;
     let goalsWereUpdated = false;
     let goalWasProposed = false;
     let pantryFoodsSaved = 0;
@@ -7689,7 +8058,7 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
             : cupWasUpdated
               ? "Gravei a jornada como combinámos."
               : "Fechei este assunto do meu lado.";
-      const { data: fallbackMsg } = await insertModelMessage(sb, userId, text, "neutral");
+      const { data: fallbackMsg } = await insertModelMessage(sb, userId, text, "neutral", planContinuationOut);
       return jsonResponse({
         user_message: userMsg,
         model_message: fallbackMsg ?? { id: null, role: "model", content: text, mood: "neutral", created_at: new Date().toISOString() },
@@ -7702,10 +8071,13 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
         intervention_resolved: interventionWasResolved,
         proactive: proactiveTrigger,
         ...(cupWasUpdated ? { cup_updated: true } : {}),
+        ...(planContinuationOut ? { plan_continuation: planContinuationOut } : {}),
       });
     };
 
     let geminiJson: Record<string, unknown> | undefined;
+    // A repetição depois de um MAX_TOKENS vazio faz-se uma vez por pedido.
+    let truncatedRetried = false;
     // Rondas 0..MAX_TOOL_ROUNDS-1 podem executar ferramentas; a ronda
     // MAX_TOOL_ROUNDS é a final e vai SEM ferramentas, forçando texto — que é
     // o que o nome da constante sempre prometeu ("antes de forçar resposta
@@ -7791,6 +8163,22 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
         hasText: Boolean(extractReplyText(parsedRes)),
       }));
 
+      /* A rede do MAX_TOKENS (2026-10-25): a resposta bateu no teto de saída e
+         veio vazia — o Rui levou 502 duas vezes a pedir um plano de 14 dias.
+         Numa ronda com ferramentas repete-se esta mesma ronda UMA vez, com a
+         instrução de responder mais curto (plano de 7 dias, sem refeições), em
+         vez de devolver o erro. Vai no system instruction: o histórico
+         (contents) fica como estava, sem a resposta cortada. */
+      if (!isFinalRound && !truncatedRetried && isTruncatedEmpty(parsedRes) && hasTimeFor(chatDeadline)) {
+        truncatedRetried = true;
+        console.error("coach-chat: MAX_TOKENS sem resposta — a repetir com uma resposta mais curta", JSON.stringify({
+          round, turnCase, usage: parsedRes?.usageMetadata ?? null, elapsedMs: Date.now() - requestStartedAt,
+        }));
+        finalSystemInstruction += "\n\n" + SHORTER_REPLY_RETRY_INSTRUCTION;
+        round--;
+        continue;
+      }
+
       if (functionCalls.length === 0 || isFinalRound) {
         geminiJson = parsedRes;
         break;
@@ -7821,8 +8209,10 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
             if (fresh?.active) planSeriesIntents = fresh.intentByRaceId;
             planSeriesIntentsStale = false;
           }
-          result = await runProposeTrainingPlan(sb, userId, args || {}, planSeriesIntents);
+          result = await runProposeTrainingPlan(sb, userId, args || {}, planSeriesIntents, planContinuationIn);
           planWasProposed = planWasProposed || result.startsWith("Plano criado");
+          // A parte que falta (se falta): vai na resposta como plan_continuation.
+          if (result.startsWith("Plano criado")) planContinuationOut = nextPlanContinuation(args || {}, planContinuationIn);
         } else if (name === "update_goals" || name === "update_nutrition_goals") {
           // "update_nutrition_goals" mantido por retrocompatibilidade com histórico de conversa.
           result = await runUpdateGoals(sb, userId, args || {});
@@ -7878,7 +8268,7 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
       if (fallback) return fallback;
       // "Gerar uma resposta" é vocabulário de modelo, não dela
       // (specs/carol-frases-contexto.md).
-      return jsonResponse({ error: "Perdi o fio a meio. Manda outra vez." }, 502);
+      return jsonResponse({ error: lostReplyText(message, proactiveTrigger) }, 502);
     }
 
     let replyText: string;
@@ -7929,12 +8319,12 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
       const fallback = await replyAfterWritesWithoutText();
       if (fallback) return fallback;
       return jsonResponse({
-        error: "Perdi o fio a meio. Manda outra vez.",
+        error: lostReplyText(message, proactiveTrigger),
       }, 502);
     }
 
     // ── Guardar resposta do modelo ───────────────────────────────────────
-    const { data: modelMsg, error: modelMsgErr } = await insertModelMessage(sb, userId, replyText, replyMood);
+    const { data: modelMsg, error: modelMsgErr } = await insertModelMessage(sb, userId, replyText, replyMood, planContinuationOut);
 
     // A abertura da conversa pedida pelo aviso foi dita: o aviso fecha
     // (closeInterventionOnTalk). Com a mensagem por gravar não — o atleta
@@ -7978,6 +8368,9 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
     // A mensagem já foi escrita e vai chegar ao atleta: a chave fica
     // registada, para nenhum outro dispositivo a repetir.
     if (proactiveTrigger && proactiveKey) await recordProactiveDelivered(sb, userId, proactiveTrigger, proactiveKey);
+    // O mapa fica entregue quando a mensagem fica gravada — chegue a resposta
+    // ao cliente ou não (sondagem depois dos 45 s).
+    if (cupMapLogKey && !modelMsgErr) await recordCupMapDelivered(sb, userId, cupMapLogKey);
 
     if (modelMsgErr) {
       console.error("Falha a guardar resposta:", modelMsgErr);
@@ -7994,6 +8387,7 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
         proactive: proactiveTrigger,
         ...(cupWasUpdated ? { cup_updated: true } : {}),
         ...(cupMapShown ? { cup_map_shown: true } : {}),
+        ...(planContinuationOut ? { plan_continuation: planContinuationOut } : {}),
       });
     }
 
@@ -8011,6 +8405,7 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
       proactive: proactiveTrigger,
       ...(cupWasUpdated ? { cup_updated: true } : {}),
       ...(cupMapShown ? { cup_map_shown: true } : {}),
+      ...(planContinuationOut ? { plan_continuation: planContinuationOut } : {}),
     });
 
   } catch (e) {

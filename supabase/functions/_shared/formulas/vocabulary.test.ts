@@ -100,3 +100,10 @@ Deno.test("categorizeElevationRatio devolve null sem distância, D+ inválido ou
 Deno.test("categorizeElevationRatio: D+ zero é Rolante (prova plana), não null", () => {
   assertEquals(categorizeElevationRatio(10, 0), "rolante");
 });
+
+import { PRE_RACE_ACTIVATION_TYPE, PRE_RACE_HARD_RUN_TYPES } from "./vocabulary.ts";
+
+Deno.test("PRE_RACE_ACTIVATION_TYPE: a ativação pré-prova não é treino duro — cabe na véspera (bug #84)", () => {
+  assertEquals(PRE_RACE_ACTIVATION_TYPE, "ativacao");
+  assertEquals(PRE_RACE_HARD_RUN_TYPES.includes(PRE_RACE_ACTIVATION_TYPE), false);
+});
