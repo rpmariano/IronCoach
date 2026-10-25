@@ -306,7 +306,7 @@ const messageTime = (m) => {
  * plan_continuation e o created_at). `now` é injetável para os testes.
  *
  * @returns {null | { candidate: {trigger, key, details}, applied: boolean,
- *   acceptedFrom: string|null, acceptedTo: string|null, nextFrom: string,
+ *   acceptedFrom: string|null (a semana anterior), acceptedTo: string|null, nextFrom: string,
  *   nextTo: string, until: string, part: number, of: number, raceName: string|null }}
  */
 export function pendingPlanResumeAlert({ coachPlans = [], coachPlanItems = [], coachMessages = [], raceEvents = [], profile, impressionDismissed = null }, now = new Date()) {
@@ -342,14 +342,13 @@ export function pendingPlanResumeAlert({ coachPlans = [], coachPlanItems = [], c
   const candidate = { trigger: 'plan_resume', key: found.key, details: planResumeFacts(resume) };
   if (wasProactiveSent(profile?.id, candidate) || wasProactiveDismissed(profile?.id, candidate)) return null;
   if (impressionDismissed?.has(`alert:${candidate.key}`)) return null;
-  // As partes já aceites antes da quebra: os dias aceites nas semanas anteriores a esta.
-  const earliest = addDaysISO(resume.from, -7 * (resume.part - 1));
-  const before = acceptedDates.filter((d) => d >= earliest && d < resume.from).sort();
   return {
     candidate,
     applied: resume.applied,
-    acceptedFrom: before[0] ?? null,
-    acceptedTo: before.at(-1) ?? null,
+    // A semana anterior à que falta (prevFrom/prevTo do servidor): é a «aceite»
+    // de que a Carol fala, e applied diz se está no calendário.
+    acceptedFrom: resume.prevFrom ?? null,
+    acceptedTo: resume.prevTo ?? null,
     nextFrom: resume.from,
     nextTo: resume.to,
     until: resume.until,
