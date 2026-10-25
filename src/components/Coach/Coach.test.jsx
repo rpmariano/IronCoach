@@ -2129,7 +2129,7 @@ describe('Coach — fotos no chat (decisões 16 e 17)', () => {
    anterior ao gravar outra), por isso o cliente só pede a parte seguinte
    DEPOIS de o atleta aceitar a que está na folha; recusar pára a cadeia. */
 describe('Coach — plano longo em partes (plan_continuation)', () => {
-  const C1 = { from: '2026-11-02', to: '2026-11-08', part: 2, of: 3 };
+  const C1 = { from: '2026-11-02', to: '2026-11-08', part: 2, of: 3, until: '2026-12-20' };
   const C2 = { from: '2026-11-09', to: '2026-11-15', part: 3, of: 3 };
   const reply = (id, text, extra = {}) => ({ data: { model_message: { id, content: text }, suggestions: [], ...extra }, error: null });
   const bodies = () => invokeEdgeFunctionWithTimeout.mock.calls.map((c) => JSON.parse(c[1].body));
@@ -2182,7 +2182,9 @@ describe('Coach — plano longo em partes (plan_continuation)', () => {
     await aceitar();
     expect(respondToPlan).toHaveBeenCalledWith('p1', true);
     await waitFor(() => expect(continuations()).toHaveLength(1));
+    // O until (dia da prova) volta tal como veio.
     expect(continuations()[0]).toMatchObject({ message: '', plan_continuation: C1 });
+    expect(continuations()[0].plan_continuation.until).toBe('2026-12-20');
 
     // A parte 2 propõe-se (folha própria); só depois de aceitar sai a 3.
     await screen.findByRole('button', { name: /Aceitar plano/i });

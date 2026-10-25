@@ -209,6 +209,7 @@ export default function Coach() {
       // Desarmada, atada à proposta desta resposta: só o aceite dela a arma.
       setPendingContinuation({
         from: c.from, to: c.to, part: Number(c.part), of: Number(c.of),
+        ...(typeof c.until === 'string' ? { until: c.until } : null),
         planId: lastProposedPlanIdRef.current, armed: false,
       });
     } else if (!fromAthlete) {
@@ -1286,12 +1287,13 @@ export default function Coach() {
   // a Carol já disse o que vem e o atleta pode pedir "e a semana seguinte?".
   useEffect(() => {
     if (!pendingContinuation?.armed || coachLoading) return;
-    const { from, to, part, of } = pendingContinuation;
+    const { from, to, part, of, until } = pendingContinuation;
     setPendingContinuation(null);
     continuationRunsRef.current += 1;
     sendCoachInitiatedPayload({
       message: '',
-      plan_continuation: { from, to, part, of },
+      // `until` (o dia da prova) volta tal como veio no turno da parte.
+      plan_continuation: { from, to, part, of, ...(until ? { until } : null) },
       userData: profile || {},
       activeInsights: activeInsightsPayload(),
     });
