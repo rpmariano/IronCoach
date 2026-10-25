@@ -1110,13 +1110,16 @@ export default function Coach() {
       try {
         const freshPlans = await reloadCoachPlans();
         if (freshPlans && freshPlans.length > 0) {
-          // A resposta de uma continuação que chegou por sondagem não traz
-          // plan_continuation: deriva-se da que se pediu (mesma regra do
-          // servidor), atada à proposta que a sondagem encontrou.
+          // O servidor grava o plan_continuation na linha da resposta
+          // (coach_messages.plan_continuation): usa-se diretamente, atado à
+          // proposta que a sondagem encontrou. A coluna pode ainda não existir
+          // (o select é '*', por isso a sondagem não rebenta): então, numa
+          // continuação, deriva-se da que se pediu (mesma regra do servidor).
           const sent = inflightContinuationRef.current;
-          const next = sent ? nextPlanContinuation(sent) : null;
+          const fromRow = validContinuation(modelRow?.plan_continuation) ? modelRow.plan_continuation : null;
+          const next = fromRow || (sent ? nextPlanContinuation(sent) : null);
           const plan = openProposalSheet(freshPlans, { continuation: next, continuationTurn: !!sent });
-          if (plan && next) setPendingContinuation({ ...next, planId: plan.id, armed: false });
+          if (plan) queuePlanContinuation({ plan_continuation: next }, { fromAthlete: !sent });
         }
         const freshGoals = await reloadCoachGoalProposals();
         if (freshGoals && freshGoals.length > 0) {

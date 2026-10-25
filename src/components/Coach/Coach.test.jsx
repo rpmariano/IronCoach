@@ -2313,6 +2313,46 @@ describe('Coach — plano longo em partes (plan_continuation, tudo-ou-nada)', ()
     }
   });
 
+  it('o PRIMEIRO turno por sondagem: o plan_continuation da linha do modelo (coach_messages) abre a cadeia; sem a coluna, a sondagem não rebenta', async () => {
+    const linha = (extra = {}) => ({ id: 'm1', role: 'model', content: 'Aqui tens a primeira semana.', created_at: new Date().toISOString(), ...extra });
+    let rows = [linha({ plan_continuation: C2 })];
+    supabase.from.mockImplementation((table) => (table === 'coach_messages'
+      ? coachMessagesChain({ data: rows, error: null })
+      : profilesChain({ data: null, error: null })));
+    invokeEdgeFunctionWithTimeout.mockResolvedValue({ data: null, error: 'timeout', isTimeout: true });
+    vi.useFakeTimers();
+    try {
+      const flush = (ms = 50) => act(async () => { await vi.advanceTimersByTimeAsync(ms); });
+      renderCoach();
+      fireEvent.change(screen.getByPlaceholderText('Escreve a tua pergunta...'), { target: { value: 'Plano até à prova' } });
+      await act(async () => { fireEvent.click(screen.getByRole('button', { name: /Enviar pergunta à Carol/i })); });
+      await flush(4100 * 3);
+      expect(screen.getByTestId('plan-part-note')).toHaveTextContent('Parte 1 de 2');
+      expect(screen.getByRole('button', { name: 'Aceitar e ver próximos 7 dias' })).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('linha do modelo SEM a coluna plan_continuation (migration por aplicar): proposta normal, sem rebentar', async () => {
+    supabase.from.mockImplementation((table) => (table === 'coach_messages'
+      ? coachMessagesChain({ data: [{ id: 'm1', role: 'model', content: 'Aqui tens o plano.', created_at: new Date().toISOString() }], error: null })
+      : profilesChain({ data: null, error: null })));
+    invokeEdgeFunctionWithTimeout.mockResolvedValue({ data: null, error: 'timeout', isTimeout: true });
+    vi.useFakeTimers();
+    try {
+      renderCoach();
+      fireEvent.change(screen.getByPlaceholderText('Escreve a tua pergunta...'), { target: { value: 'Plano' } });
+      await act(async () => { fireEvent.click(screen.getByRole('button', { name: /Enviar pergunta à Carol/i })); });
+      await act(async () => { await vi.advanceTimersByTimeAsync(4100 * 3); });
+      expect(useAppStore.getState().coachMessages.map((m) => m.content)).toContain('Aqui tens o plano.');
+      expect(screen.queryByTestId('plan-part-note')).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Aceitar plano' })).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('enquanto a continuação corre, o que o atleta escreve fica no campo e não se perde', async () => {
     let soltarSegunda;
     script((b) => {
