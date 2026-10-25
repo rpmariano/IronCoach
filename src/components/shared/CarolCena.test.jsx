@@ -534,3 +534,30 @@ describe('AnalysisSkeleton — a altura da cena reservada', () => {
     expect(screen.getByTestId('analysis-logo').firstChild.style.minHeight).toBe('');
   });
 });
+
+/* As quatro cenas reais da Carol passam pelo sanitizador tal como estão: nenhum caminho
+   perdido, o viewBox do webp, o último a começar a 1,4 s, só o nosso style. */
+describe.each(['corrida', 'ginasio', 'corporal', 'alimentacao'])('os SVG reais — %s', (area) => {
+  const ler = (nome) => readFileSync(resolve(process.cwd(), 'public/carol-cenas', nome), 'utf8');
+  const contar = (texto) => (texto.match(/<path\b/g) || []).length;
+
+  it('-mascara.svg: viewBox 600×804, todos os caminhos, último atraso 1400 ms, sem restos do ficheiro', () => {
+    const texto = ler(`${area}-mascara.svg`);
+    const m = prepararMascara(texto);
+    expect(m.viewBox).toEqual([0, 0, 600, 804]);
+    const atrasos = [...m.inner.matchAll(/--atraso:(\d+)ms/g)].map((x) => Number(x[1]));
+    expect(atrasos).toHaveLength(contar(texto));
+    expect(Math.max(...atrasos)).toBeLessThanOrEqual(1400);
+    expect(m.inner).not.toMatch(/<!--|<\?|href|class=|data-(?!i)|url\(/i);
+    expect([...m.inner.matchAll(/style="([^"]*)"/g)].every((x) => /^--atraso:\d+ms$/.test(x[1]))).toBe(true);
+  });
+
+  it('-traco.svg: todos os caminhos, atrasos repetidos pelos grupos, nunca depois de 1,4 s', () => {
+    const texto = ler(`${area}-traco.svg`);
+    const out = prepararTraco(texto);
+    const atrasos = [...out.matchAll(/--atraso:(\d+)ms/g)].map((x) => Number(x[1]));
+    expect(atrasos).toHaveLength(contar(texto));
+    expect(Math.max(...atrasos)).toBeLessThanOrEqual(1400);
+    expect(out).not.toMatch(/<!--|<\?|href|class=|data-(?!i)|url\(/i);
+  });
+});
