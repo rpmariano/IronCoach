@@ -77,6 +77,7 @@ import {
 } from "./targetsReview.ts";
 // Só a chave no header (x-goog-api-key); o coach-chat continua no alias.
 import { geminiHeaders, thinkingConfig } from "../_shared/geminiModel.ts";
+import { isPlanRequest, messageIdOfPlanResumeKey, PLAN_RESUME_LATER, PLAN_RESUME_SEND, planResumeFacts, parseStoredContinuation } from "../_shared/formulas/planResume.ts";
 
 // Alias que segue sempre o modelo flash estável mais recente — evita 404s
 // quando a Google descontinua uma versão fixa (confirmado em produção: fixar
@@ -820,13 +821,11 @@ export function classifyTurn(
    e o que se pede (revisão do e0794d87 — só a palavra dava falsos positivos:
    «Como correu a minha semana?», «Há 3 dias que me dói o joelho», «O plano de
    ontem foi duro»; nesses o esquema perdia as recommendations em silêncio). */
-const PLAN_VERB_RE = /\b(?:faz(?:e|es|er)?|monta(?:r)?|planeia|planear|prepara(?:r)?|quero|queria|gostava|ajusta(?:r)?|refaz(?:er)?|refazes|cria(?:r)?|organiza(?:r)?|prop[õo]e|propor|prefiro|preciso)\b|\bd[áa]-me\b|pr[óo]xim[oa]s?\b/i;
-const PLAN_TARGET_RE = /\bplan(?:o|os)\b|\bprograma\b|\bsemanas?\b|\b\d+\s*dias\b|\bm[eê]s(?:es)?\b|\bbloco\b|\btreinos?\b/i;
-
+// O critério vive em _shared/formulas/planResume.ts (isPlanRequest): o tick usa
+// o mesmo para saber se ele já pediu outro plano depois de uma cadeia a meio.
 export function isPlanTurn(message: string, turnCase: TurnCase, isContinuation: boolean): boolean {
   if (isContinuation || turnCase === "A" || turnCase === "F_PLAN") return true;
-  const m = message || "";
-  return turnCase === "E" && PLAN_VERB_RE.test(m) && PLAN_TARGET_RE.test(m);
+  return turnCase === "E" && isPlanRequest(message);
 }
 
 /* Esta instância deixa de enviar o thinkingConfig depois de um 400 num turno
@@ -863,8 +862,8 @@ export function allowedToolsFor(kind: TurnCase): Set<string> | null {
 // última mensagem da conversa é dela e tem menos de 6 horas, não se empilha
 // outra em cima (PROACTIVE_QUIET_HOURS). Sem ferramentas de escrita nestes
 // turnos: não é altura de propor planos.
-export type ProactiveTrigger = "silence" | "race_eve" | "race_morning" | "race_after" | "block_end" | "missed_workout" | "week_review" | "leaderboard" | "percentile_ready" | "cup_results";
-export const PROACTIVE_TRIGGERS: readonly ProactiveTrigger[] = ["silence", "race_eve", "race_morning", "race_after", "block_end", "missed_workout", "week_review", "leaderboard", "percentile_ready", "cup_results"];
+export type ProactiveTrigger = "silence" | "race_eve" | "race_morning" | "race_after" | "block_end" | "missed_workout" | "week_review" | "leaderboard" | "percentile_ready" | "cup_results" | "plan_resume";
+export const PROACTIVE_TRIGGERS: readonly ProactiveTrigger[] = ["silence", "race_eve", "race_morning", "race_after", "block_end", "missed_workout", "week_review", "leaderboard", "percentile_ready", "cup_results", "plan_resume"];
 export const PROACTIVE_QUIET_HOURS = 6;
 
 export function shouldSkipProactive(
@@ -936,6 +935,42 @@ export async function recordProactiveDelivered(
     if (error) console.warn("coach_proactive_log: gravação falhou:", error.message ?? error);
   } catch (e) {
     console.warn("coach_proactive_log: gravação falhou:", e);
+  }
+}
+
+/** Os factos da parte que falta (bloco PLANO A MEIO), lidos da mensagem da
+ *  chave plan_resume:<id> — só se for dele, do modelo, e com continuação. */
+// deno-lint-ignore no-explicit-any
+export async function planResumeFactsFor(sb: any, userId: string, key: string | null): Promise<string | null> {
+  const id = messageIdOfPlanResumeKey(key);
+  if (!id) return null;
+  try {
+    const { data } = await sb.from("coach_messages").select("plan_continuation")
+      .eq("id", id).eq("user_id", userId).eq("role", "model").maybeSingle();
+    const c = parseStoredContinuation(data?.plan_continuation);
+    return c ? planResumeFacts(c) : null;
+  } catch {
+    return null;
+  }
+}
+
+/** «Manda a próxima semana»: a continuação da mensagem que a Carol retomou
+ *  mais recentemente (plan_resume nos últimos 7 dias), ou null. */
+// deno-lint-ignore no-explicit-any
+export async function planContinuationFromResume(sb: any, userId: string, nowMs = Date.now()): Promise<unknown> {
+  try {
+    const { data: logRows } = await sb.from("coach_proactive_log").select("key, sent_at")
+      .eq("user_id", userId).like("key", "plan_resume:%")
+      .gte("sent_at", new Date(nowMs - 7 * 86400000).toISOString())
+      .order("sent_at", { ascending: false }).limit(1);
+    const id = messageIdOfPlanResumeKey((logRows ?? [])[0]?.key);
+    if (!id) return null;
+    const { data } = await sb.from("coach_messages").select("plan_continuation")
+      .eq("id", id).eq("user_id", userId).eq("role", "model").maybeSingle();
+    return parseStoredContinuation(data?.plan_continuation);
+  } catch (e) {
+    console.warn("plano a meio: continuação não lida:", e instanceof Error ? e.message : e);
+    return null;
   }
 }
 
@@ -1072,6 +1107,13 @@ const PROACTIVE_INSTRUCTIONS: Record<ProactiveTrigger, string> = {
     `por confirmar, pede-lhe que a confirme no ecrã do Troféu, sem dizer números. Sem linha dele, diz que saiu e onde a ver, sem ` +
     `inventar lugar nem tempo. Nunca fales de outros atletas, do clube, da posição do clube nem do dorsal. Fecha com o papel da ` +
     `próxima jornada, se o bloco da competição o tiver.`,
+  // Um plano partido que ficou a meio (planResume.ts, coach-proactive-tick).
+  // Os factos vêm no bloco PLANO A MEIO; a frase é dela. PROVISÓRIO: a
+  // formulação definitiva desta instrução vem da Carol especialista.
+  plan_resume:
+    `Ele pediu-te um plano em partes de 7 dias e a última parte que propuseste ficou sem seguimento (bloco PLANO A MEIO). ` +
+    `Em duas frases: diz-lhe o que falta — as datas da semana seguinte e até onde vai o plano — e pergunta-lhe se ta mandas. ` +
+    `Não proponhas o plano neste turno; só depois de ele dizer «${PLAN_RESUME_SEND}». Sem sermão sobre a parte que ficou por pedir.`,
 };
 
 // ── Balanço da prova (race_after com a corrida registada) ─────────────────
@@ -6882,7 +6924,18 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
     // A parte seguinte de um plano partido (MAX_PLAN_SPAN_DAYS): o cliente pede-a
     // sem texto, depois de o atleta aceitar a anterior. Segue pelo canal do
     // check-in do plano (as ferramentas de propor estão abertas).
-    const planContinuationIn = message ? null : parsePlanContinuation(body.plan_continuation);
+    let planContinuationIn = message ? null : parsePlanContinuation(body.plan_continuation);
+    // «Manda a próxima semana» depois de a Carol retomar um plano a meio
+    // (plan_resume): a continuação vem da mensagem dela que ficou a meio
+    // (coach_messages.plan_continuation), sem o cliente precisar de a ter.
+    let planResumeAsked = false;
+    if (message && message.trim().replace(/[.!]+$/, "").toLowerCase() === PLAN_RESUME_SEND.toLowerCase()) {
+      const resumed = await planContinuationFromResume(sb, userId);
+      if (resumed) {
+        planContinuationIn = parsePlanContinuation(resumed);
+        planResumeAsked = !!planContinuationIn;
+      }
+    }
     if (planContinuationIn) body.is_plan_checkin = true;
 
     // A revisão dos objetivos das provas (targetsReview.ts): um turno à parte,
@@ -7998,6 +8051,15 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
     }
 
     if (chatImages.length) finalSystemInstruction += "\n\n" + imagesTurnSection(chatImages.length);
+    // Retomar um plano a meio: os factos saem da mensagem da chave.
+    if (proactiveTrigger === "plan_resume") {
+      const facts = await planResumeFactsFor(sb, userId, proactiveKey);
+      if (facts) finalSystemInstruction += "\n\nPLANO A MEIO: " + facts + ".";
+    }
+    // O chip «Manda a próxima semana»: é um turno de continuação.
+    if (planResumeAsked && planContinuationIn) {
+      finalSystemInstruction += "\n\nO atleta pediu-te agora a parte seguinte do plano que ficou a meio. " + buildPlanContinuationTurn(planContinuationIn);
+    }
     // O «Atualiza os objetivos» aplicado: ela só confirma o que ficou.
     if (targetsApplied.length) finalSystemInstruction += "\n\n" + buildTargetsAppliedInstruction(targetsApplied);
     else if (targetsNotApplied) finalSystemInstruction += "\n\n" + buildTargetsNotAppliedInstruction(targetsNotApplied);
@@ -8442,6 +8504,8 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
         : [];
       // Uma revisão dos objetivos acaba sempre com as duas respostas.
       if (targetsReviewLogKey) suggestions = [TARGETS_UPDATE_ANSWER, TARGETS_KEEP_ANSWER];
+      // E o retomar de um plano a meio também.
+      if (proactiveTrigger === "plan_resume") suggestions = [PLAN_RESUME_SEND, PLAN_RESUME_LATER];
     } catch {
       // JSON inválido/cortado (ex.: resposta truncada a meio) — nunca mostrar
       // o texto bruto ao utilizador (parecia um JSON partido no ecrã); melhor

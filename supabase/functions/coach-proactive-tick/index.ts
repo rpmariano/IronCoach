@@ -32,6 +32,7 @@ import { recordUsage } from "../_shared/usageRecorder.ts";
 import { cupNoticeMessage, cupTickCandidates, tickTab, type TickCandidate } from "../_shared/formulas/cupNotices.ts";
 import { loadCupNoticeState } from "./cupNoticeState.ts";
 import { claimWithCupFallback } from "./claim.ts";
+import { detectPlanResume } from "../_shared/formulas/planResume.ts";
 import type { ChooseCtx } from "./decide.ts";
 
 const corsHeaders = { "Content-Type": "application/json" };
@@ -302,6 +303,33 @@ async function handler(req: Request): Promise<Response> {
         candidates = cupTickCandidates(baseCandidates, cupState.byUser.get(userId), now, today, { notices: !cupState.noticesOff });
       } catch (e) {
         console.warn("coach-proactive-tick: regras do Troféu falharam; fica a lista de sempre", e instanceof Error ? e.name : "erro");
+      }
+
+      /* Um plano partido que ficou a meio (planResume.ts): a última mensagem
+         dela com plan_continuation e o que ele escreveu depois. Último da
+         lista: só sai se não houver mais nada. Uma falha a ler não o tira a
+         ninguém mais do que a ele, nesta hora. */
+      try {
+        const { data: contMsg } = await sb.from("coach_messages").select("id, created_at, plan_continuation")
+          .eq("user_id", userId).eq("role", "model").not("plan_continuation", "is", null)
+          .order("created_at", { ascending: false }).limit(1).maybeSingle();
+        if (contMsg) {
+          const { data: after } = await sb.from("coach_messages").select("content, created_at")
+            .eq("user_id", userId).eq("role", "user").gt("created_at", contMsg.created_at).limit(30);
+          // deno-lint-ignore no-explicit-any
+          const plansList: any[] = plans || [];
+          const resume = detectPlanResume({
+            lastContinuation: contMsg,
+            pendingTrainingPlans: plansList.filter((p) => p.status === "proposto" &&
+              (p.coach_plan_items || []).some((i: { kind?: string }) => i?.kind === "corrida" || i?.kind === "ginasio")).length,
+            acceptedItemDates: plansList.filter((p) => p.status === "aceite")
+              .flatMap((p) => (p.coach_plan_items || []).map((i: { planned_date?: string }) => i?.planned_date).filter(Boolean)),
+            userMessagesAfter: after || [],
+          }, now.getTime(), today);
+          if (resume) candidates = [...candidates, resume];
+        }
+      } catch (e) {
+        console.warn("coach-proactive-tick: plano a meio não verificado", userId, e instanceof Error ? e.message : e);
       }
 
       const prefs = prefsById.get(userId) ?? {};

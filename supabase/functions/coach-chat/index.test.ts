@@ -5885,7 +5885,7 @@ Deno.test("plano partido: 17 dias são três partes, a última mais curta; conti
 
 Deno.test("handler: plano partido — o pedido de continuação, o guião, a janela e plan_continuation nas respostas (ligações no código)", async () => {
   const src = await Deno.readTextFile(new URL("./index.ts", import.meta.url));
-  const parse = src.indexOf("const planContinuationIn = message ? null : parsePlanContinuation(body.plan_continuation);");
+  const parse = src.indexOf("let planContinuationIn = message ? null : parsePlanContinuation(body.plan_continuation);");
   assert(parse > 0 && parse < src.indexOf('return jsonResponse({ error: "Mensagem vazia" }, 400);'));
   assertStringIncludes(src, "planContinuationIn ? buildPlanContinuationTurn(planContinuationIn) : onboardingStartPrompt");
   assertStringIncludes(src, "if (result.startsWith(\"Plano criado\")) planContinuationOut = nextPlanContinuation(args || {}, planContinuationIn);");
@@ -6082,6 +6082,50 @@ Deno.test("plan_continuation fica na linha da mensagem (a sondagem lê-a); sem a
   // As duas gravações do handler levam-na.
   const src = await Deno.readTextFile(new URL("./index.ts", import.meta.url));
   assertEquals(src.split(", planContinuationOut);").length - 1, 2);
+});
+
+// ─── Retomar um plano a meio (plan_resume, 2026-10-25) ────────────────────
+import { planContinuationFromResume, planResumeFactsFor } from "./index.ts";
+
+const RESUME_MSG_ID = "7cd927d8-4e21-4e49-b86d-0c86985cc812";
+const RESUME_CONT = { from: "2026-11-02", to: "2026-11-08", part: 2, of: 5, until: "2026-11-29" };
+// deno-lint-ignore no-explicit-any
+function resumeSb(logRows: any[], messages: Record<string, any>) {
+  // deno-lint-ignore no-explicit-any
+  const q = (table: string): any => {
+    const f: Record<string, unknown> = {};
+    // deno-lint-ignore no-explicit-any
+    const chain: any = {
+      select: () => chain, like: () => chain, gte: () => chain, order: () => chain,
+      eq: (c: string, v: unknown) => { f[c] = v; return chain; },
+      limit: () => Promise.resolve({ data: table === "coach_proactive_log" ? logRows : [], error: null }),
+      maybeSingle: () => Promise.resolve({ data: f.user_id === "u1" && f.role === "model" ? messages[String(f.id)] ?? null : null, error: null }),
+    };
+    return chain;
+  };
+  return { from: q };
+}
+
+Deno.test("plano a meio: «Manda a próxima semana» dá a parte certa, da mensagem que a Carol retomou", async () => {
+  const sb = resumeSb([{ key: `plan_resume:${RESUME_MSG_ID}`, sent_at: "2026-10-27T10:00:00Z" }], { [RESUME_MSG_ID]: { plan_continuation: RESUME_CONT } });
+  assertEquals(await planContinuationFromResume(sb, "u1"), RESUME_CONT);
+  // Sem retomar registado (ou a mensagem de outro atleta), nada.
+  assertEquals(await planContinuationFromResume(resumeSb([], {}), "u1"), null);
+  assertEquals(await planContinuationFromResume(sb, "u2"), null);
+  // Os factos do turno plan_resume saem da mesma mensagem.
+  assertStringIncludes((await planResumeFactsFor(sb, "u1", `plan_resume:${RESUME_MSG_ID}`))!, "falta a parte 2 de 5");
+  assertEquals(await planResumeFactsFor(sb, "u1", "outra:chave"), null);
+});
+
+Deno.test("handler: plan_resume é um turno proativo com os dois chips, e o «Manda» é uma continuação (ligações no código)", async () => {
+  assert((PROACTIVE_TRIGGERS as readonly string[]).includes("plan_resume"));
+  const src = await Deno.readTextFile(new URL("./index.ts", import.meta.url));
+  assertStringIncludes(src, 'if (proactiveTrigger === "plan_resume") suggestions = [PLAN_RESUME_SEND, PLAN_RESUME_LATER];');
+  assertStringIncludes(src, "const resumed = await planContinuationFromResume(sb, userId);");
+  assertStringIncludes(src, "planContinuationIn = parsePlanContinuation(resumed);");
+  // A continuação do «Manda» passa pelas regras das partes (a janela, sem supersedes).
+  assertStringIncludes(src, "result = await runProposeTrainingPlan(sb, userId, args || {}, planSeriesIntents, planContinuationIn);");
+  assertStringIncludes(src, 'finalSystemInstruction += "\\n\\nPLANO A MEIO: " + facts + ".";');
 });
 
 // ─── Turnos de plano mais rápidos (decisão do Rui, 2026-10-25: B e C) ────

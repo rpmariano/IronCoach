@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { pickProactiveTrigger, listProactiveTriggers, pendingRaceBalance, pendingRaceBalanceCandidate, pendingBlockEndAlert, endingBlock, lastRecordDate, wasProactiveSent, markProactiveSent, dismissProactiveAlert, hasRaceBalance, readRaceBalanceCache, writeRaceBalanceCache, SILENCE_DAYS, RACE_AFTER_DAYS_WITH_RUN, RACE_AFTER_DAYS_WITHOUT_RUN } from './coachProactive';
+import { pickProactiveTrigger, listProactiveTriggers, pendingRaceBalance, pendingRaceBalanceCandidate, pendingBlockEndAlert, pendingPlanResumeAlert, endingBlock, lastRecordDate, wasProactiveSent, markProactiveSent, dismissProactiveAlert, hasRaceBalance, readRaceBalanceCache, writeRaceBalanceCache, SILENCE_DAYS, RACE_AFTER_DAYS_WITH_RUN, RACE_AFTER_DAYS_WITHOUT_RUN } from './coachProactive';
 
 const NOW = new Date('2026-09-11T09:00:00Z'); // sexta-feira
 
@@ -351,5 +351,66 @@ describe('P.10 — o treino de ontem e o silêncio com check-ins, no chat', () =
   it('sem check-in depois do último registo, o silêncio de sempre', () => {
     const c = listProactiveTriggers(data({ meals: [{ date: '2026-09-04' }], dailyCheckins: [{ date: '2026-09-04' }] }), NOW).find((x) => x.trigger === 'silence');
     expect(c.details).toBe('Último registo: 2026-09-04 (há 7 dias).');
+  });
+});
+
+/* "Falta o resto do teu plano" (plan_resume): a Carol retoma um plano partido que
+   ficou a meio. A régua é a do servidor (@formulas/planResume.ts). */
+describe('pendingPlanResumeAlert — plano partido que ficou a meio', () => {
+  const MSG_ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+  const KEY = `plan_resume:${MSG_ID}`;
+  const CONT = { from: '2026-11-02', to: '2026-11-08', part: 2, of: 5, until: '2026-11-29' };
+  const AGORA = new Date('2026-11-02T14:00:00Z');
+  const mensagem = (over = {}) => ({ id: MSG_ID, role: 'model', content: 'Aqui tens a semana 1.', created_at: '2026-10-25T20:43:22Z', plan_continuation: CONT, ...over });
+  const plano = { id: 'p1', status: 'aceite', race_id: 'meia', period_start: '2026-10-26', period_end: '2026-11-29' };
+  const itens = [26, 28, 30].map((d, i) => ({ id: `i${i}`, plan_id: 'p1', kind: 'corrida', planned_date: `2026-10-${d}` }));
+  const base = (over = {}) => ({
+    coachPlans: [plano], coachPlanItems: itens, coachMessages: [mensagem()],
+    raceEvents: [{ id: 'meia', name: 'Meia de Lisboa', date: '2026-11-29', status: 'agendada' }],
+    profile: { id: 'u1' }, ...over,
+  });
+
+  beforeEach(() => window.localStorage.clear());
+
+  it('parte 1 aceite, a 2 nunca pedida: devolve o candidato com a chave da mensagem e os factos', () => {
+    const a = pendingPlanResumeAlert(base(), AGORA);
+    expect(a.candidate).toMatchObject({ trigger: 'plan_resume', key: KEY });
+    expect(a).toMatchObject({ applied: true, acceptedFrom: '2026-10-26', acceptedTo: '2026-10-30', nextFrom: '2026-11-02', nextTo: '2026-11-08', until: '2026-11-29', part: 2, of: 5, raceName: 'Meia de Lisboa' });
+  });
+
+  it('sem nada aceite antes da quebra: applied false, sem datas aceites', () => {
+    const a = pendingPlanResumeAlert(base({ coachPlans: [], coachPlanItems: [] }), AGORA);
+    expect(a).toMatchObject({ applied: false, acceptedFrom: null, acceptedTo: null });
+    expect(a.candidate.key).toBe(KEY);
+  });
+
+  it('a prova a que o plano vai (o until) dá o nome; sem prova nesse dia, null', () => {
+    expect(pendingPlanResumeAlert(base({ raceEvents: [] }), AGORA).raceName).toBeNull();
+  });
+
+  it.each([
+    ['sem mensagem com plan_continuation', { coachMessages: [mensagem({ plan_continuation: null })] }],
+    ['uma proposta de treino pendente (a cadeia está viva)', { coachPlans: [plano, { id: 'p2', status: 'proposto' }], coachPlanItems: [...itens, { id: 'x', plan_id: 'p2', kind: 'corrida', planned_date: '2026-11-03' }] }],
+    ['já há treinos aceites na semana prometida', { coachPlanItems: [...itens, { id: 'y', plan_id: 'p1', kind: 'corrida', planned_date: '2026-11-04' }] }],
+    ['ele pediu entretanto outro plano', { coachMessages: [mensagem(), { id: '1793000000000', role: 'user', content: 'Faz-me um plano novo para a semana', created_at: '2026-10-25T21:00:00Z' }] }],
+  ])('%s: nada', (_nome, over) => {
+    expect(pendingPlanResumeAlert(base(over), AGORA)).toBeNull();
+  });
+
+  it('passaram menos de 2 h, ou mais de 3 dias do início da parte, ou o plano já acabou: nada', () => {
+    expect(pendingPlanResumeAlert(base({ coachMessages: [mensagem({ created_at: '2026-11-02T13:00:00Z' })] }), AGORA)).toBeNull();
+    expect(pendingPlanResumeAlert(base(), new Date('2026-11-06T10:00:00Z'))).toBeNull();
+    expect(pendingPlanResumeAlert(base({ coachMessages: [mensagem({ plan_continuation: { ...CONT, until: '2026-11-01' } })] }), AGORA)).toBeNull();
+  });
+
+  it('já falámos neste dispositivo, ou o aviso foi dispensado: nada', () => {
+    const a = pendingPlanResumeAlert(base(), AGORA);
+    markProactiveSent('u1', a.candidate);
+    expect(pendingPlanResumeAlert(base(), AGORA)).toBeNull();
+    window.localStorage.clear();
+    dismissProactiveAlert('u1', a.candidate);
+    expect(pendingPlanResumeAlert(base(), AGORA)).toBeNull();
+    window.localStorage.clear();
+    expect(pendingPlanResumeAlert(base({ impressionDismissed: new Set([`alert:${KEY}`]) }), AGORA)).toBeNull();
   });
 });

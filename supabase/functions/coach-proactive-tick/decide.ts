@@ -52,7 +52,9 @@ export function decidePush(input: {
   // Os avisos do Troféu (cup_*) não passam por carol_push_types — a BD nem
   // os aceita lá: a preferência deles é a da inscrição (cup_enrollments.
   // notify_*, specs/trofeu.md §8). O resto vale para eles como para todos.
-  if (!isCupNoticeTrigger(c.trigger) && !types.includes(c.trigger)) return { send: false, reason: "tipo_desligado" };
+  // Retomar um plano a meio (plan_resume) também não: a cadeia é dele, foi
+  // ele que pediu o plano — e o tipo não existe em carol_push_types.
+  if (!isCupNoticeTrigger(c.trigger) && c.trigger !== "plan_resume" && !types.includes(c.trigger as never)) return { send: false, reason: "tipo_desligado" };
   // A adaptação proativa (F5) ainda não sai por push: só no Início.
   if (c.trigger === "intervention" && c.interventionTopic === "adaptacao" && !PLAN_ADAPTATION_PUSH_ENABLED) {
     return { send: false, reason: "push_desligado" };

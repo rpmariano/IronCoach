@@ -2667,3 +2667,73 @@ describe('Coach — revisão dos objetivos depois do balanço da prova (targets_
     expect(revisoes()).toHaveLength(0);
   });
 });
+
+/* A Carol retoma um plano partido que ficou a meio (plan_resume). A notificação
+   tocada traz a chave plan_resume:<id da mensagem>; o servidor lê os factos por
+   ela. A mensagem dela traz os chips «Manda a próxima semana» / «Agora não»; o
+   «Manda» vai como mensagem normal e a resposta, com a parte seguinte, entra no
+   fluxo da cadeia («Parte N de M»). */
+describe('Coach — retomar um plano partido (plan_resume)', () => {
+  const KEY = 'plan_resume:aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+  const CONT3 = { from: '2026-11-09', to: '2026-11-15', part: 3, of: 5, until: '2026-11-29' };
+  const bodies = () => invokeEdgeFunctionWithTimeout.mock.calls.map((c) => JSON.parse(c[1].body));
+
+  beforeEach(() => {
+    invokeEdgeFunctionWithTimeout.mockReset();
+    supabase.from.mockReset();
+    window.localStorage.clear();
+    useAppStore.setState({
+      ...baseCarolState(), logImpression: vi.fn(), refreshCupAfterChat: vi.fn(), loadCup: vi.fn(),
+      respondToPlan: vi.fn().mockResolvedValue(true),
+    });
+  });
+
+  it('o toque na notificação (chave plan_resume:…) pede a retoma, com a chave e proactive_force', async () => {
+    invokeEdgeFunctionWithTimeout.mockResolvedValue({
+      data: { model_message: { id: 'm1', content: 'Falta a semana de 2/11 a 8/11. Mando-ta?' }, suggestions: ['Manda a próxima semana', 'Agora não'] },
+      error: null,
+    });
+    useAppStore.setState({ proactiveKeyRequested: KEY });
+    renderCoach();
+    await waitFor(() => expect(invokeEdgeFunctionWithTimeout).toHaveBeenCalledTimes(1));
+    expect(bodies()[0]).toMatchObject({ message: '', proactive_trigger: 'plan_resume', proactive_key: KEY, proactive_force: true });
+    expect(useAppStore.getState().proactiveKeyRequested).toBeNull();
+    await waitFor(() => expect(screen.getByText(/Mando-ta/)).toBeInTheDocument());
+    // Os chips do servidor ficam à vista; já falámos (marcado) e não se repete.
+    expect(useAppStore.getState().coachSuggestions).toEqual(['Manda a próxima semana', 'Agora não']);
+    await waitFor(() => expect(JSON.parse(window.localStorage.getItem('ironcoach:carol-proativa:user-1'))).toMatchObject({ plan_resume: KEY }));
+  });
+
+  it('«Manda a próxima semana» vai como mensagem normal; a parte nova entra na cadeia («Parte 2 de 5»)', async () => {
+    invokeEdgeFunctionWithTimeout.mockImplementation((_n, { body }) => {
+      const b = JSON.parse(body);
+      if (b.message === 'Manda a próxima semana') {
+        return Promise.resolve({ data: { model_message: { id: 'm2', content: 'Aqui tens a semana de 2 a 8.' }, suggestions: [], plan_proposed: true, plan_continuation: CONT3 }, error: null });
+      }
+      return Promise.resolve({ data: { model_message: { id: 'm1', content: 'Falta a semana de 2/11 a 8/11. Mando-ta?' }, suggestions: ['Manda a próxima semana', 'Agora não'] }, error: null });
+    });
+    useAppStore.setState({
+      proactiveKeyRequested: KEY,
+      reloadCoachPlans: vi.fn().mockResolvedValue([{ id: 'p2', status: 'proposto', race_id: 'meia', period_start: '2026-11-02', period_end: '2026-11-08' }]),
+    });
+    renderCoach();
+    const chip = await screen.findByRole('button', { name: 'Manda a próxima semana' });
+    await act(async () => { fireEvent.click(chip); });
+    await waitFor(() => expect(bodies().some((b) => b.message === 'Manda a próxima semana')).toBe(true));
+    // Sem partes anteriores pendentes: a parte 2 de 5 abre a folha, não-última.
+    const aviso = await screen.findByTestId('plan-part-note');
+    expect(aviso).toHaveTextContent('Parte 2 de 5');
+    expect(screen.getByRole('button', { name: 'Aceitar e ver próximos 7 dias' })).toBeInTheDocument();
+  });
+
+  it('«Agora não» não faz nenhum pedido', async () => {
+    invokeEdgeFunctionWithTimeout.mockResolvedValue({
+      data: { model_message: { id: 'm1', content: 'Falta a semana. Mando-ta?' }, suggestions: ['Manda a próxima semana', 'Agora não'] },
+      error: null,
+    });
+    useAppStore.setState({ proactiveKeyRequested: KEY });
+    renderCoach();
+    await screen.findByRole('button', { name: 'Agora não' });
+    expect(bodies().filter((b) => b.message === 'Agora não')).toHaveLength(0);
+  });
+});

@@ -36,6 +36,7 @@
 // pontos dizem-se no chat, a ele (coach-chat, turno cup_results).
 
 import { nomeProprio, proactiveTab, type ServerProactiveCandidate } from "./proactiveTriggers.ts";
+import { type PlanResumeCandidate, planResumePushMessage } from "./planResume.ts";
 import { entryDeadlineNotice, type CupCategory, type CupCourse, type CupCourseOverride } from "./cup.ts";
 import { CUP_ROLES_RACE_LOOKBACK_DAYS, cupRoundRoles } from "./cupRoles.ts";
 import { type ArbitrationRace, isSeriesIntent, type SeriesIntent } from "./seriesArbitration.ts";
@@ -192,7 +193,8 @@ export interface CupInfo {
 }
 
 export type CupNoticeCandidate = Omit<ServerProactiveCandidate, "trigger"> & { trigger: CupNoticeTrigger; cup: CupInfo };
-export type TickCandidate = (ServerProactiveCandidate & { cup?: CupInfo }) | CupNoticeCandidate;
+// plan_resume (planResume.ts): retomar um plano partido a meio — um candidato a mais do tick, como os cup_*.
+export type TickCandidate = (ServerProactiveCandidate & { cup?: CupInfo }) | CupNoticeCandidate | (PlanResumeCandidate & { cup?: CupInfo });
 
 const RACE_TRIGGERS = new Set<string>(["race_morning", "race_eve", "race_after"]);
 /** "Nada em trote, saltar, Não vou ou Não fui" (§8): só "Vou" a atacar ou a
@@ -668,6 +670,8 @@ export function cupTickCandidates(
  *  regime), sem Gemini; null para os momentos de sempre. */
 export function cupNoticeMessage(c: TickCandidate): { title: string; body: string } | null {
   if (c.cup?.body) return { title: "Carol", body: c.cup.body };
+  // Retomar um plano a meio: frase fixa também (planResume.ts).
+  if (c.trigger === "plan_resume") return planResumePushMessage(c as PlanResumeCandidate);
   // Nunca acontece (os cup_* nascem com frase), mas um cup_* nunca vai ao Gemini.
   if (isCupNoticeTrigger(c.trigger)) return { title: "Carol", body: "Tenho uma novidade da tua competição. Vem ver." };
   return null;
@@ -676,5 +680,6 @@ export function cupNoticeMessage(c: TickCandidate): { title: string; body: strin
 /** O separador que o toque abre: o do aviso, ou o de sempre. */
 export function tickTab(c: TickCandidate): "home" | "coach" {
   if (c.cup?.tab) return c.cup.tab;
+  if (c.trigger === "plan_resume") return "coach";
   return isCupNoticeTrigger(c.trigger) ? "home" : proactiveTab(c.trigger);
 }

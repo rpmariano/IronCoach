@@ -24,6 +24,7 @@ import { achievementsForRace } from './achievements';
 import { findEndingBlock, findMissedWorkout, findUnlinkedRaceDayRun, knowsWhySilent, missedWorkoutInReview, silenceCandidate, weekReviewCandidate, SILENCE_DAYS, RACE_AFTER_DAYS_WITH_RUN, RACE_AFTER_DAYS_WITHOUT_RUN, RACE_EVE_EARLIEST_HOUR, UNLINKED_RUN_DETAILS_PREFIX } from '@formulas/proactiveTriggers.ts';
 import { leaderboardMoment, ownSegmentFor, percentileAvailability, percentileReadyMoment } from '@formulas/vitrina.ts';
 import { pickRaceOfDay } from '@formulas/mainRace.ts';
+import { detectPlanResume, planResumeFacts } from '@formulas/planResume.ts';
 import { addDaysISO } from '../lib/utils';
 import { segmentPhrase } from './percentile';
 import { isWalkPlanItem, runsOnly } from '@formulas/runKinds.ts';
@@ -282,6 +283,77 @@ export function pendingBlockEndAlert({ coachPlans, coachPlanItems, profile, impr
   if (wasProactiveSent(profile?.id, candidate) || wasProactiveDismissed(profile?.id, candidate)) return null;
   if (impressionDismissed?.has(`alert:${candidate.key}`)) return null;
   return block;
+}
+
+/* O dia de Lisboa de um instante — a régua do servidor (detectPlanResume). */
+const lisbonDay = (d) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Lisbon' }).format(d);
+// O instante de uma mensagem: created_at, ou (as de agora, ainda sem ele) o id, que é Date.now().
+const messageTime = (m) => {
+  const t = Date.parse(m?.created_at);
+  if (Number.isFinite(t)) return t;
+  const n = Number(m?.id);
+  return Number.isFinite(n) && n > 1e12 ? n : NaN;
+};
+
+/**
+ * "Falta o resto do teu plano" (plan_resume): um plano longo propõe-se em partes
+ * de 7 dias e a Carol guarda a seguinte em coach_messages.plan_continuation. Se
+ * a cadeia ficou a meio — a parte 1 aceite como plano normal, a 2 nunca pedida —,
+ * ela retoma-a. A régua é a do servidor (@formulas/planResume.ts, detectPlanResume),
+ * para a chave ser a da notificação (plan_resume:<id da mensagem>): uma por parte.
+ * Dura enquanto a regra valer e a conversa não tiver acontecido neste dispositivo
+ * nem o aviso tiver sido dispensado. `coachMessages` são as da base (têm o
+ * plan_continuation e o created_at). `now` é injetável para os testes.
+ *
+ * @returns {null | { candidate: {trigger, key, details}, applied: boolean,
+ *   acceptedFrom: string|null, acceptedTo: string|null, nextFrom: string,
+ *   nextTo: string, until: string, part: number, of: number, raceName: string|null }}
+ */
+export function pendingPlanResumeAlert({ coachPlans = [], coachPlanItems = [], coachMessages = [], raceEvents = [], profile, impressionDismissed = null }, now = new Date()) {
+  const messages = coachMessages || [];
+  let lastIdx = -1;
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    if (messages[i]?.role !== 'user' && messages[i]?.plan_continuation && messages[i]?.id) { lastIdx = i; break; }
+  }
+  if (lastIdx < 0) return null;
+  const last = messages[lastIdx];
+  const lastAt = messageTime(last);
+  const trainingIds = trainingPlanIdsOf(coachPlanItems);
+  const pendingTrainingPlans = (coachPlans || []).filter((p) => p?.status === 'proposto' && trainingIds.has(p.id)).length;
+  const acceptedIds = new Set((coachPlans || []).filter((p) => p?.status === 'aceite').map((p) => p.id));
+  const acceptedDates = (coachPlanItems || [])
+    .filter((i) => acceptedIds.has(i?.plan_id) && typeof i.planned_date === 'string')
+    .map((i) => i.planned_date.slice(0, 10));
+  const userMessagesAfter = messages
+    .filter((m) => m?.role === 'user' && messageTime(m) > lastAt)
+    .map((m) => ({ content: m.content ?? null, created_at: new Date(messageTime(m)).toISOString() }));
+  const found = detectPlanResume({
+    lastContinuation: { id: last.id, created_at: last.created_at, plan_continuation: last.plan_continuation },
+    pendingTrainingPlans,
+    acceptedItemDates: acceptedDates,
+    userMessagesAfter,
+  }, now.getTime(), lisbonDay(now));
+  if (!found) return null;
+  const { resume } = found;
+  const candidate = { trigger: 'plan_resume', key: found.key, details: planResumeFacts(resume) };
+  if (wasProactiveSent(profile?.id, candidate) || wasProactiveDismissed(profile?.id, candidate)) return null;
+  if (impressionDismissed?.has(`alert:${candidate.key}`)) return null;
+  // As partes já aceites antes da quebra: os dias aceites nas semanas anteriores a esta.
+  const earliest = addDaysISO(resume.from, -7 * (resume.part - 1));
+  const before = acceptedDates.filter((d) => d >= earliest && d < resume.from).sort();
+  const race = (raceEvents || []).find((r) => typeof r?.date === 'string' && r.date.slice(0, 10) === resume.until);
+  return {
+    candidate,
+    applied: before.length > 0,
+    acceptedFrom: before[0] ?? null,
+    acceptedTo: before.at(-1) ?? null,
+    nextFrom: resume.from,
+    nextTo: resume.to,
+    until: resume.until,
+    part: resume.part,
+    of: resume.of,
+    raceName: race?.name ?? null,
+  };
 }
 
 /** As datas de todos os registos (corridas, refeições, ginásio, avaliações). */
