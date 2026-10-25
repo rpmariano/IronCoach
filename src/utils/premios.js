@@ -97,6 +97,7 @@ export const TIPOS_TREINO = {
   fartlek: 'Fartlek',
   intervalos: 'Intervalos',
   subidas: 'Subidas',
+  ativacao: 'Ativação pré-prova',
   trail: 'Trail',
   tecnico: 'Técnico (trilho)',
   caminhada: 'Caminhada', // 2026-10-05 (runKinds.ts)

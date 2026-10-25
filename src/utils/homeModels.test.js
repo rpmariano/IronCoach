@@ -14,6 +14,7 @@ describe('homeModels — o que o Início mostra (ponto 5)', () => {
   it('título do item como o mock: "Rodagem longa · 16 km"', () => {
     expect(planItemTitle({ kind: 'corrida', training_type: 'longo', target_distance_km: 16 })).toBe('Rodagem longa · 16 km');
     expect(planItemTitle({ kind: 'corrida', training_type: 'intervalos' })).toBe('Intervalos');
+    expect(planItemTitle({ kind: 'corrida', training_type: 'ativacao', target_distance_km: 4 })).toBe('Ativação pré-prova · 4 km');
     expect(planItemTitle({ kind: 'ginasio', categories: ['pernas', 'core'], target_duration_min: 45 })).toBe('pernas/core · 45 min');
     expect(planItemTitle({ kind: 'descanso' })).toBe('Descanso');
     // Com vírgula, como se escreve em português (pedido 2026-09-26).
