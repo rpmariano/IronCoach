@@ -6953,6 +6953,10 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
         if (planContinuationIn) planResumeAsked = cand;
       }
     }
+    // O chip sem retoma válida (revisão do c1d4fb1a): «próxima semana» passava
+    // no isPlanRequest e abria o propor — e ela podia propor uma semana fora da
+    // cadeia. Fica só de leitura, e ela diz que o plano já não está a meio.
+    const planResumeSendStale = chipText === PLAN_RESUME_SEND.toLowerCase() && !planResumeAsked;
     if (planContinuationIn) body.is_plan_checkin = true;
 
     // A revisão dos objetivos das provas (targetsReview.ts): um turno à parte,
@@ -8070,10 +8074,16 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
     if (chatImages.length) finalSystemInstruction += "\n\n" + imagesTurnSection(chatImages.length);
     // Retomar um plano a meio: os factos da regra (verificada à entrada, A3).
     if (planResumeTurn) finalSystemInstruction += "\n\nPLANO A MEIO: " + planResumeFacts(planResumeTurn.resume) + ".";
-    // «Agora não» depois de um retomar (últimos 7 dias): a frase dela, sem insistir.
+    // «Agora não» logo a seguir à mensagem dela de retoma (lastModelIsPlanResume): a frase dela, sem insistir.
     if (planResumeLaterAsked) {
       finalSystemInstruction += `\n\nO atleta respondeu «${PLAN_RESUME_LATER}» ao plano a meio. Responde exatamente: «${PLAN_RESUME_LATER_REPLY}» ` +
         `— sem propor nada e sem insistir.`;
+    }
+    // O chip sem retoma válida: só a verdade, sem propor nada.
+    if (planResumeSendStale) {
+      finalSystemInstruction += `\n\nO atleta tocou em «${PLAN_RESUME_SEND}», mas o plano já não está a meio (foi concluído, ` +
+        `recusado, substituído por outro, ou a semana já passou). Diz-lho numa frase, sem propor nada; se ele quiser mais semanas, ` +
+        `pergunta-lhe o que quer e espera pela resposta.`;
     }
     // O chip «Manda a próxima semana»: é um turno de continuação.
     if (planResumeAsked && planContinuationIn) {
@@ -8111,7 +8121,7 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
     const turnCase = classifyTurn(message, history);
     // Num turno por iniciativa dela não se propõe nada — só leitura e notas.
     // Com fotos, só leitura, notas e a Despensa: o texto de uma imagem não pode levar a Carol a mexer em planos, metas ou provas.
-    const allowedTools = proactiveTrigger || chatImages.length || targetsReviewPrompt || targetsUpdateAsked || planResumeLaterAsked ? new Set(READ_TOOL_NAMES) : allowedToolsFor(turnCase);
+    const allowedTools = proactiveTrigger || chatImages.length || targetsReviewPrompt || targetsUpdateAsked || planResumeLaterAsked || planResumeSendStale ? new Set(READ_TOOL_NAMES) : allowedToolsFor(turnCase);
 
     // Observabilidade do pedido ao Gemini. Sem isto, o incidente de
     // 2026-09-05 foi impossível de atribuir a partir dos logs: o modelo real
@@ -8132,7 +8142,8 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
     // Com as recomendações no esquema, salvo se esta instância já as viu
     // recusadas (5.5, push 2 — ver shouldRetryWithoutRecommendations).
     // Turno de plano: raciocínio "low" e esquema sem recommendations (isPlanTurn).
-    const planTurn = isPlanTurn(message, turnCase, !!planContinuationIn);
+    // O chip sem retoma válida não é um turno de plano (só leitura, acima).
+    const planTurn = !planResumeSendStale && isPlanTurn(message, turnCase, !!planContinuationIn);
     let useRecommendationsSchema = !recommendationsSchemaRejected && !planTurn;
     let useLowThinking = planTurn && !lowThinkingRejected;
     async function callGemini(withTools = true) {

@@ -6128,9 +6128,16 @@ Deno.test("handler: plan_resume — a regra volta a correr no turno, no «Manda�
   assertStringIncludes(src, "buildPlanContinuationTurn(planContinuationIn, { applied: planResumeAsked.resume.applied })");
   // A2: o «Agora não» só depois da mensagem dela, e só leitura.
   assertStringIncludes(src, "const planResumeLaterAsked = chipText === PLAN_RESUME_LATER.toLowerCase() && await lastModelIsPlanResume(sb, userId);");
-  assertStringIncludes(src, "|| targetsUpdateAsked || planResumeLaterAsked ? new Set(READ_TOOL_NAMES)");
+  assertStringIncludes(src, "|| targetsUpdateAsked || planResumeLaterAsked || planResumeSendStale ? new Set(READ_TOOL_NAMES)");
   assertStringIncludes(src, 'if (proactiveTrigger === "plan_resume") suggestions = [PLAN_RESUME_SEND, PLAN_RESUME_LATER];');
   assertStringIncludes(src, "result = await runProposeTrainingPlan(sb, userId, args || {}, planSeriesIntents, planContinuationIn);");
+  // O chip «Manda» sem retoma válida: só leitura, não é turno de plano, e ela diz que o plano já não está a meio.
+  assertStringIncludes(src, "const planResumeSendStale = chipText === PLAN_RESUME_SEND.toLowerCase() && !planResumeAsked;");
+  assertStringIncludes(src, "|| planResumeLaterAsked || planResumeSendStale ? new Set(READ_TOOL_NAMES)");
+  assertStringIncludes(src, "const planTurn = !planResumeSendStale && isPlanTurn(message, turnCase, !!planContinuationIn);");
+  assertStringIncludes(src, "mas o plano já não está a meio");
+  // E o isPlanRequest que motivou isto: o texto do chip, sozinho, conta como pedido de plano.
+  assertEquals(isPlanTurn("Manda a próxima semana", "E", false), true);
 });
 
 // ─── Turnos de plano mais rápidos (decisão do Rui, 2026-10-25: B e C) ────
@@ -6164,7 +6171,7 @@ Deno.test("isPlanTurn: continuação, A/F_PLAN e um E que pede plano; o resto n�
 
 Deno.test("handler: turno de plano com raciocínio low, sem recommendations, com rede no 400, e o tempo por ronda no log (ligações no código)", async () => {
   const src = await Deno.readTextFile(new URL("./index.ts", import.meta.url));
-  assertStringIncludes(src, "const planTurn = isPlanTurn(message, turnCase, !!planContinuationIn);");
+  assertStringIncludes(src, "const planTurn = !planResumeSendStale && isPlanTurn(message, turnCase, !!planContinuationIn);");
   assertStringIncludes(src, "let useRecommendationsSchema = !recommendationsSchemaRejected && !planTurn;");
   assertStringIncludes(src, "let useLowThinking = planTurn && !lowThinkingRejected;");
   const call = src.slice(src.indexOf("async function callGemini("), src.indexOf("async function callGemini(") + 4500);
