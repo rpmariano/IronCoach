@@ -27,9 +27,21 @@ export const PLAN_RESUME_MAX_LATE_DAYS = 3;
 
 export type PlanContinuationData = { from: string; to: string; part: number; of: number; until: string };
 
+/** O que a Carol precisa para escrever (textos dela, carol-plan-resume-textos.md):
+ *  a semana anterior (prevFrom/prevTo), se está no calendário (applied: há
+ *  itens ACEITES antes do from, desde o início da cadeia), a que falta
+ *  (from/to), até onde vai o plano e a prova, se se souber. */
+export type PlanResumeInfo = PlanContinuationData & {
+  message_id: string;
+  prevFrom: string;
+  prevTo: string;
+  applied: boolean;
+  raceName: string | null;
+};
+
 export type PlanResumeCandidate = Omit<ServerProactiveCandidate, "trigger"> & {
   trigger: typeof PLAN_RESUME_TRIGGER;
-  resume: PlanContinuationData & { message_id: string };
+  resume: PlanResumeInfo;
 };
 
 const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -76,7 +88,18 @@ export type PlanResumeInput = {
   acceptedItemDates: string[];
   /** As mensagens dele depois da mensagem da continuação. */
   userMessagesAfter: { content: string | null; created_at: string }[];
+  /** O nome da prova do plano, se se souber (a do dia do until). */
+  raceName?: string | null;
 };
+
+/** A semana anterior à que falta, e se está no calendário (itens aceites
+ *  desde o início da cadeia até à véspera do from). */
+export function previousWeekOf(c: PlanContinuationData, acceptedItemDates: string[]): { prevFrom: string; prevTo: string; applied: boolean } {
+  const prevFrom = addDays(c.from, -7);
+  const prevTo = addDays(c.from, -1);
+  const chainStart = addDays(c.from, -7 * (c.part - 1));
+  return { prevFrom, prevTo, applied: acceptedItemDates.some((d) => d >= chainStart && d < c.from) };
+}
 
 /**
  * A cadeia ficou a meio? Sim quando: a parte prometida ainda serve (until ≥
@@ -106,19 +129,35 @@ export function detectPlanResume(input: PlanResumeInput, nowMs: number, todayISO
     silenceDays: null,
     anchorDate: null,
     anchorAt: msg.created_at,
-    resume: { ...c, message_id: msg.id },
+    resume: { ...c, message_id: msg.id, ...previousWeekOf(c, input.acceptedItemDates), raceName: input.raceName ?? null },
   };
 }
 
 const ddmm = (iso: string) => `${Number(iso.slice(8, 10))}/${Number(iso.slice(5, 7))}`;
 
-/** Os factos da parte que falta, para a Carol (e para a notificação). */
-export function planResumeFacts(c: PlanContinuationData): string {
-  return `falta a parte ${c.part} de ${c.of} do plano que ele pediu: a semana de ${ddmm(c.from)} a ${ddmm(c.to)}; o plano vai até ${ddmm(c.until)}`;
+/** Duas datas como a Carol as diz: «26/10 a 1/11», «2 a 8/11». */
+export function weekText(from: string, to: string): string {
+  return from.slice(5, 7) === to.slice(5, 7) ? `${Number(from.slice(8, 10))} a ${ddmm(to)}` : `${ddmm(from)} a ${ddmm(to)}`;
 }
 
-/* A notificação: frase fixa, sem Gemini (como os avisos do Troféu).
-   PROVISÓRIA — a frase definitiva vem da Carol especialista. */
-export function planResumePushMessage(c: PlanResumeCandidate): { title: string; body: string } {
-  return { title: "Carol", body: `Falta a semana de ${ddmm(c.resume.from)} a ${ddmm(c.resume.to)} do teu plano. Mando-ta?` };
+/** Os factos para o Contexto do turno (os textos são dela). Sem `applied`
+ *  conhecido, a linha do calendário não vai — e ela não fala dele. */
+export function planResumeFacts(r: PlanContinuationData & Partial<Pick<PlanResumeInfo, "prevFrom" | "prevTo" | "applied" | "raceName">>): string {
+  const lines = [
+    r.prevFrom && r.prevTo ? `semana anterior: ${weekText(r.prevFrom, r.prevTo)}` : null,
+    typeof r.applied === "boolean" ? `a semana anterior está no calendário: ${r.applied ? "sim" : "não"}` : null,
+    `semana que falta: ${weekText(r.from, r.to)} (parte ${r.part} de ${r.of})`,
+    `o plano vai até ${ddmm(r.until)}`,
+    r.raceName ? `prova: ${r.raceName}` : null,
+  ];
+  return lines.filter(Boolean).join("; ");
 }
+
+/* A notificação: frase fixa da Carol, sem Gemini (como os avisos do Troféu).
+   Não fala do calendário: serve os dois casos (carol-plan-resume-textos.md). */
+export function planResumePushMessage(c: PlanResumeCandidate): { title: string; body: string } {
+  return { title: "Carol", body: `O teu plano ficou a meio. Falta a semana de ${weekText(c.resume.from, c.resume.to)}, e eu preparo-ta quando abrires a conversa.` };
+}
+
+/** A resposta dela ao «Agora não» (frase da Carol). */
+export const PLAN_RESUME_LATER_REPLY = "Fica para quando quiseres. Quando for altura, pede-me no chat e eu continuo de onde ficámos.";

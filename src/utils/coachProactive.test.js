@@ -375,12 +375,12 @@ describe('pendingPlanResumeAlert — plano partido que ficou a meio', () => {
   it('parte 1 aceite, a 2 nunca pedida: devolve o candidato com a chave da mensagem e os factos', () => {
     const a = pendingPlanResumeAlert(base(), AGORA);
     expect(a.candidate).toMatchObject({ trigger: 'plan_resume', key: KEY });
-    expect(a).toMatchObject({ applied: true, acceptedFrom: '2026-10-26', acceptedTo: '2026-10-30', nextFrom: '2026-11-02', nextTo: '2026-11-08', until: '2026-11-29', part: 2, of: 5, raceName: 'Meia de Lisboa' });
+    expect(a).toMatchObject({ applied: true, acceptedFrom: '2026-10-26', acceptedTo: '2026-11-01', nextFrom: '2026-11-02', nextTo: '2026-11-08', until: '2026-11-29', part: 2, of: 5, raceName: 'Meia de Lisboa' });
   });
 
-  it('sem nada aceite antes da quebra: applied false, sem datas aceites', () => {
+  it('sem nada aceite antes da quebra: applied false (a semana anterior vem na mesma, para o texto)', () => {
     const a = pendingPlanResumeAlert(base({ coachPlans: [], coachPlanItems: [] }), AGORA);
-    expect(a).toMatchObject({ applied: false, acceptedFrom: null, acceptedTo: null });
+    expect(a).toMatchObject({ applied: false, acceptedFrom: '2026-10-26', acceptedTo: '2026-11-01' });
     expect(a.candidate.key).toBe(KEY);
   });
 

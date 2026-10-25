@@ -6090,16 +6090,20 @@ import { planContinuationFromResume, planResumeFactsFor } from "./index.ts";
 const RESUME_MSG_ID = "7cd927d8-4e21-4e49-b86d-0c86985cc812";
 const RESUME_CONT = { from: "2026-11-02", to: "2026-11-08", part: 2, of: 5, until: "2026-11-29" };
 // deno-lint-ignore no-explicit-any
-function resumeSb(logRows: any[], messages: Record<string, any>) {
+function resumeSb(logRows: any[], messages: Record<string, any>, acceptedPlans: any[] = [], race: any = null) {
   // deno-lint-ignore no-explicit-any
   const q = (table: string): any => {
     const f: Record<string, unknown> = {};
+    const list = () => table === "coach_proactive_log" ? logRows : table === "coach_plans" ? acceptedPlans : [];
     // deno-lint-ignore no-explicit-any
     const chain: any = {
-      select: () => chain, like: () => chain, gte: () => chain, order: () => chain,
+      select: () => chain, like: () => chain, gte: () => chain, order: () => chain, limit: () => chain,
       eq: (c: string, v: unknown) => { f[c] = v; return chain; },
-      limit: () => Promise.resolve({ data: table === "coach_proactive_log" ? logRows : [], error: null }),
-      maybeSingle: () => Promise.resolve({ data: f.user_id === "u1" && f.role === "model" ? messages[String(f.id)] ?? null : null, error: null }),
+      maybeSingle: () => Promise.resolve({
+        data: table === "race_events" ? race : f.user_id === "u1" && f.role === "model" ? messages[String(f.id)] ?? null : null,
+        error: null,
+      }),
+      then: (resolve: (v: unknown) => unknown) => Promise.resolve(resolve({ data: list(), error: null })),
     };
     return chain;
   };
@@ -6112,8 +6116,13 @@ Deno.test("plano a meio: «Manda a próxima semana» dá a parte certa, da mensa
   // Sem retomar registado (ou a mensagem de outro atleta), nada.
   assertEquals(await planContinuationFromResume(resumeSb([], {}), "u1"), null);
   assertEquals(await planContinuationFromResume(sb, "u2"), null);
-  // Os factos do turno plan_resume saem da mesma mensagem.
-  assertStringIncludes((await planResumeFactsFor(sb, "u1", `plan_resume:${RESUME_MSG_ID}`))!, "falta a parte 2 de 5");
+  // Os factos do turno plan_resume saem da mesma mensagem: (a) com a semana anterior aceite e a prova do dia do until.
+  const withAccepted = resumeSb([], { [RESUME_MSG_ID]: { plan_continuation: RESUME_CONT } },
+    [{ coach_plan_items: [{ planned_date: "2026-10-28" }] }], { name: "Meia de Lisboa" });
+  assertEquals(await planResumeFactsFor(withAccepted, "u1", `plan_resume:${RESUME_MSG_ID}`),
+    "semana anterior: 26/10 a 1/11; a semana anterior está no calendário: sim; semana que falta: 2 a 8/11 (parte 2 de 5); o plano vai até 29/11; prova: Meia de Lisboa");
+  // (b) Nada aplicado.
+  assertStringIncludes((await planResumeFactsFor(sb, "u1", `plan_resume:${RESUME_MSG_ID}`))!, "está no calendário: não");
   assertEquals(await planResumeFactsFor(sb, "u1", "outra:chave"), null);
 });
 
@@ -6126,6 +6135,10 @@ Deno.test("handler: plan_resume é um turno proativo com os dois chips, e o «Ma
   // A continuação do «Manda» passa pelas regras das partes (a janela, sem supersedes).
   assertStringIncludes(src, "result = await runProposeTrainingPlan(sb, userId, args || {}, planSeriesIntents, planContinuationIn);");
   assertStringIncludes(src, 'finalSystemInstruction += "\\n\\nPLANO A MEIO: " + facts + ".";');
+  // «Agora não»: a frase dela, só com leitura.
+  assertStringIncludes(src, "const planResumeLaterAsked = chipText === PLAN_RESUME_LATER.toLowerCase() && !!(await planContinuationFromResume(sb, userId));");
+  assertStringIncludes(src, "|| targetsUpdateAsked || planResumeLaterAsked ? new Set(READ_TOOL_NAMES)");
+  assertStringIncludes(src, "Responde exatamente: «${PLAN_RESUME_LATER_REPLY}»");
 });
 
 // ─── Turnos de plano mais rápidos (decisão do Rui, 2026-10-25: B e C) ────
