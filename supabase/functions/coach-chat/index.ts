@@ -9,7 +9,7 @@ import { UNLINKED_RUN_DETAILS_PREFIX } from "../_shared/formulas/proactiveTrigge
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { imageMarker, imagesTurnSection, parseChatImages, userTurnParts } from "./chatImages.ts";
 import { runSavePantryFood, SAVE_PANTRY_FOOD_TOOL } from "./pantryFromChat.ts";
-import { normalizeGender, categorizeDistance as sharedCategorizeDistance, MIN_PREP_WEEKS as SHARED_MIN_PREP_WEEKS, MIN_VOLUME_KM as SHARED_MIN_VOLUME_KM, PRE_RACE_HARD_RUN_TYPES, PRE_RACE_EASY_DAYS } from "../_shared/formulas/vocabulary.ts";
+import { normalizeGender, categorizeDistance as sharedCategorizeDistance, MIN_PREP_WEEKS as SHARED_MIN_PREP_WEEKS, MIN_VOLUME_KM as SHARED_MIN_VOLUME_KM, PRE_RACE_HARD_RUN_TYPES, PRE_RACE_EASY_DAYS, PRE_RACE_ACTIVATION_TYPE } from "../_shared/formulas/vocabulary.ts";
 import { classifyVisceralFat as sharedClassifyVisceralFat } from "../_shared/formulas/bodyComposition.ts";
 import { focusRace, isPrincipalRace, nextRaceByDate, selectRaces } from "../_shared/formulas/mainRace.ts";
 import { parseRecommendations } from "../_shared/formulas/recommendations.ts";
@@ -166,9 +166,12 @@ const RUNNING_TOOL = {
 // "caminhada" (2026-10-05): tipo de treino da corrida para recuperações e para
 // quem não pode correr (_shared/formulas/runKinds.ts). Exige a migração
 // 20261005120000 no check de runs.training_type.
+// "ativacao" (bug #84, 2026-10-25): o treino curto da véspera/antevéspera de
+// uma prova (15-30 min fáceis com 3-4 acelerações), que até aqui saía como
+// "recuperação". Exige a migração 20261025100000 no check de runs.training_type.
 const RUN_TRAINING_TYPES = [
   "continuo", "longo", "recuperacao", "tempo", "fartlek",
-  "intervalos", "subidas", "trail", "tecnico", WALK_TRAINING_TYPE,
+  "intervalos", "subidas", "trail", "tecnico", WALK_TRAINING_TYPE, PRE_RACE_ACTIVATION_TYPE,
 ];
 // No PLANO há mais um tipo: "prova" — o dia da prova é a prova, não um
 // treino (specs/plano-de-prova.md, "O plano tem de saber da prova"). Só é
@@ -291,7 +294,7 @@ const PROPOSE_PLAN_TOOL = {
     // As guardas do servidor, ditas antes de ele as bater (2026-09-26): o
     // modelo gastava uma volta a descobrir cada uma pelo erro.
     "O SERVIDOR RECUSA (e o erro diz porquê): mais de 14 itens; um item fora do período; no dia de uma prova agendada, outra coisa que não a prova (kind=corrida — o servidor põe training_type=prova, e acrescenta o dia se o omitires); training_type=prova num dia sem prova; " +
-    "nos 2 dias antes de qualquer prova agendada (mesmo a 1-2 dias do fim do período), treino forte ou ginásio — só recuperação curta ou descanso; um descanso sem meal_suggestion nem notes; " +
+    "nos 2 dias antes de qualquer prova agendada (mesmo a 1-2 dias do fim do período), treino forte ou ginásio — só ativação curta ou descanso (na véspera e na antevéspera, prefere training_type=ativacao a recuperacao); um descanso sem meal_suggestion nem notes; " +
     "e, com histórico de corrida suficiente, um plano que cumprido leve o ACWR acima de 1,50 (o erro diz o dia e o teto de km).",
   parameters: {
     type: "OBJECT",
@@ -349,6 +352,8 @@ const PROPOSE_PLAN_TOOL = {
               description:
                 "Só para kind=corrida. Tipo de treino de corrida. \"prova\" é o dia de uma prova " +
                 "agendada (o servidor exige-o nesse dia e recusa treinos fortes e ginásio na véspera e na antevéspera). " +
+                "\"ativacao\" é a ativação pré-prova da véspera ou da antevéspera: 15-30 min fáceis com 3-4 acelerações curtas " +
+                "(target_duration_min) — é esse o treino desses dias, não recuperacao. " +
                 "\"caminhada\" é um dia de CAMINHADA (recuperação de lesão/cirurgia, pós-prova, regresso, descanso ativo, " +
                 "indicação médica para não correr): leva target_duration_min ou target_distance_km e walk_intensity, e não conta para a carga de corrida.",
             },
@@ -3181,7 +3186,7 @@ export async function runProposeTrainingPlan(sb: any, userId: string, args: any,
     const raceSoon = racesInPeriodOrAfter.find((r) => r.date > item.planned_date && daysBetweenISO(item.planned_date, r.date) <= easyDaysBefore(r));
     if (raceSoon && ((item.kind === "corrida" && HARD_RUN_TYPES.has(item.training_type)) || item.kind === "ginasio")) {
       const attacked = easyDaysBefore(raceSoon) > PRE_RACE_EASY_DAYS ? ` (é uma jornada para atacar: ${easyDaysBefore(raceSoon)} dias fáceis antes)` : "";
-      return `Erro no treino ${n}: ${item.planned_date} está a ${daysBetweenISO(item.planned_date, raceSoon.date)} dia(s) da prova "${raceSoon.name}"${attacked} — só recuperação curta ou descanso; nada de ${item.kind === "ginasio" ? "ginásio" : item.training_type}.`;
+      return `Erro no treino ${n}: ${item.planned_date} está a ${daysBetweenISO(item.planned_date, raceSoon.date)} dia(s) da prova "${raceSoon.name}"${attacked} — só ativação curta (training_type=ativacao) ou descanso; nada de ${item.kind === "ginasio" ? "ginásio" : item.training_type}.`;
     }
     const mealSuggestion = typeof item.meal_suggestion === "string" && item.meal_suggestion.trim()
       ? item.meal_suggestion.trim()
@@ -6024,7 +6029,8 @@ export function buildSystemInstruction(
     `se não fizer.\n\n` +
     `A PROVA NO PLANO: se houver prova agendada dentro do período, o dia da prova leva um item ` +
     `kind=corrida com training_type=prova (distância da prova; a notes aponta para o plano de ritmo do hub) — ` +
-    `nunca um treino. A véspera e a antevéspera levam recuperação curta ou descanso: o servidor recusa ` +
+    `nunca um treino. A véspera e a antevéspera levam ativação curta ou descanso — a ativação é training_type=ativacao ` +
+    `(15-30 min fáceis com 3-4 acelerações curtas), não recuperacao: o servidor recusa ` +
     `longo, tempo, fartlek, intervalos, subidas e ginásio nesses dois dias. As sugestões alimentares desses ` +
     `dias seguem o bloco VÉSPERA E MANHÃ DA PROVA quando existir.\n\n` +
     WALKING_DOCTRINE +

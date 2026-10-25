@@ -5089,7 +5089,7 @@ Deno.test("guarda do plano: 3 dias fáceis antes de uma jornada para atacar; 2 a
   assertEquals(fourDays.includes("dia(s) da prova"), false);
   // A 2 dias, a mensagem das outras fica igual à de sempre.
   const twoDays = await runProposeTrainingPlan(makePlanSbWithRaces(races).sb, "user-1", plan("2026-08-13"), { rj3: "controlar" });
-  assertStringIncludes(twoDays, 'a 2 dia(s) da prova "Corrida do Clube" — só recuperação curta ou descanso');
+  assertStringIncludes(twoDays, 'a 2 dia(s) da prova "Corrida do Clube" — só ativação curta (training_type=ativacao) ou descanso');
 });
 
 Deno.test("handler: o bloco, as ferramentas e o turno do mapa só com inscrição ativa (ligações no código)", async () => {
@@ -5602,4 +5602,29 @@ Deno.test("fetchForecastRuns: o histórico todo do atleta, por páginas, com des
   // deno-lint-ignore no-explicit-any
   const sbErr: any = { from: () => ({ select: () => chain }) };
   assertEquals(await fetchForecastRuns(sbErr, "u1"), null);
+});
+
+// Bug #84 (2026-10-25): o treino antes da prova saía como «Recuperação».
+Deno.test("plano: a ativação pré-prova é um tipo válido na véspera e na antevéspera (bug #84)", async () => {
+  const { sb, calls } = makePlanSbWithRaces([{ id: "r1", name: "Corrida do Tejo", date: "2026-08-15", distance_km: 10 }]);
+  const result = await runProposeTrainingPlan(sb, "user-1", {
+    race_id: "r1", period_start: "2026-08-10", period_end: "2026-08-15", summary: "semana da prova",
+    items: [
+      { planned_date: "2026-08-13", kind: "corrida", training_type: "ativacao", target_duration_min: 25 },
+      { planned_date: "2026-08-14", kind: "corrida", training_type: "ativacao", target_duration_min: 20 },
+      { planned_date: "2026-08-15", kind: "corrida", training_type: "prova", target_distance_km: 10 },
+    ],
+  });
+  assertEquals(result.startsWith("Erro"), false, result);
+  assertEquals(calls.itemInserts.filter((r) => r.training_type === "ativacao").length, 2);
+});
+
+Deno.test("prompt e ferramenta: a véspera pede ativação curta, não recuperação (bug #84)", () => {
+  const tools = JSON.stringify(buildTools(allowedToolsFor("E")));
+  assertStringIncludes(tools, '"ativacao"');
+  assertStringIncludes(tools, "só ativação curta ou descanso (na véspera e na antevéspera, prefere training_type=ativacao a recuperacao)");
+  assertEquals(tools.includes("só recuperação curta ou descanso"), false);
+  const sys = sysCarol();
+  assertStringIncludes(sys, "A véspera e a antevéspera levam ativação curta ou descanso");
+  assertEquals(sys.includes("levam recuperação curta ou descanso"), false);
 });

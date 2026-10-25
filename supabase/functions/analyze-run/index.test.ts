@@ -260,3 +260,7 @@ Deno.test("caminhada: nunca é recorde de corrida, e não esconde os recordes da
   // A "caminhada" absurda a 3'/km não é o melhor dos 5 km.
   assertStringIncludes(walk.bestPacesLine ?? "", "5k 5.00");
 });
+
+Deno.test("TRAINING_TYPE_KEYS: a ativação pré-prova grava-se como tipo de treino (bug #84)", () => {
+  assertEquals(TRAINING_TYPE_KEYS.includes("ativacao"), true);
+});

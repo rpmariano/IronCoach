@@ -55,6 +55,10 @@ export function isRacePriority(raw: string | null | undefined): raw is RacePrior
 // listas que já divergiam (specs/plano-de-prova.md, "O plano tem de saber
 // da prova").
 export const PRE_RACE_HARD_RUN_TYPES: readonly string[] = ["longo", "tempo", "fartlek", "intervalos", "subidas"];
+// O treino desses dias (bug #84, 2026-10-25): ativação pré-prova, 15-30 min
+// fáceis com 3-4 acelerações curtas. Não é treino duro — fica de fora da
+// lista de cima de propósito, e é o tipo que a véspera/antevéspera prefere.
+export const PRE_RACE_ACTIVATION_TYPE = "ativacao";
 export const PRE_RACE_EASY_DAYS = 2;
 
 // ─── Categoria de distância de prova ─────────────────────────────────────
