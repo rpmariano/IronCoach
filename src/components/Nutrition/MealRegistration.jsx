@@ -419,13 +419,22 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
      pele) pergunta sempre qual — chips com as variantes guardadas, sem
      chamada à API. O item entra com o nome da variante, e é por esse nome
      que o servidor lhe põe os valores dela. */
-  const [variantPick, setVariantPick] = useState(null); // { food, variants, typed }
+  /* Vale para qualquer entrada — escrita, hábito ou predefinida: um item que
+     é um genérico com variantes, ou uma variante dele, pergunta sempre qual
+     (decisão do Rui). Fila, porque uma predefinida pode trazer vários. */
+  const [variantQueue, setVariantQueue] = useState([]); // [{ food (o genérico), variants, typed }]
+  const variantPick = variantQueue[0] || null;
+  const genericOf = (food) => {
+    const generic = food?.parent_id ? (pantryFoods || []).find((f) => f.id === food.parent_id) : food;
+    const variants = generic ? variantsOf(pantryFoods, generic) : [];
+    return variants.length ? { generic, variants } : null;
+  };
   const addPantryFood = (food) => {
     const typed = itemGrams.trim() ? Number(itemGrams) : null;
-    const variants = variantsOf(pantryFoods, food);
-    if (variants.length) {
+    const grouped = genericOf(food);
+    if (grouped) {
       setErrorMsg('');
-      setVariantPick({ food, variants, typed: typed > 0 ? typed : null });
+      setVariantQueue((q) => [...q, { food: grouped.generic, variants: grouped.variants, typed: typed > 0 ? typed : null }]);
       setItemName('');
       setItemGrams('');
       return;
@@ -442,7 +451,7 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
     const grams = variantPick.typed > 0 ? variantPick.typed : foodDefaultGrams(variant, foodRules).grams;
     setManualItems(prev => [...prev, { key: `${Date.now()}-${prev.length}`, name: variant.name, grams }]);
     setIsFormDirty(true);
-    setVariantPick(null);
+    setVariantQueue((q) => q.slice(1));
     itemNameRef.current?.focus();
   };
   /* Desde 2026-10-05 só um alimento da despensa COMPLETO (os 7
@@ -534,7 +543,16 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
      continua editável. Os da despensa registam-se sem estimativa. */
   const templates = templatesForMealType(mealTemplates, mealType).slice(0, 6);
   const applyTemplate = (template) => {
-    const toAdd = templateItems(template).filter((it) => !manualItems.some((m) => foodKey(m.name) === foodKey(it.name)));
+    // Um item do grupo de um genérico (ele ou uma variante) conta como já junto.
+    const groupKeys = (name) => {
+      const food = (pantryFoods || []).find((f) => f.name_key === foodKey(name));
+      const g = genericOf(food);
+      return g ? [g.generic, ...g.variants].map((f) => f.name_key) : [foodKey(name)];
+    };
+    const toAdd = templateItems(template).filter((it) => {
+      const keys = groupKeys(it.name);
+      return !manualItems.some((m) => keys.includes(foodKey(m.name)));
+    });
     setErrorMsg('');
     if (!toAdd.length) return; // já estava tudo: não junta nem conta
     // O tipo dela (§5.1, "sugere o tipo ao usar"): só num registo novo ainda
@@ -548,7 +566,15 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
       setMealType(template.default_meal_type);
       if (!mealTimeTouchedRef.current) setMealTime(mealNominalTime(template.default_meal_type));
     }
-    setManualItems(prev => [...prev, ...toAdd.map((it, i) => ({ key: `${Date.now()}-${prev.length + i}`, name: it.name, grams: it.grams }))]);
+    const asks = [];
+    const direct = [];
+    for (const it of toAdd) {
+      const g = genericOf((pantryFoods || []).find((f) => f.name_key === foodKey(it.name)));
+      if (g) asks.push({ food: g.generic, variants: g.variants, typed: it.grams > 0 ? it.grams : null });
+      else direct.push(it);
+    }
+    if (asks.length) setVariantQueue((q) => [...q, ...asks]);
+    if (direct.length) setManualItems(prev => [...prev, ...direct.map((it, i) => ({ key: `${Date.now()}-${prev.length + i}`, name: it.name, grams: it.grams }))]);
     setIsFormDirty(true);
     markMealTemplateUsed(template).then((times_used) => {
       if (times_used == null) return;
@@ -970,7 +996,7 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
                       {v.variant_label}<span className="font-normal" style={{ color: 'var(--text-4)' }}> · {Math.round(Number(v.calories_per_100g) || 0)} kcal/100 g</span>
                     </button>
                   ))}
-                  <button type="button" onClick={() => setVariantPick(null)} className="min-h-[44px] px-3 rounded-full text-[12.5px] font-bold" style={{ color: 'var(--text-3)' }}>Cancelar</button>
+                  <button type="button" onClick={() => setVariantQueue((q) => q.slice(1))} className="min-h-[44px] px-3 rounded-full text-[12.5px] font-bold" style={{ color: 'var(--text-3)' }}>Cancelar</button>
                 </div>
               </div>
             )}

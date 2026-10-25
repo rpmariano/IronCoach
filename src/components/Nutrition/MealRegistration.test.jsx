@@ -971,6 +971,46 @@ describe('MealRegistration — a despensa ao escrever', () => {
     expect(screen.getByLabelText('Gramas de Coxa de frango com pele')).toHaveValue(200);
   });
 
+  describe('bug #87: pergunta sempre, também nas predefinidas e nos hábitos', () => {
+    const coxa = { id: 'p', name: 'Coxa de frango', name_key: 'coxa de frango', times_seen: 8, portion_grams: 120, calories_per_100g: 216 };
+    const com = { id: 'v1', parent_id: 'p', variant_label: 'com pele', name: 'Coxa de frango com pele', name_key: 'coxa de frango com pele', times_seen: 6, portion_grams: 120, calories_per_100g: 216 };
+    const sem = { id: 'v2', parent_id: 'p', variant_label: 'sem pele', name: 'Coxa de frango sem pele', name_key: 'coxa de frango sem pele', times_seen: 2, portion_grams: 100, calories_per_100g: 144 };
+    beforeEach(() => useAppStore.setState({ pantryFoods: [...FOODS, coxa, com, sem] }));
+
+    it('uma predefinida com uma variante dentro pergunta qual era; o resto junta-se logo; repetida não volta a perguntar', () => {
+      useAppStore.setState({ mealTemplates: [{ id: 't9', name: 'Frango e iogurte', items: [{ name: 'Coxa de frango com pele', grams: 150 }, { name: 'Iogurte grego 0%', grams: 170 }], times_used: 1 }] });
+      render(<MealRegistration onClose={onClose} />);
+      fireEvent.click(screen.getByRole('button', { name: /Juntar a refeição Frango e iogurte/ }));
+      // O iogurte entra logo; a coxa pergunta.
+      expect(screen.getByLabelText('Gramas de Iogurte grego 0%')).toHaveValue(170);
+      const pergunta = screen.getByTestId('meal-variant-pick');
+      expect(pergunta).toHaveTextContent('Coxa de frango');
+      fireEvent.click(within(pergunta).getByRole('button', { name: /sem pele/ }));
+      // As gramas da predefinida valem para a variante escolhida.
+      expect(screen.getByLabelText('Gramas de Coxa de frango sem pele')).toHaveValue(150);
+      expect(screen.queryByTestId('meal-variant-pick')).not.toBeInTheDocument();
+      // Já tem a coxa (outra variante): não volta a perguntar nem a juntar.
+      fireEvent.blur(screen.getByLabelText('Nome do alimento a adicionar')); // o foco fica no campo e esconde os atalhos
+      fireEvent.click(screen.getByRole('button', { name: /Juntar a refeição Frango e iogurte/ }));
+      expect(screen.queryByTestId('meal-variant-pick')).not.toBeInTheDocument();
+      expect(screen.getByTestId('meal-items')).toHaveTextContent('Nesta refeição · 2');
+    });
+
+    it('um hábito que é uma variante pergunta qual era, em vez de entrar com ela', () => {
+      const hoje = new Date().toISOString().slice(0, 10);
+      const dia = (d) => { const x = new Date(); x.setDate(x.getDate() - d); return x.toISOString().slice(0, 10); };
+      const refeicao = (data) => ({ id: `m${data}`, date: data, meal_type: 'almoco', meal_items: [{ name: 'Coxa de frango com pele' }] });
+      useAppStore.setState({ meals: [refeicao(dia(1)), refeicao(dia(2))] });
+      render(<MealRegistration onClose={onClose} />);
+      fireEvent.click(screen.getByRole('button', { name: /^Almoço$/ }));
+      const habitos = screen.getByTestId('meal-habituals');
+      fireEvent.click(within(habitos).getByRole('button', { name: /Coxa de frango com pele/ }));
+      expect(screen.getByTestId('meal-variant-pick')).toBeInTheDocument();
+      expect(screen.queryByTestId('meal-items')).not.toBeInTheDocument();
+      expect(hoje).toBeTruthy();
+    });
+  });
+
   it('um da despensa com micronutrientes por confirmar diz que a Carol os completa (não que não é analisado)', () => {
     render(<MealRegistration onClose={onClose} />);
     fireEvent.change(screen.getByPlaceholderText(/peito de frango grelhado/), { target: { value: 'iog nat' } });
