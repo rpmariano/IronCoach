@@ -34,12 +34,10 @@ export function planResumeNotice({ applied, acceptedFrom, acceptedTo, until, rac
   const ate = ateOnde(raceName, until);
   if (!ate) return null;
   if (applied === true) {
-    const intervalo = intervaloFalado(acceptedFrom, acceptedTo);
-    if (!intervalo) return null;
-    // acceptedFrom/acceptedTo cobrem as semanas aceites antes desta (podem ser várias).
-    const dias = (Date.parse(acceptedTo) - Date.parse(acceptedFrom)) / 86400000 + 1;
-    const oQue = dias > 7 ? 'o plano' : 'a semana';
-    return { title: PLAN_RESUME_TITLE, message: `Já tens ${oQue} de ${intervalo} no calendário, mas faltam as seguintes ${ate}. Quero acabar o plano contigo.` };
+    // acceptedFrom/acceptedTo: a semana anterior à que falta (prevFrom/prevTo do detectPlanResume).
+    const semana = intervaloFalado(acceptedFrom, acceptedTo);
+    if (!semana) return null;
+    return { title: PLAN_RESUME_TITLE, message: `Já tens a semana de ${semana} no calendário, mas faltam as seguintes ${ate}. Quero acabar o plano contigo.` };
   }
   // A meio da frase, "a 29/11" é um aposto: fecha com vírgula.
   const sujeito = String(raceName || '').trim() ? `${ate},` : ate;

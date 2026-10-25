@@ -130,16 +130,22 @@ export default function useCarolNotices() {
 
   /* O plano ficou a meio (plan_resume, 2026-10-25): um plano em partes em que
      uma semana chegou e as seguintes não. O candidato é o do chat e da
-     notificação (plan_resume:<mensagem>). Fica ACIMA do ajuste do plano: com
-     o plano a meio, a prova ainda não está nele e o ajuste disparava sempre
-     ("Meia de Lisboa não está no plano") — a causa é a semana que falta, e
-     é essa que se resolve. Sem a frase (faltam datas), não há aviso. */
+     notificação (plan_resume:<mensagem>). Sem a frase (faltam datas), não há
+     aviso. Ver divergenceFirst para a ordem face ao ajuste do plano. */
   const planResume = useMemo(() => {
     if (pendingTopics > 0 || raceConflict) return null;
     const alert = pendingPlanResumeAlert({ coachPlans, coachPlanItems, coachMessages, raceEvents, profile, impressionDismissed });
     const notice = alert && planResumeNotice(alert);
     return notice ? { ...alert, notice } : null;
   }, [pendingTopics, raceConflict, coachPlans, coachPlanItems, coachMessages, raceEvents, profile, impressionDismissed, alertDismissals]);
+
+  /* O ajuste do plano e o plano a meio (revisão A6): com o plano a meio, a
+     prova ainda não está nele, e "Meia de Lisboa não está no plano" é só o
+     sintoma da semana que falta — aí o plano a meio passa à frente. Com
+     outro motivo qualquer (treinos falhados, a prova antecipada, treino forte
+     na véspera), o ajuste é um problema próprio e fica por cima. */
+  const divergenceFirst = !!divergence
+    && !(planResume && divergence.reasons.every((r) => r.key === 'prova_sem_item'));
 
   /* O mapa da época (specs/trofeu.md §5, Fase 2; utils/cupMap.js): ao
      inscrever, e quando sai o calendário com jornadas por decidir, a Carol
@@ -172,10 +178,10 @@ export default function useCarolNotices() {
         races: raceConflict.races.map((r) => ({ id: r.id, name: r.name, date: r.date })),
         target: raceConflict.target ? { id: raceConflict.target.id, name: raceConflict.target.name, date: raceConflict.target.date } : null,
       });
+    } else if (divergenceFirst) {
+      setCoachIntent({ kind: 'adapt_plan', divergence: divergence.reasons.map((r) => r.text), signature: divergence.signature });
     } else if (planResume) {
       setCoachIntent({ kind: 'proactive_moment', candidate: planResume.candidate });
-    } else if (divergence) {
-      setCoachIntent({ kind: 'adapt_plan', divergence: divergence.reasons.map((r) => r.text), signature: divergence.signature });
     } else if (cupMap) {
       setCoachIntent({ kind: 'cup_map', signature: cupMap.signature, first: cupMap.first });
     }
@@ -236,6 +242,14 @@ export default function useCarolNotices() {
         : `${nomes} ${plural ? 'estão como principais' : 'está como principal'} a meio do plano atual.`,
       onTalk: openCoach,
     });
+  } else if (divergenceFirst) {
+    alerts.push({
+      id: 'plano',
+      severity: 'warning',
+      title: 'O plano precisa de um ajuste',
+      message: divergence.reasons.map((r) => r.text).join(' '),
+      onTalk: openCoach,
+    });
   } else if (planResume) {
     alerts.push({
       id: 'plano-a-meio',
@@ -253,14 +267,6 @@ export default function useCarolNotices() {
         setAlertDismissals((n) => n + 1);
         logImpressionDismissed({ kind: 'alert', key: planResume.candidate.key, title: PLAN_RESUME_TITLE });
       },
-    });
-  } else if (divergence) {
-    alerts.push({
-      id: 'plano',
-      severity: 'warning',
-      title: 'O plano precisa de um ajuste',
-      message: divergence.reasons.map((r) => r.text).join(' '),
-      onTalk: openCoach,
     });
   } else if (cupMap) {
     alerts.push({
