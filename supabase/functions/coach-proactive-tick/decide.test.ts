@@ -226,7 +226,7 @@ import { detectPlanResume } from "../_shared/formulas/planResume.ts";
 Deno.test("decidePush: plan_resume sai com os tipos por omissão e uma vez por parte", () => {
   const candidate = detectPlanResume({
     lastContinuation: { id: "7cd927d8-4e21-4e49-b86d-0c86985cc812", created_at: "2026-10-25T20:43:16.000Z", plan_continuation: { from: "2026-11-02", to: "2026-11-08", part: 2, of: 5, until: "2026-11-29" } },
-    pendingTrainingPlans: 0, acceptedItemDates: [], userMessagesAfter: [],
+    pendingTrainingPlans: 0, acceptedItems: [], userMessagesAfter: [], plansCreatedAfter: 0, continuationPlanStatus: "aceite",
   }, Date.parse("2026-10-27T10:00:00Z"), "2026-10-27")!;
   const ctx = { lisbonHour: 11, deliveredKeys: new Set<string>(), pushedKeys: new Set<string>(), pushedTodayCount: 0, lastModelMessageAt: null, nowMs: Date.parse("2026-10-27T10:00:00Z") };
   assertEquals(decidePush({ ...ctx, candidate, prefs: { types: ["silence"] } }), { send: true });
