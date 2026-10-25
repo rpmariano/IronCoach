@@ -4524,6 +4524,42 @@ function formatHms(totalSeconds: number): string {
 // Inclui explicitamente "dias até à prova" para o modelo não ter de calcular
 // datas por conta própria.
 // deno-lint-ignore no-explicit-any
+/**
+ * As corridas da previsão de tempo (bug #89): o histórico completo do
+ * atleta, como o store do frontend o carrega para o hub da prova
+ * (src/store/index.js, runs por date desc, id desc), só com as colunas que a
+ * previsão usa. Por páginas de 1000 (o max_rows do PostgREST), com o id a
+ * desempatar. Um erro devolve null — a previsão cai para os 30 dias, como
+ * antes, em vez de a Carol ficar sem número.
+ */
+export async function fetchForecastRuns(
+  // deno-lint-ignore no-explicit-any
+  sb: any,
+  userId: string,
+  // deno-lint-ignore no-explicit-any
+): Promise<any[] | null> {
+  const PAGE = 1000;
+  // deno-lint-ignore no-explicit-any
+  const out: any[] = [];
+  for (let start = 0;; start += PAGE) {
+    const { data, error } = await sb
+      .from("runs")
+      .select("id, date, kind, training_type, distance_km, duration_seconds")
+      .eq("user_id", userId)
+      .gt("distance_km", 0)
+      .gt("duration_seconds", 0)
+      .order("date", { ascending: false })
+      .order("id", { ascending: false })
+      .range(start, start + PAGE - 1);
+    if (error) {
+      warnIfQueryFailed("runs(previsão)", error);
+      return null;
+    }
+    out.push(...(data ?? []));
+    if (!data || data.length < PAGE) return out;
+  }
+}
+
 export function buildRaceEventsContext(
   events: any[],
   todayISO: string,
@@ -4535,17 +4571,18 @@ export function buildRaceEventsContext(
   // COMPETIÇÃO POR JORNADAS — só com inscrição ativa. null = o texto de
   // sempre, byte a byte (Fase 2 do Troféu).
   seriesIntents: Record<string, SeriesIntent> | null = null,
+  // As corridas da PREVISÃO DE TEMPO: o histórico completo, o mesmo conjunto
+  // que o hub da prova usa (fetchForecastRuns). null = as `runs` de 30 dias
+  // (os testes antigos e um erro a ler).
+  // deno-lint-ignore no-explicit-any
+  forecastRuns: any[] | null = null,
 ): string | null {
   if (events.length === 0) return null;
   // Mesma janela de 30 dias que o resto do contexto já usa (recentRuns) —
-  // cobre as 4 semanas rolantes que o motor de triagem precisa (Bloco 8)
-  // sem uma query extra. Nota honesta: RaceLevelSuggestion.jsx, no
-  // formulário, usa o histórico COMPLETO para a previsão de tempo (é o que
-  // já estava carregado no store) — aqui é só 30 dias, por isso o número
-  // pode divergir num atleta com um recorde antigo fora desta janela. Uma
-  // query de histórico completo aqui seria mais uma chamada à BD em TODAS
-  // as invocações do coach-chat; o atleta já tem get_running_history para
-  // ir buscar mais para trás se precisar.
+  // cobre as 4 semanas rolantes que o motor de triagem precisa (Bloco 8).
+  // A previsão de tempo NÃO sai daqui (bug #89, 2026-10-25): com 30 dias, a
+  // Carol disse 1:03:32 para uns 10 km em que o ecrã, com o histórico todo,
+  // mostrava 50:52 — o atleta via os dois números. Sai de forecastRuns.
   // Só corridas: o map perde o training_type (runKinds.ts, 2026-10-05).
   const flattenedRuns = runsOnly(runs).map((r) => ({
     date: r.date,
@@ -4557,6 +4594,9 @@ export function buildRaceEventsContext(
     duration_seconds: r.duration_seconds,
     elevation_gain_m: r.details?.elevation_gain_m ?? null,
   }));
+  const predictionRuns = forecastRuns
+    ? runsOnly(forecastRuns).map((r) => ({ date: r.date, distance_km: r.distance_km, duration_seconds: r.duration_seconds }))
+    : flattenedRuns;
   const today = new Date(todayISO + "T00:00:00Z");
   const lines = events.map((e) => {
     const eventDate = new Date(e.date + "T00:00:00Z");
@@ -4643,13 +4683,10 @@ export function buildRaceEventsContext(
        preparação como quando se conclui a prova (...) sempre com o tempo
        total e o pace".
 
-       Sai do mesmo getRacePrediction que o hub usa, mas NÃO é forçosamente o
-       mesmo número: aqui as corridas vêm de uma janela de 30 dias (ver o
-       comentário de `flattenedRuns` acima) e o hub lê o histórico todo. Num
-       atleta com um recorde antigo fora da janela, os dois divergem — e a
-       partir desta entrega o atleta vê ambos, um dito por ela e outro
-       impresso no ecrã. Por isso o próprio bloco diz sobre que período foi
-       calculado, em vez de se apresentar como a verdade única. */
+       Sai do mesmo getRacePrediction que o hub usa E das mesmas corridas (o
+       histórico completo, forecastRuns — bug #89): o número dela e o do ecrã
+       são o mesmo. A linha cita a corrida de referência, para ela poder dizer
+       de onde vem o número em vez de o atleta ter de adivinhar. */
     let forecastSuffix = "";
     if (e.distance_km) {
       const raceForPrediction = {
@@ -4658,14 +4695,21 @@ export function buildRaceEventsContext(
         race_type: e.race_type,
         experience_level: effectiveLevel,
       };
-      const prediction = sharedGetRacePrediction(raceForPrediction, { experience_level: profileLevel }, flattenedRuns);
+      const prediction = sharedGetRacePrediction(raceForPrediction, { experience_level: profileLevel }, predictionRuns);
       if (prediction.predictedSeconds > 0) {
         const predSeconds = Math.round(prediction.predictedSeconds);
         // O ritmo é sempre sobre a distância REAL da prova, mesmo no trail,
         // onde a previsão corre sobre a distância equivalente em plano.
         const predPace = formatPaceMinKm(Math.round(predSeconds / e.distance_km));
         const targetSeconds = Number(e.target_time_seconds) > 0 ? Math.round(Number(e.target_time_seconds)) : 0;
-        const parts = [`pelas corridas dos últimos 30 dias, o treino aponta para ${formatHms(predSeconds)} (${predPace}/km)`];
+        const source = forecastRuns ? "pelo histórico de corridas (o mesmo número que o ecrã da prova mostra)" : "pelas corridas dos últimos 30 dias";
+        const parts = [`${source}, o treino aponta para ${formatHms(predSeconds)} (${predPace}/km)`];
+        const ref = prediction.basedOn;
+        if (ref) {
+          const refDate = ref.date ? `a de ${ref.date.slice(8, 10)}/${ref.date.slice(5, 7)}/${ref.date.slice(0, 4)}, ` : "";
+          const refKm = String(Math.round(Number(ref.distance) * 100) / 100).replace(".", ",");
+          parts.push(`corrida de referência: ${refDate}${refKm} km em ${formatHms(Math.round(Number(ref.time)))} — é dela que sai o número; cita-a quando o deres`);
+        }
         if (targetSeconds > 0) {
           /* Exatamente a comparação do plano do dia da prova
              (buildRacePacingPlan) e a do hub (raceTimes.js, stanceOf): o
@@ -7290,6 +7334,10 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
     const turnDetails = proactiveTrigger === "cup_results"
       ? [turnProactiveDetails, cupFacts ?? "Os números não foram lidos: diz só que saiu e onde a ver (ecrã do Troféu)."].filter(Boolean).join(" ")
       : cupFacts ? [turnProactiveDetails, cupFacts].filter(Boolean).join(" ") : turnProactiveDetails;
+    // Só com uma prova com distância há previsão: sem ela, nem se lê.
+    const forecastRuns = (upcomingRaces || []).some((e: any) => Number(e?.distance_km) > 0)
+      ? await fetchForecastRuns(sb, userId)
+      : null;
     const raceEventsContext = buildRaceEventsContext(
       upcomingRaces || [],
       todayISO,
@@ -7297,6 +7345,7 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
       (profile?.experience_level as string | null) ?? null,
       recentRuns || [],
       seriesBlock?.active ? seriesBlock.intentByRaceId : null,
+      forecastRuns,
     );
 
     // ── Construir pedido ao Gemini ───────────────────────────────────────

@@ -5541,3 +5541,65 @@ Deno.test("Formato: a palavra-chave do objetivo de prova vai a negrito, uma só 
   assertStringIncludes(fmt, "**atacar**");
   assertStringIncludes(fmt, "uma só palavra ou valor");
 });
+
+// Bug #89 (2026-10-25): os números do Rui na Volkswagen Run (10 km, básico).
+// Com 30 dias a melhor era a de 16/10 (6,04 km em 36:46) e a Carol disse
+// 1:03:32; o ecrã, com o histórico, usava a Corrida do Tejo (10,11 km em
+// 51:28) e mostrava 50:52.
+import { fetchForecastRuns } from "./index.ts";
+
+const RUI_RACE = { date: "2026-10-25", name: "Volkswagen Run", race_type: "estrada", distance_km: 10, experience_level: "basico", target_time_seconds: null };
+const RUI_RECENT = [{ date: "2026-10-16", kind: "treino", training_type: "continuo", distance_km: 6.04, duration_seconds: 2206 }];
+const RUI_ALL = [...RUI_RECENT, { date: "2026-09-13", kind: "competicao", training_type: null, distance_km: 10.11, duration_seconds: 3088 }];
+
+Deno.test("previsão de tempo: com o histórico do ecrã, a Carol dá o número do ecrã (bug #89)", () => {
+  const ctx = buildRaceEventsContext([RUI_RACE], "2026-10-21", null, "basico", RUI_RECENT, null, RUI_ALL)!;
+  assertStringIncludes(ctx, "o treino aponta para 50:52");
+  assertStringIncludes(ctx, "o mesmo número que o ecrã da prova mostra");
+  assertEquals(ctx.includes("1:03:32"), false);
+});
+
+Deno.test("previsão de tempo: a linha cita a corrida de referência — data, distância, tempo (bug #89)", () => {
+  const ctx = buildRaceEventsContext([RUI_RACE], "2026-10-21", null, "basico", RUI_RECENT, null, RUI_ALL)!;
+  assertStringIncludes(ctx, "corrida de referência: a de 13/09/2026, 10,11 km em 51:28");
+});
+
+Deno.test("previsão de tempo: sem o histórico (erro a ler) cai para os 30 dias, como antes", () => {
+  const ctx = buildRaceEventsContext([RUI_RACE], "2026-10-21", null, "basico", RUI_RECENT)!;
+  assertStringIncludes(ctx, "pelas corridas dos últimos 30 dias, o treino aponta para 1:03:32");
+  assertStringIncludes(ctx, "a de 16/10/2026, 6,04 km em 36:46");
+});
+
+Deno.test("fetchForecastRuns: o histórico todo do atleta, por páginas, com desempate por id; erro → null", async () => {
+  // deno-lint-ignore no-explicit-any
+  const calls: any[] = [];
+  const pages = [Array.from({ length: 1000 }, (_, i) => ({ id: `r${i}` })), [{ id: "r1000" }]];
+  const sb = {
+    from(table: string) {
+      // deno-lint-ignore no-explicit-any
+      const q: any = { table, filters: [] as string[], orders: [] as string[] };
+      calls.push(q);
+      const chain = {
+        select: (c: string) => { q.cols = c; return chain; },
+        eq: (c: string, v: unknown) => { q.filters.push(`${c}=${v}`); return chain; },
+        gt: (c: string, v: unknown) => { q.filters.push(`${c}>${v}`); return chain; },
+        order: (c: string) => { q.orders.push(c); return chain; },
+        range: (a: number) => Promise.resolve({ data: pages[a / 1000] ?? [], error: null }),
+      };
+      return chain;
+    },
+  };
+  const runs = await fetchForecastRuns(sb, "u1");
+  assertEquals(runs!.length, 1001);
+  assertEquals(calls.length, 2);
+  assertEquals(calls[0].table, "runs");
+  assertEquals(calls[0].filters, ["user_id=u1", "distance_km>0", "duration_seconds>0"]);
+  assertEquals(calls[0].orders, ["date", "id"]);
+  assertEquals(calls[0].cols, "id, date, kind, training_type, distance_km, duration_seconds");
+
+  // deno-lint-ignore no-explicit-any
+  const chain: any = { eq: () => chain, gt: () => chain, order: () => chain, range: () => Promise.resolve({ data: null, error: { message: "x" } }) };
+  // deno-lint-ignore no-explicit-any
+  const sbErr: any = { from: () => ({ select: () => chain }) };
+  assertEquals(await fetchForecastRuns(sbErr, "u1"), null);
+});
