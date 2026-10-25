@@ -70,6 +70,10 @@ import { cupNoticeRoundId, raceIdOfRaceKey } from "../_shared/formulas/cupNotice
 import { buildRaceConflictPrompt } from "../_shared/raceConflictPrompt.ts";
 import { addUsage, emptyUsage, type GeminiUsage, usageFromGemini } from "../_shared/geminiUsage.ts";
 import { withUsageRecording } from "../_shared/usageRecorder.ts";
+import {
+  applyTargetDiffs, buildTargetsReviewInstruction, buildTargetsReviewTurn, computeTargetDiffs, fetchTargetsInputs, isTargetsUpdateAnswer,
+  parseTargetsReview, recentTargetsReview, type TargetDiff, targetsReviewKey, TARGETS_KEEP_ANSWER, TARGETS_UPDATE_ANSWER,
+} from "./targetsReview.ts";
 // Só a chave no header (x-goog-api-key); o coach-chat continua no alias.
 import { geminiHeaders } from "../_shared/geminiModel.ts";
 
@@ -886,7 +890,7 @@ export async function wasProactiveDelivered(sb: any, userId: string, key: string
 }
 
 // deno-lint-ignore no-explicit-any
-export async function recordProactiveDelivered(sb: any, userId: string, trigger: ProactiveTrigger, key: string): Promise<void> {
+export async function recordProactiveDelivered(sb: any, userId: string, trigger: ProactiveTrigger | "targets_review", key: string): Promise<void> {
   try {
     const { error } = await sb
       .from("coach_proactive_log")
@@ -6842,6 +6846,42 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
     // check-in do plano (as ferramentas de propor estão abertas).
     const planContinuationIn = message ? null : parsePlanContinuation(body.plan_continuation);
     if (planContinuationIn) body.is_plan_checkin = true;
+
+    // A revisão dos objetivos das provas depois de aceitar um plano
+    // (targetsReview.ts): uma por plano; sem diferenças, nem turno nem Gemini.
+    const targetsReviewIn = message || planContinuationIn ? null : parseTargetsReview(body.targets_review);
+    let targetsReviewPrompt: string | null = null;
+    let targetsReviewLogKey: string | null = null;
+    if (targetsReviewIn) {
+      const key = targetsReviewKey(targetsReviewIn);
+      const skipped = (reason: string) => jsonResponse({
+        skipped: reason, user_message: null, model_message: null, suggestions: [], usage: null,
+        plan_proposed: false, goals_updated: false, goal_proposed: false,
+      });
+      if (await wasProactiveDelivered(sb, userId, key)) return skipped("already_sent");
+      const todayReviewISO = new Date().toISOString().slice(0, 10);
+      const inputs = await fetchTargetsInputs(sb, userId, todayReviewISO);
+      const diffs = inputs.races.length
+        ? computeTargetDiffs(inputs.races, inputs.level, (await fetchForecastRuns(sb, userId)) ?? [], todayReviewISO)
+        : [];
+      if (!diffs.length) return skipped("targets_ok");
+      targetsReviewPrompt = buildTargetsReviewTurn(diffs);
+      targetsReviewLogKey = key;
+      body.is_plan_checkin = true;
+    }
+
+    // «Atualiza os objetivos» depois de uma revisão: o servidor aplica os
+    // números da proposta (as mesmas contas), em vez de esperar que o modelo
+    // chame update_race_event — e só com a revisão feita nas últimas 24 h.
+    let targetsApplied: { race_id: string; name: string; result: string }[] = [];
+    if (message && isTargetsUpdateAnswer(message) && await recentTargetsReview(sb, userId)) {
+      const todayApplyISO = new Date().toISOString().slice(0, 10);
+      const inputs = await fetchTargetsInputs(sb, userId, todayApplyISO);
+      const diffs: TargetDiff[] = inputs.races.length
+        ? computeTargetDiffs(inputs.races, inputs.level, (await fetchForecastRuns(sb, userId)) ?? [], todayApplyISO)
+        : [];
+      targetsApplied = await applyTargetDiffs(diffs, (args) => runUpdateRaceEvent(sb, userId, args));
+    }
     if (!message && !body.is_intervention_start && !body.is_plan_checkin && !proactiveTrigger) return jsonResponse({ error: "Mensagem vazia" }, 400);
 
     // ── Perfil do utilizador (contexto + metas + biometria) ──────────────
@@ -7865,7 +7905,7 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
       });
     }
 
-    const planCheckinPrompt = planContinuationIn ? buildPlanContinuationTurn(planContinuationIn) : onboardingStartPrompt ? onboardingStartPrompt : raceConflictPrompt ? raceConflictPrompt : cupMapPrompt ? cupMapPrompt : planDivergence.length > 0
+    const planCheckinPrompt = targetsReviewPrompt ? targetsReviewPrompt : planContinuationIn ? buildPlanContinuationTurn(planContinuationIn) : onboardingStartPrompt ? onboardingStartPrompt : raceConflictPrompt ? raceConflictPrompt : cupMapPrompt ? cupMapPrompt : planDivergence.length > 0
       ? `A app detetou que o plano já não bate certo com a realidade e chamou-te — o atleta abriu o chat a partir desse aviso. ` +
         `Motivos: ${planDivergence.map((t) => `"${t}"`).join("; ")}. Começa por estes pontos, por ordem de gravidade: explica em duas frases o que muda e porquê, ` +
         `e propõe já o plano ajustado com propose_training_plan (replace_active_plan=true se houver plano aceite) — o dia da prova como prova, a véspera leve, ` +
@@ -7906,6 +7946,25 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
     }
 
     if (chatImages.length) finalSystemInstruction += "\n\n" + imagesTurnSection(chatImages.length);
+    // O balanço de uma prova inclui a revisão dos objetivos das que faltam
+    // (targetsReview.ts), com o resultado dela já nas contas.
+    if (proactiveTrigger === "race_after" && proactiveKey) {
+      const todayAfterISO = new Date().toISOString().slice(0, 10);
+      const inputs = await fetchTargetsInputs(sb, userId, todayAfterISO);
+      const diffs = inputs.races.length
+        ? computeTargetDiffs(inputs.races, inputs.level, forecastRuns ?? (await fetchForecastRuns(sb, userId)) ?? [], todayAfterISO)
+        : [];
+      if (diffs.length) {
+        finalSystemInstruction += "\n\n" + buildTargetsReviewInstruction(diffs, "race_after") +
+          " Faz o balanço da prova primeiro; a revisão vem no fim, numa frase por prova.";
+        targetsReviewLogKey = targetsReviewKey({ kind: "race_after", key: proactiveKey });
+      }
+    }
+    if (targetsApplied.length) {
+      finalSystemInstruction += "\n\n" + `OBJETIVOS ATUALIZADOS AGORA (o atleta respondeu «${TARGETS_UPDATE_ANSWER}» e o servidor já gravou): ` +
+        targetsApplied.map((t) => `«${t.name}»: ${t.result}`).join(" ") +
+        " Confirma-lhe numa ou duas frases o que ficou. NÃO voltes a chamar update_race_event para estas provas.";
+    }
 
     // deno-lint-ignore no-explicit-any
     const contents: any[] = [
@@ -7935,7 +7994,7 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
     const turnCase = classifyTurn(message, history);
     // Num turno por iniciativa dela não se propõe nada — só leitura e notas.
     // Com fotos, só leitura, notas e a Despensa: o texto de uma imagem não pode levar a Carol a mexer em planos, metas ou provas.
-    const allowedTools = proactiveTrigger || chatImages.length ? new Set(READ_TOOL_NAMES) : allowedToolsFor(turnCase);
+    const allowedTools = proactiveTrigger || chatImages.length || targetsReviewPrompt ? new Set(READ_TOOL_NAMES) : allowedToolsFor(turnCase);
 
     // Observabilidade do pedido ao Gemini. Sem isto, o incidente de
     // 2026-09-05 foi impossível de atribuir a partir dos logs: o modelo real
@@ -8028,6 +8087,8 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
     // (resolve_intervention) — sem isto o Início continuava a dizer "1
     // assunto a resolver" com a intervenção já resolvida (relatado 2026-09-13).
     let raceWasUpdated = false;
+    // «Atualiza os objetivos» aplicado pelo servidor: o cliente relê as provas.
+    if (targetsApplied.some((t) => t.result.startsWith("Prova atualizada"))) raceWasUpdated = true;
     let interventionWasResolved = false;
     // Uma SERIES_TOOL gravou (a jornada ou o objetivo da época): o cliente
     // relê a competição e as provas. Só vai na resposta quando é true — a
@@ -8311,6 +8372,8 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
       suggestions = allowSuggestions && Array.isArray(parsed.suggestions)
         ? parsed.suggestions.filter((s: unknown) => typeof s === "string" && s.trim()).slice(0, proactiveTrigger ? 2 : 3)
         : [];
+      // Uma revisão dos objetivos acaba sempre com as duas respostas.
+      if (targetsReviewLogKey) suggestions = [TARGETS_UPDATE_ANSWER, TARGETS_KEEP_ANSWER];
     } catch {
       // JSON inválido/cortado (ex.: resposta truncada a meio) — nunca mostrar
       // o texto bruto ao utilizador (parecia um JSON partido no ecrã); melhor
@@ -8368,6 +8431,7 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
     // A mensagem já foi escrita e vai chegar ao atleta: a chave fica
     // registada, para nenhum outro dispositivo a repetir.
     if (proactiveTrigger && proactiveKey) await recordProactiveDelivered(sb, userId, proactiveTrigger, proactiveKey);
+    if (targetsReviewLogKey && !modelMsgErr) await recordProactiveDelivered(sb, userId, "targets_review", targetsReviewLogKey);
     // O mapa fica entregue quando a mensagem fica gravada — chegue a resposta
     // ao cliente ou não (sondagem depois dos 45 s).
     if (cupMapLogKey && !modelMsgErr) await recordCupMapDelivered(sb, userId, cupMapLogKey);
