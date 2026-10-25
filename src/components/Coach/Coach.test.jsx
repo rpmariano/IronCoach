@@ -2203,6 +2203,41 @@ describe('Coach — plano longo em partes (plan_continuation)', () => {
     expect(useAppStore.getState().coachLoading).toBe(false);
   });
 
+  it('o turno de uma parte que chega por sondagem (> 45 s) não perde a cadeia: a seguinte deriva-se do pedido e só arma para a proposta certa', async () => {
+    propoe(1);
+    supabase.from.mockImplementation((table) => (table === 'coach_messages'
+      ? coachMessagesChain({ data: [{ id: 'm2', role: 'model', content: 'Aqui tens a semana de 2 a 8.', created_at: new Date().toISOString() }], error: null })
+      : profilesChain({ data: null, error: null })));
+    script((b) => {
+      if (b.plan_continuation?.part === 2) { atual = 2; return { data: null, error: 'timeout', isTimeout: true }; }
+      if (b.plan_continuation?.part === 3) return reply('a3', 'Última.', { plan_proposed: true });
+      if (b.message === 'Aceitei o plano.') return reply('ok', 'Boa.');
+      return reply('a1', 'Primeira semana proposta.', { plan_proposed: true, plan_continuation: C1 });
+    });
+    vi.useFakeTimers();
+    try {
+      const flush = (ms = 50) => act(async () => { await vi.advanceTimersByTimeAsync(ms); });
+      renderCoach();
+      fireEvent.change(screen.getByPlaceholderText('Escreve a tua pergunta...'), { target: { value: 'Plano até à prova' } });
+      await act(async () => { fireEvent.click(screen.getByRole('button', { name: /Enviar pergunta à Carol/i })); });
+      await flush();
+      await act(async () => { fireEvent.click(screen.getByRole('button', { name: /Aceitar plano/i })); });
+      expect(respondToPlan).toHaveBeenCalledWith('p1', true);
+      // A parte 2 passa dos 45 s: chega por sondagem, a proposta pendente é a p2.
+      await flush(4100 * 3);
+      expect(useAppStore.getState().coachMessages.map((m) => m.content)).toContain('Aqui tens a semana de 2 a 8.');
+      expect(continuations()).toHaveLength(1);
+      await act(async () => { fireEvent.click(screen.getByRole('button', { name: /Aceitar plano/i })); });
+      expect(respondToPlan).toHaveBeenCalledWith('p2', true);
+      await flush();
+      // A parte 3 sai, derivada do pedido da 2 (a semana seguinte, até ao dia da prova).
+      expect(continuations()).toHaveLength(2);
+      expect(continuations()[1].plan_continuation).toEqual({ from: '2026-11-09', to: '2026-11-15', part: 3, of: 3, until: '2026-12-20' });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('recusar a parte da folha pára a cadeia', async () => {
     propoe(1);
     script((b) => (b.message === 'Recusei o plano.' ? reply('r', 'Sem problema.') : reply('a1', 'Primeira semana proposta.', { plan_proposed: true, plan_continuation: C1 })));

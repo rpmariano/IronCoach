@@ -22,6 +22,7 @@ import { splitIntoBubbles, typingDelayFor, prefersReducedMotion, BUBBLE_GAP_MS }
 import { listProactiveTriggers, wasProactiveSent, markProactiveSent, writeRaceBalanceCache } from '../../utils/coachProactive';
 import { markDivergenceHandled, MAX_DIVERGENCE_TEXTS } from '../../utils/planDivergence';
 import { markCupMapHandled } from '../../utils/cupMap';
+import { nextPlanContinuation } from '../../utils/planContinuation';
 import { usePersistedFormDraft, restorePersistedFormDraft, clearPersistedFormDraft } from '../../utils/formDraftPersistence';
 import { hasAnyRecord } from '../../utils/homeModels';
 import { isOnboardingDoneLocally } from '../../utils/onboarding';
@@ -167,6 +168,9 @@ export default function Coach() {
   const [pendingContinuation, setPendingContinuation] = useState(null);
   const continuationRunsRef = useRef(0);
   const lastProposedPlanIdRef = useRef(null);
+  // O pedido de continuação em curso: se a resposta chegar por sondagem, é daqui
+  // que se deriva a parte seguinte (handleAsyncFallback).
+  const inflightContinuationRef = useRef(null);
   const [activeGoalProposal, setActiveGoalProposal] = useState(null);
 
   useEffect(() => {
@@ -739,7 +743,7 @@ export default function Coach() {
     // Plano longo em partes: aceitar a parte da folha arma a continuação;
     // recusar pára a cadeia.
     if (ok && accept) {
-      setPendingContinuation((c) => (c && (!c.planId || c.planId === planId) ? { ...c, armed: true } : c));
+      setPendingContinuation((c) => (c && c.planId && c.planId === planId ? { ...c, armed: true } : c));
     } else if (ok) {
       setPendingContinuation(null);
     }
@@ -1036,7 +1040,16 @@ export default function Coach() {
         const freshPlans = await reloadCoachPlans();
         if (freshPlans && freshPlans.length > 0) {
           const pending = freshPlans.filter(p => p.status === 'proposto');
-          if (pending.length > 0) setActiveProposalSheetPlan(pending[0]);
+          if (pending.length > 0) {
+            lastProposedPlanIdRef.current = pending[0].id;
+            setActiveProposalSheetPlan(pending[0]);
+            // A resposta de uma continuação que chegou por sondagem não traz
+            // plan_continuation: deriva-se da que se pediu (mesma regra do
+            // servidor), atada à proposta que a sondagem encontrou.
+            const sent = inflightContinuationRef.current;
+            const next = sent ? nextPlanContinuation(sent) : null;
+            if (next) setPendingContinuation({ ...next, planId: pending[0].id, armed: false });
+          }
         }
         const freshGoals = await reloadCoachGoalProposals();
         if (freshGoals && freshGoals.length > 0) {
@@ -1288,15 +1301,17 @@ export default function Coach() {
   useEffect(() => {
     if (!pendingContinuation?.armed || coachLoading) return;
     const { from, to, part, of, until } = pendingContinuation;
+    const sent = { from, to, part, of, ...(until ? { until } : null) };
     setPendingContinuation(null);
     continuationRunsRef.current += 1;
+    inflightContinuationRef.current = sent;
     sendCoachInitiatedPayload({
       message: '',
       // `until` (o dia da prova) volta tal como veio no turno da parte.
-      plan_continuation: { from, to, part, of, ...(until ? { until } : null) },
+      plan_continuation: sent,
       userData: profile || {},
       activeInsights: activeInsightsPayload(),
-    });
+    }).finally(() => { inflightContinuationRef.current = null; });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingContinuation, coachLoading]);
 
