@@ -27,7 +27,7 @@ vi.mock('../lib/supabase', () => ({
 
 const {
   pantrySuggestions, habitualsForMealType, portionText, foodSubline, ruleInfo, visibleRules, isKnownFood, savePantryFood, saveFoodRule,
-  microOrNull, microsTrusted, pantryMicro, missingMicroWords, isPantryComplete, listWords, MICRO_COLUMNS,
+  microOrNull, foodKey, microsTrusted, pantryMicro, missingMicroWords, isPantryComplete, listWords, MICRO_COLUMNS,
   isDishlessRule, isQuantityRule, ruleLabel, templateItems, templateTotals, templatesForMealType, templateForMeal, saveMealTemplate, variantsOf, topLevelFoods, saveFoodVariant, suggestedTemplateName, markMealTemplateUsed, foodDefaultGrams,
 } = await import('./pantry');
 
@@ -115,6 +115,16 @@ describe('variantes (bug #87)', () => {
     });
     await expect(saveFoodVariant({ userId: 'u1', parent: coxa, label: '  ', values: {} })).rejects.toThrow(/variante/);
     await expect(saveFoodVariant({ userId: 'u1', parent: null, label: 'x', values: {} })).rejects.toThrow();
+  });
+
+  it('saveFoodVariant: o name_key passa pelo foodKey partilhado (meio-gordo → meio gordo)', async () => {
+    db.calls.length = 0;
+    const leite = food('Leite', 'leite', 3, { id: 'l' });
+    await saveFoodVariant({ userId: 'u1', parent: leite, label: 'Meio-gordo', values: { calories_per_100g: '46' } });
+    const row = db.calls.find((c) => c.table === 'athlete_foods' && c.op === 'insert').row;
+    expect(row.name).toBe('Leite Meio-gordo');
+    expect(row.name_key).toBe('leite meio gordo');
+    expect(row.name_key).toBe(foodKey(row.name));
   });
 
   it('saveFoodVariant a editar: update, sem user_id, e o nome segue o rótulo', async () => {
