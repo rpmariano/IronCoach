@@ -179,6 +179,15 @@ export default function Coach() {
   // O pedido de continuação em curso: se a resposta chegar por sondagem, é daqui
   // que se deriva a parte seguinte (handleAsyncFallback).
   const inflightContinuationRef = useRef(null);
+  /* Depois de um plano ficar aplicado (proposta normal, ou a cadeia toda na
+     última parte) a Carol revê se os objetivos ainda batem certo: um turno
+     iniciado { targets_review: { reason: 'plan_accepted', plan_id } }, pelo canal
+     do cup_map. Com os objetivos em dia o servidor salta (skipped: 'targets_ok')
+     e nada aparece; senão vem uma mensagem dela, com as sugestões «Atualiza os
+     objetivos» / «Mantém». Fica pendente até o chat estar livre (depois do
+     «Aceitei o plano.»); em silêncio, uma falha não mostra nada. Nunca nas partes
+     intermédias de uma cadeia. */
+  const [pendingTargetsReview, setPendingTargetsReview] = useState(null);
   const [activeGoalProposal, setActiveGoalProposal] = useState(null);
 
   useEffect(() => {
@@ -850,6 +859,7 @@ export default function Coach() {
         const moment = planStartMoment(alvo, st.coachPlanItems, todayISO());
         if (moment) setPlanStart(moment);
         else showToast('Plano aceite');
+        setPendingTargetsReview(alvo?.id || planId);
       } else if (before.length > 0) {
         // Recusar depois de partes já gravadas: não se diz «Plano recusado».
         showToast(`Recusei o que faltava, mas ${before.length === 1 ? 'a parte que já tinha gravado fica' : `as ${before.length} partes que já tinha gravado ficam`} no teu plano.`);
@@ -870,6 +880,7 @@ export default function Coach() {
       const moment = planStartMoment(plan, st.coachPlanItems, todayISO());
       if (moment) setPlanStart(moment);
       else showToast('Plano aceite');
+      setPendingTargetsReview(planId);
     } else if (ok) {
       showToast('Plano recusado');
     }
@@ -1426,6 +1437,20 @@ export default function Coach() {
     }).finally(() => { inflightContinuationRef.current = null; });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingContinuation, coachLoading]);
+
+  // A revisão dos objetivos depois de um plano aceite (ver pendingTargetsReview).
+  useEffect(() => {
+    if (!pendingTargetsReview || coachLoading) return;
+    const planId = pendingTargetsReview;
+    setPendingTargetsReview(null);
+    sendCoachInitiatedPayload({
+      message: '',
+      targets_review: { reason: 'plan_accepted', plan_id: planId },
+      userData: profile || {},
+      activeInsights: activeInsightsPayload(),
+    }, { silent: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingTargetsReview, coachLoading]);
 
   // O botão "Reenviar": só na última bolha, e só se for uma falha a uma
   // mensagem do atleta (`retryText`, ver sendUserMessage) — depois de outra

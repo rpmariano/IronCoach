@@ -11,10 +11,12 @@ const db = { plans: {}, active: [], items: [] };
 const writes = [];
 const deletes = [];
 let failOn = null;
+let readFailOn = null;
 
 function builder(table) {
   const q = { table, op: 'select', data: null, filters: [] };
   const run = () => {
+    if (q.op === 'select' && readFailOn && readFailOn(table, q.filters)) return { data: null, error: { message: 'leitura falhou' } };
     if (q.op === 'delete') {
       deletes.push({ table, filters: q.filters });
       return { data: null, error: null };
@@ -68,6 +70,7 @@ beforeEach(() => {
   writes.length = 0;
   deletes.length = 0;
   failOn = null;
+  readFailOn = null;
   db.plans = {};
   db.active = [];
   db.items = [];
@@ -261,6 +264,18 @@ describe('respondToPlan — cadeia de partes: um supersedes que já não está a
     // Os itens da parte 2 passam para a parte 1 e o contentor da proposta apaga-se.
     expect(updatesTo('coach_plan_items').some((w) => w.data?.plan_id === 'p-parte1')).toBe(true);
     expect(deletes.some((d) => d.table === 'coach_plans' && d.filters.some(([c, v]) => c === 'id' && v === 'p-parte2'))).toBe(true);
+  });
+});
+
+describe('respondToPlan — um erro a ler o supersedes não se confunde com «já não está aceite»', () => {
+  it('devolve false, não procura sobreposição nem aceita nada', async () => {
+    db.plans['p-antigo'] = plano({ id: 'p-antigo', race_id: 'r1' });
+    db.plans['p-novo'] = plano({ id: 'p-novo', status: 'proposto', race_id: 'r1', supersedes_plan_id: 'p-antigo' });
+    failOn = null;
+    readFailOn = (table, filters) => table === 'coach_plans' && filters.some(([c, v]) => c === 'id' && v === 'p-antigo');
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    expect(await useAppStore.getState().respondToPlan('p-novo', true)).toBe(false);
+    expect(writes).toHaveLength(0);
   });
 });
 
