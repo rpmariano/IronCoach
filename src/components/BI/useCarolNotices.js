@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useAppStore, selectCoachPendingTopics } from '../../store';
 import { useToast } from '../shared/ToastProvider';
 import { detectCoachInsights } from '../../utils/biEngine';
-import { pendingRaceBalanceCandidate, pendingBlockEndAlert, dismissProactiveAlert } from '../../utils/coachProactive';
+import { pendingRaceBalanceCandidate, pendingBlockEndAlert, pendingPlanResumeAlert, dismissProactiveAlert } from '../../utils/coachProactive';
 import { detectPlanDivergence, detectRaceConflict, raceLabel, wasDivergenceHandled } from '../../utils/planDivergence';
 import { todayISO } from '../../lib/utils';
 import { isInsightHidden } from '../../utils/insightState';
@@ -12,6 +12,7 @@ import { INTERVENTION_OUTCOME } from '@formulas/interventionOutcomes.ts';
 import { pendingTopicLines, interventionTopicLine } from '../../utils/carolTopics';
 import { useCupForHome } from '../../utils/useCup';
 import { cupMapCandidate, markCupMapHandled, CUP_MAP_TITLE } from '../../utils/cupMap';
+import { planResumeNotice, PLAN_RESUME_TITLE } from '../../utils/carolPlanResume';
 
 /* Os avisos da Carol, iguais em todos os ecrãs (pedido 2026-09-27).
 
@@ -26,7 +27,7 @@ import { cupMapCandidate, markCupMapHandled, CUP_MAP_TITLE } from '../../utils/c
 
    - `alerts`: os avisos em que ela pede para falar — um de cada vez, pela
      prioridade de sempre: assuntos por resolver, o conflito de principais,
-     o ajuste do plano, o mapa da época (só inscritos numa competição), o
+     o plano em partes que ficou a meio, o ajuste do plano, o mapa da época (só inscritos numa competição), o
      balanço da prova e, por fim, o fim do bloco;
    - `insights`: os do motor de regras (biEngine) ainda por ver — sem os que
      o atleta já percebeu nem os que pôs de lado hoje ("Agora não").
@@ -48,6 +49,7 @@ export default function useCarolNotices() {
   const impressionShown = useAppStore((s) => s.impressionShown);
   const dailyCheckins = useAppStore((s) => s.dailyCheckins);
   const coachNotes = useAppStore((s) => s.coachNotes);
+  const coachMessages = useAppStore((s) => s.coachMessages);
   // A competição por jornadas, só de quem está inscrito (Fase 2). Sem
   // inscrição é null e não lê nada.
   const cupView = useCupForHome();
@@ -126,6 +128,19 @@ export default function useCarolNotices() {
     return found;
   }, [pendingTopics, raceConflict, coachPlans, coachPlanItems, raceEvents, runs, gymSessions, today, profile?.id]);
 
+  /* O plano ficou a meio (plan_resume, 2026-10-25): um plano em partes em que
+     uma semana chegou e as seguintes não. O candidato é o do chat e da
+     notificação (plan_resume:<mensagem>). Fica ACIMA do ajuste do plano: com
+     o plano a meio, a prova ainda não está nele e o ajuste disparava sempre
+     ("Meia de Lisboa não está no plano") — a causa é a semana que falta, e
+     é essa que se resolve. Sem a frase (faltam datas), não há aviso. */
+  const planResume = useMemo(() => {
+    if (pendingTopics > 0 || raceConflict) return null;
+    const alert = pendingPlanResumeAlert({ coachPlans, coachPlanItems, coachMessages, raceEvents, profile, impressionDismissed });
+    const notice = alert && planResumeNotice(alert);
+    return notice ? { ...alert, notice } : null;
+  }, [pendingTopics, raceConflict, coachPlans, coachPlanItems, coachMessages, raceEvents, profile, impressionDismissed, alertDismissals]);
+
   /* O mapa da época (specs/trofeu.md §5, Fase 2; utils/cupMap.js): ao
      inscrever, e quando sai o calendário com jornadas por decidir, a Carol
      quer ver com ele o papel de cada jornada ao lado das provas principais.
@@ -157,6 +172,8 @@ export default function useCarolNotices() {
         races: raceConflict.races.map((r) => ({ id: r.id, name: r.name, date: r.date })),
         target: raceConflict.target ? { id: raceConflict.target.id, name: raceConflict.target.name, date: raceConflict.target.date } : null,
       });
+    } else if (planResume) {
+      setCoachIntent({ kind: 'proactive_moment', candidate: planResume.candidate });
     } else if (divergence) {
       setCoachIntent({ kind: 'adapt_plan', divergence: divergence.reasons.map((r) => r.text), signature: divergence.signature });
     } else if (cupMap) {
@@ -218,6 +235,24 @@ export default function useCarolNotices() {
         ? `${nomes} ${plural ? 'estão como principais' : 'está como principal'} a meio do plano para ${raceLabel(raceConflict.target)}.`
         : `${nomes} ${plural ? 'estão como principais' : 'está como principal'} a meio do plano atual.`,
       onTalk: openCoach,
+    });
+  } else if (planResume) {
+    alerts.push({
+      id: 'plano-a-meio',
+      key: planResume.candidate.key,
+      severity: 'info',
+      title: planResume.notice.title,
+      message: planResume.notice.message,
+      // O Coach pede o plan_resume com a chave e proactive_force (Frontend).
+      onTalk: () => {
+        setCoachIntent({ kind: 'proactive_moment', candidate: planResume.candidate });
+        setActiveTab('coach');
+      },
+      onDismiss: () => {
+        dismissProactiveAlert(profile?.id, planResume.candidate);
+        setAlertDismissals((n) => n + 1);
+        logImpressionDismissed({ kind: 'alert', key: planResume.candidate.key, title: PLAN_RESUME_TITLE });
+      },
     });
   } else if (divergence) {
     alerts.push({

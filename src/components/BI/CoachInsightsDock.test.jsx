@@ -1,6 +1,6 @@
 import React from 'react';
 import { render, screen, fireEvent, within, act } from '@testing-library/react';
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { useAppStore } from '../../store';
 import { todayISO, addDaysISO } from '../../lib/utils';
 
@@ -259,6 +259,58 @@ describe('CoachInsightsDock', () => {
         <CoachInsightsDock />
       </>);
       expect(screen.getByTestId('coach-insight-button')).toHaveTextContent('1');
+    });
+  });
+
+  /* O plano ficou a meio (plan_resume, 2026-10-25): o aviso da Carol, com o
+     detetor de verdade (coachProactive) e a frase dela (carolPlanResume). */
+  describe('o plano em partes que ficou a meio', () => {
+    const MSG_ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+    const CONT = { from: '2026-11-02', to: '2026-11-08', part: 2, of: 5, until: '2026-11-29' };
+    const meio = (over = {}) => seed({
+      coachPlans: [{ id: 'p1', status: 'aceite', race_id: 'meia', period_start: '2026-10-26', period_end: '2026-11-29' }],
+      coachPlanItems: [26, 28, 30].map((d, i) => ({ id: `i${i}`, plan_id: 'p1', kind: 'corrida', planned_date: `2026-10-${d}` })),
+      coachMessages: [{ id: MSG_ID, role: 'model', content: 'Aqui tens a semana 1.', created_at: '2026-10-25T20:43:22Z', plan_continuation: CONT }],
+      raceEvents: [{ id: 'meia', name: 'Meia de Lisboa', date: '2026-11-29', status: 'agendada' }],
+      logImpressionDismissed: vi.fn(),
+      ...over,
+    });
+
+    beforeEach(() => {
+      detectCoachInsights.mockImplementation(() => []);
+      vi.useFakeTimers({ toFake: ['Date'] });
+      vi.setSystemTime(new Date('2026-11-02T14:00:00Z'));
+    });
+    afterEach(() => vi.useRealTimers());
+
+    it('com a semana anterior no calendário, diz que ele já a tem', () => {
+      meio();
+      render(<CoachInsightsDock />);
+      fireEvent.click(screen.getByTestId('coach-insight-button'));
+      const janela = screen.getByTestId('insights-dialog');
+      expect(janela).toHaveTextContent('O plano ficou a meio');
+      expect(janela).toHaveTextContent('Já tens a semana de 26/10 a 1/11 no calendário, mas faltam as seguintes até à Meia de Lisboa, a 29/11.');
+    });
+
+    it('sem nada aplicado, não diz que ele já tem nada', () => {
+      meio({ coachPlans: [], coachPlanItems: [] });
+      render(<CoachInsightsDock />);
+      fireEvent.click(screen.getByTestId('coach-insight-button'));
+      const janela = screen.getByTestId('insights-dialog');
+      expect(janela).toHaveTextContent('O teu plano até à Meia de Lisboa, a 29/11, ficou a meio e ainda não está no calendário.');
+      expect(janela).not.toHaveTextContent('Já tens');
+    });
+
+    it('dispensar cala-o aqui e regista a impressão com a chave da mensagem', () => {
+      meio();
+      render(<CoachInsightsDock />);
+      fireEvent.click(screen.getByTestId('coach-insight-button'));
+      fireEvent.click(screen.getByRole('button', { name: 'Dispensar este aviso' }));
+      expect(useAppStore.getState().logImpressionDismissed).toHaveBeenCalledWith({ kind: 'alert', key: `plan_resume:${MSG_ID}`, title: 'O plano ficou a meio' });
+      // O que estava por baixo (o ajuste do plano) passa a ser o aviso.
+      fireEvent.click(screen.getByTestId('coach-insight-button'));
+      expect(screen.getByTestId('insights-dialog')).not.toHaveTextContent('O plano ficou a meio');
+      expect(screen.getByTestId('insights-dialog')).toHaveTextContent('O plano precisa de um ajuste');
     });
   });
 });
