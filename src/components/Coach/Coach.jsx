@@ -305,6 +305,7 @@ export default function Coach() {
   };
 
   const runCoachInitiatedPayload = async (payload, { silent = false, failure = COACH_INITIATED_FAILURE } = {}) => {
+    cancelLateReplyChecks();
     if (!silent) {
       setCoachLoading(true);
       setCoachSuggestions([]);
@@ -1172,11 +1173,23 @@ export default function Coach() {
      tivesse chegado por sondagem. Idempotente: a primeira leitura que a encontra
      mostra-a, as seguintes já a vêem no store. */
   const lateReplyTimersRef = useRef([]);
+  // Cada pedido novo (envio, «Reenviar», turno iniciado) muda a época: uma
+  // leitura tardia de um pedido anterior já não vale — apanharia a resposta do
+  // seguinte e correria o pós-sondagem com o `sent` antigo.
+  const requestEpochRef = useRef(0);
+  const cancelLateReplyChecks = () => {
+    requestEpochRef.current += 1;
+    lateReplyTimersRef.current.forEach(clearTimeout);
+    lateReplyTimersRef.current = [];
+  };
   useEffect(() => () => { lateReplyTimersRef.current.forEach(clearTimeout); }, []);
-  const scheduleLateReplyCheck = (afterIso, sent) => {
+  const scheduleLateReplyCheck = (afterIso, sent, failureId = null) => {
     if (!profile?.id) return;
     lateReplyTimersRef.current.forEach(clearTimeout);
+    const epoch = requestEpochRef.current;
     lateReplyTimersRef.current = [15000, 45000, 90000].map((ms) => setTimeout(async () => {
+      // Outro pedido começou (ou está em curso): esta leitura já não é desta conversa.
+      if (epoch !== requestEpochRef.current || useAppStore.getState().coachLoading) return;
       try {
         const { data: rows } = await supabase
           .from('coach_messages')
@@ -1187,8 +1200,10 @@ export default function Coach() {
           .order('created_at', { ascending: true })
           .limit(1);
         const row = rows?.[0];
-        if (!row) return;
+        if (!row || epoch !== requestEpochRef.current) return;
         if ((useAppStore.getState().coachMessages || []).some((m) => m.id === row.id)) return;
+        // A resposta chegou: sai a bolha de falha («Reenviar») que a sondagem deixou.
+        if (failureId) removeCoachMessage(failureId);
         addCoachMessage({ id: row.id, role: 'assistant', content: row.content, mood: row.mood, live: true });
         await afterPolledReply(row, sent);
       } catch (err) {
@@ -1209,7 +1224,7 @@ export default function Coach() {
     let cancelled = false;
     (async () => {
       try {
-        const { data } = await supabase
+        const { data, error: lookupError } = await supabase
           .from('coach_messages')
           .select('id, role, plan_continuation')
           .eq('user_id', profile.id)
@@ -1217,6 +1232,7 @@ export default function Coach() {
           .not('plan_continuation', 'is', null)
           .order('created_at', { ascending: false })
           .limit(30);
+        if (lookupError) console.warn('[Coach] a procura da continuação da proposta falhou', lookupError);
         if (cancelled || planChainRef.current) return;
         const st = useAppStore.getState();
         const messages = [...(data || []), ...(st.coachMessages || []).filter((m) => m.role !== 'user')];
@@ -1281,9 +1297,10 @@ export default function Coach() {
     } else if (!silent && !chained) {
       // A sondagem desistiu (o lock pareceu livre, a rede caiu…), mas a resposta
       // pode ainda chegar: volta a ler mais tarde (caso pssmartins, 25/10).
-      scheduleLateReplyCheck(requestStartedAt, inflightContinuationRef.current);
+      const failureId = (Date.now() + 1).toString();
+      scheduleLateReplyCheck(requestStartedAt, inflightContinuationRef.current, failureId);
       addCoachMessage({
-        id: (Date.now() + 1).toString(),
+        id: failureId,
         role: 'assistant',
         content: failureText,
         transient: true,
@@ -1393,6 +1410,7 @@ export default function Coach() {
      servidor devolve essa (`duplicate`) em vez de responder duas vezes.
      `afterBusy`: já é o reenvio automático a seguir a um 409 `busy`. */
   const sendUserMessage = async (text, extras, localUserId, { afterBusy = false } = {}) => {
+    cancelLateReplyChecks();
     const requestStartedAt = new Date().toISOString();
     const retry = { retryText: text, ...(extras && typeof extras === 'object' ? { retryExtras: extras } : null) };
 
