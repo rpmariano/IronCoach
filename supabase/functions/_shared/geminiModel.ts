@@ -1,6 +1,8 @@
 /* Modelo e nível de raciocínio de cada chamada ao Gemini — num só sítio.
-   (Auditoria de custos de 2026-09-27; o coach-chat fica de fora de propósito:
-   continua no alias e sem thinkingConfig, ver o comentário no topo dele.)
+   (Auditoria de custos de 2026-09-27. O coach-chat continua no alias e só usa
+   thinkingConfig("low") nos turnos de plano, desde 2026-10-25, com a rede
+   dele: um 400 repete sem o campo e a instância deixa de o enviar — ver
+   isPlanTurn e lowThinkingRejected no coach-chat.)
 
    Porquê: com o registo de consumo no servidor (ai_usage) viu-se que o
    raciocínio interno do modelo (thoughtsTokenCount, cobrado como OUTPUT) era
