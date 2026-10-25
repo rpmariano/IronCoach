@@ -3,7 +3,10 @@ import { resolve } from 'node:path';
 import React from 'react';
 import { render, screen, act } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import CarolCena, { cenaAreaOf, prepararTraco, prepararMascara, resolverModo, CENA_DESENHO_MS } from './CarolCena';
+import CarolCena, {
+  cenaAreaOf, prepararTraco, prepararMascara, resolverModo, sortearModo, formasCarreiras, formasPontos,
+  lerUltimoModo, guardarUltimoModo, CENA_MODOS, CENA_DESENHO_MS, CENA_ULTIMO_MODO_KEY,
+} from './CarolCena';
 import { AnalysisSkeleton } from './AnalysisState';
 
 /* A cena da Carol na espera das análises: o traço desenha-se e a imagem final
@@ -18,6 +21,7 @@ let imagensPedidas;
 let fetchPedidos;
 
 beforeEach(() => {
+  window.localStorage.clear();
   imagemFalha = false;
   imagensPedidas = [];
   fetchPedidos = [];
@@ -70,7 +74,7 @@ describe('CarolCena — proporção da imagem', () => {
 
 describe('CarolCena', () => {
   it.each([['run', 'corrida'], ['gym', 'ginasio'], ['body', 'corporal'], ['meal', 'alimentacao']])('%s: pede o traço e a imagem da área %s', async (kind, area) => {
-    render(<CarolCena kind={kind} fallback={FALLBACK} />);
+    render(<CarolCena kind={kind} modo="traco" fallback={FALLBACK} />);
     // A carregar: o logótipo de sempre.
     expect(screen.getByTestId('fallback')).toBeInTheDocument();
     await flush();
@@ -82,7 +86,7 @@ describe('CarolCena', () => {
 
   it('o traço desenha-se (pathLength normalizado) e, ao fim do desenho, a imagem final aparece por cima', async () => {
     vi.useFakeTimers();
-    render(<CarolCena kind="run" fallback={FALLBACK} />);
+    render(<CarolCena kind="run" modo="traco" fallback={FALLBACK} />);
     await flush();
     const cena = screen.getByTestId('carol-cena');
     expect(cena).toHaveAttribute('data-fase', 'desenho');
@@ -121,28 +125,32 @@ describe('CarolCena', () => {
 
   it('o SVG não carrega (404, rede ou lixo): volta ao logótipo', async () => {
     global.fetch = vi.fn(() => Promise.resolve({ ok: false, text: () => Promise.resolve('') }));
-    const { unmount } = render(<CarolCena kind="body" fallback={FALLBACK} />);
+    const { unmount } = render(<CarolCena kind="body" modo="traco" fallback={FALLBACK} />);
     await flush();
     expect(screen.getByTestId('fallback')).toBeInTheDocument();
     unmount();
 
     global.fetch = vi.fn(() => Promise.reject(new Error('rede')));
-    const r2 = render(<CarolCena kind="body" fallback={FALLBACK} />);
+    const r2 = render(<CarolCena kind="body" modo="traco" fallback={FALLBACK} />);
     await flush();
     expect(screen.getByTestId('fallback')).toBeInTheDocument();
     r2.unmount();
 
     global.fetch = vi.fn(() => Promise.resolve({ ok: true, text: () => Promise.resolve('isto não é um svg <<<') }));
-    render(<CarolCena kind="body" fallback={FALLBACK} />);
+    render(<CarolCena kind="body" modo="traco" fallback={FALLBACK} />);
     await flush();
     expect(screen.getByTestId('fallback')).toBeInTheDocument();
   });
 
-  it('sem fetch (ambiente sem rede): logótipo', async () => {
+  it('sem fetch (ambiente sem rede): forçado o traço, logótipo; no sorteio ficam os modos gerados', async () => {
     global.fetch = undefined;
-    render(<CarolCena kind="run" fallback={FALLBACK} />);
+    const { unmount } = render(<CarolCena kind="run" modo="traco" fallback={FALLBACK} />);
     await flush();
     expect(screen.getByTestId('fallback')).toBeInTheDocument();
+    unmount();
+    render(<CarolCena kind="run" fallback={FALLBACK} />);
+    await flush();
+    expect(['carreiras', 'pontos']).toContain(screen.getByTestId('carol-cena').dataset.modo);
   });
 
   it('um kind sem cena: só o fallback', () => {
@@ -230,10 +238,11 @@ describe('CarolCena — modo máscara', () => {
     expect(prepararMascara('<svg xmlns="http://www.w3.org/2000/svg"><path d="M0 0"/></svg>').viewBox).toEqual([0, 0, 256, 256]);
   });
 
-  it('resolverModo: a prop manda, depois o URL, depois o padrão (traço)', () => {
+  it('resolverModo: a prop manda, depois o URL; sem nenhum dos dois, null (sorteio)', () => {
     expect(resolverModo('mascara')).toBe('mascara');
-    expect(resolverModo(undefined)).toBe('traco');
-    expect(resolverModo('lixo')).toBe('traco');
+    expect(resolverModo('pontos')).toBe('pontos');
+    expect(resolverModo(undefined)).toBeNull();
+    expect(resolverModo('lixo')).toBeNull();
     window.history.replaceState({}, '', '/?cena=mascara');
     expect(resolverModo(undefined)).toBe('mascara');
     expect(resolverModo('traco')).toBe('traco');
@@ -319,5 +328,128 @@ describe('os SVG reais da corrida (da Carol)', () => {
     expect(Math.max(...atrasos)).toBeLessThanOrEqual(1400);
     // Muitos caminhos, poucos grupos: há atrasos repetidos (os que se desenham juntos).
     expect(new Set(atrasos).size).toBeLessThan(atrasos.length);
+  });
+});
+
+describe('CarolCena — carreiras e pontos (gerados por código)', () => {
+  it('formasCarreiras: 12 carreiras de cima para baixo, atrasos de 0 a 1,4 s, a cobrir a imagem toda', () => {
+    const f = formasCarreiras(600, 804);
+    expect(f).toHaveLength(12);
+    expect(f[0]).toMatchObject({ x: 0, y: 0, w: 600, atraso: 0 });
+    expect(f.at(-1).atraso).toBe(1400);
+    expect(f.map((r) => r.y)).toEqual([...f.map((r) => r.y)].sort((a, b) => a - b));
+    expect(f.at(-1).y + f.at(-1).h).toBeGreaterThanOrEqual(804);
+    // As carreiras tocam-se (sem fios): cada uma começa antes de a anterior acabar.
+    f.slice(1).forEach((r, i) => expect(r.y).toBeLessThan(f[i].y + f[i].h));
+  });
+
+  it('formasPontos: grelha que cobre a imagem, do centro para fora, de 0 a 1,4 s', () => {
+    const p = formasPontos(600, 804);
+    const cel = 600 / 10;
+    expect(p).toHaveLength(10 * Math.ceil(804 / cel));
+    expect(Math.max(...p.map((x) => x.atraso))).toBe(1400);
+    // O raio chega à diagonal da célula: dois pontos vizinhos sobrepõem-se.
+    expect(p[0].r * 2).toBeGreaterThan(cel);
+    // Os do centro entram antes dos dos cantos.
+    const centro = p.reduce((a, b) => (Math.hypot(a.cx - 300, a.cy - 402) < Math.hypot(b.cx - 300, b.cy - 402) ? a : b));
+    const canto = p[0];
+    expect(centro.atraso).toBeLessThan(canto.atraso);
+    // Todos os pontos estão dentro da imagem.
+    expect(p.every((x) => x.cx > 0 && x.cx < 600 && x.cy > 0 && x.cy < 804 + cel)).toBe(true);
+  });
+
+  it.each(['carreiras', 'pontos'])('%s: forçado, usa a imagem numa <mask> de %s com as dimensões do webp e, no fim, crossfade', async (modo) => {
+    vi.useFakeTimers();
+    render(<CarolCena kind="gym" modo={modo} fallback={FALLBACK} />);
+    await flush();
+    const cena = screen.getByTestId('carol-cena');
+    expect(cena).toHaveAttribute('data-modo', modo);
+    // Sem ficheiros por cena: nenhum SVG pedido.
+    expect(fetchPedidos).toHaveLength(0);
+    const svg = screen.getByTestId('carol-cena-gerada');
+    expect(svg).toHaveClass(`carol-cena-${modo}`);
+    expect(svg).toHaveAttribute('viewBox', '0 0 600 804');
+    const mask = svg.querySelector('mask');
+    expect(mask.querySelectorAll(modo === 'carreiras' ? 'rect' : 'circle').length).toBe(modo === 'carreiras' ? 12 : 10 * Math.ceil(804 / 60));
+    expect(svg.querySelector('image').getAttribute('mask')).toBe(`url(#${mask.id})`);
+    act(() => { vi.advanceTimersByTime(CENA_DESENHO_MS + 50); });
+    expect(screen.getByTestId('carol-cena')).toHaveAttribute('data-fase', 'final');
+    expect(screen.getByTestId('carol-cena-final')).toHaveStyle({ opacity: '1' });
+    expect(screen.getByTestId('carol-cena-gerada')).toHaveStyle({ opacity: '0' });
+  });
+});
+
+describe('CarolCena — o sorteio, sem repetir', () => {
+  it('sortearModo: nunca o último, enquanto houver outro; o único, se for só ele', () => {
+    for (let i = 0; i < 40; i += 1) expect(sortearModo(['a', 'b', 'c'], 'b', Math.random)).not.toBe('b');
+    expect(sortearModo(['a', 'b'], 'a')).toBe('b');
+    expect(sortearModo(['a'], 'a')).toBe('a');
+    expect(sortearModo([], 'a')).toBeNull();
+    // O rand injetado escolhe o índice (os extremos não saem fora da lista).
+    expect(sortearModo(['a', 'b', 'c'], null, () => 0)).toBe('a');
+    expect(sortearModo(['a', 'b', 'c'], null, () => 0.999999)).toBe('c');
+    expect(sortearModo(['a', 'b', 'c'], null, () => 1)).toBe('c');
+  });
+
+  it('lerUltimoModo/guardarUltimoModo: só aceitam modos conhecidos e não rebentam sem storage', () => {
+    expect(lerUltimoModo()).toBeNull();
+    guardarUltimoModo('pontos');
+    expect(lerUltimoModo()).toBe('pontos');
+    window.localStorage.setItem(CENA_ULTIMO_MODO_KEY, 'lixo');
+    expect(lerUltimoModo()).toBeNull();
+    vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => { throw new Error('bloqueado'); });
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('bloqueado'); });
+    expect(lerUltimoModo()).toBeNull();
+    expect(() => guardarUltimoModo('traco')).not.toThrow();
+    vi.restoreAllMocks();
+  });
+
+  it('em cada análise sai um modo diferente do da vez anterior (e guarda-o)', async () => {
+    const vistos = [];
+    for (let i = 0; i < 8; i += 1) {
+      const { unmount } = render(<CarolCena kind="run" fallback={FALLBACK} />);
+      await flush();
+      const modo = screen.getByTestId('carol-cena').dataset.modo;
+      expect(CENA_MODOS).toContain(modo);
+      expect(window.localStorage.getItem(CENA_ULTIMO_MODO_KEY)).toBe(modo);
+      vistos.push(modo);
+      unmount();
+    }
+    vistos.slice(1).forEach((m, i) => expect(m).not.toBe(vistos[i]));
+  });
+
+  it('sem o -mascara.svg e o -traco.svg da área, só saem os gerados — e continua sem repetir', async () => {
+    global.fetch = vi.fn((url) => { fetchPedidos.push(url); return Promise.resolve({ ok: false, text: () => Promise.resolve('') }); });
+    const vistos = [];
+    for (let i = 0; i < 6; i += 1) {
+      const { unmount } = render(<CarolCena kind="gym" fallback={FALLBACK} />);
+      await flush();
+      vistos.push(screen.getByTestId('carol-cena').dataset.modo);
+      unmount();
+    }
+    expect(vistos.every((m) => ['carreiras', 'pontos'].includes(m))).toBe(true);
+    vistos.slice(1).forEach((m, i) => expect(m).not.toBe(vistos[i]));
+  });
+
+  it('o ?cena= força o modo (e ignora o último)', async () => {
+    guardarUltimoModo('pontos');
+    window.history.replaceState({}, '', '/?cena=pontos');
+    try {
+      render(<CarolCena kind="body" fallback={FALLBACK} />);
+      await flush();
+      expect(screen.getByTestId('carol-cena')).toHaveAttribute('data-modo', 'pontos');
+    } finally {
+      window.history.replaceState({}, '', '/');
+    }
+  });
+
+  it('movimento reduzido: só a imagem, sem sorteio nem guardar modo', async () => {
+    window.matchMedia = () => ({ matches: true });
+    render(<CarolCena kind="meal" fallback={FALLBACK} />);
+    await flush();
+    expect(screen.getByTestId('carol-cena')).toHaveAttribute('data-modo', 'imagem');
+    expect(screen.getByTestId('carol-cena')).toHaveAttribute('data-fase', 'final');
+    expect(window.localStorage.getItem(CENA_ULTIMO_MODO_KEY)).toBeNull();
+    expect(fetchPedidos).toHaveLength(0);
   });
 });

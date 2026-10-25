@@ -648,6 +648,17 @@ html[data-page-hidden] .welcome-halo { animation-play-state: paused; }
   .carol-cena-mascara mask path, .carol-cena-mascara mask line, .carol-cena-mascara mask polyline, .carol-cena-mascara mask polygon,
   .carol-cena-mascara mask circle, .carol-cena-mascara mask ellipse, .carol-cena-mascara mask rect { animation: none; stroke-dashoffset: 0; }
 }
+/* Os modos gerados por código (CarolCena): carreiras (rectângulos que crescem da
+   esquerda, de cima para baixo) e pontos (círculos que crescem do centro para
+   fora), como máscara sobre a imagem. 600 ms cada, atraso em --atraso (~2 s no total). */
+.carol-cena-gerada mask rect, .carol-cena-gerada mask circle { fill: #fff; transform-box: fill-box; animation-duration: 600ms; animation-delay: var(--atraso, 0ms); animation-fill-mode: both; animation-timing-function: ease-out; }
+.carol-cena-carreiras mask rect { transform-origin: left center; animation-name: carolCenaCarreira; }
+.carol-cena-pontos mask circle { transform-origin: center; animation-name: carolCenaPonto; }
+@keyframes carolCenaCarreira { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+@keyframes carolCenaPonto { from { transform: scale(0); } to { transform: scale(1); } }
+@media (prefers-reduced-motion: reduce) {
+  .carol-cena-gerada mask rect, .carol-cena-gerada mask circle { animation: none; }
+}
 .logo-loader { display: inline-flex; align-items: center; justify-content: center; }
 .logo-loader-hex, .logo-loader-hex-in, .logo-loader-chev { stroke-dasharray: 1; stroke-dashoffset: 1; }
 .logo-loader-hex    { animation: logoDraw 720ms cubic-bezier(.65,0,.35,1) 0ms forwards; }
