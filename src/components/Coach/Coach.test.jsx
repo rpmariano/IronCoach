@@ -2359,13 +2359,18 @@ describe('Coach — plano longo em partes (plan_continuation, tudo-ou-nada)', ()
       { ...base, id: 'p1', period_start: '2026-10-26', period_end: '2026-11-01', summary: 'Semana 1' },
       { ...base, id: 'p2', period_start: '2026-11-02', period_end: '2026-11-08', summary: 'Semana 2' },
     ];
-    const abrir = async () => {
-      const b = await screen.findByRole('button', { name: /Proposta de plano por rever [(]2[)]/ });
+    const ITENS = [{ id: 'i1', plan_id: 'p1', kind: 'corrida' }, { id: 'i2', plan_id: 'p2', kind: 'corrida' }];
+    const C2 = { from: '2026-11-02', to: '2026-11-08', part: 2, of: 2, until: '2026-11-08' };
+    const C2de3 = { ...C2, of: 3, until: '2026-11-15' };
+    const C3 = { from: '2026-11-09', to: '2026-11-15', part: 3, of: 3, until: '2026-11-15' };
+    const modelo = (cont, id = 'm') => ({ id, role: 'model', content: 'Aqui tens a semana.', created_at: new Date().toISOString(), plan_continuation: cont });
+    const abrir = async (n = 2) => {
+      const b = await screen.findByRole('button', { name: new RegExp('Proposta de plano por rever [(]' + n + '[)]') });
       await act(async () => { fireEvent.click(b); });
     };
 
     it('2 partes pendentes: a folha abre na mais recente («Parte 2 de 2»); «Aceitar plano» aplica as duas por ordem', async () => {
-      useAppStore.setState({ coachPlans: PEND });
+      useAppStore.setState({ coachPlans: PEND, coachPlanItems: ITENS, coachMessages: [modelo(C2)] });
       script((b) => reply('ok', 'Boa.'));
       renderCoach();
       await abrir();
@@ -2376,7 +2381,7 @@ describe('Coach — plano longo em partes (plan_continuation, tudo-ou-nada)', ()
     });
 
     it('recusar a parte 2 recusa as duas', async () => {
-      useAppStore.setState({ coachPlans: PEND });
+      useAppStore.setState({ coachPlans: PEND, coachPlanItems: ITENS, coachMessages: [modelo(C2)] });
       script((b) => reply('ok', 'Boa.'));
       renderCoach();
       await abrir();
@@ -2386,8 +2391,7 @@ describe('Coach — plano longo em partes (plan_continuation, tudo-ou-nada)', ()
     });
 
     it('a última mensagem ainda promete a parte 3: «Parte 2 de 3», o botão pede os dias seguintes e a parte 3 sai sem aplicar nada', async () => {
-      const C3 = { from: '2026-11-09', to: '2026-11-15', part: 3, of: 3, until: '2026-11-15' };
-      useAppStore.setState({ coachPlans: PEND, coachMessages: [{ id: 'm9', role: 'model', content: 'Aqui tens a semana 2.', created_at: new Date().toISOString(), plan_continuation: C3 }] });
+      useAppStore.setState({ coachPlans: PEND, coachPlanItems: ITENS, coachMessages: [modelo(C2de3, 'm1'), modelo(C3, 'm2')] });
       script(() => reply('a3', 'Terceira semana.'));
       renderCoach();
       await abrir();
@@ -2398,8 +2402,64 @@ describe('Coach — plano longo em partes (plan_continuation, tudo-ou-nada)', ()
       expect(respondToPlan).not.toHaveBeenCalled();
     });
 
-    it('uma só pendente: proposta normal, sem aviso de parte', async () => {
-      useAppStore.setState({ coachPlans: [PEND[0]] });
+    it('R2: uma só pendente cuja mensagem promete a semana seguinte: «Parte 1 de N» e o botão pede a seguinte', async () => {
+      useAppStore.setState({ coachPlans: [PEND[0]], coachPlanItems: ITENS, coachMessages: [modelo(C2de3)] });
+      script(() => reply('a2', 'Segunda semana.'));
+      renderCoach();
+      await abrir(1);
+      expect(await screen.findByTestId('plan-part-note')).toHaveTextContent('Parte 1 de 3');
+      await clicar('Aceitar e ver próximos 7 dias');
+      await waitFor(() => expect(continuations()).toHaveLength(1));
+      expect(continuations()[0].plan_continuation).toMatchObject({ from: '2026-11-02', part: 2 });
+      expect(respondToPlan).not.toHaveBeenCalled();
+    });
+
+    it('B2: uma proposta só de refeições encostada a uma de treino não forma cadeia', async () => {
+      useAppStore.setState({
+        coachPlans: [PEND[0], { ...PEND[1], race_id: null }],
+        coachPlanItems: [{ id: 'i1', plan_id: 'p1', kind: 'corrida' }, { id: 'i2', plan_id: 'p2', kind: 'refeicao' }],
+        coachMessages: [],
+      });
+      renderCoach();
+      await abrir(2);
+      expect(screen.queryByTestId('plan-part-note')).not.toBeInTheDocument();
+      await screen.findByRole('button', { name: 'Aceitar plano' });
+    });
+
+    it('R1: a continuação perdeu-se (nem pendente nem na mensagem): a parte trata-se como a última e aplica a cadeia que existe', async () => {
+      // A mensagem liga as partes 1 e 2 (of = 3) mas já não promete a 3: a parte 2 é a última disponível.
+      useAppStore.setState({ coachPlans: PEND, coachPlanItems: ITENS, coachMessages: [modelo({ ...C2, of: 3, until: '2026-11-15' })] });
+      script(() => reply('ok', 'Boa.'));
+      renderCoach();
+      await abrir(2);
+      expect(await screen.findByTestId('plan-part-note')).toHaveTextContent('Parte 2 de 3');
+      expect(screen.getByRole('button', { name: 'Aceitar plano' })).toBeInTheDocument();
+      await clicar('Aceitar plano');
+      await waitFor(() => expect(respondToPlan.mock.calls).toEqual([['p1', true], ['p2', true]]));
+    });
+
+    it('R3: aplicar a cadeia falha na 2.ª; depois, recusar não diz «Plano recusado» nem «Recusei o plano.» e recusa só o que falta', async () => {
+      useAppStore.setState({ coachPlans: PEND, coachPlanItems: ITENS, coachMessages: [modelo(C2)] });
+      script(() => reply('ok', 'Boa.'));
+      respondToPlan.mockImplementation((id, accept) => Promise.resolve(!(id === 'p2' && accept)));
+      renderCoach();
+      await abrir(2);
+      await clicar('Aceitar plano');
+      await waitFor(() => expect(respondToPlan).toHaveBeenCalledTimes(2));
+      expect(await screen.findByText(/Gravei 1 parte do plano, mas falhou a seguinte/)).toBeInTheDocument();
+      respondToPlan.mockClear();
+      respondToPlan.mockResolvedValue(true);
+      await clicar(/Recusar/i);
+      await waitFor(() => expect(respondToPlan).toHaveBeenCalledTimes(1));
+      expect(respondToPlan).toHaveBeenCalledWith('p2', false);
+      expect(await screen.findByText(/Recusei o que faltava, mas a parte que já tinha gravado fica no teu plano/)).toBeInTheDocument();
+      expect(screen.queryByText('Plano recusado')).not.toBeInTheDocument();
+      await act(async () => { await new Promise((r) => setTimeout(r, 80)); });
+      expect(bodies().some((b) => b.message === 'Recusei o plano.')).toBe(false);
+    });
+
+    it('uma só pendente sem promessa: proposta normal, sem aviso de parte', async () => {
+      useAppStore.setState({ coachPlans: [PEND[0]], coachPlanItems: ITENS, coachMessages: [] });
       renderCoach();
       const b = await screen.findByRole('button', { name: /Proposta de plano por rever [(]1[)]/ });
       await act(async () => { fireEvent.click(b); });

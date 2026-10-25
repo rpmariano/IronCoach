@@ -28,55 +28,80 @@ export function nextPlanContinuation(current) {
 const validCont = (c) => !!c && typeof c.from === 'string' && typeof c.to === 'string'
   && Number.isFinite(Number(c.part)) && Number.isFinite(Number(c.of));
 
+export const dayAfter = (iso) => addDaysISO(String(iso).slice(0, 10), 1);
+
+/** A continuação que uma mensagem do modelo prometeu para a semana a seguir a
+ *  este plano (o `from` dela é o dia a seguir ao period_end), ou null. A mais
+ *  recente ganha. */
+export function findPromisedContinuation(modelMessages, plan) {
+  if (!plan?.period_end) return null;
+  const from = dayAfter(plan.period_end);
+  const m = [...(modelMessages || [])].reverse().find((x) => validCont(x?.plan_continuation) && x.plan_continuation.from === from);
+  return m ? m.plan_continuation : null;
+}
+
+const hasTraining = (planId, items) => (items || []).some((i) => i?.plan_id === planId && (i.kind === 'corrida' || i.kind === 'ginasio'));
+
 /**
  * Reconstrói a cadeia das partes de um plano longo depois de recarregar a
- * página (tudo-ou-nada, b992ede9): a cadeia são as propostas PENDENTES com o
- * mesmo race_id (ou todas sem prova) e períodos seguidos — o period_start de uma
- * é o dia a seguir ao period_end da anterior. Fora dela nunca há mais de uma
- * pendente. Com menos de duas, não há cadeia (proposta normal).
+ * página (tudo-ou-nada, b992ede9). A cadeia são as propostas PENDENTES de
+ * TREINO (com itens corrida/ginasio: um plano só de refeições, que o
+ * save_meal_suggestions também cria como proposto, nunca entra) com o mesmo
+ * race_id (ou todas sem prova), de períodos seguidos (o period_start de uma é o
+ * dia a seguir ao period_end da anterior) E ligadas por uma mensagem do modelo
+ * com plan_continuation cujo `from` é o period_start da seguinte. Sem essa
+ * ligação não há cadeia: duas propostas encostadas por acaso são propostas
+ * normais. Uma só pendente conta se uma mensagem prometer a semana a seguir
+ * (parte 1 de N, continuação por pedir).
  *
- * O total vem da última mensagem do modelo com plan_continuation (o `of`); sem
- * ela, é o número de pendentes. Se essa mensagem ainda promete uma parte que
- * não está pendente (part > nº de pendentes), o total conta com ela e devolve-se
- * a continuação por pedir (desarmada, atada à última parte).
+ * O total vem do `of` das continuações ligadas; se a última promessa ainda não
+ * está pendente, o total conta com ela e devolve-se a continuação (desarmada,
+ * atada à última parte).
  *
  * @returns {null | { of: number, parts: {planId: string, part: number}[],
  *   latestPlanId: string, continuation: null | object }}
  */
-export function rebuildPlanChain(plans, modelMessages = []) {
-  const pending = (plans || []).filter((p) => p?.status === 'proposto' && p.period_start && p.period_end);
+export function rebuildPlanChain(plans, modelMessages = [], planItems = []) {
+  const conts = (modelMessages || []).map((m) => m?.plan_continuation).filter(validCont);
+  if (!conts.length) return null;
+  const starts = new Set(conts.map((c) => c.from));
+  const pending = (plans || []).filter((p) => p?.status === 'proposto' && p.period_start && p.period_end && hasTraining(p.id, planItems));
   const groups = new Map();
   for (const p of pending) {
     const key = p.race_id ?? 'sem-prova';
     groups.set(key, [...(groups.get(key) || []), p]);
   }
   let best = null;
+  const consider = (run) => {
+    const promised = starts.has(dayAfter(run.at(-1).period_end));
+    if (run.length < 2 && !promised) return;
+    if (!best || String(run.at(-1).period_start) > String(best.at(-1).period_start)) best = [...run];
+  };
   for (const list of groups.values()) {
     const sorted = [...list].sort((a, b) => String(a.period_start).localeCompare(String(b.period_start)));
     let run = [];
     for (const p of sorted) {
       const prev = run.at(-1);
-      if (prev && addDaysISO(String(prev.period_end).slice(0, 10), 1) === String(p.period_start).slice(0, 10)) run.push(p);
-      else run = [p];
-      if (run.length >= 2 && (!best || String(run.at(-1).period_start) > String(best.at(-1).period_start))) best = [...run];
+      const linked = prev && dayAfter(prev.period_end) === String(p.period_start).slice(0, 10) && starts.has(String(p.period_start).slice(0, 10));
+      if (linked) run.push(p);
+      else { if (run.length) consider(run); run = [p]; }
     }
+    if (run.length) consider(run);
   }
   if (!best) return null;
   const n = best.length;
-  const last = [...(modelMessages || [])].reverse().find((m) => validCont(m?.plan_continuation));
-  const cont = last ? last.plan_continuation : null;
-  const promises = !!cont && Number(cont.part) > n;
-  let of = cont ? Math.max(Number(cont.of), n) : n;
-  if (promises) of = Math.max(of, n + 1);
   const latest = best.at(-1);
+  const promise = findPromisedContinuation(modelMessages, latest);
+  let of = Math.max(n, ...conts.map((c) => Number(c.of)));
+  if (promise) of = Math.max(of, n + 1, Number(promise.of));
   return {
     of,
     parts: best.map((p, i) => ({ planId: p.id, part: i + 1 })),
     latestPlanId: latest.id,
-    continuation: promises
+    continuation: promise
       ? {
-        from: cont.from, to: cont.to, part: Number(cont.part), of,
-        ...(typeof cont.until === 'string' ? { until: cont.until } : null),
+        from: promise.from, to: promise.to, part: Number(promise.part), of,
+        ...(typeof promise.until === 'string' ? { until: promise.until } : null),
         planId: latest.id, armed: false,
       }
       : null,
