@@ -427,3 +427,12 @@ export function foodDefaultGrams(food, rules) {
   const portion = Number(food?.portion_grams);
   return { grams: portion > 0 ? Math.round(portion) : null, habitual: false };
 }
+
+/** A refeição predefinida que já corresponde a esta refeição registada (bug
+ *  #83): o mesmo conjunto de alimentos (por foodKey); as gramas não contam. */
+export function templateForMeal(templates, meal) {
+  const keys = (names) => [...new Set((names || []).map((n) => foodKey(n)).filter(Boolean))].sort().join('|');
+  const mine = keys((meal?.meal_items || []).map((it) => it?.name));
+  if (!mine) return null;
+  return (templates || []).find((t) => keys(templateItems(t).map((it) => it.name)) === mine) || null;
+}
