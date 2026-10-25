@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import React from 'react';
 import { render, screen, act } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -289,5 +291,33 @@ describe('CarolCena — modo máscara', () => {
     expect(screen.getByTestId('carol-cena')).toHaveAttribute('data-fase', 'final');
     expect(fetchPedidos).toHaveLength(0);
     expect(screen.queryByTestId('carol-cena-mascara')).not.toBeInTheDocument();
+  });
+});
+
+/* Os ficheiros reais da Carol (public/carol-cenas) têm de passar pelo preparador tal
+   como estão: o viewBox do webp, todos os caminhos, ~2 s no total. */
+describe('os SVG reais da corrida (da Carol)', () => {
+  const ler = (nome) => readFileSync(resolve(process.cwd(), 'public/carol-cenas', nome), 'utf8');
+
+  it('corrida-mascara.svg: viewBox 600×804, todos os caminhos, o último a começar ao fim dos 2 s menos 0,6', () => {
+    const texto = ler('corrida-mascara.svg');
+    const esperados = (texto.match(/<path\b/g) || []).length;
+    const m = prepararMascara(texto);
+    expect(m.viewBox).toEqual([0, 0, 600, 804]);
+    const atrasos = [...m.inner.matchAll(/--atraso:(\d+)ms/g)].map((x) => Number(x[1]));
+    expect(atrasos).toHaveLength(esperados);
+    expect(Math.max(...atrasos)).toBe(1400);
+    expect(m.inner).not.toMatch(/script|href|onload/i);
+  });
+
+  it('corrida-traco.svg: todos os caminhos, agrupados pelo --i, sem passar de 1,4 s de atraso', () => {
+    const texto = ler('corrida-traco.svg');
+    const esperados = (texto.match(/<path\b/g) || []).length;
+    const out = prepararTraco(texto);
+    const atrasos = [...out.matchAll(/--atraso:(\d+)ms/g)].map((x) => Number(x[1]));
+    expect(atrasos).toHaveLength(esperados);
+    expect(Math.max(...atrasos)).toBeLessThanOrEqual(1400);
+    // Muitos caminhos, poucos grupos: há atrasos repetidos (os que se desenham juntos).
+    expect(new Set(atrasos).size).toBeLessThan(atrasos.length);
   });
 });
