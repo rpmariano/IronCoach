@@ -5790,15 +5790,24 @@ Deno.test("handler: MAX_TOKENS vazio numa ronda com ferramentas repete a ronda u
 
 // As frases da resposta perdida (Carol, 2026-10-25): com mensagem dele há o
 // botão «Reenviar a mensagem»; quando foi ela a abrir, ou sem mensagem, não.
-import { CHAT_LOST_PROACTIVE_TEXT, CHAT_LOST_REPLY_TEXT, lostReplyText } from "./index.ts";
+import { CHAT_LOST_CHECKIN_TEXT, CHAT_LOST_PROACTIVE_TEXT, CHAT_LOST_REPLY_TEXT, lostReplyText } from "./index.ts";
 
 Deno.test("resposta perdida: a frase depende de haver mensagem dele para reenviar", async () => {
   assertEquals(lostReplyText("Prefiro 14 dias", null), CHAT_LOST_REPLY_TEXT);
   assertEquals(lostReplyText("Prefiro 14 dias", "race_eve"), CHAT_LOST_PROACTIVE_TEXT);
-  assertEquals(lostReplyText("", null), CHAT_LOST_PROACTIVE_TEXT);
-  assertEquals(lostReplyText(undefined, null), CHAT_LOST_PROACTIVE_TEXT);
+  assertEquals(lostReplyText("", "silence"), CHAT_LOST_PROACTIVE_TEXT);
+  // Sem mensagem e sem trigger (Adaptar Plano, mapa, continuação): não volta sozinho.
+  assertEquals(lostReplyText("", null), CHAT_LOST_CHECKIN_TEXT);
+  assertEquals(lostReplyText(undefined, null), CHAT_LOST_CHECKIN_TEXT);
+  assertEquals(CHAT_LOST_PROACTIVE_TEXT, "Perdi o fio ao que te queria dizer. Deixa-me arrumar as ideias, que eu volto a falar contigo.");
   assertCarolVoice(CHAT_LOST_REPLY_TEXT);
   assertCarolVoice(CHAT_LOST_PROACTIVE_TEXT);
+  assertCarolVoice(CHAT_LOST_CHECKIN_TEXT);
+  // A promessa «volto a falar contigo» é verdade: num 502 a chave não fica registada.
+  const srcLost = await Deno.readTextFile(new URL("./index.ts", import.meta.url));
+  const record = srcLost.indexOf("if (proactiveTrigger && proactiveKey) await recordProactiveDelivered(");
+  assert(record > srcLost.indexOf("const { data: modelMsg, error: modelMsgErr } = await insertModelMessage("));
+  assert(record > srcLost.lastIndexOf("lostReplyText(message, proactiveTrigger)"));
   const src = await Deno.readTextFile(new URL("./index.ts", import.meta.url));
   assertEquals(src.includes("Perdi o fio a meio"), false);
   assertEquals(src.split("lostReplyText(message, proactiveTrigger)").length - 1, 2);
@@ -5947,4 +5956,16 @@ Deno.test("plano partido para uma prova: a sobreposição com o bloco da mesma p
     period_start: "2026-10-26", period_end: "2026-11-01", summary: "x", items: dayItems("2026-10-26", 5),
   }, null, c1);
   assertStringIncludes(semanaAntes, 'o plano ativo prepara a prova "Maratona do Porto"');
+});
+
+// Proposta 290b050f (25/10): período até à meia (35 dias) com treinos só nos
+// 14 combinados, e a Carol disse «o plano é de 35 dias até à meia».
+Deno.test("plano: o texto e o summary falam dos dias que os itens cobrem, não do período até à prova", () => {
+  const sys = sysCarol();
+  assertStringIncludes(sys, "O QUE O PLANO COBRE: no texto e no summary, fala dos dias que os items cobrem");
+  assertStringIncludes(sys, "NÃO é «um plano de 35 dias até à meia»");
+  assertStringIncludes(sys, "«as semanas até à meia combinamos depois»");
+  const tools = JSON.stringify(buildTools(allowedToolsFor("E")));
+  assertStringIncludes(tools, "nunca do período inteiro como");
+  assertStringIncludes(buildPlanContinuationTurn({ from: "2026-11-02", to: "2026-11-08", part: 2, of: 2, until: "2026-11-08" }), "diga os dias desta parte");
 });

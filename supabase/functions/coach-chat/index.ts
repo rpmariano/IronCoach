@@ -355,7 +355,9 @@ const PROPOSE_PLAN_TOOL = {
           "1. CAUSA DA ALTERAÇÃO: o finding ou desvio concreto que originou este ajuste (ex.: corrida de 25 km quando estavam previstos 7 km, somada à carga de 40 km e ginásio do dia anterior); " +
           "2. O QUE SE PRETENDE CORRIGIR: o objetivo fisiológico da adaptação (ex.: baixar a fadiga aguda, prevenir lesões musculares e garantir supercompensação sem comprometer a prova); " +
           "3. O QUE É ALTERADO: o resumo direto dos treinos ajustados (ex.: conversão de amanhã em descanso ativo, redução de volume no fim de semana e reforço de hidratos de recuperação). " +
-          "Separa os pontos com quebras de linha para uma leitura perfeita na persiana de proposta.",
+          "Separa os pontos com quebras de linha para uma leitura perfeita na persiana de proposta. " +
+          "Fala dos dias que os items cobrem (\"os próximos 14 dias\"), nunca do período inteiro como \"plano de N dias\": " +
+          "se o período vai até à prova e há semanas sem items, diz que essas se planeiam depois.",
       },
       items: {
         type: "ARRAY",
@@ -1686,12 +1688,21 @@ export const CHAT_MESSAGE_NOT_SAVED_TEXT =
 // conversa, ou num turno sem mensagem (check-in, mapa), não há o que reenviar.
 export const CHAT_LOST_REPLY_TEXT =
   "Fiquei a meio da resposta e perdi-a. Toca em Reenviar a mensagem e eu respondo-te outra vez, sem precisares de escrever nada.";
+// Foi ela que abriu (proactiveTrigger): não se pede nada ao atleta. É verdade
+// que ela volta — num 502 o servidor não regista a chave (recordProactiveDelivered
+// só corre com a mensagem gravada) e o cliente não a marca (markProactiveSent
+// só com resposta), por isso o turno volta a disparar na próxima abertura.
 export const CHAT_LOST_PROACTIVE_TEXT =
+  "Perdi o fio ao que te queria dizer. Deixa-me arrumar as ideias, que eu volto a falar contigo.";
+// Um turno sem mensagem dele que não é dela (Adaptar Plano, o mapa da época, a
+// intervenção, a continuação do plano): não volta sozinho — é ele que toca de novo.
+export const CHAT_LOST_CHECKIN_TEXT =
   "Fiquei a meio do que te queria dizer e perdi-o. Tenta outra vez daqui a bocado.";
 
-/** A frase do 502 da resposta perdida: há mensagem dele para reenviar? */
+/** A frase do 502 da resposta perdida: há mensagem dele para reenviar? foi ela que abriu? */
 export function lostReplyText(message: unknown, proactiveTrigger: unknown): string {
-  return !proactiveTrigger && typeof message === "string" && message.trim() ? CHAT_LOST_REPLY_TEXT : CHAT_LOST_PROACTIVE_TEXT;
+  if (proactiveTrigger) return CHAT_LOST_PROACTIVE_TEXT;
+  return typeof message === "string" && message.trim() ? CHAT_LOST_REPLY_TEXT : CHAT_LOST_CHECKIN_TEXT;
 }
 
 function jsonResponse(body: unknown, status = 200): Response {
@@ -3175,7 +3186,7 @@ export function buildPlanContinuationTurn(c: PlanContinuation): string {
   return `Continuação do plano (parte ${c.part} de ${c.of}): o atleta aceitou a parte anterior e a app pediu-te a seguinte. ` +
     `Propõe JÁ, com propose_training_plan, só os treinos de ${c.from} a ${c.to}, com period_start=${c.from} e period_end=${c.to} — ` +
     `o mesmo objetivo e a mesma prova (race_id) da parte anterior, sem repetir os dias dela${last ? "" : `, e com plan_until=${c.until}`}. ` +
-    `No texto, uma frase curta de ligação (ex.: «Aqui tens a semana de … a …»)` +
+    `No texto, uma frase curta de ligação que diga os dias desta parte (ex.: «Aqui tens a semana de … a …») — nunca o período até à prova` +
     (last ? " e diz-lhe que o plano fica completo." : ", e diz-lhe que a seguinte vem depois de aceitar esta.") +
     ` Não cumprimentes nem repitas o que já disseste.`;
 }
@@ -6244,6 +6255,10 @@ export function buildSystemInstruction(
     `propõe só a primeira semana, com plan_until = o último dia que ele pediu. Numa parte, period_start/period_end são os ` +
     `da semana dela (com o mesmo race_id, se o plano é para uma prova). A parte seguinte pede-ta a app depois ` +
     `de ele aceitar esta: não a proponhas antes.\n\n` +
+    `O QUE O PLANO COBRE: no texto e no summary, fala dos dias que os items cobrem — «os próximos 14 dias», «esta semana» —, ` +
+    `nunca do período inteiro: um plano que vai até à prova mas só tem treinos nas primeiras semanas NÃO é «um plano de 35 dias ` +
+    `até à meia». Se há semanas sem treinos até à prova, diz-lhe que essas combinam depois («as semanas até à meia combinamos ` +
+    `depois»). Num plano em partes, isto vai junto com o aviso de que vem em partes.\n\n` +
     WALKING_DOCTRINE +
     `DETALHE DOS TREINOS DE CORRIDA NO PLANO (notes de propose_training_plan): uma zona de FC ` +
     `sozinha ("Z2, fácil") não chega — o atleta precisa de saber a que ritmo correr, não só o ` +
