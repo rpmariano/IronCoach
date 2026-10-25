@@ -2211,6 +2211,89 @@ describe('Coach — plano longo em partes (plan_continuation, tudo-ou-nada)', ()
     expect(continuations()).toHaveLength(1);
   });
 
+  describe('revisão dos objetivos depois de um plano aceite (targets_review)', () => {
+    const revisoes = () => bodies().filter((b) => b.targets_review);
+    const normal = (extra = {}) => script((b) => {
+      if (b.targets_review) return reply('rev', 'Os teus objetivos já não batem certo com este plano.', { suggestions: ['Atualiza os objetivos', 'Mantém'], ...extra });
+      if (b.message === 'Aceitei o plano.' || b.message === 'Recusei o plano.') return reply('ok', 'Boa.');
+      return reply('a1', 'Aqui vai a semana.', { plan_proposed: true });
+    });
+
+    it('proposta normal aceite: depois do «Aceitei o plano.» sai um turno targets_review com o id do plano; a mensagem aparece com as sugestões', async () => {
+      normal();
+      renderCoach();
+      await send('Plano para esta semana');
+      await clicar('Aceitar plano');
+      await waitFor(() => expect(revisoes()).toHaveLength(1));
+      expect(revisoes()[0]).toMatchObject({ message: '', targets_review: { reason: 'plan_accepted', plan_id: 'p1' } });
+      // Primeiro o «Aceitei o plano.», depois a revisão.
+      const ordem = bodies().map((b) => (b.targets_review ? 'revisao' : b.message));
+      expect(ordem.indexOf('Aceitei o plano.')).toBeLessThan(ordem.indexOf('revisao'));
+      await waitFor(() => expect(useAppStore.getState().coachMessages.map((m) => m.content)).toContain('Os teus objetivos já não batem certo com este plano.'));
+      expect(useAppStore.getState().coachSuggestions).toEqual(['Atualiza os objetivos', 'Mantém']);
+    });
+
+    it('skipped targets_ok: nada aparece', async () => {
+      script((b) => {
+        if (b.targets_review) return { data: { skipped: 'targets_ok', model_message: null, suggestions: [] }, error: null };
+        if (b.message === 'Aceitei o plano.') return reply('ok', 'Boa.');
+        return reply('a1', 'Aqui vai a semana.', { plan_proposed: true });
+      });
+      renderCoach();
+      await send('Plano para esta semana');
+      await clicar('Aceitar plano');
+      await waitFor(() => expect(revisoes()).toHaveLength(1));
+      await act(async () => { await new Promise((r) => setTimeout(r, 80)); });
+      const falas = useAppStore.getState().coachMessages.map((m) => m.content);
+      expect(falas).toContain('Boa.');
+      expect(falas.filter((c) => c && c !== 'Boa.' && c !== 'Aqui vai a semana.' && c !== 'Aceitei o plano.' && c !== 'Plano para esta semana')).toEqual([]);
+    });
+
+    it('uma falha da revisão não mostra nada', async () => {
+      script((b) => {
+        if (b.targets_review) return { data: null, error: 'boom', isTimeout: false, isNetwork: false };
+        if (b.message === 'Aceitei o plano.') return reply('ok', 'Boa.');
+        return reply('a1', 'Aqui vai a semana.', { plan_proposed: true });
+      });
+      renderCoach();
+      await send('Plano para esta semana');
+      await clicar('Aceitar plano');
+      await waitFor(() => expect(revisoes()).toHaveLength(1));
+      await act(async () => { await new Promise((r) => setTimeout(r, 80)); });
+      expect(screen.queryByText(/Não consegui/i)).not.toBeInTheDocument();
+    });
+
+    it('recusar o plano não pede revisão', async () => {
+      normal();
+      renderCoach();
+      await send('Plano para esta semana');
+      await clicar(/Recusar/i);
+      await waitFor(() => expect(bodies().some((b) => b.message === 'Recusei o plano.')).toBe(true));
+      await act(async () => { await new Promise((r) => setTimeout(r, 80)); });
+      expect(revisoes()).toHaveLength(0);
+    });
+
+    it('cadeia: nada nas partes intermédias; uma só revisão quando o plano fica aplicado (na última)', async () => {
+      script((b) => {
+        if (b.targets_review) return reply('rev', 'Revê os objetivos.', { suggestions: ['Atualiza os objetivos', 'Mantém'] });
+        if (b.plan_continuation?.part === 2) { pendentes = [PLAN(1), PLAN(2)]; return reply('a2', 'Segunda semana.', { plan_proposed: true }); }
+        if (b.message === 'Aceitei o plano.') return reply('ok', 'Boa.');
+        return reply('a1', 'Primeira semana proposta.', { plan_proposed: true, plan_continuation: C2 });
+      });
+      renderCoach();
+      await send('Plano até à prova');
+      await clicar('Aceitar e ver próximos 7 dias');
+      await waitFor(() => expect(continuations()).toHaveLength(1));
+      await screen.findByRole('button', { name: 'Aceitar plano' });
+      expect(revisoes()).toHaveLength(0);
+      await clicar('Aceitar plano');
+      await waitFor(() => expect(revisoes()).toHaveLength(1));
+      expect(revisoes()[0].targets_review).toMatchObject({ reason: 'plan_accepted' });
+      await act(async () => { await new Promise((r) => setTimeout(r, 80)); });
+      expect(revisoes()).toHaveLength(1);
+    });
+  });
+
   it('recusar a parte 2 recusa a 1 e a 2, sem aplicar nada, e pára', async () => {
     turnos();
     renderCoach();
