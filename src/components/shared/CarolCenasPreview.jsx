@@ -24,6 +24,7 @@ function Celula({ kind, modo, ronda }) {
           kind={kind}
           modo={modo}
           size={160}
+          aoCarregar={<span className="text-[11px]" style={{ color: 'var(--text-4)' }}>a carregar…</span>}
           fallback={<span className="text-[11px]" style={{ color: 'var(--text-4)' }}>sem ficheiro</span>}
         />
       </div>

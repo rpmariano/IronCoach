@@ -1,4 +1,4 @@
-import React, { useEffect, useId, useState } from 'react';
+import React, { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { prefersReducedMotion } from '../../utils/coachBubbles';
 import { publicUrl } from '../../lib/utils';
 
@@ -220,7 +220,12 @@ const buscarTexto = (url) => (typeof fetch === 'function'
   ? fetch(url).then((r) => (r.ok ? r.text() : Promise.reject(new Error('svg'))))
   : Promise.reject(new Error('sem fetch')));
 
-export default function CarolCena({ kind, size = 200, fallback = null, modo: modoProp, onFalhou }) {
+export const CENA_MARGEM_MS = 4000;
+
+/* `fallback`: o que se vê se a cena NÃO vem (o logótipo, na análise). `aoCarregar`: o que
+   se vê enquanto ela carrega (por omissão, o mesmo fallback — o logótipo já a desenhar-se);
+   a pré-visualização usa outro para não dizer «sem ficheiro» a quem só está à espera. */
+export default function CarolCena({ kind, size = 200, fallback = null, aoCarregar, modo: modoProp, onFalhou }) {
   const area = cenaAreaOf(kind);
   const reduced = prefersReducedMotion();
   const forcado = resolverModo(modoProp);
@@ -228,6 +233,7 @@ export default function CarolCena({ kind, size = 200, fallback = null, modo: mod
   const [estado, setEstado] = useState('a-carregar'); // a-carregar | pronta | falhou
   const [cena, setCena] = useState(null); // { modo, traco } | { modo, mascara } | { modo: 'carreiras' | 'pontos' }
   const [final, setFinal] = useState(false);
+  const cenaRef = useRef(null);
   // A proporção da imagem (a da Carol é 600×804): `size` é a ALTURA e a largura segue-a.
   const [dim, setDim] = useState({ w: 0, h: 0 });
   const proporcao = dim.w > 0 && dim.h > 0 ? dim.w / dim.h : 1;
@@ -275,13 +281,35 @@ export default function CarolCena({ kind, size = 200, fallback = null, modo: mod
   useEffect(() => {
     if (estado !== 'pronta') return undefined;
     if (reduced) { setFinal(true); return undefined; }
-    const t = setTimeout(() => setFinal(true), CENA_DESENHO_MS);
-    return () => clearTimeout(t);
-  }, [estado, reduced]);
+    let feito = false;
+    const acabar = () => { if (!feito) { feito = true; setFinal(true); } };
+    const timers = [];
+    // O crossfade para a imagem começa quando as animações da cena ACABAM, não a um relógio:
+    // a linha de tempo das animações só avança com frames (um separador sem frames — ou o
+    // primeiro frame atrasado — deixava o relógio cortar o desenho a meio). Sem
+    // getAnimations (jsdom, motores antigos), o relógio de sempre; e uma margem de
+    // segurança para uma animação que nunca acabe.
+    const el = cenaRef.current;
+    const animacoes = el && typeof el.getAnimations === 'function' ? el.getAnimations({ subtree: true }) : [];
+    if (animacoes.length) {
+      Promise.all(animacoes.map((a) => a.finished)).then(acabar).catch(acabar);
+      timers.push(setTimeout(acabar, CENA_DESENHO_MS + CENA_MARGEM_MS));
+    } else {
+      timers.push(setTimeout(acabar, CENA_DESENHO_MS));
+    }
+    return () => { feito = true; timers.forEach(clearTimeout); };
+  }, [estado, reduced, cena]);
+
+  /* O objeto do dangerouslySetInnerHTML tem de ter a mesma identidade entre renders: o React 19
+     compara-o por referência e, com um objeto novo, volta a pôr o innerHTML — recriava os
+     caminhos ao passar a 'final' e a animação recomeçava (o desenho desfazia-se e voltava a
+     desenhar-se durante o crossfade). */
+  const htmlTraco = useMemo(() => (cena?.modo === 'traco' ? { __html: cena.traco } : null), [cena]);
+  const htmlMascara = useMemo(() => (cena?.modo === 'mascara' ? { __html: cena.mascara.inner } : null), [cena]);
 
   if (!area || estado === 'falhou') return fallback;
   // A carregar: o logótipo de sempre (já está a desenhar-se), até a cena estar pronta.
-  if (estado === 'a-carregar') return fallback;
+  if (estado === 'a-carregar') return aoCarregar === undefined ? fallback : aoCarregar;
 
   const imagem = publicUrl(`carol-cenas/${area}.webp`);
   const m = cena?.modo === 'mascara' ? cena.mascara : null;
@@ -293,6 +321,7 @@ export default function CarolCena({ kind, size = 200, fallback = null, modo: mod
   const camada = { position: 'absolute', inset: 0, opacity: final ? 0 : 1, transition: 'opacity 500ms ease' };
   return (
     <div
+      ref={cenaRef}
       data-testid="carol-cena"
       data-area={area}
       data-modo={cena?.modo || 'imagem'}
@@ -305,7 +334,7 @@ export default function CarolCena({ kind, size = 200, fallback = null, modo: mod
           data-testid="carol-cena-traco"
           className="carol-cena-traco"
           style={camada}
-          dangerouslySetInnerHTML={{ __html: cena.traco }}
+          dangerouslySetInnerHTML={htmlTraco}
         />
       )}
       {m && (
@@ -320,7 +349,7 @@ export default function CarolCena({ kind, size = 200, fallback = null, modo: mod
         >
           <defs>
             <mask id={maskId} maskUnits="userSpaceOnUse" x={vx} y={vy} width={vw} height={vh}>
-              <g dangerouslySetInnerHTML={{ __html: m.inner }} />
+              <g dangerouslySetInnerHTML={htmlMascara} />
             </mask>
           </defs>
           <image href={imagem} x={vx} y={vy} width={vw} height={vh} preserveAspectRatio="xMidYMid meet" mask={`url(#${maskId})`} />
