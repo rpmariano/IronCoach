@@ -153,7 +153,7 @@ export default function RecordConfirmation({ label = 'Registo guardado', tone = 
       aria-modal="true"
       aria-label={label}
       onClick={finish}
-      className="fixed inset-0 z-[60] flex flex-col items-center justify-center"
+      className="fixed inset-0 z-[95] flex flex-col items-center justify-center"
       style={{ background: 'var(--bg-scrim)', backdropFilter: 'blur(3px)', WebkitBackdropFilter: 'blur(3px)', cursor: 'pointer' }}
     >
       {/* Clicar NA mensagem não a fecha — só clicar fora dela. */}

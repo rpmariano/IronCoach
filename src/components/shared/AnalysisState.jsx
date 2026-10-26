@@ -109,16 +109,25 @@ function useSteps(steps) {
    src/utils/useAnalysis.js). */
 
 /**
- * AnalysisSkeleton — o esqueleto do mock "Refeição · a analisar": linhas
- * cinzentas a `rgba(255,255,255,.08)` onde os resultados vão aparecer, como
- * o `carol-skeleton` do CarolCard. Nunca substitui o formulário: aparece ao
- * lado dele, que fica bloqueado mas visível, para o atleta continuar a ver o
- * que escreveu.
+ * AnalysisSkeleton — a espera de uma análise: uma CAMADA FIXA centrada no ecrã
+ * visível (portal para o body), com a cena da Carol da área, a linha «A Carol está a
+ * analisar», as frases do que ela lê e a nota. Por cima do formulário, que fica
+ * visível e esbatido por baixo (para o atleta ver o que escreveu) e não se mexe a meio
+ * da análise (bloqueia os toques; o foco não fica preso). Sai com a análise; o erro é
+ * AnalysisFailure, inline.
+ *
+ * Camadas: abaixo da confirmação do registo (z 95) e dos modais (z 100), acima do
+ * formulário e da navegação.
  *
  * Props:
- *   note  string — a linha por baixo ("Isto leva uns segundos…")
- *   label string — rótulo acessível da região em espera
+ *   note   string  — a linha por baixo ("Isto leva uns segundos…")
+ *   label  string  — rótulo acessível da região em espera
+ *   kind   'meal' | 'run' | 'gym' | 'body' — o que se analisa: escolhe as frases e a cena
+ *   manual bool    — escrito à mão (sem foto para ler): frases sem «a ler o print»
  */
+/** A altura da cena: 30 % do ecrã, entre 96 e 200 px (landscape de telemóvel não corta). */
+export const alturaDaCena = () => (typeof window === 'undefined' ? 200 : Math.max(96, Math.min(200, Math.round(window.innerHeight * 0.3))));
+
 export function AnalysisSkeleton({
   // Não há aviso nenhum no fim da análise: prometê-lo deixava o atleta à
   // espera de uma coisa que não vem (revisão de 2026-09-26).
@@ -141,13 +150,28 @@ export function AnalysisSkeleton({
      transform (as animações de entrada dos ecrãs) prendia o position:fixed ao antepassado.
      Bloqueia os toques (pointer-events: auto): o formulário não se mexe a meio da análise
      (decisão do Rui). O FOCO é que não fica preso: sem aria-modal, sem tabindex nem
-     elementos focáveis — o teclado e os leitores de ecrã seguem como estão. Fica abaixo dos
-     modais (z 100) — o «Registo Guardado» do fim nunca fica tapado — e sai quando a análise
-     acaba; o erro de análise (AnalysisFailure) continua inline, como sempre. */
-  const alturaCena = typeof window === 'undefined' ? 200 : Math.max(96, Math.min(200, Math.round(window.innerHeight * 0.3)));
+     elementos focáveis — o teclado e os leitores de ecrã seguem como estão. Fica abaixo da
+     confirmação do registo (RecordConfirmation, z 95) e dos modais (z 100) — o «Registo
+     Guardado» do fim nunca fica tapado — e sai quando a análise acaba; o erro de análise (AnalysisFailure) continua inline, como sempre. */
+  // A altura da cena acompanha o ecrã: um resize ou a rotação (portrait → landscape) recalculam-na.
+  const [alturaCena, setAlturaCena] = useState(alturaDaCena);
+  useEffect(() => {
+    const recalcular = () => setAlturaCena(alturaDaCena());
+    window.addEventListener('resize', recalcular);
+    window.addEventListener('orientationchange', recalcular);
+    return () => {
+      window.removeEventListener('resize', recalcular);
+      window.removeEventListener('orientationchange', recalcular);
+    };
+  }, []);
+  /* A região role="status" monta-se VAZIA e preenche-se a seguir: um leitor de ecrã só anuncia
+     o que muda numa região que já existia — montada com o conteúdo, a primeira frase perdia-se. */
+  const [preenchida, setPreenchida] = useState(false);
+  useEffect(() => { setPreenchida(true); }, []);
   const camada = (
     <div
       data-testid="analysis-skeleton"
+      className="analysis-camada"
       role="status"
       aria-live="polite"
       aria-label={label}
@@ -156,16 +180,17 @@ export function AnalysisSkeleton({
         inset: 0,
         zIndex: 90,
         display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: 'max(16px, env(safe-area-inset-top)) 16px max(16px, env(safe-area-inset-bottom))',
+        // Centrada com margin:auto no conteúdo (e não align/justify center): se o conteúdo for
+        // mais alto que o ecrã, começa no topo e a camada faz scroll, em vez de lhe cortar a cabeça.
+        overflowY: 'auto',
         background: 'rgba(7,12,20,.74)',
         backdropFilter: 'blur(3px)',
         WebkitBackdropFilter: 'blur(3px)',
         pointerEvents: 'auto',
       }}
     >
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12, maxWidth: 320, textAlign: 'center' }}>
+      {preenchida && (
+      <div data-testid="analysis-conteudo" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12, maxWidth: 320, margin: 'auto', textAlign: 'center' }}>
         {/* O logotipo durante a análise (bug #49): desenha-se uma vez e fica a respirar até a
             resposta chegar — não recomeça, que um desenho em loop lê-se como "está preso" (ver
             LogoLoader). Decorativo: quem anuncia a espera é o role="status" desta camada. */}
@@ -197,6 +222,7 @@ export function AnalysisSkeleton({
           </p>
         )}
       </div>
+      )}
     </div>
   );
   return typeof document !== 'undefined' ? createPortal(camada, document.body) : camada;

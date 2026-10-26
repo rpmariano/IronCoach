@@ -659,6 +659,13 @@ html[data-page-hidden] .welcome-halo { animation-play-state: paused; }
 @media (prefers-reduced-motion: reduce) {
   .carol-cena-gerada mask rect, .carol-cena-gerada mask circle { animation: none; }
 }
+/* A camada de espera das análises (shared/AnalysisState.jsx): o respiro respeita o entalhe e as
+   margens do ecrã nos quatro lados (safe-area), com 16 px no mínimo; faz scroll se o conteúdo
+   não couber (landscape) sem arrastar a página por baixo. */
+.analysis-camada {
+  padding: max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(16px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+  overscroll-behavior: contain;
+}
 .logo-loader { display: inline-flex; align-items: center; justify-content: center; }
 .logo-loader-hex, .logo-loader-hex-in, .logo-loader-chev { stroke-dasharray: 1; stroke-dashoffset: 1; }
 .logo-loader-hex    { animation: logoDraw 720ms cubic-bezier(.65,0,.35,1) 0ms forwards; }

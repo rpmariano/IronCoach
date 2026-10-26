@@ -1,6 +1,9 @@
 import React from 'react';
 import { render, screen, act } from '@testing-library/react';
 import { describe, it, expect, vi, afterEach } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import RecordConfirmation from './RecordConfirmation';
 import { AnalysisSkeleton, AnalysisFailure, classifyAnalysisFailure, analysisLacksReference } from './AnalysisState';
 import { useAppStore } from '../../store';
 import { todayISO, addDaysISO } from '../../lib/utils';
@@ -206,11 +209,13 @@ describe('AnalysisSkeleton — a camada fixa, centrada no ecrã visível', () =>
     // Fora do formulário: um antepassado com transform não lhe prende o position:fixed.
     expect(container.contains(camada)).toBe(false);
     expect(camada.parentElement).toBe(document.body);
-    expect(camada).toHaveStyle({ position: 'fixed', display: 'flex', alignItems: 'center', justifyContent: 'center' });
+    // Centrada com margin:auto no conteúdo, e a camada faz scroll se ele não couber (landscape).
+    expect(camada).toHaveStyle({ position: 'fixed', display: 'flex', overflowY: 'auto' });
+    expect(screen.getByTestId('analysis-conteudo')).toHaveStyle({ margin: 'auto' });
     expect(camada.style.inset).toMatch(/^0/);
-    // Por cima do formulário e dos botões, mas abaixo dos modais (z 100): o «Registo Guardado» nunca fica tapado.
+    // Por cima do formulário e dos botões, mas abaixo da confirmação do registo (95) e dos modais (100).
     expect(Number(camada.style.zIndex)).toBeGreaterThan(50);
-    expect(Number(camada.style.zIndex)).toBeLessThan(100);
+    expect(Number(camada.style.zIndex)).toBeLessThan(95);
     // Fundo semitransparente, para o formulário se ver por baixo.
     expect(camada.style.background).toMatch(/rgba\(.*,\s*0?\.\d+\)/);
   });
@@ -273,5 +278,87 @@ describe('AnalysisSkeleton — a camada fixa, centrada no ecrã visível', () =>
     } finally {
       Object.defineProperty(window, 'innerHeight', { configurable: true, value: original });
     }
+  });
+});
+
+/* Revisão da camada de espera: ordem das camadas, respiro do ecrã, resize, região viva. */
+describe('AnalysisSkeleton — as ressalvas da revisão', () => {
+  beforeEach(() => { window.matchMedia = () => ({ matches: true }); });
+
+  it('a confirmação do registo (RecordConfirmation) fica ACIMA da camada de espera', () => {
+    const { container } = render(<RecordConfirmation label="Corrida registada" onDone={() => {}} />);
+    const confirmacao = container.querySelector('[role="dialog"]');
+    const z = Number(/z-\[(\d+)\]/.exec(confirmacao.className)[1]);
+    render(<AnalysisSkeleton kind="run" />);
+    expect(z).toBeGreaterThan(Number(screen.getByTestId('analysis-skeleton').style.zIndex));
+    // …e abaixo dos modais (PremiumModal, z 100): é uma celebração, não uma janela.
+    expect(z).toBeLessThan(100);
+  });
+
+  it('o respiro respeita o entalhe e as margens nos quatro lados (safe-area), com 16 px no mínimo', () => {
+    render(<AnalysisSkeleton kind="meal" />);
+    expect(screen.getByTestId('analysis-skeleton')).toHaveClass('analysis-camada');
+    const css = readFileSync(resolve(process.cwd(), 'src/styles/globals.css'), 'utf8');
+    const regra = /\.analysis-camada\s*\{([^}]*)\}/.exec(css)[1];
+    for (const lado of ['top', 'right', 'bottom', 'left']) {
+      expect(regra).toContain(`max(16px, env(safe-area-inset-${lado}))`);
+    }
+    expect(regra).toContain('overscroll-behavior: contain');
+  });
+
+  it('a altura da cena acompanha um resize ou a rotação', () => {
+    const original = window.innerHeight;
+    const altura = (v) => { Object.defineProperty(window, 'innerHeight', { configurable: true, value: v }); };
+    try {
+      altura(812);
+      render(<AnalysisSkeleton kind="run" />);
+      const caixa = () => screen.getByTestId('analysis-logo').firstChild;
+      expect(caixa().style.minHeight).toBe('200px');
+      // Rodou para landscape (o ecrã passou a ter 360 px de altura): a cena encolhe sem recarregar.
+      altura(360);
+      act(() => { window.dispatchEvent(new Event('resize')); });
+      expect(caixa().style.minHeight).toBe('108px');
+      altura(320);
+      act(() => { window.dispatchEvent(new Event('orientationchange')); });
+      expect(caixa().style.minHeight).toBe('96px');
+      altura(900);
+      act(() => { window.dispatchEvent(new Event('resize')); });
+      expect(caixa().style.minHeight).toBe('200px');
+    } finally {
+      altura(original);
+    }
+  });
+
+  it('deixa de ouvir resize/orientationchange ao desmontar', () => {
+    const adicionar = vi.spyOn(window, 'addEventListener');
+    const remover = vi.spyOn(window, 'removeEventListener');
+    const { unmount } = render(<AnalysisSkeleton kind="gym" />);
+    unmount();
+    for (const tipo of ['resize', 'orientationchange']) {
+      expect(adicionar.mock.calls.some(([t]) => t === tipo)).toBe(true);
+      expect(remover.mock.calls.some(([t]) => t === tipo)).toBe(true);
+    }
+    adicionar.mockRestore();
+    remover.mockRestore();
+  });
+
+  it('a região role=status monta-se VAZIA e preenche-se a seguir (para o leitor de ecrã anunciar a primeira frase)', () => {
+    // O momento em que a região entra no documento: quantos filhos tem nessa altura.
+    const filhosAoEntrar = [];
+    const original = Element.prototype.appendChild;
+    Element.prototype.appendChild = function appendChild(no) {
+      if (no?.dataset?.testid === 'analysis-skeleton') filhosAoEntrar.push({ filhos: no.childElementCount, role: no.getAttribute('role') });
+      return original.call(this, no);
+    };
+    try {
+      render(<AnalysisSkeleton kind="meal" />);
+    } finally {
+      Element.prototype.appendChild = original;
+    }
+    expect(filhosAoEntrar).toEqual([{ filhos: 0, role: 'status' }]);
+    // Logo a seguir (efeito), a mesma região já tem o conteúdo — é essa mudança que se anuncia.
+    expect(screen.getByTestId('analysis-skeleton')).toHaveAttribute('role', 'status');
+    expect(screen.getByTestId('analysis-step')).toBeInTheDocument();
+    expect(screen.getByTestId('analysis-carol-line')).toBeInTheDocument();
   });
 });
