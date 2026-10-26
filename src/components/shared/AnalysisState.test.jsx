@@ -193,20 +193,83 @@ describe('AnalysisSkeleton — só compara quando há com quê', () => {
   });
 });
 
-/* Bug #49, reaberto a 2026-10-06 ("não aparece o logotipo"): a espera fica no
-   topo do formulário e o "Analisar" no fundo — o ecrã tem de subir até ela. */
-describe('AnalysisSkeleton — à vista quando começa', () => {
-  it('ao aparecer, o ecrã sobe até ao logotipo', () => {
-    window.matchMedia = () => ({ matches: false });
-    const spy = vi.fn();
+/* A espera é uma camada fixa centrada no ecrã visível (pedido do Rui, 2026-10-26): no
+   telemóvel, inline no topo do formulário, o atleta tinha de subir para a ver. Substitui o
+   scroll do bug #49 (o ecrã a subir até ao logotipo): fixa e centrada, fica à vista seja qual
+   for o scroll. */
+describe('AnalysisSkeleton — a camada fixa, centrada no ecrã visível', () => {
+  beforeEach(() => { window.matchMedia = () => ({ matches: true }); });
+
+  it('vai para o document.body (portal), em position fixed, centrada, por cima do formulário e abaixo dos modais', () => {
+    const { container } = render(<div data-testid="formulario"><AnalysisSkeleton kind="meal" /></div>);
+    const camada = screen.getByTestId('analysis-skeleton');
+    // Fora do formulário: um antepassado com transform não lhe prende o position:fixed.
+    expect(container.contains(camada)).toBe(false);
+    expect(camada.parentElement).toBe(document.body);
+    expect(camada).toHaveStyle({ position: 'fixed', display: 'flex', alignItems: 'center', justifyContent: 'center' });
+    expect(camada.style.inset).toMatch(/^0/);
+    // Por cima do formulário e dos botões, mas abaixo dos modais (z 100): o «Registo Guardado» nunca fica tapado.
+    expect(Number(camada.style.zIndex)).toBeGreaterThan(50);
+    expect(Number(camada.style.zIndex)).toBeLessThan(100);
+    // Fundo semitransparente, para o formulário se ver por baixo.
+    expect(camada.style.background).toMatch(/rgba\(.*,\s*0?\.\d+\)/);
+  });
+
+  it('não prende o toque nem o foco: pointer-events none, sem aria-modal, sem tabindex, e o foco fica onde estava', () => {
+    render(<div><input data-testid="campo" /><AnalysisSkeleton kind="run" /></div>);
+    const campo = screen.getByTestId('campo');
+    campo.focus();
+    const camada = screen.getByTestId('analysis-skeleton');
+    expect(camada).toHaveStyle({ pointerEvents: 'none' });
+    expect(camada).not.toHaveAttribute('aria-modal');
+    expect(camada).not.toHaveAttribute('tabindex');
+    expect(camada.querySelector('[tabindex], button, a, input')).toBeNull();
+    expect(document.activeElement).toBe(campo);
+  });
+
+  it('continua a anunciar as frases (role=status, aria-live) e já não faz scroll para a mostrar', () => {
+    const scroll = vi.fn();
     const original = Element.prototype.scrollIntoView;
-    Element.prototype.scrollIntoView = spy;
+    Element.prototype.scrollIntoView = scroll;
     try {
-      render(<AnalysisSkeleton kind="meal" />);
-      expect(spy).toHaveBeenCalledWith({ block: 'start', behavior: 'smooth' });
-      expect(spy.mock.contexts[0]).toBe(screen.getByTestId('analysis-skeleton'));
+      render(<AnalysisSkeleton kind="meal" label="A analisar a refeição" />);
+      const camada = screen.getByRole('status', { name: 'A analisar a refeição' });
+      expect(camada).toHaveAttribute('aria-live', 'polite');
+      expect(camada).toContainElement(screen.getByTestId('analysis-step'));
+      expect(camada).toContainElement(screen.getByTestId('analysis-carol-line'));
+      expect(scroll).not.toHaveBeenCalled();
     } finally {
       Element.prototype.scrollIntoView = original;
+    }
+  });
+
+  it('sai com a análise: ao desmontar, a camada desaparece do body (não sobra uma camada a tapar o ecrã)', () => {
+    const { unmount } = render(<AnalysisSkeleton kind="gym" />);
+    expect(screen.getByTestId('analysis-skeleton')).toBeInTheDocument();
+    unmount();
+    expect(screen.queryByTestId('analysis-skeleton')).not.toBeInTheDocument();
+    expect(document.body.querySelector('[data-testid="analysis-skeleton"]')).toBeNull();
+  });
+
+  it('o erro de análise continua inline e visível, e não passa pela camada', () => {
+    const { container } = render(<AnalysisFailure detail="timeout">A análise demorou.</AnalysisFailure>);
+    const falha = screen.getByTestId('analysis-failure');
+    expect(container.contains(falha)).toBe(true);
+    expect(screen.queryByTestId('analysis-skeleton')).not.toBeInTheDocument();
+  });
+
+  it('em telemóvel baixo (landscape) a cena encolhe para caber; num ecrã normal tem 200 px', async () => {
+    const original = window.innerHeight;
+    try {
+      Object.defineProperty(window, 'innerHeight', { configurable: true, value: 812 });
+      const { unmount } = render(<AnalysisSkeleton kind="run" />);
+      expect(screen.getByTestId('analysis-logo').firstChild.style.minHeight).toBe('200px');
+      unmount();
+      Object.defineProperty(window, 'innerHeight', { configurable: true, value: 320 });
+      render(<AnalysisSkeleton kind="run" />);
+      expect(screen.getByTestId('analysis-logo').firstChild.style.minHeight).toBe('96px');
+    } finally {
+      Object.defineProperty(window, 'innerHeight', { configurable: true, value: original });
     }
   });
 });

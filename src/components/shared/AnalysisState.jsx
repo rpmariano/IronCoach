@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { RefreshCw } from 'lucide-react';
 import Warning, { WarningAction } from './Warning';
 import CoachAvatar from '../Coach/CoachAvatar';
@@ -132,102 +133,72 @@ export function AnalysisSkeleton({
   const steps = analysisSteps(kind, analysisLacksReference(kind, { coachPlans, coachPlanItems, bodyAssessments }), manual);
   const step = useSteps(steps);
   const [semCena, setSemCena] = useState(false);
-  /* Bug #49, reaberto (2026-10-06, "não aparece o logotipo"): a espera fica
-     no topo do formulário, onde o resultado vai aparecer, mas o "Analisar"
-     está no fundo — o logotipo ficava fora do ecrã. Ao começar, o ecrã sobe
-     até ela. */
-  const regionRef = useRef(null);
-  useEffect(() => {
-    regionRef.current?.scrollIntoView?.({ block: 'start', behavior: prefersReducedMotion() ? 'auto' : 'smooth' });
-  }, []);
-  const line = (width, height = 12) => (
-    <span
-      style={{
-        display: 'block',
-        height,
-        width,
-        borderRadius: 5,
-        background: 'rgba(255,255,255,.07)',
-      }}
-    />
-  );
-
-  return (
+  /* A espera é uma CAMADA FIXA centrada no ecrã visível (pedido do Rui, 2026-10-26): inline,
+     no topo do formulário, o atleta no telemóvel tinha de subir para a ver — e o bug #49
+     ("não aparece o logotipo", 2026-10-06) tinha-se resolvido fazendo o ecrã subir até ela
+     quando a análise começava. Fixa e centrada, fica à vista seja qual for o scroll, e esse
+     scroll deixou de ser preciso (sai). Vai para o document.body (um portal): um antepassado com
+     transform (as animações de entrada dos ecrãs) prendia o position:fixed ao antepassado.
+     Não prende o foco nem o toque (pointer-events: none, sem aria-modal): o formulário já está
+     bloqueado por quem a usa, e o atleta continua a poder sair do ecrã. Fica abaixo dos
+     modais (z 100) — o «Registo Guardado» do fim nunca fica tapado — e sai quando a análise
+     acaba; o erro de análise (AnalysisFailure) continua inline, como sempre. */
+  const alturaCena = typeof window === 'undefined' ? 200 : Math.max(96, Math.min(200, Math.round(window.innerHeight * 0.3)));
+  const camada = (
     <div
-      ref={regionRef}
       data-testid="analysis-skeleton"
       role="status"
       aria-live="polite"
       aria-label={label}
-      style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 16 }}
+      style={{
+        position: 'fixed',
+        inset: 0,
+        zIndex: 90,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: 'max(16px, env(safe-area-inset-top)) 16px max(16px, env(safe-area-inset-bottom))',
+        background: 'rgba(7,12,20,.74)',
+        backdropFilter: 'blur(3px)',
+        WebkitBackdropFilter: 'blur(3px)',
+        pointerEvents: 'none',
+      }}
     >
-      {/* O logotipo durante a análise (bug #49): desenha-se uma vez e fica a
-          respirar até a resposta chegar — não recomeça, que um desenho em
-          loop lê-se como "está preso" (ver LogoLoader). Decorativo: quem
-          anuncia a espera é o role="status" desta região. */}
-      <div data-testid="analysis-logo" className="flex flex-col items-center" style={{ gap: 10, paddingTop: 4 }}>
-        {/* A cena tem 200 px de altura e o logótipo 64: sem reservar, a página dava um
-            salto quando a cena chegava (cosmético). Reserva-se enquanto ela pode vir. */}
-        <div className="flex items-center justify-center" style={{ minHeight: cenaAreaOf(kind) && !semCena ? 200 : undefined }}>
-          <CarolCena kind={kind} size={200} fallback={<LogoLoader size={64} label={null} />} onFalhou={() => setSemCena(true)} />
-        </div>
-        {/* A Carol a trabalhar: a linha fixa por cima das frases (que descrevem o
-            que a análise faz). Quem anuncia a espera é o role="status" da região. */}
-        <span data-testid="analysis-carol-line" style={{ fontSize: 11, fontWeight: 800, letterSpacing: 'var(--tracking-label)', textTransform: 'uppercase', color: 'var(--text-4)' }}>
-          A Carol está a analisar
-        </span>
-        {steps && (
-          <div data-testid="analysis-step" className="flex items-center justify-center" style={{ gap: 10 }}>
-            <span className="min-w-0 text-center" style={{ fontSize: 13, fontWeight: 700, color: 'var(--coach-soft)' }}>
-              <span key={step.text} className="fade-in" style={{ display: 'inline-block' }}>{step.slow ? 'Está a demorar mais do que o costume. Continuo.' : step.text}</span>
-            </span>
-            <span className="inline-flex items-center" style={{ gap: 4 }} aria-hidden="true">
-              <span className="coach-typing-dot" />
-              <span className="coach-typing-dot" style={{ animationDelay: '150ms' }} />
-              <span className="coach-typing-dot" style={{ animationDelay: '300ms' }} />
-            </span>
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12, maxWidth: 320, textAlign: 'center' }}>
+        {/* O logotipo durante a análise (bug #49): desenha-se uma vez e fica a respirar até a
+            resposta chegar — não recomeça, que um desenho em loop lê-se como "está preso" (ver
+            LogoLoader). Decorativo: quem anuncia a espera é o role="status" desta camada. */}
+        <div data-testid="analysis-logo" className="flex flex-col items-center" style={{ gap: 10, paddingTop: 4 }}>
+          {/* A cena tem a altura reservada enquanto pode vir (sem salto de layout). */}
+          <div className="flex items-center justify-center" style={{ minHeight: cenaAreaOf(kind) && !semCena ? alturaCena : undefined }}>
+            <CarolCena kind={kind} size={alturaCena} fallback={<LogoLoader size={64} label={null} />} onFalhou={() => setSemCena(true)} />
           </div>
+          {/* A Carol a trabalhar: a linha fixa por cima das frases (que descrevem o que a análise faz). */}
+          <span data-testid="analysis-carol-line" style={{ fontSize: 11, fontWeight: 800, letterSpacing: 'var(--tracking-label)', textTransform: 'uppercase', color: 'var(--text-4)' }}>
+            A Carol está a analisar
+          </span>
+          {steps && (
+            <div data-testid="analysis-step" className="flex items-center justify-center" style={{ gap: 10 }}>
+              <span className="min-w-0 text-center" style={{ fontSize: 13, fontWeight: 700, color: 'var(--coach-soft)' }}>
+                <span key={step.text} className="fade-in" style={{ display: 'inline-block' }}>{step.slow ? 'Está a demorar mais do que o costume. Continuo.' : step.text}</span>
+              </span>
+              <span className="inline-flex items-center" style={{ gap: 4 }} aria-hidden="true">
+                <span className="coach-typing-dot" />
+                <span className="coach-typing-dot" style={{ animationDelay: '150ms' }} />
+                <span className="coach-typing-dot" style={{ animationDelay: '300ms' }} />
+              </span>
+            </div>
+          )}
+        </div>
+        {note && (
+          <p style={{ margin: 0, fontSize: 'var(--text-xs)', lineHeight: 1.55, color: 'var(--text-muted)' }}>
+            {note}
+          </p>
         )}
       </div>
-      <div
-        style={{
-          borderRadius: 'var(--radius-xl)',
-          background: 'rgba(255,255,255,.04)',
-          border: '1px solid rgba(255,255,255,.1)',
-          padding: 16,
-        }}
-      >
-        <span style={{ display: 'block', height: 14, width: '60%', borderRadius: 5, background: 'rgba(255,255,255,.09)' }} />
-        <span style={{ display: 'block', height: 26, width: '38%', borderRadius: 6, background: 'rgba(255,255,255,.09)', marginTop: 12 }} />
-        <div style={{ display: 'flex', gap: 10, marginTop: 14 }}>
-          {line('100%')}
-          {line('100%')}
-          {line('100%')}
-        </div>
-      </div>
-
-      <div
-        style={{
-          borderRadius: 'var(--radius-xl)',
-          background: 'rgba(255,255,255,.04)',
-          border: '1px solid rgba(255,255,255,.1)',
-          padding: 16,
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 11,
-        }}
-      >
-        {line('72%')}
-        {line('54%')}
-      </div>
-
-      {note && (
-        <p style={{ margin: '2px 2px 0', fontSize: 'var(--text-xs)', lineHeight: 1.55, color: 'var(--text-muted)' }}>
-          {note}
-        </p>
-      )}
     </div>
   );
+  return typeof document !== 'undefined' ? createPortal(camada, document.body) : camada;
 }
 
 /**
