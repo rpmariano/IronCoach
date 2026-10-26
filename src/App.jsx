@@ -547,6 +547,7 @@ export default function App() {
   const openCreationMode = useAppStore((s) => s.openCreationMode);
   const setOpenCreationMode = useAppStore((s) => s.setOpenCreationMode);
   const editingRaceId = useAppStore((s) => s.editingRaceId);
+  const raceFormKey = useAppStore((s) => s.raceFormKey);
   const setEditingRaceId = useAppStore((s) => s.setEditingRaceId);
   const editingRunId = useAppStore((s) => s.editingRunId);
   const setEditingRunId = useAppStore((s) => s.setEditingRunId);
@@ -1217,7 +1218,7 @@ export default function App() {
           )}
 
           {(openCreationMode === 'race' || editingRaceId) && (
-            <RunAgenda onClose={() => {
+            <RunAgenda key={raceFormKey} onClose={() => {
               setOpenCreationMode(null);
               setEditingRaceId(null);
             }} />

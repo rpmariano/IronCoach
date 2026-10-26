@@ -489,7 +489,15 @@ export const useAppStore = create((set, get) => ({
   // corrida a usa. Sem isto, o "+" a abrir outro registo por cima de uma
   // corrida em edição deixava o editingRunId preso — e a app "ocupada" para
   // sempre aos olhos da atualização (revisão pré-deploy de 5ce5f31).
-  setOpenCreationMode: (mode) => set(mode === 'run' ? { openCreationMode: mode } : { openCreationMode: mode, editingRunId: null }),
+  /* 'race' é SEMPRE «Nova prova»: abre o formulário em branco. O hub de uma prova existente abre-se por
+     setEditingRaceId (que põe o modo 'race' por si). Sem largar o editingRaceId, «+» → «Nova prova» a
+     partir do hub de uma prova ficava no hub dela (bug de produção, 2026-10-26: o RunAgenda não remonta
+     e lê o id). raceFormKey muda para o formulário remontar de raiz (estado, rascunho, página). */
+  raceFormKey: 0,
+  setOpenCreationMode: (mode) => set((s) => {
+    if (mode === 'race') return { openCreationMode: mode, editingRunId: null, editingRaceId: null, raceFormKey: s.raceFormKey + 1 };
+    return mode === 'run' ? { openCreationMode: mode } : { openCreationMode: mode, editingRunId: null };
+  }),
   // A confirmação de gravação à vista (RecordConfirmation): o registo já
   // está gravado, e o ecrã deixa de contar como aberto para a reposição.
   recordSaved: false,

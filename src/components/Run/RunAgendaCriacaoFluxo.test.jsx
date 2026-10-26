@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { useAppStore } from '../../store';
 import { supabase } from '../../lib/supabase';
@@ -24,10 +24,11 @@ function AppLike() {
   const editingRaceId = useAppStore((s) => s.editingRaceId);
   const setOpenCreationMode = useAppStore((s) => s.setOpenCreationMode);
   const setEditingRaceId = useAppStore((s) => s.setEditingRaceId);
+  const raceFormKey = useAppStore((s) => s.raceFormKey);
   return (
     <ToastProvider>
       {(openCreationMode === 'race' || editingRaceId) && (
-        <RunAgenda onClose={() => { setOpenCreationMode(null); setEditingRaceId(null); }} />
+        <RunAgenda key={raceFormKey} onClose={() => { setOpenCreationMode(null); setEditingRaceId(null); }} />
       )}
     </ToastProvider>
   );
@@ -41,6 +42,57 @@ function preencher() {
   fireEvent.change(nivel, { target: { value: 'medio' } });
   fireEvent.change(screen.getByPlaceholderText('Ex.: 1:45:00'), { target: { value: '1:00:00' } });
 }
+
+/* Bug de produção (2026-10-26): no hub de uma prova, «+» → «Nova prova» ficava no hub dela. O
+   RunAgenda lê editingRaceId e não remontava; setOpenCreationMode('race') não o largava. */
+describe('RunAgenda — «Nova prova» a partir do hub de outra prova', () => {
+  const provaA = {
+    id: 'race-a', date: addDaysISO(todayISO(), 60), location: 'Cascais', name: 'Meia de Cascais',
+    race_type: 'estrada', distance_km: 21.0975, experience_level: 'medio', race_priority: 'a',
+    target_time: '1:55:00', target_time_seconds: 6900, target_pace_seconds_per_km: 327,
+    website: null, web_info: null, notes: null, status: 'agendada',
+  };
+  const provaB = { ...provaA, id: 'race-b', name: 'Prova Teste', location: 'Porto', distance_km: 10, target_time: '1:00:00', target_time_seconds: 3600 };
+  beforeEach(() => {
+    localStorage.clear();
+    useAppStore.setState({
+      raceEvents: [provaA], profile: { id: 'user-1' }, runs: [], activeTab: 'calendario',
+      editingRaceId: 'race-a', openCreationMode: 'race', navGuard: null,
+    });
+    vi.spyOn(supabase, 'from').mockReturnValue({
+      insert: () => ({ select: () => ({ single: () => Promise.resolve({ data: provaB, error: null }) }) }),
+      update: () => ({ eq: () => Promise.resolve({ error: null }) }),
+    });
+  });
+  afterEach(() => { vi.restoreAllMocks(); });
+
+  it('«Nova prova» abre o formulário em branco, e gravar cria a B sem tocar na A', async () => {
+    render(<AppLike />);
+    expect(screen.getByTestId('race-hub-screen')).toBeInTheDocument();
+    act(() => { useAppStore.getState().setOpenCreationMode('race'); });
+    expect(useAppStore.getState().editingRaceId).toBeNull();
+    expect(screen.queryByTestId('race-hub-screen')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: /^Detalhes da prova$/i }));
+    expect(screen.getByPlaceholderText('Ex.: Meia Maratona de Lisboa')).toHaveValue('');
+    preencher();
+    fireEvent.click(screen.getByRole('button', { name: /Guardar prova/i }));
+    fireEvent.click(await screen.findByTestId('record-confirmation-close'));
+    await waitFor(() => expect(useAppStore.getState().editingRaceId).toBe('race-b'));
+    const eventos = useAppStore.getState().raceEvents;
+    expect(eventos.map((e) => e.id).sort()).toEqual(['race-a', 'race-b']);
+    expect(eventos.find((e) => e.id === 'race-a').name).toBe('Meia de Cascais');
+  });
+
+  it('com alterações por guardar na A, o aviso continua a travar o «Nova prova»', async () => {
+    render(<AppLike />);
+    fireEvent.click(screen.getByRole('button', { name: /^Detalhes da prova$/i }));
+    fireEvent.change(screen.getByPlaceholderText('Ex.: Meia Maratona de Lisboa'), { target: { value: 'Meia de Cascais 2' } });
+    // O mesmo caminho do «+» no Layout: setActiveTab passa pelo navGuard antes de abrir a nova.
+    const seguiu = useAppStore.getState().setActiveTab('calendario');
+    expect(seguiu).toBe(false);
+    expect(useAppStore.getState().editingRaceId).toBe('race-a');
+  });
+});
 
 describe('RunAgenda — criar prova com o store real (bug #54)', () => {
   const nova = {
