@@ -215,12 +215,14 @@ describe('AnalysisSkeleton — a camada fixa, centrada no ecrã visível', () =>
     expect(camada.style.background).toMatch(/rgba\(.*,\s*0?\.\d+\)/);
   });
 
-  it('não prende o toque nem o foco: pointer-events none, sem aria-modal, sem tabindex, e o foco fica onde estava', () => {
+  it('bloqueia os toques mas não prende o foco: pointer-events auto, sem aria-modal, sem tabindex, e o foco fica onde estava', () => {
     render(<div><input data-testid="campo" /><AnalysisSkeleton kind="run" /></div>);
     const campo = screen.getByTestId('campo');
     campo.focus();
     const camada = screen.getByTestId('analysis-skeleton');
-    expect(camada).toHaveStyle({ pointerEvents: 'none' });
+    // Os toques ficam na camada (o formulário não se mexe a meio da análise)…
+    expect(camada).toHaveStyle({ pointerEvents: 'auto' });
+    // …mas o foco não fica preso: nada de modal, nada de focável, e o teclado segue como estava.
     expect(camada).not.toHaveAttribute('aria-modal');
     expect(camada).not.toHaveAttribute('tabindex');
     expect(camada.querySelector('[tabindex], button, a, input')).toBeNull();

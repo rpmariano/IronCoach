@@ -139,8 +139,9 @@ export function AnalysisSkeleton({
      quando a análise começava. Fixa e centrada, fica à vista seja qual for o scroll, e esse
      scroll deixou de ser preciso (sai). Vai para o document.body (um portal): um antepassado com
      transform (as animações de entrada dos ecrãs) prendia o position:fixed ao antepassado.
-     Não prende o foco nem o toque (pointer-events: none, sem aria-modal): o formulário já está
-     bloqueado por quem a usa, e o atleta continua a poder sair do ecrã. Fica abaixo dos
+     Bloqueia os toques (pointer-events: auto): o formulário não se mexe a meio da análise
+     (decisão do Rui). O FOCO é que não fica preso: sem aria-modal, sem tabindex nem
+     elementos focáveis — o teclado e os leitores de ecrã seguem como estão. Fica abaixo dos
      modais (z 100) — o «Registo Guardado» do fim nunca fica tapado — e sai quando a análise
      acaba; o erro de análise (AnalysisFailure) continua inline, como sempre. */
   const alturaCena = typeof window === 'undefined' ? 200 : Math.max(96, Math.min(200, Math.round(window.innerHeight * 0.3)));
@@ -161,7 +162,7 @@ export function AnalysisSkeleton({
         background: 'rgba(7,12,20,.74)',
         backdropFilter: 'blur(3px)',
         WebkitBackdropFilter: 'blur(3px)',
-        pointerEvents: 'none',
+        pointerEvents: 'auto',
       }}
     >
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12, maxWidth: 320, textAlign: 'center' }}>
