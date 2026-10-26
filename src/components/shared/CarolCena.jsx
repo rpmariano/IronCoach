@@ -222,10 +222,45 @@ const buscarTexto = (url) => (typeof fetch === 'function'
 
 export const CENA_MARGEM_MS = 4000;
 
+/* A borda da cena (pedido do Rui, 2026-10-26: não pode ficar um retângulo — transição suave
+   entre o fundo escuro da camada e as cores da imagem). Uma máscara CSS no contentor da cena,
+   POR CIMA da máscara de animação (que vive dentro, em SVG): as duas funcionam juntas.
+   PROPOSTAS para a pré-visualização; o estilo escolhido fica em CENA_BORDA_PADRAO (uma linha). */
+export const CENA_BORDAS = ['retangulo', 'oval', 'suave', 'circulo', 'halo'];
+export const CENA_BORDA_PADRAO = 'retangulo';
+const OVAL = 'radial-gradient(ellipse at center, #000 55%, transparent 78%)';
+// Esbate cerca de 18 % em cada lado (de cima/baixo e esquerda/direita), sem perder o retângulo.
+const SUAVE_V = 'linear-gradient(to bottom, transparent 0, #000 18%, #000 82%, transparent 100%)';
+const SUAVE_H = 'linear-gradient(to right, transparent 0, #000 18%, #000 82%, transparent 100%)';
+// Um medalhão centrado na Carol (cabeça e tronco, um pouco acima do meio).
+const CIRCULO = 'radial-gradient(circle closest-side at 50% 42%, #000 62%, transparent 100%)';
+const BRILHO = 'radial-gradient(ellipse at center, rgba(46,224,255,.30) 0%, rgba(46,224,255,.12) 45%, transparent 72%)';
+
+/** O estilo da moldura (a máscara de esbatimento). Prefixado (-webkit-) e sem prefixo: o Safari
+ *  ainda precisa do -webkit-mask-*. */
+export function bordaEstilo(borda) {
+  const mascara = (imagem, composicao) => ({
+    WebkitMaskImage: imagem,
+    maskImage: imagem,
+    ...(composicao ? { WebkitMaskComposite: 'source-in', maskComposite: 'intersect' } : null),
+    WebkitMaskRepeat: 'no-repeat',
+    maskRepeat: 'no-repeat',
+  });
+  switch (borda) {
+    case 'oval':
+    case 'halo': return mascara(OVAL);
+    case 'suave': return mascara(`${SUAVE_V}, ${SUAVE_H}`, true);
+    case 'circulo': return mascara(CIRCULO);
+    default: return {};
+  }
+}
+/** O brilho por trás (só no halo): um radial na cor do tema com pouca opacidade. */
+export const bordaBrilho = (borda) => (borda === 'halo' ? { background: BRILHO } : null);
+
 /* `fallback`: o que se vê se a cena NÃO vem (o logótipo, na análise). `aoCarregar`: o que
    se vê enquanto ela carrega (por omissão, o mesmo fallback — o logótipo já a desenhar-se);
    a pré-visualização usa outro para não dizer «sem ficheiro» a quem só está à espera. */
-export default function CarolCena({ kind, size = 200, fallback = null, aoCarregar, modo: modoProp, onFalhou }) {
+export default function CarolCena({ kind, size = 200, fallback = null, aoCarregar, modo: modoProp, borda = CENA_BORDA_PADRAO, onFalhou }) {
   const area = cenaAreaOf(kind);
   const reduced = prefersReducedMotion();
   const forcado = resolverModo(modoProp);
@@ -325,10 +360,17 @@ export default function CarolCena({ kind, size = 200, fallback = null, aoCarrega
       data-testid="carol-cena"
       data-area={area}
       data-modo={cena?.modo || 'imagem'}
+      data-borda={CENA_BORDAS.includes(borda) ? borda : CENA_BORDA_PADRAO}
       data-fase={final ? 'final' : 'desenho'}
       aria-hidden="true"
       style={{ position: 'relative', width: Math.round(size * proporcao), height: size }}
     >
+      {/* O halo: um brilho por trás da moldura (fora da máscara, que o esbateria). */}
+      {bordaBrilho(borda) && (
+        <div data-testid="carol-cena-brilho" style={{ position: 'absolute', inset: '-18%', pointerEvents: 'none', ...bordaBrilho(borda) }} />
+      )}
+      {/* A moldura: a máscara de esbatimento da borda, por cima da animação. */}
+      <div data-testid="carol-cena-moldura" style={{ position: 'absolute', inset: 0, ...bordaEstilo(borda) }}>
       {cena?.modo === 'traco' && (
         <div
           data-testid="carol-cena-traco"
@@ -383,6 +425,7 @@ export default function CarolCena({ kind, size = 200, fallback = null, aoCarrega
         height={size}
         style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain', opacity: final ? 1 : 0, transition: 'opacity 500ms ease' }}
       />
+      </div>
     </div>
   );
 }

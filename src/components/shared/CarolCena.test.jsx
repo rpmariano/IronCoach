@@ -6,6 +6,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import CarolCena, {
   cenaAreaOf, prepararTraco, prepararMascara, resolverModo, sortearModo, formasCarreiras, formasPontos,
   lerUltimoModo, guardarUltimoModo, CENA_MODOS, CENA_DESENHO_MS, CENA_ULTIMO_MODO_KEY,
+  CENA_BORDAS, CENA_BORDA_PADRAO, bordaEstilo, bordaBrilho,
 } from './CarolCena';
 import { AnalysisSkeleton } from './AnalysisState';
 
@@ -668,5 +669,65 @@ describe('CarolCena — passar a final não recria o desenho', () => {
     const antes = screen.getByTestId('carol-cena').querySelector('mask circle');
     act(() => { vi.advanceTimersByTime(CENA_DESENHO_MS + 50); });
     expect(screen.getByTestId('carol-cena').querySelector('mask circle')).toBe(antes);
+  });
+});
+
+/* A borda esbatida (propostas do Rui, 2026-10-26): máscara CSS na moldura, por cima da máscara
+   SVG da animação. jsdom ignora mask-*, por isso testa-se o estilo e a estrutura. */
+describe('CarolCena — a borda esbatida', () => {
+  it('por omissão é o retângulo atual: sem máscara, sem brilho', async () => {
+    expect(CENA_BORDA_PADRAO).toBe('retangulo');
+    render(<CarolCena kind="run" modo="traco" fallback={FALLBACK} />);
+    await flush();
+    expect(screen.getByTestId('carol-cena')).toHaveAttribute('data-borda', 'retangulo');
+    const moldura = screen.getByTestId('carol-cena-moldura');
+    expect(moldura.style.maskImage || moldura.style.webkitMaskImage || '').toBe('');
+    expect(screen.queryByTestId('carol-cena-brilho')).toBeNull();
+  });
+
+  it('cada proposta tem máscara com e sem prefixo -webkit- (Safari)', () => {
+    for (const b of ['oval', 'suave', 'circulo', 'halo']) {
+      const e = bordaEstilo(b);
+      expect(e.maskImage).toBeTruthy();
+      expect(e.WebkitMaskImage).toBe(e.maskImage);
+    }
+    expect(bordaEstilo('oval').maskImage).toBe('radial-gradient(ellipse at center, #000 55%, transparent 78%)');
+    expect(bordaEstilo('halo').maskImage).toBe(bordaEstilo('oval').maskImage);
+    expect(bordaEstilo('circulo').maskImage).toMatch(/^radial-gradient\(circle/);
+    // As bordas suaves: dois lineares (vertical e horizontal), ~18 %, intersetados.
+    const suave = bordaEstilo('suave');
+    expect(suave.maskImage.match(/linear-gradient/g)).toHaveLength(2);
+    expect(suave.maskImage).toMatch(/#000 18%.*#000 82%/);
+    expect(suave.maskComposite).toBe('intersect');
+    expect(suave.WebkitMaskComposite).toBe('source-in');
+    expect(bordaEstilo('retangulo')).toEqual({});
+    expect(bordaBrilho('halo').background).toMatch(/radial-gradient/);
+    expect(bordaBrilho('oval')).toBeNull();
+  });
+
+  it.each(CENA_MODOS)('%s: a borda não recria a animação (os mesmos nós) e fica na moldura', async (modo) => {
+    vi.useFakeTimers();
+    render(<CarolCena kind="run" modo={modo} borda="halo" fallback={FALLBACK} />);
+    await flush();
+    const cena = screen.getByTestId('carol-cena');
+    expect(cena).toHaveAttribute('data-borda', 'halo');
+    expect(screen.getByTestId('carol-cena-brilho')).toBeInTheDocument();
+    const moldura = screen.getByTestId('carol-cena-moldura');
+    expect(moldura.style.maskImage).toMatch(/radial-gradient/);
+    expect(moldura).toContainElement(screen.getByTestId('carol-cena-final'));
+    const seletor = modo === 'traco' ? '.carol-cena-traco path' : modo === 'mascara' ? 'mask path' : 'mask rect, mask circle';
+    const antes = cena.querySelector(seletor);
+    expect(antes).not.toBeNull();
+    // A máscara de animação está DENTRO da moldura (a de borda fica por cima).
+    expect(moldura).toContainElement(antes);
+    act(() => { vi.advanceTimersByTime(CENA_DESENHO_MS + 50); });
+    expect(cena.querySelector(seletor)).toBe(antes);
+  });
+
+  it('uma borda desconhecida cai no padrão', async () => {
+    render(<CarolCena kind="run" modo="pontos" borda="xpto" />);
+    await flush();
+    expect(screen.getByTestId('carol-cena')).toHaveAttribute('data-borda', 'retangulo');
+    expect(CENA_BORDAS).toContain('halo');
   });
 });

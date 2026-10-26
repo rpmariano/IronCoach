@@ -90,4 +90,21 @@ describe('CarolCenasPreview', () => {
     expect(botoes).toHaveLength(16);
     expect(botoes[0].style.minHeight).toBe('44px');
   });
+
+  it('o seletor de borda: por omissão o retângulo atual; escolher aplica às 16 células', async () => {
+    render(<CarolCenasPreview />);
+    await flush();
+    const celulas = () => screen.getAllByTestId('carol-cena');
+    // Nos testes só a corrida tem SVG: 4 + 3×2 gerados = 10 cenas montadas (as outras 6 dizem «sem ficheiro»).
+    expect(screen.getAllByTestId(/^cena-celula-/)).toHaveLength(16);
+    expect(celulas()).toHaveLength(10);
+    expect(celulas().every((c) => c.getAttribute('data-borda') === 'retangulo')).toBe(true);
+    expect(screen.getByRole('radio', { name: /Retângulo \(atual\)/ })).toBeChecked();
+    expect(screen.getAllByRole('radio')).toHaveLength(5);
+    fireEvent.click(screen.getByRole('radio', { name: /Vinheta oval/ }));
+    expect(celulas().every((c) => c.getAttribute('data-borda') === 'oval')).toBe(true);
+    fireEvent.click(screen.getByRole('radio', { name: /Halo/ }));
+    expect(celulas().every((c) => c.getAttribute('data-borda') === 'halo')).toBe(true);
+    expect(screen.getAllByTestId('carol-cena-brilho')).toHaveLength(10);
+  });
 });

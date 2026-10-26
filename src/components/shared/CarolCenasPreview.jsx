@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { RefreshCw } from 'lucide-react';
-import CarolCena, { CENA_AREAS, CENA_MODOS } from './CarolCena';
+import CarolCena, { CENA_AREAS, CENA_BORDAS, CENA_BORDA_PADRAO, CENA_MODOS } from './CarolCena';
 import { prefersReducedMotion } from '../../utils/coachBubbles';
 
 /* A pré-visualização das cenas da análise para o Rui (?cenas=preview, só com
@@ -11,9 +11,22 @@ import { prefersReducedMotion } from '../../utils/coachBubbles';
    «sem ficheiro» (na análise a sério esse modo sai do sorteio). */
 
 const MODOS = { mascara: 'Máscara', traco: 'Traço', carreiras: 'Carreiras', pontos: 'Pontos' };
+const BORDAS = {
+  retangulo: 'Retângulo (atual)', oval: '1 · Vinheta oval', suave: '2 · Bordas suaves', circulo: '3 · Círculo suave', halo: '4 · Halo',
+};
+// O fundo da camada de espera (rgba(7,12,20,.74) sobre o ecrã escuro): a comparação faz-se nele.
+const FUNDO_CAMADA = '#080d15';
+
+/** A borda inicial: ?borda=<nome> no URL (para mostrar uma proposta por link), senão a atual. */
+const bordaInicial = () => {
+  try {
+    const v = new URLSearchParams(window.location.search).get('borda');
+    return CENA_BORDAS.includes(v) ? v : CENA_BORDA_PADRAO;
+  } catch { return CENA_BORDA_PADRAO; }
+};
 const AREAS = [['run', 'Corrida'], ['gym', 'Ginásio'], ['body', 'Corporal'], ['meal', 'Alimentação']];
 
-function Celula({ kind, modo, ronda }) {
+function Celula({ kind, modo, ronda, borda }) {
   const [volta, setVolta] = useState(0);
   return (
     <div data-testid={`cena-celula-${kind}-${modo}`} className="flex flex-col items-center" style={{ gap: 8 }}>
@@ -23,6 +36,7 @@ function Celula({ kind, modo, ronda }) {
           key={`${ronda}-${volta}`}
           kind={kind}
           modo={modo}
+          borda={borda}
           size={160}
           aoCarregar={<span className="text-[11px]" style={{ color: 'var(--text-4)' }}>a carregar…</span>}
           fallback={<span className="text-[11px]" style={{ color: 'var(--text-4)' }}>sem ficheiro</span>}
@@ -43,6 +57,7 @@ function Celula({ kind, modo, ronda }) {
 
 export default function CarolCenasPreview() {
   const [ronda, setRonda] = useState(0);
+  const [borda, setBorda] = useState(bordaInicial);
   const reduzido = prefersReducedMotion();
   return (
     <div data-testid="cenas-preview" className="min-h-screen px-4 py-6" style={{ background: 'var(--bg, #0b1623)', color: 'var(--text-1)' }}>
@@ -65,11 +80,26 @@ export default function CarolCenasPreview() {
         >
           <RefreshCw size={15} aria-hidden="true" /> Repetir tudo
         </button>
+        <fieldset className="mt-4" style={{ border: 0, padding: 0, margin: 0 }}>
+          <legend className="text-[12px] font-extrabold uppercase mb-2" style={{ letterSpacing: 'var(--tracking-label)', color: 'var(--text-3)' }}>Borda da cena</legend>
+          <div className="flex flex-wrap" style={{ gap: 8 }} role="radiogroup" aria-label="Estilo da borda da cena">
+            {CENA_BORDAS.map((b) => (
+              <label
+                key={b}
+                className="inline-flex items-center text-[12.5px] font-bold rounded-full cursor-pointer"
+                style={{ minHeight: 44, padding: '0 14px', gap: 8, border: `1px solid ${borda === b ? 'var(--coach)' : 'var(--border-glass)'}`, background: borda === b ? 'var(--tint-coach-bg)' : 'var(--surface-soft)', color: 'var(--text-1)' }}
+              >
+                <input type="radio" name="borda-cena" value={b} checked={borda === b} onChange={() => setBorda(b)} />
+                {BORDAS[b]}
+              </label>
+            ))}
+          </div>
+        </fieldset>
         {AREAS.map(([kind, nome]) => (
           <section key={kind} className="mt-6" aria-label={nome}>
             <h2 className="text-sm font-bold mb-2" style={{ color: 'var(--coach-soft)' }}>{nome} <span className="font-normal" style={{ color: 'var(--text-4)' }}>· carol-cenas/{CENA_AREAS[kind]}</span></h2>
-            <div className="grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 12 }}>
-              {CENA_MODOS.map((modo) => <Celula key={modo} kind={kind} modo={modo} ronda={ronda} />)}
+            <div className="grid rounded-2xl p-3" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 12, background: FUNDO_CAMADA }}>
+              {CENA_MODOS.map((modo) => <Celula key={modo} kind={kind} modo={modo} ronda={ronda} borda={borda} />)}
             </div>
           </section>
         ))}
