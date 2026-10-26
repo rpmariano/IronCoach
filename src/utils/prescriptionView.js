@@ -5,18 +5,21 @@
    Lê o que está gravado sem confiar na forma: um bloco sem nome cai; um alvo em falta
    (sem reps, em cardio sem tempo) deixa o alvo vazio e o exercício fica na mesma. */
 
-const num = (v) => (typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : null);
+// Defesa extra: os mesmos tetos do servidor (planPrescription.ts: 10 séries, 50 reps; cardio até 300 min,
+// 100 km, 500 voltas) com folga; um valor fora disto não é um alvo, é lixo — fica de fora.
+const MAX = { sets: 20, reps: 100, duration_min: 600, distance_km: 200, laps: 1000 };
+const num = (v, max) => (typeof v === 'number' && Number.isFinite(v) && v > 0 && v <= max ? v : null);
 const fmt = (n) => String(Math.round(n * 100) / 100).replace('.', ',');
 
 /** O alvo de um bloco: "3×12", "20 min", "2 km · 4 voltas"; '' sem alvo nenhum. */
 export function blockTarget(b) {
-  const sets = num(b?.sets);
-  const reps = num(b?.reps);
+  const sets = num(b?.sets, MAX.sets);
+  const reps = num(b?.reps, MAX.reps);
   if (sets && reps) return `${fmt(sets)}×${fmt(reps)}`;
   const parts = [];
-  if (num(b?.duration_min)) parts.push(`${fmt(b.duration_min)} min`);
-  if (num(b?.distance_km)) parts.push(`${fmt(b.distance_km)} km`);
-  if (num(b?.laps)) parts.push(`${fmt(b.laps)} ${b.laps === 1 ? 'volta' : 'voltas'}`);
+  if (num(b?.duration_min, MAX.duration_min)) parts.push(`${fmt(b.duration_min)} min`);
+  if (num(b?.distance_km, MAX.distance_km)) parts.push(`${fmt(b.distance_km)} km`);
+  if (num(b?.laps, MAX.laps)) parts.push(`${fmt(b.laps)} ${b.laps === 1 ? 'volta' : 'voltas'}`);
   if (parts.length) return parts.join(' · ');
   if (sets) return `${fmt(sets)} ${sets === 1 ? 'série' : 'séries'}`;
   if (reps) return `${fmt(reps)} reps`;

@@ -85,6 +85,26 @@ describe('DayPlanCard (O que faço hoje) — exercícios do ginásio', () => {
     expect(screen.getByTestId('day-plan-exercicios')).toBeInTheDocument();
   });
 
+  it('o resumo alterna a gaveta (aria-expanded) e fecha-a ao segundo toque', () => {
+    renderCard([gym()]);
+    const resumo = screen.getByTestId('day-plan-exercicios-resumo');
+    expect(resumo).toHaveAttribute('aria-expanded', 'false');
+    fireEvent.click(resumo);
+    expect(resumo).toHaveAttribute('aria-expanded', 'true');
+    expect(resumo).toHaveAttribute('aria-controls', screen.getByTestId('day-plan-detail').id);
+    fireEvent.click(resumo);
+    expect(screen.queryByTestId('day-plan-detail')).not.toBeInTheDocument();
+  });
+
+  it('treino concluído: a gaveta mostra o que estava previsto; cancelado: nem resumo nem lista', () => {
+    const { unmount } = renderCard([gym({ status: 'concluido' })]);
+    expect(screen.queryByTestId('day-plan-exercicios-resumo')).not.toBeInTheDocument();
+    unmount();
+    renderCard([gym({ status: 'cancelado' })]);
+    expect(screen.queryByTestId('day-plan-exercicios-resumo')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('day-plan-exercicios')).not.toBeInTheDocument();
+  });
+
   it('sem prescrição: sem resumo', () => {
     renderCard([gym({ prescription: null })]);
     expect(screen.queryByTestId('day-plan-exercicios-resumo')).not.toBeInTheDocument();

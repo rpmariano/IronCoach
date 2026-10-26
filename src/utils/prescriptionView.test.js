@@ -22,6 +22,13 @@ describe('prescriptionView', () => {
     expect(blockTarget({ type: 'forca', name: 'x' })).toBe('');
   });
 
+  it('valores absurdos não são alvos (defesa extra)', () => {
+    expect(blockTarget({ sets: 999, reps: 12 })).toBe('12 reps');
+    expect(blockTarget({ sets: 3, reps: 5000 })).toBe('3 séries');
+    expect(blockTarget({ duration_min: 99999, distance_km: 2 })).toBe('2 km');
+    expect(blockTarget({ sets: 3, reps: 12 })).toBe('3×12');
+  });
+
   it('um bloco sem nome cai; sem prescrição, lista vazia e sem resumo', () => {
     expect(prescriptionExercises({ blocks: [{ sets: 3, reps: 8 }, null, { name: '  ' }] })).toEqual([]);
     expect(prescriptionExercises(null)).toEqual([]);
