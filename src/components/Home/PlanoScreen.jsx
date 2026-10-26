@@ -10,6 +10,7 @@ import { formatDayMonth, formatWeekday, dayTitle, dayStatus, mealsForDay, isRace
 import { isMealOnlyItem } from '@formulas/mealSuggestions.ts';
 import MealSheet from './MealSheet';
 import { CarolTalkButton } from '../shared/CarolActions';
+import PrescriptionExercises from '../shared/PrescriptionExercises';
 import { isWalkPlanItem } from '@formulas/runKinds.ts';
 
 /* "O plano" — o plano acordado inteiro, dia a dia, em ecrã cheio
@@ -415,6 +416,9 @@ export default function PlanoScreen({ onClose }) {
                         {convitePlanear(convite.dias)}
                         <ChevronRight size={12} />
                       </button>
+                    ))}
+                    {treinosVivos(d).filter((it) => it.kind === 'ginasio').map((it) => (
+                      <PrescriptionExercises key={'ex-' + it.id} prescription={it.prescription} resumo testid={'plano-exercicios-' + it.id} />
                     ))}
                     {notes.map((it) => (
                       <p key={it.id} className="text-[12px] leading-[1.45] mt-[3px]" style={{ color: 'var(--text-3)', whiteSpace: 'pre-line' }}>{it.notes.trim()}</p>

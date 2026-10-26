@@ -434,6 +434,18 @@ function buildDemoData() {
       { id: 'demo-item-2', plan_id: 'demo-plan-1', planned_date: inDays(1), kind: 'corrida', training_type: 'longo', target_distance_km: 18, status: 'pendente' },
       { id: 'demo-item-3', plan_id: 'demo-plan-1', planned_date: inDays(-1), kind: 'corrida', training_type: 'intervalos', target_distance_km: 10, status: 'pendente' },
       { id: 'demo-item-4', plan_id: 'demo-plan-1', planned_date: inDays(-3), kind: 'ginasio', categories: ['Pernas'], target_duration_min: 45, status: 'pendente' },
+      /* Um treino de ginásio com os exercícios prescritos (prescription.blocks, como o coach-chat
+         os grava): força com séries × reps, e um bloco de cardio só com duração. */
+      {
+        id: 'demo-item-5', plan_id: 'demo-plan-1', planned_date: inDays(2), kind: 'ginasio', categories: ['Pernas', 'Glúteos'], target_duration_min: 50, status: 'pendente',
+        notes: 'Foco em controlar a descida. Descansa 90 s entre séries.',
+        prescription: { blocks: [
+          { type: 'forca', name: 'Cadeira extensora', sets: 3, reps: 12, goal: 'descida controlada em 2 s, acabar a RPE 7' },
+          { type: 'forca', name: 'Leg press', sets: 3, reps: 10, goal: 'sem bloquear os joelhos em cima' },
+          { type: 'forca', name: 'Elevação de gémeos', sets: 4, reps: 15, goal: 'pausa de 1 s no topo' },
+          { type: 'cardio', name: 'Bicicleta', duration_min: 10, goal: 'Z2, cadência 85-90' },
+        ] },
+      },
     ],
   };
 }
