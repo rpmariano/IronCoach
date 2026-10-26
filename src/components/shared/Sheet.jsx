@@ -6,6 +6,9 @@ import { prefersReducedMotion } from '../../utils/coachBubbles';
 /* Persiana e popup do redesenho 2026-09 (design-system/components/feedback/
    Sheet). Os dois montam-se na mesma coluna max-w-md do header e da nav,
    por cima de tudo (a nav é z-40).
+   Escala de camadas da app: 40 nav · 60 scrim · 70 sheet/dialog · 80 modais
+   de fluxo · 90 camada de espera das análises (AnalysisState) · 95 «Registo
+   Guardado» (RecordConfirmation) · 100 PremiumModal.
    - Sheet: sobe do fundo em 340 ms (cubic-bezier(.16,1,.3,1)), fecha em
      240 ms; scrim a 62% + blur 3 em sincronia. Pega de 44px, cabeçalho,
      corpo com scroll. Arrastável para baixo para fechar.

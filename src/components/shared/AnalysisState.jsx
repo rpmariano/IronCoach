@@ -167,7 +167,11 @@ export function AnalysisSkeleton({
   /* A região role="status" monta-se VAZIA e preenche-se a seguir: um leitor de ecrã só anuncia
      o que muda numa região que já existia — montada com o conteúdo, a primeira frase perdia-se. */
   const [preenchida, setPreenchida] = useState(false);
-  useEffect(() => { setPreenchida(true); }, []);
+  // Com um pequeno atraso: o VoiceOver no iOS só anuncia de forma fiável o que muda depois de a região existir há um instante.
+  useEffect(() => {
+    const t = setTimeout(() => setPreenchida(true), 150);
+    return () => clearTimeout(t);
+  }, []);
   const camada = (
     <div
       data-testid="analysis-skeleton"

@@ -1,11 +1,20 @@
 import React from 'react';
-import { render, screen, act } from '@testing-library/react';
+import { render as rtlRender, screen, act } from '@testing-library/react';
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import RecordConfirmation from './RecordConfirmation';
 import { AnalysisSkeleton, AnalysisFailure, classifyAnalysisFailure, analysisLacksReference } from './AnalysisState';
 import { useAppStore } from '../../store';
+
+/* A região role=status preenche-se 150 ms depois de montada (VoiceOver no iOS): este render
+   avança esse tempo, para os testes verem o conteúdo logo a seguir. */
+const render = (ui, opts) => {
+  if (!vi.isFakeTimers()) vi.useFakeTimers();
+  const r = rtlRender(ui, opts);
+  act(() => { vi.advanceTimersByTime(150); });
+  return r;
+};
 import { todayISO, addDaysISO } from '../../lib/utils';
 
 /* A espera com a Carol a dizer o que está a ler, e a falha a dizer a causa. */

@@ -82,7 +82,7 @@ export default function CarolCenasPreview() {
         </button>
         <fieldset className="mt-4" style={{ border: 0, padding: 0, margin: 0 }}>
           <legend className="text-[12px] font-extrabold uppercase mb-2" style={{ letterSpacing: 'var(--tracking-label)', color: 'var(--text-3)' }}>Borda da cena</legend>
-          <div className="flex flex-wrap" style={{ gap: 8 }} role="radiogroup" aria-label="Estilo da borda da cena">
+          <div className="flex flex-wrap" style={{ gap: 8 }}>
             {CENA_BORDAS.map((b) => (
               <label
                 key={b}
