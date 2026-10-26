@@ -12,7 +12,7 @@ import { prefersReducedMotion } from '../../utils/coachBubbles';
 
 const MODOS = { mascara: 'Máscara', traco: 'Traço', carreiras: 'Carreiras', pontos: 'Pontos' };
 const BORDAS = {
-  retangulo: 'Retângulo (atual)', oval: '1 · Vinheta oval', suave: '2 · Bordas suaves', circulo: '3 · Círculo suave', halo: '4 · Halo',
+  retangulo: 'Retângulo (anterior)', oval: '1 · Vinheta oval', suave: '2 · Bordas suaves', circulo: '3 · Círculo suave', halo: '4 · Halo', 'suave-halo': '2+4 · Suaves com halo (escolhida)',
 };
 // O fundo da camada de espera (rgba(7,12,20,.74) sobre o ecrã escuro): a comparação faz-se nele.
 const FUNDO_CAMADA = '#080d15';

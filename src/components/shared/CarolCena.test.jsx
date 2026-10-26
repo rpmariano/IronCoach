@@ -675,9 +675,8 @@ describe('CarolCena — passar a final não recria o desenho', () => {
 /* A borda esbatida (propostas do Rui, 2026-10-26): máscara CSS na moldura, por cima da máscara
    SVG da animação. jsdom ignora mask-*, por isso testa-se o estilo e a estrutura. */
 describe('CarolCena — a borda esbatida', () => {
-  it('por omissão é o retângulo atual: sem máscara, sem brilho', async () => {
-    expect(CENA_BORDA_PADRAO).toBe('retangulo');
-    render(<CarolCena kind="run" modo="traco" fallback={FALLBACK} />);
+  it('o retângulo (borda "retangulo") não tem máscara nem brilho', async () => {
+    render(<CarolCena kind="run" modo="traco" borda="retangulo" fallback={FALLBACK} />);
     await flush();
     expect(screen.getByTestId('carol-cena')).toHaveAttribute('data-borda', 'retangulo');
     const moldura = screen.getByTestId('carol-cena-moldura');
@@ -686,7 +685,7 @@ describe('CarolCena — a borda esbatida', () => {
   });
 
   it('cada proposta tem máscara com e sem prefixo -webkit- (Safari)', () => {
-    for (const b of ['oval', 'suave', 'circulo', 'halo']) {
+    for (const b of ['oval', 'suave', 'circulo', 'halo', 'suave-halo']) {
       const e = bordaEstilo(b);
       expect(e.maskImage).toBeTruthy();
       expect(e.WebkitMaskImage).toBe(e.maskImage);
@@ -700,7 +699,9 @@ describe('CarolCena — a borda esbatida', () => {
     expect(suave.maskImage).toMatch(/#000 18%.*#000 82%/);
     expect(suave.maskComposite).toBe('intersect');
     expect(suave.WebkitMaskComposite).toBe('source-in');
+    expect(bordaEstilo('suave-halo')).toEqual(bordaEstilo('suave'));
     expect(bordaEstilo('retangulo')).toEqual({});
+    expect(bordaBrilho('suave-halo').borderRadius).toBeTruthy();
     expect(bordaBrilho('halo').background).toMatch(/radial-gradient/);
     expect(bordaBrilho('oval')).toBeNull();
   });
@@ -727,7 +728,8 @@ describe('CarolCena — a borda esbatida', () => {
   it('uma borda desconhecida cai no padrão', async () => {
     render(<CarolCena kind="run" modo="pontos" borda="xpto" />);
     await flush();
-    expect(screen.getByTestId('carol-cena')).toHaveAttribute('data-borda', 'retangulo');
+    expect(screen.getByTestId('carol-cena')).toHaveAttribute('data-borda', CENA_BORDA_PADRAO);
+    expect(CENA_BORDA_PADRAO).toBe('suave-halo');
     expect(CENA_BORDAS).toContain('halo');
   });
 });

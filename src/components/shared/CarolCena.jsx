@@ -226,8 +226,9 @@ export const CENA_MARGEM_MS = 4000;
    entre o fundo escuro da camada e as cores da imagem). Uma máscara CSS no contentor da cena,
    POR CIMA da máscara de animação (que vive dentro, em SVG): as duas funcionam juntas.
    PROPOSTAS para a pré-visualização; o estilo escolhido fica em CENA_BORDA_PADRAO (uma linha). */
-export const CENA_BORDAS = ['retangulo', 'oval', 'suave', 'circulo', 'halo'];
-export const CENA_BORDA_PADRAO = 'retangulo';
+export const CENA_BORDAS = ['retangulo', 'oval', 'suave', 'circulo', 'halo', 'suave-halo'];
+// Escolhida pelo Rui (2026-10-26): bordas suaves com halo. Para mudar o estilo, muda esta linha.
+export const CENA_BORDA_PADRAO = 'suave-halo';
 const OVAL = 'radial-gradient(ellipse at center, #000 55%, transparent 78%)';
 // Esbate cerca de 18 % em cada lado (de cima/baixo e esquerda/direita), sem perder o retângulo.
 const SUAVE_V = 'linear-gradient(to bottom, transparent 0, #000 18%, #000 82%, transparent 100%)';
@@ -249,13 +250,16 @@ export function bordaEstilo(borda) {
   switch (borda) {
     case 'oval':
     case 'halo': return mascara(OVAL);
-    case 'suave': return mascara(`${SUAVE_V}, ${SUAVE_H}`, true);
+    case 'suave':
+    case 'suave-halo': return mascara(`${SUAVE_V}, ${SUAVE_H}`, true);
     case 'circulo': return mascara(CIRCULO);
     default: return {};
   }
 }
 /** O brilho por trás (só no halo): um radial na cor do tema com pouca opacidade. */
-export const bordaBrilho = (borda) => (borda === 'halo' ? { background: BRILHO } : null);
+// No suave-halo o brilho acompanha a forma retangular (cantos arredondados, desfocado), não o oval.
+const BRILHO_RETANGULAR = { background: 'rgba(46,224,255,.22)', borderRadius: '22%', filter: 'blur(16px)' };
+export const bordaBrilho = (borda) => (borda === 'halo' ? { background: BRILHO } : borda === 'suave-halo' ? BRILHO_RETANGULAR : null);
 
 /* `fallback`: o que se vê se a cena NÃO vem (o logótipo, na análise). `aoCarregar`: o que
    se vê enquanto ela carrega (por omissão, o mesmo fallback — o logótipo já a desenhar-se);
@@ -367,7 +371,7 @@ export default function CarolCena({ kind, size = 200, fallback = null, aoCarrega
     >
       {/* O halo: um brilho por trás da moldura (fora da máscara, que o esbateria). */}
       {bordaBrilho(borda) && (
-        <div data-testid="carol-cena-brilho" style={{ position: 'absolute', inset: '-18%', pointerEvents: 'none', ...bordaBrilho(borda) }} />
+        <div data-testid="carol-cena-brilho" style={{ position: 'absolute', inset: borda === 'suave-halo' ? '-4%' : '-18%', pointerEvents: 'none', ...bordaBrilho(borda) }} />
       )}
       {/* A moldura: a máscara de esbatimento da borda, por cima da animação. */}
       <div data-testid="carol-cena-moldura" style={{ position: 'absolute', inset: 0, ...bordaEstilo(borda) }}>
