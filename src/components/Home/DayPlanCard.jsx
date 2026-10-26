@@ -10,6 +10,8 @@ import { useAppStore } from '../../store';
 import { doneLine, dayDoneMomentKey, wasDayDoneSeen, markDayDoneSeen } from './dayDone';
 import useMomentOnce from '../../utils/useMomentOnce';
 import { weekDone } from './weekDone';
+import PrescriptionExercises from '../shared/PrescriptionExercises';
+import { prescriptionExercises, exercisesSummary } from '../../utils/prescriptionView';
 
 /* "O que faço hoje" — o plano de HOJE, e só de hoje (redesenho 2026-09-15).
    O carrossel de dias que aqui vivia (setas, pontos, contador, a altura a
@@ -274,7 +276,10 @@ export default function DayPlanCard({ plans = [], planItems = [], raceEvents = [
   const startSession = day.dateISO === today
     ? trainingItems(vivos).find((i) => !i.isRace && !isRacePlanItem(i) && i.status === 'pendente' && i.kind === 'ginasio') || null
     : null;
-  const hasDetail = instructions.length > 0 || (!!session && session !== startSession) || cancelled;
+  // Os exercícios que a Carol prescreveu (prescription.blocks) nos treinos de ginásio do dia.
+  const comExercicios = trainings.filter((i) => i.kind === 'ginasio' && prescriptionExercises(i.prescription).length > 0);
+  const resumoExercicios = comExercicios.length === 1 ? exercisesSummary(prescriptionExercises(comExercicios[0].prescription)) : null;
+  const hasDetail = comExercicios.length > 0 || instructions.length > 0 || (!!session && session !== startSession) || cancelled;
 
   /* O dia fechado (dayDone.js): feito o treino, o que foi feito fica à
      vista — os números do registo contra o que o plano pedia —, fora da
@@ -295,6 +300,18 @@ export default function DayPlanCard({ plans = [], planItems = [], raceEvents = [
         <h2 className="text-[20px] font-black leading-[1.15] mt-2" style={{ color: 'var(--text-1)', letterSpacing: '-.02em' }}>
           {race ? race.title : dayTitle(day.items, dayRace?.name || null, { porPlanear: day.porPlanear })}
         </h2>
+
+        {resumoExercicios && !done && !cancelled && (
+          <button
+            type="button"
+            data-testid="day-plan-exercicios-resumo"
+            onClick={() => setOpen(true)}
+            className="block w-full min-h-[44px] mt-0.5 text-left text-[12.5px] font-bold"
+            style={{ color: 'var(--text-2)' }}
+          >
+            {resumoExercicios}
+          </button>
+        )}
 
         {done && (
           <div data-testid="day-plan-done" className="flex flex-col gap-1.5 mt-2.5">
@@ -342,6 +359,11 @@ export default function DayPlanCard({ plans = [], planItems = [], raceEvents = [
             para fazer e marcá-lo como feito é o mesmo gesto, em dois passos. */}
         {hasDetail && open && (
           <div data-testid="day-plan-detail" className="mt-1 pt-[10px]" style={{ borderTop: '1px solid rgba(255,255,255,.08)' }}>
+            {comExercicios.map((i) => (
+              <div key={i.id} className="mb-2.5">
+                <PrescriptionExercises prescription={i.prescription} titulo={comExercicios.length > 1 ? planItemTitle(i, dayRace?.name || null) : null} testid="day-plan-exercicios" />
+              </div>
+            ))}
             {instructions.map((i) => (
               <p key={i.id} data-testid="day-plan-notes" className="text-[12.5px] leading-[1.5]" style={{ color: 'var(--text-3)', whiteSpace: 'pre-line' }}>
                 {instructions.length > 1 ? `${planItemTitle(i, dayRace?.name || null)}: ${i.notes.trim()}` : i.notes.trim()}

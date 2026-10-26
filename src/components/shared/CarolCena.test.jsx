@@ -1,13 +1,22 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import React from 'react';
-import { render, screen, act } from '@testing-library/react';
+import { render as rtlRender, screen, act } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import CarolCena, {
   cenaAreaOf, prepararTraco, prepararMascara, resolverModo, sortearModo, formasCarreiras, formasPontos,
   lerUltimoModo, guardarUltimoModo, CENA_MODOS, CENA_DESENHO_MS, CENA_ULTIMO_MODO_KEY,
   CENA_BORDAS, CENA_BORDA_PADRAO, bordaEstilo, bordaBrilho,
 } from './CarolCena';
+
+/* A região role=status preenche-se 150 ms depois de montada (VoiceOver no iOS): este render
+   avança esse tempo, para os testes verem o conteúdo logo a seguir. */
+const render = (ui, opts) => {
+  if (!vi.isFakeTimers()) vi.useFakeTimers();
+  const r = rtlRender(ui, opts);
+  act(() => { vi.advanceTimersByTime(150); });
+  return r;
+};
 import { AnalysisSkeleton } from './AnalysisState';
 
 /* A cena da Carol na espera das análises: o traço desenha-se e a imagem final

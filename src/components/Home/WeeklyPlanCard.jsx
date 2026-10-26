@@ -14,6 +14,8 @@ import { isMealOnlyItem } from '@formulas/mealSuggestions.ts';
 import './WeeklyPlanCard.css';
 import { isWalkPlanItem } from '@formulas/runKinds.ts';
 import { describePrescription } from '@formulas/planPrescription.ts';
+import PrescriptionExercises from '../shared/PrescriptionExercises';
+import { prescriptionExercises } from '../../utils/prescriptionView';
 
 // Mesmos valores por omissão de computeMacroAdherence
 // (supabase/functions/_shared/formulas/macroAdherence.ts) — não importados
@@ -331,6 +333,13 @@ export function PlanDayCard({
 
                 {(item.notes || item.kind !== 'descanso') && (
                   <div className="wpc-info-box">
+                    {/* Os exercícios do treino de ginásio (prescription.blocks): nome, séries × reps
+                        e objetivo — o que o atleta tem de fazer, não só a nota geral. */}
+                    {item.kind === 'ginasio' && prescriptionExercises(item.prescription).length > 0 && (
+                      <div style={{ marginBottom: '12px' }}>
+                        <PrescriptionExercises prescription={item.prescription} testid="wpc-exercicios" />
+                      </div>
+                    )}
                     {item.notes && (
                       <div style={{ marginBottom: item.kind !== 'descanso' ? '12px' : 0 }}>
                         <div className={`wpc-info-box-header ${itemKindClass(item)}`}>

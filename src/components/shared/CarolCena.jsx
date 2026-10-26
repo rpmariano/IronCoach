@@ -264,7 +264,9 @@ export const bordaBrilho = (borda) => (borda === 'halo' ? { background: BRILHO }
 /* `fallback`: o que se vê se a cena NÃO vem (o logótipo, na análise). `aoCarregar`: o que
    se vê enquanto ela carrega (por omissão, o mesmo fallback — o logótipo já a desenhar-se);
    a pré-visualização usa outro para não dizer «sem ficheiro» a quem só está à espera. */
-export default function CarolCena({ kind, size = 200, fallback = null, aoCarregar, modo: modoProp, borda = CENA_BORDA_PADRAO, onFalhou }) {
+export default function CarolCena({ kind, size = 200, fallback = null, aoCarregar, modo: modoProp, borda: bordaProp = CENA_BORDA_PADRAO, onFalhou }) {
+  // Normalizada uma vez: o que se desenha e o data-borda são sempre a mesma coisa.
+  const borda = CENA_BORDAS.includes(bordaProp) ? bordaProp : CENA_BORDA_PADRAO;
   const area = cenaAreaOf(kind);
   const reduced = prefersReducedMotion();
   const forcado = resolverModo(modoProp);
@@ -364,7 +366,7 @@ export default function CarolCena({ kind, size = 200, fallback = null, aoCarrega
       data-testid="carol-cena"
       data-area={area}
       data-modo={cena?.modo || 'imagem'}
-      data-borda={CENA_BORDAS.includes(borda) ? borda : CENA_BORDA_PADRAO}
+      data-borda={borda}
       data-fase={final ? 'final' : 'desenho'}
       aria-hidden="true"
       style={{ position: 'relative', width: Math.round(size * proporcao), height: size }}
