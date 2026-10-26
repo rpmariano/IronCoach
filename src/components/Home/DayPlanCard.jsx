@@ -277,7 +277,9 @@ export default function DayPlanCard({ plans = [], planItems = [], raceEvents = [
     ? trainingItems(vivos).find((i) => !i.isRace && !isRacePlanItem(i) && i.status === 'pendente' && i.kind === 'ginasio') || null
     : null;
   // Os exercícios que a Carol prescreveu (prescription.blocks) nos treinos de ginásio do dia.
-  const comExercicios = trainings.filter((i) => i.kind === 'ginasio' && prescriptionExercises(i.prescription).length > 0);
+  /* Num treino FEITO a gaveta mostra o que estava previsto (ao lado do que se fez, em doneLines); num
+     CANCELADO não mostra nada — não há treino a fazer. */
+  const comExercicios = trainings.filter((i) => i.kind === 'ginasio' && i.status !== 'cancelado' && prescriptionExercises(i.prescription).length > 0);
   const resumoExercicios = comExercicios.length === 1 ? exercisesSummary(prescriptionExercises(comExercicios[0].prescription)) : null;
   const hasDetail = comExercicios.length > 0 || instructions.length > 0 || (!!session && session !== startSession) || cancelled;
 
@@ -305,7 +307,9 @@ export default function DayPlanCard({ plans = [], planItems = [], raceEvents = [
           <button
             type="button"
             data-testid="day-plan-exercicios-resumo"
-            onClick={() => setOpen(true)}
+            aria-expanded={open}
+            aria-controls="day-plan-detail"
+            onClick={() => setOpen((o) => !o)}
             className="block w-full min-h-[44px] mt-0.5 text-left text-[12.5px] font-bold"
             style={{ color: 'var(--text-2)' }}
           >
@@ -358,7 +362,7 @@ export default function DayPlanCard({ plans = [], planItems = [], raceEvents = [
             entre séries") e a ação do dia andam sempre juntas: ler o que há
             para fazer e marcá-lo como feito é o mesmo gesto, em dois passos. */}
         {hasDetail && open && (
-          <div data-testid="day-plan-detail" className="mt-1 pt-[10px]" style={{ borderTop: '1px solid rgba(255,255,255,.08)' }}>
+          <div id="day-plan-detail" data-testid="day-plan-detail" className="mt-1 pt-[10px]" style={{ borderTop: '1px solid rgba(255,255,255,.08)' }}>
             {comExercicios.map((i) => (
               <div key={i.id} className="mb-2.5">
                 <PrescriptionExercises prescription={i.prescription} titulo={comExercicios.length > 1 ? planItemTitle(i, dayRace?.name || null) : null} testid="day-plan-exercicios" />

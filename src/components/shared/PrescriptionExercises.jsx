@@ -31,11 +31,11 @@ export default function PrescriptionExercises({ prescription, resumo = false, ti
     return (
       <details data-testid={testid} className="mt-1">
         <summary
-          className="flex items-center justify-between cursor-pointer list-none min-h-[44px] text-[12px] font-bold"
+          className="prescricao-resumo flex items-center justify-between cursor-pointer min-h-[44px] text-[12px] font-bold"
           style={{ color: 'var(--text-2)', gap: 8 }}
         >
           <span>{exercisesSummary(exercicios)}</span>
-          <ChevronDown size={13} style={{ color: 'var(--text-4)', flexShrink: 0 }} aria-hidden="true" />
+          <ChevronDown size={13} className="prescricao-chevron" style={{ color: 'var(--text-4)', flexShrink: 0 }} aria-hidden="true" />
         </summary>
         <div className="pb-2">{lista}</div>
       </details>

@@ -909,3 +909,9 @@ html[data-page-hidden] .carol-talk {
   display: none !important;
 }
 
+/* O resumo dos exercícios (shared/PrescriptionExercises, resumo): sem o triângulo do <details>,
+   com o chevron a rodar ao abrir — como o da sugestão alimentar (WeeklyPlanCard.css). */
+.prescricao-resumo { list-style: none; }
+.prescricao-resumo::-webkit-details-marker { display: none; }
+.prescricao-chevron { transition: transform 0.2s ease; }
+details[open] > .prescricao-resumo .prescricao-chevron { transform: rotate(180deg); }
