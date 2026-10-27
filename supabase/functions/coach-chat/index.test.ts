@@ -1,6 +1,6 @@
 import { assert, assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
 import { runSaveCoachNote, buildCoachNotesContext, classifyTurn, allowedToolsFor, buildTools, aggregateMealsByDate, runGetNutritionHistory, summariseSessions, formatSessionLine, bestLoadsLine, runGetGymHistory, runProposeTrainingPlan, runUpdateGoals, runSaveMealSuggestions, buildSystemInstruction, buildPlanContext, resolveCoachingMode, buildCoachingModeContext, computeACWR, computeGymMetrics, buildNutritionTargets, computeBodyMetrics, summariseRuns, firstNameOf, buildRaceEventsContext, computeMealHabits, buildSuggestionAdherencePanel, buildMealMacros, extractReplyText, buildProactiveInstruction, buildProactiveUserTurn, shouldSkipProactive, parseProactiveKey, wasProactiveDelivered, recordProactiveDelivered, PROACTIVE_TRIGGERS, PROACTIVE_QUIET_HOURS, parseRaceOutcome, buildRaceOutcomeContext, raceAfterInstruction, raceOutcomeNote, buildRacePlanContext, buildSplitsComparisonContext, buildRaceEveContext, hhmm, detectRaceFollowup, buildRaceFollowupContext, runUpdateRaceEvent, matchRaceByName, normalizeRaceName, buildRaceCaptionPrompt, computeMealTypicalTimes, buildGoalsInterventionInstruction, buildInterventionStartTurn, runResolveIntervention, closeInterventionOnTalk, readTalkedIntervention, buildTalkedInterventionInstruction, buildAdaptationInterventionInstruction, findAnsweredDuplicate, DUPLICATE_WINDOW_MS, type RaceOutcome, type BodyAssessmentRow, type TurnCase } from "./index.ts";
-import { buildAcwrLine, checkPlanLoad } from "./index.ts";
+import { buildAcwrLine, checkPlanLoad, loadPriorGym } from "./index.ts";
 import { RESPONSE_SCHEMA, RESPONSE_SCHEMA_BASE, shouldRetryWithoutRecommendations, saveRecommendations } from "./index.ts";
 import { CHAT_OWN_FAILURE_TEXT, CHAT_SESSION_TEXT, CHAT_MESSAGE_NOT_SAVED_TEXT } from "./index.ts";
 import { failureReplyFor } from "./index.ts";
@@ -480,6 +480,104 @@ Deno.test("runProposeTrainingPlan: a primeira sessão compara-se com a última d
   const { sb } = makePlanSb();
   const result = await runProposeTrainingPlan(sb, "user-1", { ...VALID_PLAN, items: [gymDay("2026-08-12", RUI_SESSION)] }, null, null, { priorGym: prior });
   assert(result.startsWith("Erro: o ginásio de 2026-08-12 repete o de 2026-08-09"), result);
+});
+
+Deno.test("runProposeTrainingPlan: com a restrição, as fugas pelas notes, pelo objetivo e pela categoria são recusadas", async () => {
+  const cases: [unknown, string][] = [
+    [{ ...gymDay("2026-08-12", [forca("Leg press"), forca("Abdutora")]), notes: "Acabar com 3x30 s de prancha." }, "as notes falam de"],
+    [gymDay("2026-08-12", [forca("Leg press"), { ...forca("Lunges"), goal: "com halteres leves, descida controlada" }]), "o objetivo de «Lunges»"],
+    [{ ...gymDay("2026-08-12", [forca("Leg press"), forca("Abdutora")]), categories: ["Pernas", "Ombros"] }, "a categoria «Ombros»"],
+  ];
+  for (const [item, expected] of cases) {
+    const { sb, calls } = makePlanSb();
+    const result = await runProposeTrainingPlan(sb, "user-1", { ...VALID_PLAN, items: [item] }, null, null, { upperBodyRestricted: true });
+    assert(result.startsWith("Erro no treino 1:") && result.includes(expected), result);
+    assertEquals(calls.itemInserts.length, 0);
+  }
+});
+
+Deno.test("runProposeTrainingPlan: com a restrição, notes que a cumprem passam («sem halteres», «nada de pranchas»)", async () => {
+  const { sb } = makePlanSb();
+  const result = await runProposeTrainingPlan(sb, "user-1", {
+    ...VALID_PLAN,
+    items: [{ ...gymDay("2026-08-12", [forca("Leg press"), forca("Lunges")]), notes: "Sem halteres: lunges com as mãos na anca. Nada de pranchas." }],
+  }, null, null, { upperBodyRestricted: true });
+  assertStringIncludes(result, "Plano criado");
+});
+
+Deno.test("runProposeTrainingPlan: com a restrição, uma prescrição de ginásio inválida é recusada em vez de cair", async () => {
+  const { sb, calls } = makePlanSb();
+  const result = await runProposeTrainingPlan(sb, "user-1", {
+    ...VALID_PLAN, items: [{ ...gymDay("2026-08-12", [{ type: "forca", name: "Leg press" }]), notes: "Pernas" }],
+  }, null, null, { upperBodyRestricted: true });
+  assert(result.startsWith("Erro no treino 1: a prescrição de ginásio não é válida"), result);
+  assertEquals(calls.itemInserts.length, 0);
+  // Um exercício proibido numa prescrição inválida também é apanhado pelo nome.
+  const r2 = await runProposeTrainingPlan(makePlanSb().sb, "user-1", {
+    ...VALID_PLAN, items: [gymDay("2026-08-12", [{ type: "forca", name: "Prancha" }])],
+  }, null, null, { upperBodyRestricted: true });
+  assertStringIncludes(r2, "«Prancha» carrega os membros superiores");
+});
+
+// O Supabase falso das leituras de loadPriorGym: os itens de ginásio por data e
+// os planos por id, com os filtros aplicados.
+// deno-lint-ignore no-explicit-any
+function makePriorSb(items: any[], plans: any[]) {
+  // deno-lint-ignore no-explicit-any
+  const q = (rows: any[]) => {
+    let out = [...rows];
+    // deno-lint-ignore no-explicit-any
+    const chain: any = {
+      select: () => chain,
+      eq: (c: string, v: unknown) => { out = out.filter((r) => r[c] === v); return chain; },
+      gte: (c: string, v: string) => { out = out.filter((r) => r[c] >= v); return chain; },
+      lt: (c: string, v: string) => { out = out.filter((r) => r[c] < v); return chain; },
+      in: (c: string, vs: unknown[]) => { out = out.filter((r) => vs.includes(r[c])); return chain; },
+      then: (res: (v: unknown) => void) => res({ data: out, error: null }),
+    };
+    return chain;
+  };
+  return { from: (t: string) => q(t === "coach_plan_items" ? items : plans) };
+}
+
+Deno.test("loadPriorGym: a semana antes — aceites feitos ou pendentes; o proposto só numa continuação", async () => {
+  const item = (id: string, plan_id: string, planned_date: string, status = "pendente") =>
+    ({ id, plan_id, user_id: "u", kind: "ginasio", planned_date, status, prescription: { blocks: RUI_SESSION } });
+  const items = [
+    item("feito", "pA", "2026-08-07", "concluido"),
+    item("parte1", "pP", "2026-08-09"),
+    item("cancelado", "pA", "2026-08-08", "cancelado"),
+    item("velho", "pA", "2026-08-01"),
+    item("recusado", "pR", "2026-08-09"),
+    { ...item("outro", "pA", "2026-08-08"), user_id: "v" },
+  ];
+  const plans = [
+    { id: "pA", user_id: "u", status: "aceite" }, { id: "pP", user_id: "u", status: "proposto" }, { id: "pR", user_id: "u", status: "recusado" },
+  ];
+  const ids = async (cont: boolean) => (await loadPriorGym(makePriorSb(items, plans), "u", "2026-08-10", cont)).map((i) => i.id).sort();
+  assertEquals(await ids(false), ["feito"]);
+  assertEquals(await ids(true), ["feito", "parte1"]);
+  // Uma falha na leitura não rebenta: fica sem semana anterior.
+  assertEquals(await loadPriorGym({ from: () => { throw new Error("x"); } }, "u", "2026-08-10", false), []);
+});
+
+Deno.test("runProposeTrainingPlan: a primeira sessão compara-se com a da semana anterior lida da base (feita, de um plano aceite)", async () => {
+  const { sb: planSb } = makePlanSb();
+  const prior = makePriorSb(
+    [{ plan_id: "pA", user_id: "user-1", kind: "ginasio", planned_date: "2026-08-07", status: "concluido", prescription: { blocks: RUI_SESSION } }],
+    [{ id: "pA", user_id: "user-1", status: "aceite" }],
+  );
+  const sb = {
+    from: (t: string) => {
+      if (t === "coach_plan_items") return { ...prior.from(t), insert: planSb.from(t).insert };
+      // coach_plans: a leitura de loadPriorGym («id, status») vai ao falso dela; o resto, ao mock do plano.
+      // deno-lint-ignore no-explicit-any
+      const base: any = planSb.from(t);
+      return { ...base, select: (cols: string) => cols === "id, status" ? prior.from("coach_plans") : base.select(cols) };
+    },
+  };
+  const result = await runProposeTrainingPlan(sb, "user-1", { ...VALID_PLAN, items: [gymDay("2026-08-12", RUI_SESSION)] });
+  assert(result.startsWith("Erro: o ginásio de 2026-08-12 repete o de 2026-08-07"), result);
 });
 
 Deno.test("schema: prescription_blocks não abre um 3.º nível de arrays (só items[] → prescription_blocks[])", () => {

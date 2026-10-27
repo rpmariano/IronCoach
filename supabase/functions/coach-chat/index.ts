@@ -19,7 +19,7 @@ import { wearStatus as sharedWearStatus, WEAR_LEVEL_LABELS, WEAR_ATTENTION_PCT, 
 import { computeBMR as sharedComputeBMR, computeTDEE as sharedComputeTDEE, TDEE_ACTIVITY_FACTOR } from "../_shared/formulas/tdee.ts";
 import { estimate1RM } from "../_shared/formulas/epley.ts";
 import { buildPrescription, describePrescription, stripPrescribedLoad } from "../_shared/formulas/planPrescription.ts";
-import { hasUpperBodyRestriction, repeatedExercises, strengthNames, upperBodyLoad } from "../_shared/formulas/gymExerciseRules.ts";
+import { hasUpperBodyRestriction, repeatedExercises, strengthNames, upperBodyLoad, upperBodyLoadInText } from "../_shared/formulas/gymExerciseRules.ts";
 import { recentExecutionLines } from "../_shared/formulas/planExecution.ts";
 import { resolveMaxHR, resolveHrZones, zoneOf, type HeartRateZones, type ObservedHrReading } from "../_shared/formulas/heartRateZones.ts";
 import { ageFromBirthDate } from "../_shared/formulas/age.ts";
@@ -3336,6 +3336,39 @@ export async function fetchScheduledRaces(sb: any, userId: string, fromISO: stri
 // jornada para atacar pede 3 dias fáceis antes em vez de 2 (#6, getTaperDays
 // por intenção). null = a guarda de sempre, a mesma consulta, byte a byte.
 // deno-lint-ignore no-explicit-any
+/* Os treinos de ginásio planeados nos 7 dias antes de `beforeISO`, para a
+   variedade face à semana anterior: itens pendentes ou concluídos de planos
+   aceites e, numa continuação (includeProposed), também de um plano ainda
+   proposto (a parte anterior). Best-effort: numa falha, [] — a variedade
+   dentro da proposta continua a valer. */
+// deno-lint-ignore no-explicit-any
+export async function loadPriorGym(sb: any, userId: string, beforeISO: string, includeProposed: boolean): Promise<any[]> {
+  try {
+    const { data: items, error } = await sb
+      .from("coach_plan_items")
+      .select("plan_id, planned_date, kind, status, prescription")
+      .eq("user_id", userId)
+      .eq("kind", "ginasio")
+      .gte("planned_date", addDaysISO(beforeISO, -7))
+      .lt("planned_date", beforeISO)
+      .in("status", ["pendente", "concluido"]);
+    if (error || !Array.isArray(items) || !items.length) return [];
+    // deno-lint-ignore no-explicit-any
+    const ids = [...new Set(items.map((i: any) => i.plan_id))];
+    const { data: plans, error: plansErr } = await sb.from("coach_plans").select("id, status").eq("user_id", userId).in("id", ids);
+    if (plansErr || !Array.isArray(plans)) return [];
+    const ok = new Set(
+      // deno-lint-ignore no-explicit-any
+      plans.filter((pl: any) => pl.status === "aceite" || (includeProposed && pl.status === "proposto")).map((pl: any) => pl.id),
+    );
+    // deno-lint-ignore no-explicit-any
+    return items.filter((i: any) => ok.has(i.plan_id));
+  } catch (e) {
+    console.warn("propose_training_plan: ginásio da semana anterior não lido —", e instanceof Error ? e.message : e);
+    return [];
+  }
+}
+
 export async function runProposeTrainingPlan(
   // deno-lint-ignore no-explicit-any
   sb: any, userId: string, args: any, seriesIntents: Record<string, SeriesIntent> | null = null,
@@ -3535,17 +3568,32 @@ export async function runProposeTrainingPlan(
       : { prescription: null, issue: null };
     if (prescriptionIssue) console.warn(`propose_training_plan: prescrição do treino ${n} descartada — ${prescriptionIssue}`);
     // A restrição de membros superiores da memória cumpre-se à letra: nada
-    // que carregue braços, ombros ou mãos (bug do Rui, 2026-10-27).
+    // que carregue braços, ombros ou mãos (bug do Rui, 2026-10-27). Vê-se o
+    // que o atleta vai ler: os nomes dos exercícios (também os de uma
+    // prescrição que não passou — recusa-se em vez de a deixar cair), as
+    // categorias, o objetivo de cada bloco e as notes (revisão do lote).
     if (gymRules?.upperBodyRestricted && item.kind === "ginasio") {
-      const blockNames: string[] = (prescription?.blocks ?? []).map((b) => b.name);
-      for (const name of blockNames) {
-        const why = upperBodyLoad(name);
-        if (why) {
-          return `Erro no treino ${n}: «${name}» carrega os membros superiores (${why}), e a memória do atleta tem a restrição de não fazer exercícios de braços. ` +
-            `Nada de pranchas nem apoios nas mãos, pesos nas mãos (goblet, halteres, barra, kettlebell) nem remadas. Troca por um que só use as pernas e o tronco ` +
-            `sem carga nos braços: leg press, hip thrust na máquina, ponte de glúteos, abdutora/adutora, step-ups ou lunges sem carga, búlgaro sem carga, ` +
-            `peso morto a uma perna sem carga, elevação de gémeos, dead bug, hollow hold.`;
-        }
+      const fix = `Troca por um que só use as pernas e o tronco sem carga nos braços: leg press, hip thrust na máquina, ponte de glúteos, ` +
+        `abdutora/adutora, step-ups ou lunges sem carga, búlgaro sem carga, peso morto a uma perna sem carga, elevação de gémeos, dead bug, hollow hold.`;
+      const restriction = `a memória do atleta tem a restrição de não fazer exercícios de braços — nada de pranchas nem apoios nas mãos, ` +
+        `pesos nas mãos (goblet, halteres, barra, kettlebell), remadas, polias nem cardio com os braços (remo, elíptica, natação)`;
+      // deno-lint-ignore no-explicit-any
+      const rawBlocks: any[] = Array.isArray(item.prescription_blocks) ? item.prescription_blocks : [];
+      for (const b of rawBlocks) {
+        const name = typeof b?.name === "string" ? b.name.trim() : "";
+        const why = name ? upperBodyLoad(name) : null;
+        if (why) return `Erro no treino ${n}: «${name}» carrega os membros superiores (${why}), e ${restriction}. ${fix}`;
+        const inGoal = upperBodyLoadInText(b?.goal);
+        if (inGoal) return `Erro no treino ${n}: o objetivo de «${name}» fala de «${inGoal.clause}» (${inGoal.why}), e ${restriction}. ${fix}`;
+      }
+      // deno-lint-ignore no-explicit-any
+      const badCat = (Array.isArray(item.categories) ? item.categories : []).find((c: any) => typeof c === "string" && upperBodyLoad(c));
+      if (badCat) return `Erro no treino ${n}: a categoria «${badCat}» é de membros superiores, e ${restriction}. Usa categorias de pernas, glúteos ou core.`;
+      const inNotes = upperBodyLoadInText(item.notes);
+      if (inNotes) return `Erro no treino ${n}: as notes falam de «${inNotes.clause}» (${inNotes.why}), e ${restriction}. ${fix}`;
+      if (rawBlocks.length && !prescription) {
+        return `Erro no treino ${n}: a prescrição de ginásio não é válida (${prescriptionIssue}). Com a restrição de braços do atleta, ` +
+          `cada exercício tem de ir em prescription_blocks para ser verificado — refaz este treino com cada bloco completo (força: sets e reps; cardio: um alvo).`;
       }
     }
     rows.push({
@@ -3595,13 +3643,17 @@ export async function runProposeTrainingPlan(
   rows.sort((a, b) => a.planned_date.localeCompare(b.planned_date));
 
   // Variedade (bug do Rui, 2026-10-27): duas sessões de ginásio seguidas não
-  // são a mesma sessão. A primeira desta proposta compara-se com a última do
-  // plano aceite em curso antes do período (a parte anterior, a semana antes).
+  // são a mesma sessão. A primeira desta proposta compara-se com a última
+  // sessão planeada nos 7 dias antes do período: dos planos aceites (feita ou
+  // por fazer) e, numa continuação, também da parte anterior ainda proposta
+  // (loadPriorGym, revisão do lote); mais os itens do plano em curso que o
+  // handler já leu.
   {
     // deno-lint-ignore no-explicit-any
     const gym = rows.filter((r: any) => r.kind === "ginasio" && r.prescription);
+    const loaded = gym.length ? await loadPriorGym(sb, userId, period_start, !!partWindow) : [];
     // deno-lint-ignore no-explicit-any
-    const prior = (gymRules?.priorGym ?? []).filter((it: any) =>
+    const prior = [...(gymRules?.priorGym ?? []), ...loaded].filter((it: any) =>
       it?.kind === "ginasio" && typeof it.planned_date === "string" && it.planned_date < period_start && strengthNames(it.prescription).length
     // deno-lint-ignore no-explicit-any
     ).sort((a: any, b: any) => a.planned_date.localeCompare(b.planned_date)).pop();
@@ -6486,12 +6538,13 @@ export function buildSystemInstruction(
     `ele tem base e não há prova perto (saltos à caixa baixa, skipping, saltos a pés juntos), gémeos/tibial (elevação de ` +
     `gémeos, sóleo sentado, tibial anterior), core anti-extensão/anti-rotação (dead bug, hollow hold, pallof press, prancha). ` +
     `Quando um exercício que ele já registou serve, usa o nome dele — é por esse nome que o registo encontra a última carga.\n` +
-    `  • VARIEDADE: duas sessões de ginásio seguidas — dentro do plano e face à última do plano anterior — nunca são a mesma ` +
+    `  • VARIEDADE: duas sessões de ginásio seguidas — dentro do plano e face à última da semana anterior (ou da parte anterior do plano) — nunca são a mesma ` +
     `sessão: no máximo metade dos exercícios de força em comum. Roda os estímulos dentro da semana e entre semanas; o ` +
     `aquecimento de cardio pode repetir. O servidor recusa o plano que repita.\n` +
     `  • LIMITAÇÕES FÍSICAS DA MEMÓRIA cumprem-se à letra. «Sem exercícios de braços» (ou de membros superiores) = nada que ` +
     `carregue braços, ombros ou mãos: nada de pranchas nem apoios nas mãos (flexões, bird dog, mountain climbers), nada de ` +
-    `pesos nas mãos (goblet, lunges com halteres, barra, kettlebell), nada de remadas nem remo. Válidos: leg press, hip thrust ` +
+    `pesos nas mãos (goblet, lunges com halteres, barra, kettlebell), nada de remadas, polias nem cardio com os braços (remo, ` +
+    `elíptica, air bike, natação, trenó). Vale para os nomes, os objetivos e as notes. Válidos: leg press, hip thrust ` +
     `na máquina, ponte de glúteos, abdutora/adutora, step-ups e lunges sem carga nas mãos, búlgaro sem carga, peso morto a ` +
     `uma perna sem carga, elevação de gémeos, dead bug, hollow hold. O servidor recusa o plano que não cumpra.\n\n` +
     `PLANO ATIVO EM CURSO: se o contexto abaixo indicar um PLANO ACEITE EM CURSO, não propões ` +
