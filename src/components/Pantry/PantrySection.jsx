@@ -7,6 +7,7 @@ import FoodRuleSheet from './FoodRuleSheet';
 import MealTemplateSheet from './MealTemplateSheet';
 import { foodSubline, foodKey, isDishlessRule, isQuantityRule, ruleInfo, ruleLabel, templateItems, templateTotals, topLevelFoods, variantsOf, visibleRules } from '../../utils/pantry';
 import { mealTypeLabel } from '../../utils/nutrition';
+import { FieldInput } from '../shared/registration/Field';
 
 /* A despensa, no Armário do Perfil (bugs #48/#52, fase C; mockup "Despensa e
    perguntas da Carol", ecrãs 6 e 7). Dois separadores: os alimentos que a
@@ -73,11 +74,11 @@ export default function PantrySection() {
             <label className="flex-1 min-h-[44px] rounded-xl flex items-center gap-2 px-3" style={{ border: '1px solid var(--border-glass)', background: 'var(--surface-soft)' }}>
               <Search size={16} style={{ color: 'var(--text-muted)' }} />
               <span className="sr-only">Procurar alimento</span>
-              <input
+              <FieldInput
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder="Procurar alimento"
-                className="flex-1 min-w-0 bg-transparent outline-none text-sm"
+                className="flex-1 min-w-0"
                 style={{ color: 'var(--text-1)' }}
               />
             </label>

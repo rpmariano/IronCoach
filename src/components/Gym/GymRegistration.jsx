@@ -24,6 +24,7 @@ import { usePersistedFormDraft, restorePersistedFormDraft, clearPersistedFormDra
 import { usePersistedDraftMedia } from '../../utils/draftMediaPersistence';
 import { normalizeStartTime, startTimeInputValue } from '../../utils/startTime';
 import CarolInterventionActions from '../shared/CarolInterventionActions';
+import { FieldInput, FieldTextarea } from '../shared/registration/Field';
 
 const GYM_KINDS = [
   { key: 'forca', label: 'Força', icon: Dumbbell },
@@ -841,23 +842,21 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
         <div className="grid grid-cols-2 gap-2">
           <div className="min-w-0">
             <label htmlFor="gr-data-do-treino" className="text-[11px] text-[var(--text-3)] mb-1.5 block">Data do treino</label>
-            <input id="gr-data-do-treino"
+            <FieldInput id="gr-data-do-treino"
               type="date"
               aria-label="Data do treino"
               value={date}
               max={todayISO()}
               onChange={e => handleDateChange(e.target.value)}
-              className="w-full min-h-[var(--tap)] bg-[var(--surface-glass)] border border-[var(--border-glass)] text-white rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-[var(--mod-ginasio-to)]"
             />
           </div>
           <div className="min-w-0">
             <label htmlFor="gr-hora-do-treino" className="text-[11px] text-[var(--text-3)] mb-1.5 block">Hora</label>
-            <input id="gr-hora-do-treino"
+            <FieldInput id="gr-hora-do-treino"
               type="time"
               aria-label="Hora do treino"
               value={startTime}
               onChange={e => { setStartTime(e.target.value); setIsFormDirty(true); }}
-              className="w-full min-h-[var(--tap)] bg-[var(--surface-glass)] border border-[var(--border-glass)] text-white rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-[var(--mod-ginasio-to)]"
             />
           </div>
         </div>
@@ -880,13 +879,12 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
           <label htmlFor="gr-nome-da-sessao-opcional-ex" className="text-[11px] text-[var(--text-3)] mb-1.5 block">
             Nome da sessão (opcional) — ex.: "{kind === 'aula' ? 'Aula de HIIT' : 'Peito e Tríceps'}"
           </label>
-          <input id="gr-nome-da-sessao-opcional-ex"
+          <FieldInput id="gr-nome-da-sessao-opcional-ex"
             type="text"
             maxLength={80}
             value={name}
             onChange={e => { setName(e.target.value); setIsFormDirty(true); }}
             placeholder="Nome do treino"
-            className="w-full bg-[var(--surface-glass)] border border-[var(--border-glass)] text-white rounded-xl px-3 py-2.5 text-sm text-white placeholder-[var(--text-muted)] outline-none focus:border-[var(--mod-ginasio-to)]"
           />
         </div>
 
@@ -943,49 +941,45 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
           <div className="grid grid-cols-2 gap-2.5">
             <div>
               <label htmlFor="gr-duracao-ex-43m" className="text-[11px] font-semibold text-[var(--text-3)] block mb-1">Duração (ex.: 43m)</label>
-              <input id="gr-duracao-ex-43m"
+              <FieldInput id="gr-duracao-ex-43m"
                 type="text"
                 inputMode="text"
                 value={durationStr}
                 onChange={e => { setDurationStr(e.target.value); setIsFormDirty(true); }}
                 placeholder="Ex: 45m"
-                className="w-full bg-[var(--surface-glass)] border border-[var(--border-glass)] text-white rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-[var(--mod-ginasio-to)] transition"
               />
             </div>
             <div>
               <label htmlFor="gr-calorias-kcal" className="text-[11px] font-semibold text-[var(--text-3)] block mb-1">Calorias (kcal)</label>
-              <input id="gr-calorias-kcal"
+              <FieldInput id="gr-calorias-kcal"
                 type="number"
                 min="0"
                 step="1"
                 value={calories}
                 onChange={e => { setCalories(e.target.value); setIsFormDirty(true); }}
                 placeholder="Ex: 350"
-                className="w-full bg-[var(--surface-glass)] border border-[var(--border-glass)] text-white rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-[var(--mod-ginasio-to)] transition"
               />
             </div>
             <div>
               <label htmlFor="gr-fc-media-bpm" className="text-[11px] font-semibold text-[var(--text-3)] block mb-1">FC média (bpm)</label>
-              <input id="gr-fc-media-bpm"
+              <FieldInput id="gr-fc-media-bpm"
                 type="number"
                 min="0"
                 step="1"
                 value={avgHr}
                 onChange={e => { setAvgHr(e.target.value); setIsFormDirty(true); }}
                 placeholder="Ex: 135"
-                className="w-full bg-[var(--surface-glass)] border border-[var(--border-glass)] text-white rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-[var(--mod-ginasio-to)] transition"
               />
             </div>
             <div>
               <label htmlFor="gr-fc-maxima-bpm" className="text-[11px] font-semibold text-[var(--text-3)] block mb-1">FC máxima (bpm)</label>
-              <input id="gr-fc-maxima-bpm"
+              <FieldInput id="gr-fc-maxima-bpm"
                 type="number"
                 min="0"
                 step="1"
                 value={maxHr}
                 onChange={e => { setMaxHr(e.target.value); setIsFormDirty(true); }}
                 placeholder="Ex: 168"
-                className="w-full bg-[var(--surface-glass)] border border-[var(--border-glass)] text-white rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-[var(--mod-ginasio-to)] transition"
               />
             </div>
           </div>
@@ -1015,13 +1009,13 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
           <label htmlFor="gr-observacoes-opcional-ex" className="text-[11px] text-[var(--text-3)] mb-1.5 block">
             Observações (opcional) — ex.: "{kind === 'aula' ? 'aula puxada, professor novo' : 'treino de força, peso corporal'}"
           </label>
-          <textarea id="gr-observacoes-opcional-ex"
+          <FieldTextarea id="gr-observacoes-opcional-ex"
             rows={2}
             maxLength={500}
             value={notes}
             onChange={e => { setNotes(e.target.value); setIsFormDirty(true); }}
             placeholder="Contexto do treino..."
-            className="w-full bg-[var(--surface-glass)] border border-[var(--border-glass)] text-white rounded-xl px-3 py-2.5 text-sm text-white placeholder-[var(--text-muted)] outline-none focus:border-[var(--mod-ginasio-to)] resize-none"
+            className="resize-none"
           />
           {!isEditing && photos.length === 0 && notes.trim().length >= 3 && (
             <>
