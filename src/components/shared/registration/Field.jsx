@@ -10,7 +10,7 @@ import React, { forwardRef, useId } from 'react';
 
 // 16 px em literal (não `text-base`: nos tokens da app text-base = 13.5 px): abaixo de 16 px o Safari do
 // iOS faz zoom ao focar o campo.
-export const FIELD_CLS = 'w-full min-h-[var(--tap)] bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2.5 text-[16px] text-[var(--text-1)] placeholder-[var(--text-muted)] outline-none focus:border-[var(--focus-ring)] shadow-sm transition';
+export const FIELD_CLS = 'w-full min-h-[var(--tap)] bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2.5 text-[16px] text-[var(--text-1)] placeholder-[var(--text-muted)] outline-none focus:border-[var(--focus-ring)] focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)]/40 disabled:opacity-60 disabled:cursor-not-allowed shadow-sm transition';
 export const BLOCK_CLS = 'rounded-xl border border-[var(--border-glass)] bg-[var(--surface-glass)] p-3';
 
 /** Põe o campo à vista quando ganha o foco: o teclado do telemóvel demora ~300 ms a abrir e tapa o

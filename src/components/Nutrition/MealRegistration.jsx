@@ -1052,7 +1052,7 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
                         value={item.grams}
                         onFocus={keepFieldVisible}
                         onChange={e => { updateManualItem(item.key, { grams: e.target.value }); setIsFormDirty(true); }}
-                        className="w-14! text-right"
+                        className="w-16! px-2! text-right"
                       />
                       <span className="text-[11px] text-[var(--text-3)]">g</span>
                     </>
@@ -1078,7 +1078,7 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
                         placeholder="g"
                         onFocus={keepFieldVisible}
                         onChange={e => { updateManualItem(item.key, { grams: e.target.value === '' ? null : Number(e.target.value) }); setIsFormDirty(true); }}
-                        className="w-16! text-right"
+                        className="w-[72px]! px-2! text-right"
                       />
                       <span className="text-[11px] text-[var(--text-3)]">g</span>
                     </label>
