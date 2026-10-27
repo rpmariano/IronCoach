@@ -190,19 +190,19 @@ export default function PlanoScreen({ onClose }) {
     });
   };
 
-  /* O foco na semana atual: se ela não é a primeira da lista, o ecrã abre
-     com ela à vista em vez de obrigar a rolar. `block: 'start'` e não
-     `center` — o cabeçalho da semana deve encostar ao topo, com os dias
-     dela por baixo. */
+  /* O foco em HOJE (bug #90): o ecrã abre com o dia de hoje à vista, centrado, e não só a semana —
+     numa semana de sete dias com refeições, hoje podia ficar fora do ecrã. Sem o dia de hoje no
+     plano (hoje caiu num intervalo sem item), cai na semana atual, com o cabeçalho ao topo. */
   const currentWeekRef = useRef(null);
+  const todayRef = useRef(null);
   const jaRolouRef = useRef(false);
   useEffect(() => {
     // Uma vez só, à entrada: sem esta guarda, abrir ou fechar qualquer
     // semana puxava o ecrã de volta para a de hoje a meio da leitura.
     if (jaRolouRef.current) return undefined;
-    if (!currentWeek || weeks[0]?.start === currentWeek.start) return undefined;
+    if (!currentWeek) return undefined;
     if (!openWeeks.has(currentWeek.start)) return undefined;
-    const node = currentWeekRef.current;
+    const node = todayRef.current || currentWeekRef.current;
     if (!node?.scrollIntoView) return undefined;
     /* Num frame à frente, e não já: o efeito que abre a semana em curso só
        produz o layout novo no commit seguinte, e rolar antes disso media a
@@ -210,7 +210,7 @@ export default function PlanoScreen({ onClose }) {
        erradas e a semana acabava fora do sítio. */
     jaRolouRef.current = true;
     const id = requestAnimationFrame(() => {
-      node.scrollIntoView({ block: 'start', behavior: 'smooth' });
+      node.scrollIntoView({ block: todayRef.current ? 'center' : 'start', behavior: 'smooth' });
     });
     return () => cancelAnimationFrame(id);
   }, [currentWeek, weeks, openWeeks]);
@@ -377,6 +377,7 @@ export default function PlanoScreen({ onClose }) {
               return (
                 <div
                   key={d.dateISO}
+                  ref={d.isToday ? todayRef : null}
                   data-testid={`plano-dia-${d.dateISO}`}
                   className="flex gap-3"
                   style={{
