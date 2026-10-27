@@ -152,3 +152,47 @@ export function describePrescription(prescription: any): string | null {
   }
   return parts.length ? parts.join("; ") : null;
 }
+
+/* Os blocos da prescrição como texto, um por bloco e por ordem (assistant-read,
+   resource plan, 2026-10-27): «Agachamento 3×12 — chegar às 12 sem falhar»,
+   «Bicicleta 20 min — Z2». A mesma leitura do prescriptionView do cliente
+   (src/utils/prescriptionView.js): lê o que está gravado sem confiar na forma;
+   um bloco sem nome cai; um alvo fora dos tetos (com folga sobre os do
+   servidor) não é alvo, fica de fora; no máximo MAX_PRESCRIPTION_BLOCKS. */
+const VIEW_MAX = { sets: 20, reps: 100, duration_min: 600, distance_km: 200, laps: 1000 };
+const viewNum = (v: unknown, max: number): number | null =>
+  typeof v === "number" && Number.isFinite(v) && v > 0 && v <= max ? v : null;
+const viewFmt = (n: number) => String(Math.round(n * 100) / 100).replace(".", ",");
+
+// deno-lint-ignore no-explicit-any
+export function prescriptionBlockTarget(b: any): string {
+  const sets = viewNum(b?.sets, VIEW_MAX.sets);
+  const reps = viewNum(b?.reps, VIEW_MAX.reps);
+  if (sets && reps) return `${viewFmt(sets)}×${viewFmt(reps)}`;
+  const parts: string[] = [];
+  const dur = viewNum(b?.duration_min, VIEW_MAX.duration_min);
+  const km = viewNum(b?.distance_km, VIEW_MAX.distance_km);
+  const laps = viewNum(b?.laps, VIEW_MAX.laps);
+  if (dur) parts.push(`${viewFmt(dur)} min`);
+  if (km) parts.push(`${viewFmt(km)} km`);
+  if (laps) parts.push(`${viewFmt(laps)} ${laps === 1 ? "volta" : "voltas"}`);
+  if (parts.length) return parts.join(" · ");
+  if (sets) return `${viewFmt(sets)} ${sets === 1 ? "série" : "séries"}`;
+  if (reps) return `${viewFmt(reps)} reps`;
+  return "";
+}
+
+// deno-lint-ignore no-explicit-any
+export function prescriptionBlockTexts(prescription: any): string[] {
+  const blocks = Array.isArray(prescription?.blocks) ? prescription.blocks : [];
+  return blocks
+    // deno-lint-ignore no-explicit-any
+    .filter((b: any) => b && typeof b.name === "string" && b.name.trim())
+    .slice(0, MAX_PRESCRIPTION_BLOCKS)
+    // deno-lint-ignore no-explicit-any
+    .map((b: any) => {
+      const target = prescriptionBlockTarget(b);
+      const goal = typeof b.goal === "string" && b.goal.trim() ? b.goal.trim().slice(0, MAX_GOAL_LENGTH) : "";
+      return `${b.name.trim().slice(0, MAX_NAME_LENGTH)}${target ? ` ${target}` : ""}${goal ? ` — ${goal}` : ""}`;
+    });
+}

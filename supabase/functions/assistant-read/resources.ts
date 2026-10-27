@@ -8,6 +8,7 @@
 // Europe/Lisbon.
 
 import type { Db } from "./handler.ts";
+import { prescriptionBlockTexts } from "../_shared/formulas/planPrescription.ts";
 
 export const RESOURCES = ["summary", "workouts", "runs", "meals", "checkins", "body", "races", "goals", "plan"] as const;
 export type Resource = typeof RESOURCES[number];
@@ -454,6 +455,48 @@ async function readSummary(ctx: ReadCtx) {
 // ele tem um item nesse dia (um item fora do período não fica órfão).
 // Fora, sempre: prescription, notes, meal_*, execution_note (contrato).
 
+// O resumo de um treino do plano: «Rodagem longa · 18 km», «Pernas/Glúteos · 50 min».
+const RUN_LABEL: Record<string, string> = {
+  continuo: "Corrida contínua", longo: "Rodagem longa", recuperacao: "Corrida de recuperação", tempo: "Treino de ritmo",
+  fartlek: "Fartlek", intervalos: "Treino intervalado", subidas: "Treino de subidas", trail: "Corrida em trilho",
+  tecnico: "Trilho técnico", caminhada: "Caminhada", ativacao: "Ativação pré-prova", prova: "Prova",
+};
+const MAX_COACH_NOTES = 600;
+const kmText = (n: number) => String(Math.round(n * 100) / 100).replace(".", ",");
+
+function planItemDescription(it: Row, cats: string[]): string {
+  const label = it.kind === "ginasio"
+    ? (cats.length ? cats.join("/") : "Ginásio")
+    : (RUN_LABEL[String(it.training_type ?? "")] ?? "Corrida");
+  const km = num(it.target_distance_km), min = num(it.target_duration_min);
+  const size = km ? ` · ${kmText(km)} km` : min ? ` · ${Math.round(min)} min` : "";
+  return `${label}${size}`;
+}
+
+/* O alvo de ritmo e/ou de zona, tirado do que a Carol escreveu (não há coluna
+   própria): o ritmo e a zona das notes ou dos objetivos dos blocos —
+   «~6:00-6:15/km», «Z2», «zona 2» — («Z2», «zona 2»). Sem nenhum, os campos não vão. */
+const PACE_RE = /(\d{1,2}[:'’]\d{2})(?:\s*(?:-|–|a)\s*(\d{1,2}[:'’]\d{2}))?\s*(?:min\s*)?\/\s*km/i;
+const ZONE_RE = /\b(?:Z|zona\s*)([1-5])(?:\s*(?:-|–|a|\/)\s*(?:Z|zona\s*)?([1-5]))?\b/i;
+export function trainingTarget(notes: string | null, blockTexts: string[]): { pace?: string; zone?: string } {
+  const out: { pace?: string; zone?: string } = {};
+  for (const t of [notes ?? "", ...blockTexts]) {
+    const pace = PACE_RE.exec(t);
+    if (pace) {
+      out.pace = `${pace[1].replace(/['’]/, ":")}${pace[2] ? `-${pace[2].replace(/['’]/, ":")}` : ""}/km`;
+      break;
+    }
+  }
+  for (const t of [notes ?? "", ...blockTexts]) {
+    const z = ZONE_RE.exec(t);
+    if (z) {
+      out.zone = z[2] && z[2] !== z[1] ? `Z${z[1]}-Z${z[2]}` : `Z${z[1]}`;
+      break;
+    }
+  }
+  return out;
+}
+
 async function readPlan(ctx: ReadCtx) {
   const plans = await all(() =>
     ctx.db.from("coach_plans").select("id, period_start, period_end, accepted_at").eq("user_id", ctx.userId)
@@ -463,7 +506,7 @@ async function readPlan(ctx: ReadCtx) {
   const items = await byIds(
     ctx,
     "coach_plan_items",
-    "id, plan_id, planned_date, kind, training_type, categories, target_duration_min, target_distance_km, status",
+    "id, plan_id, planned_date, kind, training_type, categories, target_duration_min, target_distance_km, status, notes, prescription",
     "plan_id",
     plans.map((p) => p.id as string),
     ["planned_date"],
@@ -497,6 +540,9 @@ async function readPlan(ctx: ReadCtx) {
     .sort((a, b) => String(a.planned_date).localeCompare(String(b.planned_date)) || String(a.id).localeCompare(String(b.id)))
     .map((it) => {
       const cats = Array.isArray(it.categories) ? (it.categories as unknown[]).filter(Boolean).map(String) : [];
+      const notes = typeof it.notes === "string" && it.notes.trim() ? it.notes.trim().slice(0, MAX_COACH_NOTES) : null;
+      const blocks = prescriptionBlockTexts(it.prescription).map((text) => ({ text }));
+      const target = trainingTarget(notes, blocks.map((b) => b.text));
       return {
         id: it.id,
         date: it.planned_date,
@@ -505,6 +551,13 @@ async function readPlan(ctx: ReadCtx) {
         duration_min: num(it.target_duration_min),
         distance_km: num(it.target_distance_km),
         status: it.status ?? null,
+        // Os detalhes do treino (2026-10-27, pedido do CoP): o resumo, os
+        // blocos da prescrição, o alvo de ritmo/zona (só se houver) e as notas
+        // dela para o treino. Nunca meal_*, execution_note nem medições.
+        description: planItemDescription(it, cats),
+        blocks,
+        ...target,
+        coach_notes: notes,
       };
     });
 }

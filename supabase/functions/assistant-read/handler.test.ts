@@ -1,6 +1,7 @@
 import { assert, assertEquals } from "jsr:@std/assert@1";
 import { addDays, handler, MAX_RANGE_DAYS, RATE_LIMIT_PER_HOUR, resolveRange, sha256Hex } from "./handler.ts";
-import { lisbonDateTime, lisbonMidnightUtc, PAGE, RESOURCES } from "./resources.ts";
+import { lisbonDateTime, lisbonMidnightUtc, PAGE, RESOURCES, trainingTarget } from "./resources.ts";
+import { prescriptionBlockTexts } from "../_shared/formulas/planPrescription.ts";
 
 // ─── Supabase falso ───────────────────────────────────────────────────────
 // O subconjunto do PostgREST que a função usa. Regista todas as consultas
@@ -195,13 +196,17 @@ function athleteRows(uid: string, tag: "A" | "B"): Record<string, Row[]> {
       {
         id: id("pi-run"), plan_id: id("plan1"), user_id: uid, planned_date: DAY, kind: "corrida", training_type: `${tag}-Rodagem`,
         categories: null, target_duration_min: 45, target_distance_km: 8, status: "pendente",
-        prescription: { warmup: "SEGREDO-prescricao" }, notes: "SEGREDO-notas", meal_suggestion: "SEGREDO-refeicao",
+        prescription: { warmup: "SEGREDO-prescricao" }, notes: `${tag}-notas: rodagem leve (~6:00-6:15/km)`, meal_suggestion: "SEGREDO-refeicao",
         meal_status: "pendente", meal_macros: { kcal: 1 }, execution_note: "SEGREDO-execucao",
       },
       { id: id("pi-rest"), plan_id: id("plan1"), user_id: uid, planned_date: "2026-10-23", kind: "descanso", status: "pendente" },
       {
         id: id("pi-gym"), plan_id: id("plan1"), user_id: uid, planned_date: "2026-10-25", kind: "ginasio", training_type: null,
         categories: ["pernas", "core"], target_duration_min: 60, target_distance_km: null, status: "pendente",
+        prescription: { blocks: [
+          { type: "cardio", name: `${tag}-Bicicleta`, duration_min: 10, goal: "aquecer em Z2" },
+          { type: "forca", name: `${tag}-Agachamento`, sets: 3, reps: 12, goal: "chegar às 12 sem falhar" },
+        ] },
       },
       { id: id("pi-recusado"), plan_id: id("planR"), user_id: uid, planned_date: "2026-10-24", kind: "corrida", training_type: `${tag}-recusado`, status: "pendente" },
     ],
@@ -526,19 +531,88 @@ Deno.test("plan: só planos aceites, sem descanso, título pelo training_type ou
   const db = await scenario();
   const { data } = await (await call(db, `resource=plan&${PLAN_PERIOD}`)).json();
   assertEquals(data, [
-    { id: "A-pi-run", date: DAY, kind: "corrida", title: "A-Rodagem", duration_min: 45, distance_km: 8, status: "pendente" },
-    { id: "A-pi-gym", date: "2026-10-25", kind: "ginasio", title: "pernas, core", duration_min: 60, distance_km: null, status: "pendente" },
+    {
+      id: "A-pi-run", date: DAY, kind: "corrida", title: "A-Rodagem", duration_min: 45, distance_km: 8, status: "pendente",
+      description: "Corrida · 8 km", blocks: [], pace: "6:00-6:15/km", coach_notes: "A-notas: rodagem leve (~6:00-6:15/km)",
+    },
+    {
+      id: "A-pi-gym", date: "2026-10-25", kind: "ginasio", title: "pernas, core", duration_min: 60, distance_km: null, status: "pendente",
+      description: "pernas/core · 60 min",
+      blocks: [{ text: "A-Bicicleta 10 min — aquecer em Z2" }, { text: "A-Agachamento 3×12 — chegar às 12 sem falhar" }],
+      zone: "Z2", coach_notes: null,
+    },
   ]);
 });
 
-Deno.test("plan: nunca saem prescription, notes, meal_* nem execution_note", async () => {
+Deno.test("plan: nunca saem prescription em bruto, meal_*, execution_note nem plan_id", async () => {
   const db = await scenario();
   const text = await (await call(db, `resource=plan&${PLAN_PERIOD}`)).text();
-  for (const k of ["prescription", "notes", "meal_", "execution_note", "plan_id", "SEGREDO"]) {
+  for (const k of ["prescription", '"notes"', "meal_", "execution_note", "plan_id", "SEGREDO"]) {
     assert(!text.includes(k), `saiu ${k}: ${text}`);
   }
   const { data } = JSON.parse(text);
-  for (const it of data) assertEquals(Object.keys(it).sort(), ["date", "distance_km", "duration_min", "id", "kind", "status", "title"]);
+  const base = ["blocks", "coach_notes", "date", "description", "distance_km", "duration_min", "id", "kind", "status", "title"];
+  for (const it of data) {
+    const extra = Object.keys(it).filter((k) => !base.includes(k));
+    assert(extra.every((k) => k === "pace" || k === "zone"), `chave a mais: ${extra}`);
+    for (const k of base) assert(k in it, `falta ${k}`);
+  }
+});
+
+Deno.test("plan: prescrição mal formada não rebenta — blocos sem nome caem, números absurdos ficam de fora", async () => {
+  const db = await scenario();
+  const gym = db.tables.coach_plan_items.find((it) => it.id === "A-pi-gym")!;
+  const run = db.tables.coach_plan_items.find((it) => it.id === "A-pi-run")!;
+  run.prescription = { blocks: "não é lista" };
+  run.notes = 42;
+  gym.prescription = { blocks: [
+    null, 7, "texto", { name: "" }, { name: "   " }, { goal: "sem nome" },
+    { name: "Remo", sets: 1e9, reps: -3, duration_min: "20", goal: 5 },
+    { name: "Prancha", sets: 3, reps: Infinity, goal: "x".repeat(500) },
+    ...Array.from({ length: 20 }, (_, i) => ({ name: `B${i}`, laps: 2 })),
+  ] };
+  const res = await call(db, `resource=plan&${PLAN_PERIOD}`);
+  assertEquals(res.status, 200);
+  const { data } = await res.json();
+  const r = data.find((it: Row) => it.id === "A-pi-run");
+  assertEquals([r.blocks, r.coach_notes, "pace" in r, "zone" in r], [[], null, false, false]);
+  const g = data.find((it: Row) => it.id === "A-pi-gym");
+  assertEquals(g.blocks.length, 12);
+  assertEquals(g.blocks[0], { text: "Remo" });
+  assertEquals(g.blocks[1].text, `Prancha 3 séries — ${"x".repeat(200)}`);
+  assertEquals(g.blocks[2], { text: "B0 2 voltas" });
+  assert(!("pace" in g) && !("zone" in g), JSON.stringify(g));
+});
+
+Deno.test("plan: sem ritmo nem zona escritos, pace e zone não vão", async () => {
+  const db = await scenario();
+  const run = db.tables.coach_plan_items.find((it) => it.id === "A-pi-run")!;
+  run.notes = "Rodagem tranquila, sem relógio.";
+  const { data } = await (await call(db, `resource=plan&${PLAN_PERIOD}`)).json();
+  const r = data.find((it: Row) => it.id === "A-pi-run");
+  assert(!("pace" in r) && !("zone" in r), JSON.stringify(r));
+  assertEquals(r.coach_notes, "Rodagem tranquila, sem relógio.");
+});
+
+Deno.test("trainingTarget: ritmo e zona das notas ou dos blocos", () => {
+  assertEquals(trainingTarget("5 km contínuos (~6:00-6:15/km)", []), { pace: "6:00-6:15/km" });
+  assertEquals(trainingTarget("ritmo 5'30 /km, zona 3", []), { pace: "5:30/km", zone: "Z3" });
+  assertEquals(trainingTarget("4:50 a 5:05 min/km em Z1-Z2", []), { pace: "4:50-5:05/km", zone: "Z1-Z2" });
+  assertEquals(trainingTarget(null, ["Bicicleta 20 min — Z2"]), { zone: "Z2" });
+  assertEquals(trainingTarget(null, ["Tapete 15 min — 6:30/km"]), { pace: "6:30/km" });
+  assertEquals(trainingTarget("Zoom à técnica; Z9 não é zona; 18 km", []), {});
+  assertEquals(trainingTarget(null, []), {});
+});
+
+Deno.test("prescriptionBlockTexts: por ordem, com os tetos, robusto a lixo", () => {
+  assertEquals(prescriptionBlockTexts(null), []);
+  assertEquals(prescriptionBlockTexts({ blocks: {} }), []);
+  assertEquals(prescriptionBlockTexts({ blocks: [
+    { type: "cardio", name: "Aquecimento", duration_min: 10, distance_km: 1.5 },
+    { type: "forca", name: "Supino", sets: 4, reps: 8, goal: "RPE 8" },
+    { type: "forca", name: "Abdominais", reps: 20 },
+    { type: "cardio", name: "Retorno à calma", duration_min: 601 },
+  ] }), ["Aquecimento 10 min · 1,5 km", "Supino 4×8 — RPE 8", "Abdominais 20 reps", "Retorno à calma"]);
 });
 
 Deno.test("plan: plano recusado (e proposto) excluídos", async () => {
