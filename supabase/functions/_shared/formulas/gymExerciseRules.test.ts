@@ -1,5 +1,5 @@
 import { assert, assertEquals } from "jsr:@std/assert@1";
-import { hasUpperBodyRestriction, repeatedExercises, strengthNames, upperBodyLoad, upperBodyLoadInText } from "./gymExerciseRules.ts";
+import { hasUpperBodyRestriction, heavyLegExercises, repeatedExercises, strengthNames, upperBodyLoad, upperBodyLoadInText, wantsMuscleGain } from "./gymExerciseRules.ts";
 
 Deno.test("hasUpperBodyRestriction: a nota do Rui e variantes; outras categorias ou sem negação não contam", () => {
   const lim = (note: string) => [{ category: "limitacao_fisica", note }];
@@ -88,4 +88,27 @@ Deno.test("repeatedExercises: mais de metade em comum é a mesma sessão", () =>
   assertEquals(repeatedExercises(["a", "b", "c", "d"], ["a", "b", "e", "f"]), null); // 2 de 4: varia o bastante
   assertEquals(repeatedExercises(["a", "b", "c", "d"], ["a", "b", "c", "f"]), ["a", "b", "c"]);
   assertEquals(repeatedExercises(["a"], ["a"]), null); // uma sessão de um exercício não se compara
+});
+
+Deno.test("wantsMuscleGain: memória (objetivo/preferência, sem negação) ou massa magra alvo acima da última medida", () => {
+  const note = (category: string, n: string) => [{ category, note: n }];
+  assert(wantsMuscleGain(note("objetivo_pessoal", "Quer ganhar massa muscular este inverno"), null, null)?.startsWith("memória"));
+  assert(wantsMuscleGain(note("preferencia_treino", "Gosta de treino de hipertrofia"), null, null));
+  assert(wantsMuscleGain(note("objetivo_pessoal", "Ficar mais forte: força nas pernas e no tronco"), null, null));
+  assertEquals(wantsMuscleGain(note("objetivo_pessoal", "Não quer ganhar massa, só correr"), null, null), null);
+  assertEquals(wantsMuscleGain(note("limitacao_fisica", "Sem força na mão esquerda"), null, null), null);
+  assertEquals(wantsMuscleGain(note("objetivo_pessoal", "Baixar para 72 kg até à maratona"), null, null), null);
+  assert(wantsMuscleGain([], { goal_lean_body_mass_kg: 62 }, 60)?.startsWith("perfil"));
+  assertEquals(wantsMuscleGain([], { goal_lean_body_mass_kg: 60 }, 60), null); // manter não é ganhar
+  assertEquals(wantsMuscleGain([], { goal_lean_body_mass_kg: 62 }, null), null); // sem medida, sem comparação
+  assertEquals(wantsMuscleGain(null, null, null), null);
+});
+
+Deno.test("heavyLegExercises: pernas a ≤ 6 reps; tronco superior, pernas a 8+ e cardio não", () => {
+  assertEquals(heavyLegExercises({ blocks: [
+    { type: "forca", name: "Agachamento", sets: 5, reps: 5 }, { type: "forca", name: "Peso morto romeno", sets: 4, reps: 6 },
+    { type: "forca", name: "Leg press", sets: 3, reps: 10 }, { type: "forca", name: "Supino", sets: 5, reps: 5 },
+    { type: "cardio", name: "Bicicleta", duration_min: 10 }, null,
+  ] }), ["Agachamento", "Peso morto romeno"]);
+  assertEquals(heavyLegExercises(null), []);
 });

@@ -588,6 +588,75 @@ Deno.test("runProposeTrainingPlan: a primeira sessão compara-se com a da semana
   assert(result.startsWith("Erro: o ginásio de 2026-08-12 repete o de 2026-08-07"), result);
 });
 
+// ── Todos os grupos musculares, conciliados com a corrida (decisão do Rui, 2026-10-27) ──
+const reps = (name: string, r: number) => ({ type: "forca", name, sets: 4, reps: r, goal: "RPE 8" });
+const UPPER_SESSION = [reps("Supino com halteres", 10), reps("Remada sentada", 10), reps("Press de ombros", 10), reps("Curl de bíceps", 12)];
+const LOWER_SESSION = [reps("Leg press", 10), reps("Peso morto romeno", 8), reps("Búlgaro", 10), reps("Dead bug", 10)];
+
+Deno.test("runProposeTrainingPlan: sem restrição, o tronco superior é válido — sessões divididas superior/inferior gravam", async () => {
+  const { sb, calls } = makePlanSb();
+  const result = await runProposeTrainingPlan(sb, "user-1", {
+    ...VALID_PLAN,
+    items: [VALID_PLAN.items[0], gymDay("2026-08-11", UPPER_SESSION), gymDay("2026-08-13", LOWER_SESSION), VALID_PLAN.items[1]],
+  });
+  assertStringIncludes(result, "Plano criado com 4 treino(s)");
+  // deno-lint-ignore no-explicit-any
+  assertEquals(calls.itemInserts.find((it: any) => it.planned_date === "2026-08-11").prescription.blocks.map((b: any) => b.name),
+    UPPER_SESSION.map((b) => b.name));
+});
+
+Deno.test("runProposeTrainingPlan: com a restrição, a mesma sessão de tronco superior é recusada", async () => {
+  const { sb } = makePlanSb();
+  const result = await runProposeTrainingPlan(sb, "user-1", { ...VALID_PLAN, items: [gymDay("2026-08-11", UPPER_SESSION)] },
+    null, null, { upperBodyRestricted: true });
+  assert(result.startsWith("Erro no treino 1: «Supino com halteres» carrega os membros superiores"), result);
+});
+
+Deno.test("runProposeTrainingPlan: pernas pesadas nas 48 h antes de uma corrida dura são recusadas; controladas passam", async () => {
+  const run = (planned_date: string, training_type: string) => ({ planned_date, kind: "corrida", training_type, target_distance_km: 8 });
+  for (const [hardType, gap] of [["intervalos", "2026-08-12"], ["tempo", "2026-08-13"], ["longo", "2026-08-13"]]) {
+    const { sb, calls } = makePlanSb();
+    const result = await runProposeTrainingPlan(sb, "user-1", {
+      ...VALID_PLAN, items: [gymDay("2026-08-11", [reps("Agachamento", 5), reps("Leg press", 6), reps("Dead bug", 10)]), run(gap, hardType)],
+    });
+    assert(result.startsWith("Erro: o ginásio de 2026-08-11 tem pernas pesadas"), `${hardType}: ${result}`);
+    assertEquals(calls.itemInserts.length, 0);
+  }
+  // Três dias antes, ou antes de um contínuo, ou pernas a 10: passa.
+  for (const items of [
+    [gymDay("2026-08-11", [reps("Agachamento", 5), reps("Dead bug", 10)]), run("2026-08-14", "intervalos")],
+    [gymDay("2026-08-11", [reps("Agachamento", 5), reps("Dead bug", 10)]), run("2026-08-12", "continuo")],
+    [gymDay("2026-08-11", [reps("Agachamento", 10), reps("Dead bug", 10)]), run("2026-08-12", "intervalos")],
+    [gymDay("2026-08-11", [reps("Supino", 5), reps("Remada", 5)]), run("2026-08-12", "intervalos")],
+  ]) {
+    const { sb } = makePlanSb();
+    const result = await runProposeTrainingPlan(sb, "user-1", { ...VALID_PLAN, items });
+    assertStringIncludes(result, "Plano criado");
+  }
+});
+
+Deno.test("runProposeTrainingPlan: na semana de uma prova, nada de pernas pesadas — tronco superior e pernas leves passam", async () => {
+  const race = [{ id: "r1", name: "Corrida do Tejo", date: "2026-08-20", distance_km: 10, race_priority: "b" }];
+  const plan = (blocks: unknown[]) => ({ ...VALID_PLAN, items: [gymDay("2026-08-14", blocks)] });
+  const heavy = await runProposeTrainingPlan(makePlanSbWithRaces(race).sb, "user-1", plan([reps("Agachamento", 4), reps("Dead bug", 10)]));
+  assert(heavy.startsWith("Erro: o ginásio de 2026-08-14 tem pernas pesadas (Agachamento) na semana da prova \"Corrida do Tejo\""), heavy);
+  const light = await runProposeTrainingPlan(makePlanSbWithRaces(race).sb, "user-1", plan([reps("Agachamento", 12), reps("Supino", 6)]));
+  assertStringIncludes(light, "Plano criado");
+  // Oito dias antes já não é a semana da prova.
+  const before = await runProposeTrainingPlan(makePlanSbWithRaces(race).sb, "user-1", { ...VALID_PLAN, items: [gymDay("2026-08-12", [reps("Agachamento", 4), reps("Dead bug", 10)])] });
+  assertStringIncludes(before, "Plano criado");
+});
+
+Deno.test("handler: objetivo de massa e regras de conciliação ligados (ligações no código)", async () => {
+  const src = await Deno.readTextFile(new URL("./index.ts", import.meta.url));
+  assertStringIncludes(src, "const muscleGain = wantsMuscleGain(coachNotes, profile, latestLeanKg);");
+  assertStringIncludes(src, "OBJETIVO DE GINÁSIO: o atleta quer ganhar massa/força (${muscleGain}).");
+  for (const line of ["QUER GANHAR MASSA OU FORÇA", "sessões de corpo inteiro ou divididas (superior/inferior)", "– Tronco superior: peito (supino",
+    "nada de pernas pesadas (3-6 reps) nas 48 h antes de séries", "Mobilidade e prevenção: rotadores do ombro"]) {
+    assertStringIncludes(src, line);
+  }
+});
+
 Deno.test("schema: prescription_blocks não abre um 3.º nível de arrays (só items[] → prescription_blocks[])", () => {
   const block = buildTools(allowedToolsFor("E"));
   // deno-lint-ignore no-explicit-any

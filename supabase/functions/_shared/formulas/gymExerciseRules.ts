@@ -111,6 +111,49 @@ export function strengthNames(prescription: any): string[] {
   )] as string[];
 }
 
+/* O atleta quer ganhar massa ou força (decisão do Rui, 2026-10-27): a
+   memória (objetivo_pessoal / preferencia_treino com «massa», «hipertrofia»,
+   «força», «músculo», «volume», «ganhar peso», sem negação) ou o perfil (uma
+   massa magra alvo acima da última medida — a muscle_mass_kg não é fiável,
+   Bloco 5 #1). Devolve de onde veio, para o contexto; null se não há sinal.
+   Um pedido no chat lê-o a Carol pela doutrina. */
+const GAIN_RE = /\b(massa( muscular)?|hipertrofia|forca|musculo|musculad[oa]|ganhar volume|ganhar peso|ganho muscular|bulk\w*)\b/;
+const GAIN_NEGATED_RE = /\b(nao|sem|nunca|evitar|nada de)\b(\s+\w+){0,3}\s*$/;
+export function wantsMuscleGain(
+  // deno-lint-ignore no-explicit-any
+  notes: any[] | null | undefined,
+  profile: { goal_lean_body_mass_kg?: unknown } | null | undefined,
+  latestLeanKg: number | null | undefined,
+): string | null {
+  for (const n of notes ?? []) {
+    if ((n?.category !== "objetivo_pessoal" && n?.category !== "preferencia_treino") || typeof n?.note !== "string") continue;
+    const t = fold(n.note);
+    const m = GAIN_RE.exec(t);
+    if (m && !GAIN_NEGATED_RE.test(t.slice(0, m.index))) return `memória: «${n.note.trim().slice(0, 120)}»`;
+  }
+  const goal = Number(profile?.goal_lean_body_mass_kg);
+  if (Number.isFinite(goal) && goal > 0 && typeof latestLeanKg === "number" && latestLeanKg > 0 && goal >= latestLeanKg + 0.5) {
+    return `perfil: massa magra alvo ${goal} kg (última medida ${latestLeanKg} kg)`;
+  }
+  return null;
+}
+
+/* Força pesada nas pernas: um exercício de pernas a ≤ 6 reps («pernas a 3-6
+   reps pesadas», a doutrina). É o que não pode cair nas 48 h antes de uma
+   corrida dura nem na semana de uma prova. */
+const LEG_RE = /\b(agachamento|squat|leg press|prensa|lunges?|afundos?|bulgaro|step[- ]?ups?|peso morto|deadlift|hip thrust|ponte|extensora|flexora|leg (curl|extension)|gemeos|calf|nordico|nordic|abdutora|adutora|saltos?|jump|pliometri\w*|hack)\b/;
+export const HEAVY_LEG_MAX_REPS = 6;
+// deno-lint-ignore no-explicit-any
+export function heavyLegExercises(prescription: any): string[] {
+  const blocks = Array.isArray(prescription?.blocks) ? prescription.blocks : [];
+  return blocks
+    // deno-lint-ignore no-explicit-any
+    .filter((b: any) => b?.type === "forca" && typeof b.name === "string" && LEG_RE.test(fold(b.name)) &&
+      typeof b.reps === "number" && b.reps > 0 && b.reps <= HEAVY_LEG_MAX_REPS)
+    // deno-lint-ignore no-explicit-any
+    .map((b: any) => b.name);
+}
+
 /** Os exercícios em comum se duas sessões seguidas são a mesma sessão —
  *  mais de metade dos de força da mais curta; null se variam o bastante. */
 export function repeatedExercises(prev: string[], cur: string[]): string[] | null {
