@@ -4,6 +4,7 @@ import { useAppStore } from '../../store';
 import { useToast } from '../shared/ToastProvider';
 import Button from '../shared/Button';
 import PremiumModal from '../shared/PremiumModal';
+import { FieldSelect, FieldTextarea } from '../shared/registration/Field';
 
 /* Memória de longo prazo partilhada com a Carol (tabela coach_notes).
 
@@ -256,12 +257,12 @@ export default function CoachMemoryCard() {
 
             {editingId === n.id && !byCoach ? (
               <div className="flex flex-col gap-2">
-                <textarea
+                <FieldTextarea
                   rows="3"
                   value={editText}
                   maxLength={MAX_NOTE_LEN}
                   onChange={e => setEditText(e.target.value)}
-                  className="w-full bg-[var(--bg-app)] border border-[var(--border-glass)] rounded-lg px-2.5 py-2 text-xs outline-none resize-none focus:border-[var(--mod-coach-to)]/70"
+                  className="resize-none"
                 />
                 <div className="flex items-center gap-2">
                   <Button
@@ -298,24 +299,23 @@ export default function CoachMemoryCard() {
 
       {adding ? (
         <div className="rounded-xl border border-dashed border-[var(--mod-coach-to)]/40 p-3 flex flex-col gap-2">
-          <select
+          <FieldSelect
             value={draftCat}
             onChange={e => setDraftCat(e.target.value)}
             aria-label="Categoria da nota"
-            className="bg-[var(--bg-app)] border border-[var(--border-glass)] rounded-lg px-2.5 py-2 text-xs outline-none focus:border-[var(--mod-coach-to)]/70"
           >
             {NOTE_CATEGORIES.map(c => (
               <option key={c.key} value={c.key}>{c.label}</option>
             ))}
-          </select>
-          <textarea
+          </FieldSelect>
+          <FieldTextarea
             rows="3"
             autoFocus
             value={draftNote}
             maxLength={MAX_NOTE_LEN}
             onChange={e => setDraftNote(e.target.value)}
             placeholder={NOTE_CATEGORIES.find(c => c.key === draftCat)?.hint || 'O que queres que a Carol nunca esqueça?'}
-            className="w-full bg-[var(--bg-app)] border border-[var(--border-glass)] rounded-lg px-2.5 py-2 text-xs outline-none resize-none placeholder-[var(--text-muted)] focus:border-[var(--mod-coach-to)]/70"
+            className="resize-none"
           />
           <div className="flex items-center gap-2">
             <Button variant="module" moduleColor="var(--mod-coach-to)" className="text-[11px] py-2 px-3" onClick={handleAdd} disabled={busy || !draftNote.trim()} icon={busy ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}>

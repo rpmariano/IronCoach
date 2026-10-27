@@ -10,6 +10,7 @@ import {
   wearStatus, shoeLabel, WEAR_LEVEL_LABELS, REFERENCE_WEIGHT_KG,
 } from '../../utils/shoes';
 import { fmtNumber } from '../../utils/dashboardVerdicts';
+import { FieldInput, FieldSelect } from '../shared/registration/Field';
 
 // Tom de cada nível de desgaste. 'ok' é deliberadamente discreto — a maior
 // parte dos pares está em bom estado e não precisa de chamar a atenção.
@@ -303,46 +304,42 @@ const ShoeCabinet = forwardRef(function ShoeCabinet(props, ref) {
         <div className="p-6 space-y-4 bg-[var(--bg-sheet)] text-[var(--text-2)]">
           <div className="grid grid-cols-2 gap-3">
             <Field label="Marca" htmlFor="shoe-marca">
-              <input
+              <FieldInput
                 id="shoe-marca"
                 value={form.brand}
                 onChange={e => setField('brand', e.target.value)}
                 placeholder="Nike"
-                className={inputClass}
               />
             </Field>
             <Field label="Modelo" htmlFor="shoe-modelo">
-              <input
+              <FieldInput
                 id="shoe-modelo"
                 value={form.model}
                 onChange={e => setField('model', e.target.value)}
                 placeholder="Pegasus 40"
-                className={inputClass}
               />
             </Field>
           </div>
 
           <Field label="Início de utilização" htmlFor="shoe-inicio-mes">
             <div className="grid grid-cols-2 gap-3">
-              <select
+              <FieldSelect
                 id="shoe-inicio-mes"
                 aria-label="Mês de início de utilização"
                 value={form.startMonth}
                 onChange={e => setField('startMonth', e.target.value)}
-                className={inputClass}
               >
                 {MONTHS.map((m, i) => (
                   <option key={m} value={String(i + 1)}>{m}</option>
                 ))}
-              </select>
-              <select
+              </FieldSelect>
+              <FieldSelect
                 aria-label="Ano de início de utilização"
                 value={form.startYear}
                 onChange={e => setField('startYear', e.target.value)}
-                className={inputClass}
               >
                 {YEARS.map(y => <option key={y} value={String(y)}>{y}</option>)}
-              </select>
+              </FieldSelect>
             </div>
           </Field>
 
@@ -351,13 +348,12 @@ const ShoeCabinet = forwardRef(function ShoeCabinet(props, ref) {
             hint="Deixa a zero se o par é novo."
             htmlFor="shoe-km-iniciais"
           >
-            <input
+            <FieldInput
               id="shoe-km-iniciais"
               type="number" min="0" step="1" inputMode="decimal"
               value={form.initial_km}
               onChange={e => setField('initial_km', e.target.value)}
               placeholder="0"
-              className={inputClass}
             />
           </Field>
 
@@ -381,13 +377,12 @@ const ShoeCabinet = forwardRef(function ShoeCabinet(props, ref) {
                   : <><Sparkles size={12} /> Perguntar à Carol</>}
               </button>
             </div>
-            <input
+            <FieldInput
               id="shoe-vida-util"
               type="number" min="1" step="1" inputMode="numeric"
               value={form.lifespan_km}
               onChange={e => setForm(f => ({ ...f, lifespan_km: e.target.value, lifespan_source: 'manual' }))}
               placeholder="Ex.: 700"
-              className={inputClass}
             />
             <p className="text-[11px] text-[var(--text-3)] leading-relaxed">
               Valor de referência para um corredor de {REFERENCE_WEIGHT_KG} kg — a app
@@ -437,7 +432,6 @@ const ShoeCabinet = forwardRef(function ShoeCabinet(props, ref) {
 
 export default ShoeCabinet;
 
-const inputClass = 'w-full bg-[var(--bg-app)] border border-[var(--border-glass-strong)] rounded-xl py-2.5 px-3 text-sm text-[var(--text-2)] outline-none focus:border-[var(--mod-corrida)]/60';
 
 /* `htmlFor` liga a etiqueta ao campo que o Field embrulha — sem isto a
    etiqueta é só visual e o campo chega ao leitor de ecrã sem nome

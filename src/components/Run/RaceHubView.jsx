@@ -409,6 +409,8 @@ export default function RaceHubView({
 
     const leaveTo = (mode) => {
       const store = useAppStore.getState();
+      // Pelo navGuard, como o «+» do Layout: com alterações por gravar abre o aviso em vez de as perder.
+      if (store.navGuard && !store.navGuard(store.activeTab)) return;
       store.setEditingRaceId(null);
       if (mode) store.setOpenCreationMode(mode);
     };

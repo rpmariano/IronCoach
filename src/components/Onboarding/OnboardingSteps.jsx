@@ -10,6 +10,7 @@ import { DIETARY_RESTRICTIONS, toggleRestriction, normalizeRestrictions } from '
 import { prefersReducedMotion, typingDelayFor } from '../../utils/coachBubbles';
 import { firstName, reactToGoal, reactToRunning, reactToFood } from './carolReactions';
 import { todayISO } from '../../lib/utils';
+import { FieldInput } from '../shared/registration/Field';
 
 /* Os sete ecrãs do arranque (6 passos + fecho), recriados a partir da secção
    "Onboarding · o arranque" de specs/design-handoff-2026-09/design/
@@ -646,12 +647,11 @@ export function StepMemorias({ draft, set }) {
         </div>
 
         <form onSubmit={handleSubmeterTexto} className="flex flex-col gap-2">
-          <input
+          <FieldInput
             type="text"
             placeholder={catAtual.hint}
             value={textoNota}
             onChange={(e) => setTextoNota(e.target.value)}
-            className="w-full bg-[rgba(255,255,255,.06)] border border-[rgba(255,255,255,.14)] rounded-xl px-3.5 py-2.5 text-base outline-none text-[var(--text-1)] placeholder-[var(--text-4)] focus:border-[var(--coach)]"
             style={{ minHeight: 46 }}
           />
           <button

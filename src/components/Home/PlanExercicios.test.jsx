@@ -89,6 +89,7 @@ describe('DayPlanCard (O que faço hoje) — exercícios do ginásio', () => {
     renderCard([gym()]);
     const resumo = screen.getByTestId('day-plan-exercicios-resumo');
     expect(resumo).toHaveAttribute('aria-expanded', 'false');
+    expect(resumo).not.toHaveAttribute('aria-controls');
     fireEvent.click(resumo);
     expect(resumo).toHaveAttribute('aria-expanded', 'true');
     expect(resumo).toHaveAttribute('aria-controls', screen.getByTestId('day-plan-detail').id);

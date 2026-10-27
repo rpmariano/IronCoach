@@ -3,6 +3,7 @@ import { supabase } from '../../lib/supabase';
 import Button from '../shared/Button';
 import BrandMark from '../shared/BrandMark';
 import AppBackground from '../Layout/AppBackground';
+import { FieldInput } from '../shared/registration/Field';
 export default function Auth() {
   const [authMode, setAuthMode] = useState('signin'); // 'signin' | 'signup'
   const [email, setEmail] = useState('');
@@ -88,7 +89,7 @@ export default function Auth() {
         <form onSubmit={handleSubmit} className="space-y-3">
           <div>
             <label htmlFor="auth-email" className="text-xs font-semibold text-[var(--text-3)] mb-1 block">Email</label>
-            <input
+            <FieldInput
               id="auth-email"
               type="email"
               value={email}
@@ -99,13 +100,12 @@ export default function Auth() {
               autoCapitalize="none"
               spellCheck={false}
               aria-describedby={errorMsg ? 'auth-error' : undefined}
-              className="w-full bg-[var(--surface-faint)] border border-[var(--border-glass)] rounded-xl px-3.5 py-2.5 text-base text-[var(--text-1)] placeholder-[var(--text-muted)] outline-none focus:border-[var(--focus-ring)]"
             />
           </div>
 
           <div>
             <label htmlFor="auth-password" className="text-xs font-semibold text-[var(--text-3)] mb-1 block">Palavra-passe</label>
-            <input
+            <FieldInput
               id="auth-password"
               type="password"
               value={password}
@@ -114,7 +114,6 @@ export default function Auth() {
               required
               autoComplete="current-password"
               aria-describedby={errorMsg ? 'auth-error' : undefined}
-              className="w-full bg-[var(--surface-faint)] border border-[var(--border-glass)] rounded-xl px-3.5 py-2.5 text-base text-[var(--text-1)] placeholder-[var(--text-muted)] outline-none focus:border-[var(--focus-ring)]"
             />
           </div>
 

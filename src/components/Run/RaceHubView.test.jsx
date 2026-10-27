@@ -776,3 +776,24 @@ describe('RaceHubView — o bloco Troféu', () => {
     expect(bloco).toHaveTextContent('Ainda sem classificação oficial.');
   });
 });
+
+describe('RaceHubView — «Marcar a próxima prova» passa pelo navGuard', () => {
+  afterEach(() => { useAppStore.setState({ navGuard: null, editingRaceId: null, openCreationMode: null }); });
+
+  it('com um guard a recusar (alterações por gravar), fica onde está e não larga a prova', () => {
+    const guard = vi.fn(() => false);
+    useAppStore.setState({ navGuard: guard, editingRaceId: RACE.id, openCreationMode: 'race', activeTab: 'calendario' });
+    render(<RaceHubView race={RACE} runs={[RACE_RUN]} profile={PROFILE} />);
+    fireEvent.click(screen.getByRole('button', { name: /Marcar a próxima prova/i }));
+    expect(guard).toHaveBeenCalledTimes(1);
+    expect(useAppStore.getState().editingRaceId).toBe(RACE.id);
+  });
+
+  it('sem guard abre a «Nova prova» em branco', () => {
+    useAppStore.setState({ navGuard: null, editingRaceId: RACE.id, openCreationMode: 'race' });
+    render(<RaceHubView race={RACE} runs={[RACE_RUN]} profile={PROFILE} />);
+    fireEvent.click(screen.getByRole('button', { name: /Marcar a próxima prova/i }));
+    expect(useAppStore.getState().editingRaceId).toBeNull();
+    expect(useAppStore.getState().openCreationMode).toBe('race');
+  });
+});
