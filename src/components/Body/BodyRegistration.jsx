@@ -20,6 +20,7 @@ import RegistrationShell from '../shared/registration/RegistrationShell';
 import useRegistrationExit from '../shared/registration/useRegistrationExit';
 import PhotoReadSection from '../shared/registration/PhotoReadSection';
 import RegistrationSection from '../shared/registration/RegistrationSection';
+import { FieldInput, FieldTextarea } from '../shared/registration/Field';
 
 const BODY_METRICS = [
   { key:'weight_kg',            label:'Peso',              unit:'kg',   dec:1, color:'#dd3c71' },
@@ -507,24 +508,22 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
       <div className="grid grid-cols-2 gap-2">
         <div className="min-w-0">
           <label htmlFor="br-data-da-avaliacao" className="text-[11px] text-[var(--text-3)] mb-1.5 block">Data da avaliação</label>
-          <input
+          <FieldInput
             id="br-data-da-avaliacao"
             type="date"
             value={date}
             max={todayISO()}
             onChange={e => { setDate(e.target.value); setIsFormDirty(true); }}
-            className="w-full min-h-[var(--tap)] bg-[var(--surface-glass)] border border-[var(--border-glass)] rounded-xl px-3 py-2 text-sm text-[var(--text-1)] outline-none focus:border-[var(--mod-corpo-to)]"
           />
         </div>
         <div className="min-w-0">
           <label htmlFor="br-hora-da-avaliacao" className="text-[11px] text-[var(--text-3)] mb-1.5 block">Hora da avaliação</label>
-          <input
+          <FieldInput
             id="br-hora-da-avaliacao"
             type="time"
             required
             value={assessmentTime}
             onChange={e => { setAssessmentTime(e.target.value); setIsFormDirty(true); }}
-            className="w-full min-h-[var(--tap)] bg-[var(--surface-glass)] border border-[var(--border-glass)] rounded-xl px-3 py-2 text-sm text-[var(--text-1)] outline-none focus:border-[var(--mod-corpo-to)]"
           />
         </div>
       </div>
@@ -560,13 +559,12 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
         {BODY_METRICS.map(m => (
           <label key={m.key} className="block">
             <span className="text-[11px] text-[var(--text-3)] block mb-1">{m.label} {m.unit && `(${m.unit})`}</span>
-            <input
+            <FieldInput
               type="number"
               inputMode="decimal"
               step={m.dec > 0 ? '0.1' : '1'}
               value={metrics[m.key] ?? ''}
               onChange={e => handleMetricChange(m.key, e.target.value)}
-              className="w-full min-h-[var(--tap)] bg-[var(--surface-glass)] border border-[var(--border-glass)] rounded-xl px-2.5 py-2 text-xs text-white outline-none focus:border-[var(--mod-corpo-to)] transition"
             />
           </label>
         ))}
@@ -594,13 +592,13 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
           })}
         </div>
         <label htmlFor="br-observacoes-opcional-ex-em-jejum-a" className="text-[11px] text-[var(--text-3)] mb-1.5 block">Observações (opcional) — ex.: "após treino"</label>
-        <textarea id="br-observacoes-opcional-ex-em-jejum-a"
+        <FieldTextarea id="br-observacoes-opcional-ex-em-jejum-a"
           rows={2}
           maxLength={500}
           value={notes}
           onChange={e => { setNotes(e.target.value); setIsFormDirty(true); }}
           placeholder="Contexto da pesagem..."
-          className="w-full bg-[var(--surface-glass)] border border-[var(--border-glass)] text-white rounded-xl px-3 py-2.5 text-sm placeholder-[var(--text-muted)] outline-none focus:border-[var(--mod-corpo-to)] resize-none"
+          className="resize-none"
         />
       </div>
       </RegistrationSection>
