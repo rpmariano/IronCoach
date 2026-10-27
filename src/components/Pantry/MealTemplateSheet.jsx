@@ -103,7 +103,7 @@ export default function MealTemplateSheet({ template = null, initial = null, onC
                 <label className="flex items-center gap-1 shrink-0">
                   <FieldInput type="number" min="1" step="1" inputMode="numeric" value={it.grams} aria-label={`Gramas de ${it.name}`}
                     onChange={(e) => setItems((prev) => prev.map((x) => (x.key === it.key ? { ...x, grams: e.target.value } : x)))}
-                    className="w-16 text-right" style={field} />
+                    className="w-16! text-right" style={field} />
                   <span className="text-[12px]" style={{ color: 'var(--text-4)' }}>g</span>
                 </label>
                 <button type="button" aria-label={`Tirar ${it.name}`} onClick={() => setItems((prev) => prev.filter((x) => x.key !== it.key))}

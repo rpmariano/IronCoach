@@ -3289,7 +3289,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
             ) : splits.map((s, i) => (
               <div key={i} className="flex gap-1 mb-1.5 items-center">
                 <span className="text-[11px] text-[var(--text-3)] w-3">{i+1}.</span>
-                <FieldInput type="number" step="0.01" placeholder="km" aria-label={`Distância da parcial ${i + 1} (km)`} value={s.distance_km} onChange={e => { const newSplits = [...splits]; newSplits[i].distance_km = e.target.value; setSplits(newSplits); setIsFormDirty(true); }} className="w-20" />
+                <FieldInput type="number" step="0.01" placeholder="km" aria-label={`Distância da parcial ${i + 1} (km)`} value={s.distance_km} onChange={e => { const newSplits = [...splits]; newSplits[i].distance_km = e.target.value; setSplits(newSplits); setIsFormDirty(true); }} className="w-20!" />
                 <FieldInput type="text" placeholder="Tempo" aria-label={`Tempo da parcial ${i + 1}`} value={s.minutes} onChange={e => { const newSplits = [...splits]; newSplits[i].minutes = e.target.value; setSplits(newSplits); setIsFormDirty(true); }} className="flex-1" />
                 <button onClick={() => { setSplits(splits.filter((_, idx) => idx !== i)); setIsFormDirty(true); }} type="button"
                   aria-label={`Remover parcial ${i + 1}`}
