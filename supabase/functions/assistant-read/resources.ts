@@ -453,7 +453,8 @@ async function readSummary(ctx: ReadCtx) {
 // recente diz descanso ou não tem nada nesse dia, o treino do plano antigo
 // também não sai. Um plano "cobre" uma data se ela está no seu período ou se
 // ele tem um item nesse dia (um item fora do período não fica órfão).
-// Fora, sempre: prescription, notes, meal_*, execution_note (contrato).
+// Fora, sempre: a prescription em bruto, meal_*, execution_note (contrato);
+// as notes saem como coach_notes e a prescrição só como texto (blocks).
 
 // O resumo de um treino do plano: «Rodagem longa · 18 km», «Pernas/Glúteos · 50 min».
 const RUN_LABEL: Record<string, string> = {
@@ -475,9 +476,11 @@ function planItemDescription(it: Row, cats: string[]): string {
 
 /* O alvo de ritmo e/ou de zona, tirado do que a Carol escreveu (não há coluna
    própria): o ritmo e a zona das notes ou dos objetivos dos blocos —
-   «~6:00-6:15/km», «Z2», «zona 2» — («Z2», «zona 2»). Sem nenhum, os campos não vão. */
-const PACE_RE = /(\d{1,2}[:'’]\d{2})(?:\s*(?:-|–|a)\s*(\d{1,2}[:'’]\d{2}))?\s*(?:min\s*)?\/\s*km/i;
-const ZONE_RE = /\b(?:Z|zona\s*)([1-5])(?:\s*(?:-|–|a|\/)\s*(?:Z|zona\s*)?([1-5]))?\b/i;
+   «~6:00-6:15/km», «Z2», «zona 2», «Z1-Z2». Num intervalo de zonas o segundo
+   valor também tem de trazer Z/zona: «Z2 a 5:30/km», «Z2/4 séries» ou «zona 2
+   a 3 vezes» são só Z2. Sem nenhum, os campos não vão. */
+const PACE_RE = /(?<!\d)(\d{1,2}[:'’]\d{2})(?:\s*(?:-|–|a)\s*(\d{1,2}[:'’]\d{2}))?\s*(?:min\s*)?\/\s*km/i;
+const ZONE_RE = /\b(?:Z|zona\s*)([1-5])(?:\s*(?:-|–|a|\/)\s*(?:Z|zona\s*)([1-5]))?\b/i;
 export function trainingTarget(notes: string | null, blockTexts: string[]): { pace?: string; zone?: string } {
   const out: { pace?: string; zone?: string } = {};
   for (const t of [notes ?? "", ...blockTexts]) {
@@ -547,7 +550,10 @@ async function readPlan(ctx: ReadCtx) {
         id: it.id,
         date: it.planned_date,
         kind: it.kind,
-        title: (it.training_type as string | null) || (cats.length ? cats.join(", ") : null),
+        // O tipo de treino legível («continuo» → «Corrida contínua», pedido do
+        // CoP 2026-10-27); um tipo fora do RUN_LABEL sai tal e qual.
+        title: (it.training_type ? RUN_LABEL[String(it.training_type)] ?? String(it.training_type) : null) ||
+          (cats.length ? cats.join(", ") : null),
         duration_min: num(it.target_duration_min),
         distance_km: num(it.target_distance_km),
         status: it.status ?? null,

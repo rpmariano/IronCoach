@@ -584,6 +584,17 @@ Deno.test("plan: prescrição mal formada não rebenta — blocos sem nome caem,
   assert(!("pace" in g) && !("zone" in g), JSON.stringify(g));
 });
 
+Deno.test("plan: o title é o tipo de treino legível — «continuo» sai «Corrida contínua»", async () => {
+  const db = await scenario();
+  const run = db.tables.coach_plan_items.find((it) => it.id === "A-pi-run")!;
+  for (const [tt, label] of [["continuo", "Corrida contínua"], ["longo", "Rodagem longa"], ["intervalos", "Treino intervalado"]]) {
+    run.training_type = tt;
+    const { data } = await (await call(db, `resource=plan&${PLAN_PERIOD}`)).json();
+    const r = data.find((it: Row) => it.id === "A-pi-run");
+    assertEquals([r.title, r.description], [label, `${label} · 8 km`]);
+  }
+});
+
 Deno.test("plan: sem ritmo nem zona escritos, pace e zone não vão", async () => {
   const db = await scenario();
   const run = db.tables.coach_plan_items.find((it) => it.id === "A-pi-run")!;
@@ -602,6 +613,17 @@ Deno.test("trainingTarget: ritmo e zona das notas ou dos blocos", () => {
   assertEquals(trainingTarget(null, ["Tapete 15 min — 6:30/km"]), { pace: "6:30/km" });
   assertEquals(trainingTarget("Zoom à técnica; Z9 não é zona; 18 km", []), {});
   assertEquals(trainingTarget(null, []), {});
+});
+
+Deno.test("trainingTarget: o segundo valor de uma zona precisa de Z/zona; ritmo ancorado à esquerda", () => {
+  assertEquals(trainingTarget("Z2 a 5:30/km", []), { pace: "5:30/km", zone: "Z2" });
+  assertEquals(trainingTarget("Aquecer em Z1 - 2 km", []), { zone: "Z1" });
+  assertEquals(trainingTarget("Z2/4 séries", []), { zone: "Z2" });
+  assertEquals(trainingTarget("zona 2 a 3 vezes", []), { zone: "Z2" });
+  assertEquals(trainingTarget("zona 2 a zona 3", []), { zone: "Z2-Z3" });
+  assertEquals(trainingTarget("Z1/Z2", []), { zone: "Z1-Z2" });
+  assertEquals(trainingTarget("110:00/km", []), {});
+  assertEquals(trainingTarget("5:00-110:00/km", []), {});
 });
 
 Deno.test("prescriptionBlockTexts: por ordem, com os tetos, robusto a lixo", () => {
