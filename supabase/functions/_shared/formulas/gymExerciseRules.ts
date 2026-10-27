@@ -16,10 +16,11 @@ const fold = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCa
    «sem exercícios de membros superiores», «evitar carga na mão esquerda».
    Só a categoria limitacao_fisica, e só com a negação explícita perto da
    parte do corpo. Uma negação que nega um problema — «sem dores nos ombros»,
-   «não tem problemas nos braços» — não é restrição (revisão do lote). */
+   «não tem problemas nos braços», «sem nenhum tipo de problema nos ombros»
+   — não é restrição (revisões do lote). */
 const UPPER_RESTRICTION_RE =
   /\b(sem|nao|nunca|evitar|nada de|restricao|proibid[oa]s?)\b([^.;\n]{0,80}?)\b(bracos?|membros? superiores?|ombros?|cotovelos?|pulsos?|maos?)\b/g;
-const NEGATED_PROBLEM_RE = /^\s*(\w+\s+){0,2}(dor|dores|problemas?|queixas?|lesao|lesoes|limitac\w*|desconforto)\b/;
+const NEGATED_PROBLEM_RE = /^\s*(\w+\s+){0,4}(dor|dores|problemas?|queixas?|lesao|lesoes|limitac\w*|desconforto)\b/;
 
 // deno-lint-ignore no-explicit-any
 export function hasUpperBodyRestriction(notes: any[] | null | undefined): boolean {
@@ -36,29 +37,40 @@ export function hasUpperBodyRestriction(notes: any[] | null | undefined): boolea
    peso seguro nas mãos ou por um cardio feito com os braços. Os nomes chegam
    em português ou inglês, com ou sem acentos. «Peso morto» só passa «sem
    carga»; «curl» só o das pernas; «elevações» só as de gémeos/calcanhar/anca.
-   Os nomes das partes do corpo sozinhos (BODY_PARTS) só contam no nome do
-   exercício: numa nota, «ombros descontraídos» não é um exercício. */
+   As partes do corpo sozinhas e o equipamento solto (NAME_ONLY) só contam no
+   nome do exercício: numa nota, «ombros descontraídos» não é um exercício. */
 const UPPER_MOVES: [RegExp, string][] = [
   [/\b(supino|bench press|chest press|press de peito|crucifixo|pec deck|peck deck|fly|flexoes|push[- ]?ups?|fundos|dips?|pullover|crossover|cruzamento)\b/, "peito/tríceps"],
-  [/\b(remada|remo|rowing|row|puxada|pulldown|pull[- ]?ups?|chin[- ]?ups?|face pull|encolhimentos?|shrugs?)\b/, "costas/braços"],
-  [/\b(pushdown|skull\w*|tricep|kickback de triceps)\b/, "braços"],
-  [/\b(desenvolvimento|press militar|military press|overhead press|shoulder press|arnold|lateral raises?|front raises?|elevac(ao|oes) (lateral|laterais|frontal|frontais))\b/, "ombros"],
+  [/\b(remada|remo|rowing|row|puxada|pulldown|pull[- ]?ups?|chin[- ]?ups?|face pull|encolhimentos?|shrugs?|muscle[- ]?ups?)\b/, "costas/braços"],
+  [/\b(pushdown|skull\w*|tricep|kickback de triceps|hand ?grip|arm ergometer|ergometro de bracos|manivela de bracos)\b/, "braços"],
+  [/\b(desenvolvimento|press militar|military press|overhead press|shoulder press|push press|arnold|lateral raises?|front raises?|elevac(ao|oes) (lateral|laterais|frontal|frontais))\b/, "ombros"],
   [/\b(prancha|plank|bird ?dog|quatro apoios|quadrupedia|mountain climbers?|escalador|burpees?|bear crawl|marcha do urso|pallof|trx)\b/, "apoio ou força nas mãos"],
   [/\b(battle ropes?|cordas navais|kettlebell swing|landmine|turkish|get[- ]?up|wall ?balls?|thrusters?|clean|snatch|arranque|arremesso)\b/, "braços"],
   [/\b(polia|cabo|cable)\b/, "polia/cabo"],
   [/\b(eliptica|elliptical|air ?bike|assault|ski ?erg|natacao|nadar|swim\w*|piscina|treno|sled)\b/, "cardio ou empurrar com os braços"],
-  [/\b(halter|halteres|haltere|dumbbells?|db|kettlebells?|kb|goblet|barra|barbell|smith|trap bar|hex bar|anilha|disco|farmer|sandbag|saco|bola medicinal|medicine ball|com carga)\b/, "peso nas mãos"],
+  [/\b(halter|halteres|haltere|dumbbells?|kettlebells?|goblet|farmer|bola medicinal|medicine ball|agachamento frontal|front squat)\b/, "peso nas mãos"],
 ];
-const BODY_PARTS: [RegExp, string] = [/\b(ombros?|biceps|triceps|antebraco|peitoral|peito|bracos?)\b/, "membros superiores"];
+/* Equipamento que num NOME quer dizer peso nas mãos («Agachamento com barra»,
+   «Lunges com disco»), mas que numa nota pode não ser («hip thrust na máquina
+   com disco», «barra de apoio», «saco de areia nos pés»): só conta no nome,
+   como as partes do corpo sozinhas (revisão final do lote). */
+const NAME_ONLY: [RegExp, string][] = [
+  [/\b(ombros?|biceps|triceps|antebraco|peitoral|peito|bracos?)\b/, "membros superiores"],
+  [/\b(db|kb|barra|barbell|smith|trap bar|hex bar|anilha|disco|sandbag|saco|com carga)\b/, "peso nas mãos"],
+];
 
-function loadIn(n: string, withBodyParts: boolean): string | null {
+function loadIn(n: string, isName: boolean): string | null {
   for (const [re, why] of UPPER_MOVES) if (re.test(n)) return why;
-  if (withBodyParts && BODY_PARTS[0].test(n)) return BODY_PARTS[1];
+  if (isName) for (const [re, why] of NAME_ONLY) if (re.test(n)) return why;
   if (/\bcurl\b/.test(n) && !/(perna|leg|femoral|isquio|hamstring|nordic|nordico)/.test(n)) return "braços";
   if (/\bpeso morto\b|\bdeadlift\b/.test(n) && !/(sem carga|sem peso|peso corporal|bodyweight)/.test(n)) return "peso nas mãos";
-  if (/\belevac(ao|oes)\b/.test(n) && !/\belevac(ao|oes) d[aeo]s? (gemeos?|calcanhar(es)?|anca|pelvis|quadril)\b/.test(n)) {
-    // «Elevação de gémeos» passa; «elevações» sozinhas (na barra, de joelhos suspenso) não.
-    if (/\belevacoes\b/.test(n) || /\belevac(ao|oes) (na barra|de joelhos|de pernas)\b/.test(n)) return "braços";
+  // Pendurado pelos braços: «Hanging leg raise», «elevação de pernas suspenso».
+  if (/(suspens|pendurad|hanging|paralelas|captain)/.test(n)) return "braços";
+  if (/\belevac(ao|oes)\b/.test(n)) {
+    // «Elevação de gémeos» e «de pernas deitado» passam; «elevações»
+    // sozinhas (as da barra) não.
+    const of = /\belevac(ao|oes) d[aeo]s? (gemeos?|calcanhar(es)?|anca|pelvis|quadril|pernas?|joelhos?)\b/.test(n);
+    if (!of && /\belevacoes\b/.test(n)) return "braços";
   }
   return null;
 }
@@ -97,6 +109,51 @@ export function strengthNames(prescription: any): string[] {
       // deno-lint-ignore no-explicit-any
       .map((b: any) => fold(b.name).replace(/\s+/g, " ").trim()),
   )] as string[];
+}
+
+/* O atleta quer ganhar massa ou força (decisão do Rui, 2026-10-27): a
+   memória (objetivo_pessoal / preferencia_treino com «massa», «hipertrofia»,
+   «ganhar/aumentar força», «ficar mais forte», «força máxima», «músculo»,
+   «volume», «ganhar peso», sem negação) ou o perfil (uma
+   massa magra alvo acima da última medida — a muscle_mass_kg não é fiável,
+   Bloco 5 #1). Devolve de onde veio, para o contexto; null se não há sinal.
+   Um pedido no chat lê-o a Carol pela doutrina. */
+// «Força» sozinha não: um corredor tem sempre «treino de força» na memória.
+const GAIN_RE = /\b(massa( muscular)?|hipertrofia|(ganhar|aumentar|ganho de)( a)? forca|ficar mais fortes?|forca maxima|musculo|musculad[oa]|ganhar volume|ganhar peso|ganho muscular|bulk\w*)\b/;
+const GAIN_NEGATED_RE = /\b(nao|sem|nunca|evitar|nada de)\b(\s+\w+){0,3}\s*$/;
+export function wantsMuscleGain(
+  // deno-lint-ignore no-explicit-any
+  notes: any[] | null | undefined,
+  profile: { goal_lean_body_mass_kg?: unknown } | null | undefined,
+  latestLeanKg: number | null | undefined,
+): string | null {
+  for (const n of notes ?? []) {
+    if ((n?.category !== "objetivo_pessoal" && n?.category !== "preferencia_treino") || typeof n?.note !== "string") continue;
+    const t = fold(n.note);
+    const m = GAIN_RE.exec(t);
+    if (m && !GAIN_NEGATED_RE.test(t.slice(0, m.index))) return `memória: «${n.note.trim().slice(0, 120)}»`;
+  }
+  const goal = Number(profile?.goal_lean_body_mass_kg);
+  if (Number.isFinite(goal) && goal > 0 && typeof latestLeanKg === "number" && latestLeanKg > 0 && goal >= latestLeanKg + 0.5) {
+    return `perfil: massa magra alvo ${goal} kg (última medida ${latestLeanKg} kg)`;
+  }
+  return null;
+}
+
+/* Força pesada nas pernas: um exercício de pernas a ≤ 6 reps («pernas a 3-6
+   reps pesadas», a doutrina). É o que não pode cair nas 48 h antes de uma
+   corrida dura nem na semana de uma prova. */
+const LEG_RE = /\b(agachamento|squat|leg press|prensa|lunges?|afundos?|bulgaro|step[- ]?ups?|peso morto|deadlift|hip thrust|ponte|extensora|flexora|leg (curl|extension)|gemeos|calf|nordico|nordic|abdutora|adutora|saltos?|jump|pliometri\w*|hack)\b/;
+export const HEAVY_LEG_MAX_REPS = 6;
+// deno-lint-ignore no-explicit-any
+export function heavyLegExercises(prescription: any): string[] {
+  const blocks = Array.isArray(prescription?.blocks) ? prescription.blocks : [];
+  return blocks
+    // deno-lint-ignore no-explicit-any
+    .filter((b: any) => b?.type === "forca" && typeof b.name === "string" && LEG_RE.test(fold(b.name)) &&
+      typeof b.reps === "number" && b.reps > 0 && b.reps <= HEAVY_LEG_MAX_REPS)
+    // deno-lint-ignore no-explicit-any
+    .map((b: any) => b.name);
 }
 
 /** Os exercícios em comum se duas sessões seguidas são a mesma sessão —

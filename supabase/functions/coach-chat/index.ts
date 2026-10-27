@@ -19,7 +19,7 @@ import { wearStatus as sharedWearStatus, WEAR_LEVEL_LABELS, WEAR_ATTENTION_PCT, 
 import { computeBMR as sharedComputeBMR, computeTDEE as sharedComputeTDEE, TDEE_ACTIVITY_FACTOR } from "../_shared/formulas/tdee.ts";
 import { estimate1RM } from "../_shared/formulas/epley.ts";
 import { buildPrescription, describePrescription, stripPrescribedLoad } from "../_shared/formulas/planPrescription.ts";
-import { hasUpperBodyRestriction, repeatedExercises, strengthNames, upperBodyLoad, upperBodyLoadInText } from "../_shared/formulas/gymExerciseRules.ts";
+import { hasUpperBodyRestriction, heavyLegExercises, HEAVY_LEG_MAX_REPS, repeatedExercises, strengthNames, upperBodyLoad, upperBodyLoadInText, wantsMuscleGain } from "../_shared/formulas/gymExerciseRules.ts";
 import { recentExecutionLines } from "../_shared/formulas/planExecution.ts";
 import { resolveMaxHR, resolveHrZones, zoneOf, type HeartRateZones, type ObservedHrReading } from "../_shared/formulas/heartRateZones.ts";
 import { ageFromBirthDate } from "../_shared/formulas/age.ts";
@@ -3331,18 +3331,18 @@ export async function fetchScheduledRaces(sb: any, userId: string, fromISO: stri
   }
 }
 
-// `seriesIntents` (Fase 2 do Troféu): o papel de cada jornada agendada, por
-// id da prova (SeriesBlock.intentByRaceId) — só com inscrição ativa. Uma
-// jornada para atacar pede 3 dias fáceis antes em vez de 2 (#6, getTaperDays
-// por intenção). null = a guarda de sempre, a mesma consulta, byte a byte.
-// deno-lint-ignore no-explicit-any
 /* Os treinos de ginásio planeados nos 7 dias antes de `beforeISO`, para a
    variedade face à semana anterior: itens pendentes ou concluídos de planos
-   aceites e, numa continuação (includeProposed), também de um plano ainda
-   proposto (a parte anterior). Best-effort: numa falha, [] — a variedade
-   dentro da proposta continua a valer. */
-// deno-lint-ignore no-explicit-any
-export async function loadPriorGym(sb: any, userId: string, beforeISO: string, includeProposed: boolean): Promise<any[]> {
+   aceites e, numa continuação (prevPart), também os da parte anterior DESTA
+   cadeia ainda proposta — o plano proposto que acaba na véspera de
+   `beforeISO`, com a mesma prova; não qualquer proposta pendente (revisão
+   final do lote). Best-effort: numa falha, [] — a variedade dentro da
+   proposta continua a valer. */
+export async function loadPriorGym(
+  // deno-lint-ignore no-explicit-any
+  sb: any, userId: string, beforeISO: string, prevPart: { raceId: string | null } | null,
+  // deno-lint-ignore no-explicit-any
+): Promise<any[]> {
   try {
     const { data: items, error } = await sb
       .from("coach_plan_items")
@@ -3355,11 +3355,18 @@ export async function loadPriorGym(sb: any, userId: string, beforeISO: string, i
     if (error || !Array.isArray(items) || !items.length) return [];
     // deno-lint-ignore no-explicit-any
     const ids = [...new Set(items.map((i: any) => i.plan_id))];
-    const { data: plans, error: plansErr } = await sb.from("coach_plans").select("id, status").eq("user_id", userId).in("id", ids);
+    const { data: plans, error: plansErr } = await sb.from("coach_plans").select("id, status, period_end, race_id").eq("user_id", userId).in("id", ids);
     if (plansErr || !Array.isArray(plans)) return [];
+    const eve = addDaysISO(beforeISO, -1);
     const ok = new Set(
-      // deno-lint-ignore no-explicit-any
-      plans.filter((pl: any) => pl.status === "aceite" || (includeProposed && pl.status === "proposto")).map((pl: any) => pl.id),
+      plans
+        // deno-lint-ignore no-explicit-any
+        .filter((pl: any) =>
+          pl.status === "aceite" ||
+          (prevPart && pl.status === "proposto" && pl.period_end === eve && (pl.race_id ?? null) === prevPart.raceId)
+        )
+        // deno-lint-ignore no-explicit-any
+        .map((pl: any) => pl.id),
     );
     // deno-lint-ignore no-explicit-any
     return items.filter((i: any) => ok.has(i.plan_id));
@@ -3368,6 +3375,13 @@ export async function loadPriorGym(sb: any, userId: string, beforeISO: string, i
     return [];
   }
 }
+
+// `seriesIntents` (Fase 2 do Troféu): o papel de cada jornada agendada, por
+// id da prova (SeriesBlock.intentByRaceId) — só com inscrição ativa. Uma
+// jornada para atacar pede 3 dias fáceis antes em vez de 2 (#6, getTaperDays
+// por intenção). null = a guarda de sempre, a mesma consulta, byte a byte.
+// A semana da prova, para a força pesada nas pernas (decisão do Rui, 2026-10-27).
+const RACE_WEEK_DAYS = 7;
 
 export async function runProposeTrainingPlan(
   // deno-lint-ignore no-explicit-any
@@ -3642,22 +3656,49 @@ export async function runProposeTrainingPlan(
   }
   rows.sort((a, b) => a.planned_date.localeCompare(b.planned_date));
 
+  // Pernas pesadas conciliadas com a corrida (decisão do Rui, 2026-10-27),
+  // para todos: nada de força pesada nas pernas (≤ HEAVY_LEG_MAX_REPS reps)
+  // nas 48 h antes de uma corrida dura nem na semana de uma prova. As provas
+  // até uma semana depois do plano lêem-se à parte, só quando há pernas
+  // pesadas — a consulta da guarda das provas fica a de sempre.
+  // deno-lint-ignore no-explicit-any
+  const anyHeavy = rows.some((r: any) => r.kind === "ginasio" && heavyLegExercises(r.prescription).length);
+  const raceWeekRaces = anyHeavy ? await fetchScheduledRaces(sb, userId, period_start, addDaysISO(period_end, RACE_WEEK_DAYS)) : [];
+  for (const r of rows) {
+    if (r.kind !== "ginasio") continue;
+    const heavy = heavyLegExercises(r.prescription);
+    if (!heavy.length) continue;
+    const hard = rows.find((o) =>
+      o.kind === "corrida" && HARD_RUN_TYPES.has(o.training_type as string) && o.planned_date > r.planned_date &&
+      daysBetweenISO(r.planned_date, o.planned_date) <= 2
+    );
+    if (hard) {
+      return `Erro: o ginásio de ${r.planned_date} tem pernas pesadas (${heavy.join(", ")}: ${HEAVY_LEG_MAX_REPS} reps ou menos) a menos de 48 h ` +
+        `do treino ${hard.training_type} de ${hard.planned_date}. Põe as pernas pesadas longe das corridas duras, ou nesse dia pernas ` +
+        `a 8-12 controladas, tronco superior ou core.`;
+    }
+    const race = raceWeekRaces.find((rc) => rc.date > r.planned_date && daysBetweenISO(r.planned_date, rc.date) <= RACE_WEEK_DAYS);
+    if (race) {
+      return `Erro: o ginásio de ${r.planned_date} tem pernas pesadas (${heavy.join(", ")}) na semana da prova "${race.name}" (${race.date}). ` +
+        `Nessa semana nada de força pesada nas pernas: mobilidade, core, tronco superior leve ou pernas leves a 10-12 controladas.`;
+    }
+  }
+
   // Variedade (bug do Rui, 2026-10-27): duas sessões de ginásio seguidas não
   // são a mesma sessão. A primeira desta proposta compara-se com a última
   // sessão planeada nos 7 dias antes do período: dos planos aceites (feita ou
-  // por fazer) e, numa continuação, também da parte anterior ainda proposta
+  // por fazer) e, numa continuação, também da parte anterior desta cadeia ainda proposta
   // (loadPriorGym, revisão do lote); mais os itens do plano em curso que o
   // handler já leu.
   {
     // deno-lint-ignore no-explicit-any
     const gym = rows.filter((r: any) => r.kind === "ginasio" && r.prescription);
-    const loaded = gym.length ? await loadPriorGym(sb, userId, period_start, !!partWindow) : [];
+    const loaded = gym.length ? await loadPriorGym(sb, userId, period_start, partWindow ? { raceId } : null) : [];
     // deno-lint-ignore no-explicit-any
     const prior = [...(gymRules?.priorGym ?? []), ...loaded].filter((it: any) =>
       it?.kind === "ginasio" && typeof it.planned_date === "string" && it.planned_date < period_start && strengthNames(it.prescription).length
     // deno-lint-ignore no-explicit-any
     ).sort((a: any, b: any) => a.planned_date.localeCompare(b.planned_date)).pop();
-    // deno-lint-ignore no-explicit-any
     const chain: { date: string; names: string[] }[] = [
       ...(prior ? [{ date: prior.planned_date, names: strengthNames(prior.prescription) }] : []),
       // deno-lint-ignore no-explicit-any
@@ -6528,16 +6569,31 @@ export function buildSystemInstruction(
     `  • NUNCA prescrevas kg nem %1RM. O atleta vê no registo a carga da última vez que fez o exercício e decide; ` +
     `o teu objetivo diz o que ele deve conseguir: técnica, tempo de descida, RPE, completar as reps.\n` +
     `  • Corredor: pernas a 3-6 reps pesadas ou 6-12 controladas, sempre a RPE 6-8 — nunca até à ` +
-    `falha; séries de 15+ reps nas pernas não (Bloco 3 #10/#11).\n` +
+    `falha; séries de 15+ reps nas pernas não (Bloco 3 #10/#11). Tronco superior em hipertrofia: 6-12 reps a RPE 7-9.\n` +
     `  • Cardio no ginásio (bicicleta, remo, passadeira, piscina): duração/distância/voltas alvo e o objetivo (zona, cadência).\n` +
     `  • ESCOLHA DOS EXERCÍCIOS: o histórico de ginásio do atleta é preferência e referência de carga, NÃO o limite. ` +
-    `Escolhe pelo objetivo — num corredor: força de pernas, glúteos, core, estabilidade e prevenção de lesões — de um ` +
-    `catálogo largo, mesmo exercícios que ele nunca fez: quadríceps (leg press, agachamento, step-up, cadeira extensora), ` +
-    `posterior (peso morto romeno, cadeira flexora, ponte/hip thrust, nórdico assistido), glúteo médio (abdutora, passo ` +
-    `lateral com elástico, clamshell), unilateral (búlgaro, lunges, step-up, peso morto a uma perna), pliometria leve quando ` +
-    `ele tem base e não há prova perto (saltos à caixa baixa, skipping, saltos a pés juntos), gémeos/tibial (elevação de ` +
-    `gémeos, sóleo sentado, tibial anterior), core anti-extensão/anti-rotação (dead bug, hollow hold, pallof press, prancha). ` +
-    `Quando um exercício que ele já registou serve, usa o nome dele — é por esse nome que o registo encontra a última carga.\n` +
+    `Escolhe pelo objetivo de um catálogo completo, mesmo exercícios que ele nunca fez (máquina, peso livre e peso do corpo):\n` +
+    `    – Pernas: quadríceps (leg press, agachamento, step-up, cadeira extensora), posterior (peso morto romeno, cadeira ` +
+    `flexora, ponte/hip thrust, nórdico assistido), glúteo médio (abdutora, passo lateral com elástico, clamshell), unilateral ` +
+    `(búlgaro, lunges, step-up, peso morto a uma perna), pliometria leve quando ele tem base e não há prova perto (saltos à ` +
+    `caixa baixa, skipping, saltos a pés juntos), gémeos/tibial (elevação de gémeos, sóleo sentado, tibial anterior).\n` +
+    `    – Core anti-extensão/anti-rotação: dead bug, hollow hold, pallof press, prancha, prancha lateral.\n` +
+    `    – Tronco superior: peito (supino com barra ou halteres, chest press, flexões), costas (remada sentada ou com halter, ` +
+    `puxada à frente, elevações assistidas, pull-over), ombros (press de ombros, elevações laterais, face pull), braços (curl ` +
+    `de bíceps, tríceps na polia ou fundos), antebraço/pega (farmer walk, suspensão na barra).\n` +
+    `    – Mobilidade e prevenção: rotadores do ombro (rotação externa com elástico, Y-T-W), anca (90/90, flexores da anca, ` +
+    `abertura com elástico), tornozelo.\n` +
+    `    Quando um exercício que ele já registou serve, usa o nome dele — é por esse nome que o registo encontra a última carga.\n` +
+    `  • CONCILIAÇÃO COM A CORRIDA (estrada ou trail):\n` +
+    `    – Por omissão (corredor): prioridade a pernas, glúteos e core. O tronco superior entra com 1-2 exercícios por sessão ` +
+    `ou numa sessão própria — postura, balanço dos braços, equilíbrio muscular. No trail, mais unilateral, excêntricos de ` +
+    `quadríceps (descidas) e tornozelo.\n` +
+    `    – QUER GANHAR MASSA OU FORÇA (o contexto diz OBJETIVO DE GINÁSIO, ou ele pede no chat «massa», «hipertrofia», ` +
+    `«ganhar força», «ficar mais forte», «músculo» — «treino de força» sozinho não é isto): sessões de corpo inteiro ou divididas (superior/inferior); tronco superior em hipertrofia, 6-12 reps ` +
+    `a RPE 7-9. As pernas conciliam-se com a corrida.\n` +
+    `    – Sempre: nada de pernas pesadas (3-6 reps) nas 48 h antes de séries, tempo, fartlek, subidas ou longo, nem na semana ` +
+    `de uma prova (aí: mobilidade, core, tronco superior leve). As limitações físicas da memória e a proximidade da prova ` +
+    `mandam sobre o objetivo de massa. O servidor recusa o plano que não cumpra.\n` +
     `  • VARIEDADE: duas sessões de ginásio seguidas — dentro do plano e face à última da semana anterior (ou da parte anterior do plano) — nunca são a mesma ` +
     `sessão: no máximo metade dos exercícios de força em comum. Roda os estímulos dentro da semana e entre semanas; o ` +
     `aquecimento de cardio pode repetir. O servidor recusa o plano que repita.\n` +
@@ -7768,7 +7824,19 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
       .eq("user_id", userId)
       .order("category", { ascending: true })
       .order("updated_at", { ascending: false });
-    const coachNotesContext = buildCoachNotesContext(coachNotes);
+    // O objetivo de massa/força (gymExerciseRules.ts wantsMuscleGain): da
+    // memória ou da massa magra alvo do perfil face à última medida.
+    const latestLeanKg = (bodyAssessments || [])
+      // deno-lint-ignore no-explicit-any
+      .map((b: any) => Number(b?.lean_body_mass_kg)).find((v: number) => Number.isFinite(v) && v > 0) ?? null;
+    const muscleGain = wantsMuscleGain(coachNotes, profile, latestLeanKg);
+    const coachNotesContext = [
+      buildCoachNotesContext(coachNotes),
+      muscleGain
+        ? `OBJETIVO DE GINÁSIO: o atleta quer ganhar massa/força (${muscleGain}). Nos planos, segue a regra «QUER GANHAR MASSA OU FORÇA» ` +
+          `da doutrina do ginásio, conciliada com a corrida.`
+        : null,
+    ].filter(Boolean).join("\n\n") || null;
     // O que o servidor faz cumprir nos treinos de ginásio do plano (gymExerciseRules.ts).
     const planGymRules = { upperBodyRestricted: hasUpperBodyRestriction(coachNotes), priorGym: activePlanItems };
 
