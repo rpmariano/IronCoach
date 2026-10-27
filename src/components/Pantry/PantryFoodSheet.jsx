@@ -228,7 +228,7 @@ export default function PantryFoodSheet({ food = null, parent = null, onClose, o
                       inputMode="decimal"
                       value={form[key]}
                       onChange={(e) => setForm((f) => ({ ...f, [key]: e.target.value }))}
-                      className="text-center font-extrabold"
+                      className="text-center font-extrabold px-1.5!"
                       style={{ border: '1px solid var(--border-well)', background: 'var(--surface-well)', color: 'var(--text-1)' }}
                     />
                     <span className="block text-[10.5px] mt-1" style={{ color: 'var(--text-4)' }}>{label}</span>

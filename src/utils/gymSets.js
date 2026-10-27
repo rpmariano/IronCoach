@@ -191,9 +191,13 @@ export function nudgeSet(ex, setKey, field, delta, last) {
     sets: ex.sets.map((s, i) => {
       if (s.key !== setKey) return s;
       const sug = setSuggestion(ex, i, last);
-      const base = num(s[field]) ?? num(sug?.[field]) ?? 0;
-      const next = Math.max(0, Math.round((base + delta) * 100) / 100);
-      return { ...s, [field]: String(next) };
+      const typed = num(s[field]);
+      const base = typed ?? num(sug?.[field]) ?? 0;
+      // «−» sem valor nenhum (nem sugestão) não faz nada: não grava 0 nem negativo.
+      if (delta < 0 && typed == null && base <= 0) return s;
+      const next = Math.round((base + delta) * 100) / 100;
+      // Descer até 0 (ou menos) limpa o campo — um 0 escrito por engano não conta como valor.
+      return { ...s, [field]: next > 0 ? String(next) : '' };
     }),
   };
 }

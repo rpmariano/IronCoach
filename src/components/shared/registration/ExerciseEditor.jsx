@@ -93,10 +93,11 @@ function Stepper({ text, inputLabel, value, placeholder, step, inputMode, onType
         <FieldInput
           type="number"
           inputMode={inputMode}
+          min="0"
           step={inputMode === 'decimal' ? '0.5' : undefined}
           aria-label={inputLabel}
           value={value}
-          onChange={(e) => onType(e.target.value)}
+          onChange={(e) => onType(e.target.value.replace(/^-+/, ''))}
           placeholder={placeholder}
           className="min-w-0 flex-1 px-1! text-center"
         />

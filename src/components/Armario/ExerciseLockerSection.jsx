@@ -4,7 +4,6 @@ import { useAppStore } from '../../store';
 import Chip from '../shared/Chip';
 import ExerciseSheet from './ExerciseSheet';
 import { exerciseSubline, filterExercises, groupsOf } from '../../utils/exerciseLocker';
-import { FieldInput } from '../shared/registration/Field';
 
 /* O Armário de Exercícios (decisões 7, 10 e 14 de specs/plano-registo-plano-coach.md):
    tudo o que o atleta já fez, com a última carga, o recorde e a afinação da
@@ -38,8 +37,9 @@ export default function ExerciseLockerSection() {
         <label className="flex-1 min-h-[44px] rounded-xl flex items-center gap-2 px-3" style={{ border: '1px solid var(--border-glass)', background: 'var(--surface-soft)' }}>
           <Search size={16} style={{ color: 'var(--text-muted)' }} />
           <span className="sr-only">Procurar exercício</span>
-          <FieldInput value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Procurar exercício"
-            className="flex-1 min-w-0" style={{ color: 'var(--text-1)' }} />
+          {/* O label já é a caixa (borda, fundo, 44 px): o input fica nu, sem outra caixa lá dentro. */}
+          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Procurar exercício"
+            className="flex-1 min-w-0 bg-transparent border-0 outline-none text-[16px]" style={{ color: 'var(--text-1)' }} />
         </label>
         <button type="button" aria-label="Adicionar exercício" data-testid="locker-add-exercise" onClick={() => setSheet({ exercise: null })}
           className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0" style={{ background: 'var(--mod-ginasio-to)', color: 'var(--bg-app)' }}>

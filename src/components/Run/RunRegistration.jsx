@@ -2653,15 +2653,15 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
               <div className="grid grid-cols-3 gap-2.5 mt-2.5">
                 <div>
                   <label htmlFor="rr-pos-escalao" className="text-[11px] text-[var(--text-3)] block mb-1.5">Pos. escalão</label>
-                  <FieldInput id="rr-pos-escalao" type="number" min="1" placeholder="ex.: 41" value={ageGroupPosition} onChange={e => { setAgeGroupPosition(e.target.value); setIsFormDirty(true); }}  />
+                  <FieldInput className="px-2!" id="rr-pos-escalao" type="number" min="1" placeholder="ex.: 41" value={ageGroupPosition} onChange={e => { setAgeGroupPosition(e.target.value); setIsFormDirty(true); }}  />
                 </div>
                 <div>
                   <label htmlFor="rr-pos-genero" className="text-[11px] text-[var(--text-3)] block mb-1.5">Pos. género</label>
-                  <FieldInput id="rr-pos-genero" type="number" min="1" placeholder="ex.: 280" value={genderPosition} onChange={e => { setGenderPosition(e.target.value); setIsFormDirty(true); }}  />
+                  <FieldInput className="px-2!" id="rr-pos-genero" type="number" min="1" placeholder="ex.: 280" value={genderPosition} onChange={e => { setGenderPosition(e.target.value); setIsFormDirty(true); }}  />
                 </div>
                 <div>
                   <label htmlFor="rr-participantes" className="text-[11px] text-[var(--text-3)] block mb-1.5">Participantes</label>
-                  <FieldInput id="rr-participantes" type="number" min="1" placeholder="ex.: 1850" value={participants} onChange={e => { setParticipants(e.target.value); setIsFormDirty(true); }}  />
+                  <FieldInput className="px-2!" id="rr-participantes" type="number" min="1" placeholder="ex.: 1850" value={participants} onChange={e => { setParticipants(e.target.value); setIsFormDirty(true); }}  />
                 </div>
               </div>
             </div>

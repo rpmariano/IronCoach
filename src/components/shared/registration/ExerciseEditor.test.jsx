@@ -209,3 +209,24 @@ describe('ExerciseEditor', () => {
     expect(screen.queryByLabelText(/Afinação da máquina/)).toBeNull();
   });
 });
+
+describe('ExerciseEditor — stepper sem valores absurdos', () => {
+  const abrirEx = (nome) => fireEvent.click(screen.getByRole('button', { name: `Abrir ${nome}` }));
+  it('«−» sem valor nem sugestão não faz nada (não grava 0)', () => {
+    render(<Harness initial={[newExercise({ name: 'Prensa', type: 'forca' })]} />);
+    abrirEx('Prensa');
+    fireEvent.click(screen.getByRole('button', { name: /^Menos 1 repetição da série 1/ }));
+    fireEvent.click(screen.getByRole('button', { name: /^Menos 2,5 kg da série 1/ }));
+    expect(state()[0].sets[0]).toMatchObject({ reps: '', weight: '' });
+  });
+  it('descer até 0 limpa o campo; escrever «-» não deixa negativos; os campos têm min=0', () => {
+    render(<Harness initial={[newExercise({ name: 'Prensa', type: 'forca', sets: [{ ...newSet(), reps: '1', weight: '2.5' }] })]} />);
+    abrirEx('Prensa');
+    fireEvent.click(screen.getByRole('button', { name: /^Menos 1 repetição da série 1/ }));
+    fireEvent.click(screen.getByRole('button', { name: /^Menos 2,5 kg da série 1/ }));
+    expect(state()[0].sets[0]).toMatchObject({ reps: '', weight: '' });
+    fireEvent.change(screen.getByLabelText(/^Repetições da série 1 —/), { target: { value: '-5' } });
+    expect(state()[0].sets[0].reps).toBe('5');
+    expect(screen.getByLabelText(/^Peso da série 1 \(kg\) —/)).toHaveAttribute('min', '0');
+  });
+});
