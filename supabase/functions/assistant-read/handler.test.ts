@@ -604,6 +604,17 @@ Deno.test("trainingTarget: ritmo e zona das notas ou dos blocos", () => {
   assertEquals(trainingTarget(null, []), {});
 });
 
+Deno.test("trainingTarget: o segundo valor de uma zona precisa de Z/zona; ritmo ancorado à esquerda", () => {
+  assertEquals(trainingTarget("Z2 a 5:30/km", []), { pace: "5:30/km", zone: "Z2" });
+  assertEquals(trainingTarget("Aquecer em Z1 - 2 km", []), { zone: "Z1" });
+  assertEquals(trainingTarget("Z2/4 séries", []), { zone: "Z2" });
+  assertEquals(trainingTarget("zona 2 a 3 vezes", []), { zone: "Z2" });
+  assertEquals(trainingTarget("zona 2 a zona 3", []), { zone: "Z2-Z3" });
+  assertEquals(trainingTarget("Z1/Z2", []), { zone: "Z1-Z2" });
+  assertEquals(trainingTarget("110:00/km", []), {});
+  assertEquals(trainingTarget("5:00-110:00/km", []), {});
+});
+
 Deno.test("prescriptionBlockTexts: por ordem, com os tetos, robusto a lixo", () => {
   assertEquals(prescriptionBlockTexts(null), []);
   assertEquals(prescriptionBlockTexts({ blocks: {} }), []);
