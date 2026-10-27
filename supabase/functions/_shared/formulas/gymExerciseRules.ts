@@ -17,17 +17,21 @@ const fold = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCa
    Só a categoria limitacao_fisica, e só com a negação explícita perto da
    parte do corpo. Uma negação que nega um problema — «sem dores nos ombros»,
    «não tem problemas nos braços», «sem nenhum tipo de problema nos ombros»
-   — não é restrição (revisões do lote). */
+   — não é restrição (revisões do lote). Mas com um verbo de causa pelo meio
+   é: «evitar exercícios que causem dor nos ombros», «não fazer nada que
+   provoque dor no ombro» (revisão de a93b2773..61665b38). */
 const UPPER_RESTRICTION_RE =
   /\b(sem|nao|nunca|evitar|nada de|restricao|proibid[oa]s?)\b([^.;\n]{0,80}?)\b(bracos?|membros? superiores?|ombros?|cotovelos?|pulsos?|maos?)\b/g;
 const NEGATED_PROBLEM_RE = /^\s*(\w+\s+){0,4}(dor|dores|problemas?|queixas?|lesao|lesoes|limitac\w*|desconforto)\b/;
+const CAUSE_RE = /\b(que|caus\w*|provoc\w*|agrav\w*)\b/;
 
 // deno-lint-ignore no-explicit-any
 export function hasUpperBodyRestriction(notes: any[] | null | undefined): boolean {
   return (notes ?? []).some((n) => {
     if (n?.category !== "limitacao_fisica" || typeof n?.note !== "string") return false;
     for (const m of fold(n.note).matchAll(UPPER_RESTRICTION_RE)) {
-      if (!NEGATED_PROBLEM_RE.test(m[2])) return true;
+      const negatesProblem = NEGATED_PROBLEM_RE.test(m[2]) && !CAUSE_RE.test(m[2]);
+      if (!negatesProblem) return true;
     }
     return false;
   });
@@ -68,7 +72,9 @@ function loadIn(n: string, isName: boolean): string | null {
   if (/(suspens|pendurad|hanging|paralelas|captain)/.test(n)) return "braços";
   if (/\belevac(ao|oes)\b/.test(n)) {
     // «Elevação de gémeos» e «de pernas deitado» passam; «elevações»
-    // sozinhas (as da barra) não.
+    // sozinhas (as da barra) não, nem as «de pernas na barra» — também numa
+    // nota, onde «barra» sozinha não conta (revisão de a93b2773..61665b38).
+    if (/\b(na barra|barra fixa)\b/.test(n)) return "braços";
     const of = /\belevac(ao|oes) d[aeo]s? (gemeos?|calcanhar(es)?|anca|pelvis|quadril|pernas?|joelhos?)\b/.test(n);
     if (!of && /\belevacoes\b/.test(n)) return "braços";
   }
@@ -119,8 +125,13 @@ export function strengthNames(prescription: any): string[] {
    Bloco 5 #1). Devolve de onde veio, para o contexto; null se não há sinal.
    Um pedido no chat lê-o a Carol pela doutrina. */
 // «Força» sozinha não: um corredor tem sempre «treino de força» na memória.
-const GAIN_RE = /\b(massa( muscular)?|hipertrofia|(ganhar|aumentar|ganho de)( a)? forca|ficar mais fortes?|forca maxima|musculo|musculad[oa]|ganhar volume|ganhar peso|ganho muscular|bulk\w*)\b/;
-const GAIN_NEGATED_RE = /\b(nao|sem|nunca|evitar|nada de)\b(\s+\w+){0,3}\s*$/;
+// «Massa» só a muscular: nunca a gorda, a corporal nem o índice de massa.
+const GAIN_RE =
+  /\b((?<!indice de )massa(?! (gorda|corporal|ossea|de gordura))|hipertrofia|(ganhar|aumentar|ganho de)( a)? forca|ficar mais fortes?|forca maxima|musculo|musculad[oa]|ganhar volume|ganhar peso|ganho muscular|bulk\w*)\b/g;
+// A negação vale só na oração da ocorrência: «maratona sem lesões e ganhar
+// massa muscular» é um objetivo de massa. Perder, baixar ou manter não é ganhar.
+const GAIN_NEGATED_RE = /\b(nao|sem|nunca|evitar|nada de|perder|baixar|reduzir|manter|preservar)\b(\s+\w+){0,3}\s*$/;
+const CLAUSE_BREAK_RE = /[.;,:!?\n]|\b(e|mas|porem)\b/g;
 export function wantsMuscleGain(
   // deno-lint-ignore no-explicit-any
   notes: any[] | null | undefined,
@@ -130,8 +141,11 @@ export function wantsMuscleGain(
   for (const n of notes ?? []) {
     if ((n?.category !== "objetivo_pessoal" && n?.category !== "preferencia_treino") || typeof n?.note !== "string") continue;
     const t = fold(n.note);
-    const m = GAIN_RE.exec(t);
-    if (m && !GAIN_NEGATED_RE.test(t.slice(0, m.index))) return `memória: «${n.note.trim().slice(0, 120)}»`;
+    for (const m of t.matchAll(GAIN_RE)) {
+      const before = t.slice(0, m.index);
+      const clauseStart = Math.max(0, ...[...before.matchAll(CLAUSE_BREAK_RE)].map((b) => (b.index ?? 0) + b[0].length));
+      if (!GAIN_NEGATED_RE.test(before.slice(clauseStart))) return `memória: «${n.note.trim().slice(0, 120)}»`;
+    }
   }
   const goal = Number(profile?.goal_lean_body_mass_kg);
   if (Number.isFinite(goal) && goal > 0 && typeof latestLeanKg === "number" && latestLeanKg > 0 && goal >= latestLeanKg + 0.5) {
@@ -142,8 +156,11 @@ export function wantsMuscleGain(
 
 /* Força pesada nas pernas: um exercício de pernas a ≤ 6 reps («pernas a 3-6
    reps pesadas», a doutrina). É o que não pode cair nas 48 h antes de uma
-   corrida dura nem na semana de uma prova. */
-const LEG_RE = /\b(agachamento|squat|leg press|prensa|lunges?|afundos?|bulgaro|step[- ]?ups?|peso morto|deadlift|hip thrust|ponte|extensora|flexora|leg (curl|extension)|gemeos|calf|nordico|nordic|abdutora|adutora|saltos?|jump|pliometri\w*|hack)\b/;
+   corrida dura nem na semana de uma prova principal. A pliometria (poucos
+   saltos não são carga pesada) e a isometria (agachamento na parede, 1 «rep»
+   de 45 s) não contam (revisão de a93b2773..61665b38). */
+const LEG_RE = /\b(agachamento|squat|leg press|prensa|lunges?|afundos?|bulgaro|step[- ]?ups?|peso morto|deadlift|hip thrust|ponte|extensora|flexora|leg (curl|extension)|gemeos|calf|nordico|nordic|abdutora|adutora|hack)\b/;
+const NOT_HEAVY_RE = /\b(salt\w*|jumps?|pliometri\w*|isom\w*|parede|wall sit)\b/;
 export const HEAVY_LEG_MAX_REPS = 6;
 // deno-lint-ignore no-explicit-any
 export function heavyLegExercises(prescription: any): string[] {
@@ -151,7 +168,7 @@ export function heavyLegExercises(prescription: any): string[] {
   return blocks
     // deno-lint-ignore no-explicit-any
     .filter((b: any) => b?.type === "forca" && typeof b.name === "string" && LEG_RE.test(fold(b.name)) &&
-      typeof b.reps === "number" && b.reps > 0 && b.reps <= HEAVY_LEG_MAX_REPS)
+      !NOT_HEAVY_RE.test(fold(b.name)) && typeof b.reps === "number" && b.reps > 1 && b.reps <= HEAVY_LEG_MAX_REPS)
     // deno-lint-ignore no-explicit-any
     .map((b: any) => b.name);
 }

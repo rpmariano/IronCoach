@@ -3376,13 +3376,13 @@ export async function loadPriorGym(
   }
 }
 
+// A semana da prova, para a força pesada nas pernas (decisão do Rui, 2026-10-27).
+const RACE_WEEK_DAYS = 7;
+
 // `seriesIntents` (Fase 2 do Troféu): o papel de cada jornada agendada, por
 // id da prova (SeriesBlock.intentByRaceId) — só com inscrição ativa. Uma
 // jornada para atacar pede 3 dias fáceis antes em vez de 2 (#6, getTaperDays
 // por intenção). null = a guarda de sempre, a mesma consulta, byte a byte.
-// A semana da prova, para a força pesada nas pernas (decisão do Rui, 2026-10-27).
-const RACE_WEEK_DAYS = 7;
-
 export async function runProposeTrainingPlan(
   // deno-lint-ignore no-explicit-any
   sb: any, userId: string, args: any, seriesIntents: Record<string, SeriesIntent> | null = null,
@@ -3658,30 +3658,35 @@ export async function runProposeTrainingPlan(
 
   // Pernas pesadas conciliadas com a corrida (decisão do Rui, 2026-10-27),
   // para todos: nada de força pesada nas pernas (≤ HEAVY_LEG_MAX_REPS reps)
-  // nas 48 h antes de uma corrida dura nem na semana de uma prova. As provas
-  // até uma semana depois do plano lêem-se à parte, só quando há pernas
-  // pesadas — a consulta da guarda das provas fica a de sempre.
+  // nas 48 h antes de uma corrida dura nem na semana de uma prova principal
+  // (A/B ou a prova-alvo; as C e as jornadas do Troféu ficam pela regra das
+  // 48 h e pelos dias fáceis antes de cada prova). As provas até uma semana
+  // depois do plano lêem-se à parte, só quando há pernas pesadas — a consulta
+  // da guarda das provas fica a de sempre. Todos os conflitos vão numa só
+  // mensagem, com os dias que servem: a Carol não gasta rondas a adivinhar.
   // deno-lint-ignore no-explicit-any
   const anyHeavy = rows.some((r: any) => r.kind === "ginasio" && heavyLegExercises(r.prescription).length);
-  const raceWeekRaces = anyHeavy ? await fetchScheduledRaces(sb, userId, period_start, addDaysISO(period_end, RACE_WEEK_DAYS)) : [];
+  const raceWeekRaces = (anyHeavy ? await fetchScheduledRaces(sb, userId, period_start, addDaysISO(period_end, RACE_WEEK_DAYS)) : [])
+    .filter((rc) => rc.id === raceId || ((rc.race_priority === "a" || rc.race_priority === "b") && !seriesIntents?.[rc.id]));
+  const legConflicts: string[] = [];
   for (const r of rows) {
     if (r.kind !== "ginasio") continue;
     const heavy = heavyLegExercises(r.prescription);
     if (!heavy.length) continue;
-    const hard = rows.find((o) =>
+    const hard = rows.filter((o) =>
       o.kind === "corrida" && HARD_RUN_TYPES.has(o.training_type as string) && o.planned_date > r.planned_date &&
       daysBetweenISO(r.planned_date, o.planned_date) <= 2
     );
-    if (hard) {
-      return `Erro: o ginásio de ${r.planned_date} tem pernas pesadas (${heavy.join(", ")}: ${HEAVY_LEG_MAX_REPS} reps ou menos) a menos de 48 h ` +
-        `do treino ${hard.training_type} de ${hard.planned_date}. Põe as pernas pesadas longe das corridas duras, ou nesse dia pernas ` +
-        `a 8-12 controladas, tronco superior ou core.`;
+    for (const h of hard) {
+      legConflicts.push(`${r.planned_date} (${heavy.join(", ")}) está a menos de 48 h do ${h.training_type} de ${h.planned_date}`);
     }
     const race = raceWeekRaces.find((rc) => rc.date > r.planned_date && daysBetweenISO(r.planned_date, rc.date) <= RACE_WEEK_DAYS);
-    if (race) {
-      return `Erro: o ginásio de ${r.planned_date} tem pernas pesadas (${heavy.join(", ")}) na semana da prova "${race.name}" (${race.date}). ` +
-        `Nessa semana nada de força pesada nas pernas: mobilidade, core, tronco superior leve ou pernas leves a 10-12 controladas.`;
-    }
+    if (race) legConflicts.push(`${r.planned_date} (${heavy.join(", ")}) está na semana da prova "${race.name}" (${race.date})`);
+  }
+  if (legConflicts.length) {
+    return `Erro: pernas pesadas (${HEAVY_LEG_MAX_REPS} reps ou menos) em dias que não servem — ${legConflicts.join("; ")}. ` +
+      `As pernas pesadas só cabem no próprio dia de uma corrida dura (depois dela) ou com 3+ dias de folga até à seguinte, e nunca na ` +
+      `semana de uma prova principal. Nos outros dias: pernas a 8-12 controladas, tronco superior, core ou mobilidade. Corrige todos de uma vez.`;
   }
 
   // Variedade (bug do Rui, 2026-10-27): duas sessões de ginásio seguidas não
@@ -6592,7 +6597,9 @@ export function buildSystemInstruction(
     `«ganhar força», «ficar mais forte», «músculo» — «treino de força» sozinho não é isto): sessões de corpo inteiro ou divididas (superior/inferior); tronco superior em hipertrofia, 6-12 reps ` +
     `a RPE 7-9. As pernas conciliam-se com a corrida.\n` +
     `    – Sempre: nada de pernas pesadas (3-6 reps) nas 48 h antes de séries, tempo, fartlek, subidas ou longo, nem na semana ` +
-    `de uma prova (aí: mobilidade, core, tronco superior leve). As limitações físicas da memória e a proximidade da prova ` +
+    `de uma prova principal (A/B ou a prova-alvo; aí: mobilidade, core, tronco superior leve). As pernas pesadas cabem no ` +
+    `próprio dia de uma corrida dura (depois dela) ou com 3+ dias de folga até à seguinte; se a semana não tem esse dia, ` +
+    `pernas a 8-12 controladas. Saltos (pliometria leve) e isometria não contam como pesado. As limitações físicas da memória e a proximidade da prova ` +
     `mandam sobre o objetivo de massa. O servidor recusa o plano que não cumpra.\n` +
     `  • VARIEDADE: duas sessões de ginásio seguidas — dentro do plano e face à última da semana anterior (ou da parte anterior do plano) — nunca são a mesma ` +
     `sessão: no máximo metade dos exercícios de força em comum. Roda os estímulos dentro da semana e entre semanas; o ` +
