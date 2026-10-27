@@ -3331,18 +3331,18 @@ export async function fetchScheduledRaces(sb: any, userId: string, fromISO: stri
   }
 }
 
-// `seriesIntents` (Fase 2 do Troféu): o papel de cada jornada agendada, por
-// id da prova (SeriesBlock.intentByRaceId) — só com inscrição ativa. Uma
-// jornada para atacar pede 3 dias fáceis antes em vez de 2 (#6, getTaperDays
-// por intenção). null = a guarda de sempre, a mesma consulta, byte a byte.
-// deno-lint-ignore no-explicit-any
 /* Os treinos de ginásio planeados nos 7 dias antes de `beforeISO`, para a
    variedade face à semana anterior: itens pendentes ou concluídos de planos
-   aceites e, numa continuação (includeProposed), também de um plano ainda
-   proposto (a parte anterior). Best-effort: numa falha, [] — a variedade
-   dentro da proposta continua a valer. */
-// deno-lint-ignore no-explicit-any
-export async function loadPriorGym(sb: any, userId: string, beforeISO: string, includeProposed: boolean): Promise<any[]> {
+   aceites e, numa continuação (prevPart), também os da parte anterior DESTA
+   cadeia ainda proposta — o plano proposto que acaba na véspera de
+   `beforeISO`, com a mesma prova; não qualquer proposta pendente (revisão
+   final do lote). Best-effort: numa falha, [] — a variedade dentro da
+   proposta continua a valer. */
+export async function loadPriorGym(
+  // deno-lint-ignore no-explicit-any
+  sb: any, userId: string, beforeISO: string, prevPart: { raceId: string | null } | null,
+  // deno-lint-ignore no-explicit-any
+): Promise<any[]> {
   try {
     const { data: items, error } = await sb
       .from("coach_plan_items")
@@ -3355,11 +3355,18 @@ export async function loadPriorGym(sb: any, userId: string, beforeISO: string, i
     if (error || !Array.isArray(items) || !items.length) return [];
     // deno-lint-ignore no-explicit-any
     const ids = [...new Set(items.map((i: any) => i.plan_id))];
-    const { data: plans, error: plansErr } = await sb.from("coach_plans").select("id, status").eq("user_id", userId).in("id", ids);
+    const { data: plans, error: plansErr } = await sb.from("coach_plans").select("id, status, period_end, race_id").eq("user_id", userId).in("id", ids);
     if (plansErr || !Array.isArray(plans)) return [];
+    const eve = addDaysISO(beforeISO, -1);
     const ok = new Set(
-      // deno-lint-ignore no-explicit-any
-      plans.filter((pl: any) => pl.status === "aceite" || (includeProposed && pl.status === "proposto")).map((pl: any) => pl.id),
+      plans
+        // deno-lint-ignore no-explicit-any
+        .filter((pl: any) =>
+          pl.status === "aceite" ||
+          (prevPart && pl.status === "proposto" && pl.period_end === eve && (pl.race_id ?? null) === prevPart.raceId)
+        )
+        // deno-lint-ignore no-explicit-any
+        .map((pl: any) => pl.id),
     );
     // deno-lint-ignore no-explicit-any
     return items.filter((i: any) => ok.has(i.plan_id));
@@ -3369,6 +3376,10 @@ export async function loadPriorGym(sb: any, userId: string, beforeISO: string, i
   }
 }
 
+// `seriesIntents` (Fase 2 do Troféu): o papel de cada jornada agendada, por
+// id da prova (SeriesBlock.intentByRaceId) — só com inscrição ativa. Uma
+// jornada para atacar pede 3 dias fáceis antes em vez de 2 (#6, getTaperDays
+// por intenção). null = a guarda de sempre, a mesma consulta, byte a byte.
 export async function runProposeTrainingPlan(
   // deno-lint-ignore no-explicit-any
   sb: any, userId: string, args: any, seriesIntents: Record<string, SeriesIntent> | null = null,
@@ -3645,19 +3656,18 @@ export async function runProposeTrainingPlan(
   // Variedade (bug do Rui, 2026-10-27): duas sessões de ginásio seguidas não
   // são a mesma sessão. A primeira desta proposta compara-se com a última
   // sessão planeada nos 7 dias antes do período: dos planos aceites (feita ou
-  // por fazer) e, numa continuação, também da parte anterior ainda proposta
+  // por fazer) e, numa continuação, também da parte anterior desta cadeia ainda proposta
   // (loadPriorGym, revisão do lote); mais os itens do plano em curso que o
   // handler já leu.
   {
     // deno-lint-ignore no-explicit-any
     const gym = rows.filter((r: any) => r.kind === "ginasio" && r.prescription);
-    const loaded = gym.length ? await loadPriorGym(sb, userId, period_start, !!partWindow) : [];
+    const loaded = gym.length ? await loadPriorGym(sb, userId, period_start, partWindow ? { raceId } : null) : [];
     // deno-lint-ignore no-explicit-any
     const prior = [...(gymRules?.priorGym ?? []), ...loaded].filter((it: any) =>
       it?.kind === "ginasio" && typeof it.planned_date === "string" && it.planned_date < period_start && strengthNames(it.prescription).length
     // deno-lint-ignore no-explicit-any
     ).sort((a: any, b: any) => a.planned_date.localeCompare(b.planned_date)).pop();
-    // deno-lint-ignore no-explicit-any
     const chain: { date: string; names: string[] }[] = [
       ...(prior ? [{ date: prior.planned_date, names: strengthNames(prior.prescription) }] : []),
       // deno-lint-ignore no-explicit-any

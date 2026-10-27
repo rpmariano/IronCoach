@@ -51,6 +51,28 @@ Deno.test("upperBodyLoadInText: só orações sem negação; partes do corpo soz
   assertEquals(upperBodyLoadInText(null), null);
 });
 
+Deno.test("revisão final do lote: elevação de pernas deitado é core; equipamento solto só conta no nome; buracos; negação mais longa", () => {
+  // 1. Core válido; só as suspensas carregam os braços.
+  for (const ok of ["Elevação de pernas deitado", "Elevações de pernas no chão", "Elevação de joelhos deitado"]) assertEquals(upperBodyLoad(ok), null, ok);
+  for (const bad of ["Elevação de pernas suspenso", "Elevações de joelhos nas paralelas", "Hanging leg raise", "Elevações na barra"]) {
+    assert(upperBodyLoad(bad), `devia ser proibido: ${bad}`);
+  }
+  // 2. Numa nota, disco/barra/saco não são peso nas mãos; no nome, são.
+  for (const t of ["Hip thrust na máquina com disco", "Segura a barra de apoio no búlgaro", "Saco de areia nos pés para o dead bug"]) {
+    assertEquals(upperBodyLoadInText(t), null, t);
+  }
+  assert(upperBodyLoad("Lunges com disco") && upperBodyLoad("Agachamento com barra"));
+  assertEquals(upperBodyLoadInText("Depois 3x8 de goblet squat")?.why, "peso nas mãos");
+  // 3. Buracos.
+  for (const bad of ["Push press", "Muscle-up", "Arm ergometer", "Ergómetro de braços", "Hand grip", "Handgrip", "Agachamento frontal", "Front squat"]) {
+    assert(upperBodyLoad(bad), `devia ser proibido: ${bad}`);
+  }
+  // 4. Negação com mais palavras pelo meio.
+  const lim = (note: string) => [{ category: "limitacao_fisica", note }];
+  assert(!hasUpperBodyRestriction(lim("Sem nenhum tipo de problema nos ombros")));
+  assert(hasUpperBodyRestriction(lim("Retoma do ginásio mantendo a restrição de não realizar exercícios de braços no ginásio.")));
+});
+
 Deno.test("strengthNames: só força, normalizado, sem repetidos; lixo dá []", () => {
   assertEquals(strengthNames({ blocks: [
     { type: "cardio", name: "Bicicleta" }, { type: "forca", name: "Cadeira  Extensora" }, { type: "forca", name: "cadeira extensora" },
