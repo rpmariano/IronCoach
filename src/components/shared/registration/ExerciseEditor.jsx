@@ -98,7 +98,7 @@ function Stepper({ text, inputLabel, value, placeholder, step, inputMode, onType
           value={value}
           onChange={(e) => onType(e.target.value)}
           placeholder={placeholder}
-          className="min-w-0 px-1! text-center"
+          className="min-w-0 flex-1 px-1! text-center"
         />
         <button type="button" onClick={() => onNudge(step)} aria-label={plusLabel} className={btn} style={btnStyle}><Plus size={16} aria-hidden="true" /></button>
       </div>
@@ -134,7 +134,7 @@ function StrengthSets({ ex, last, onExercise }) {
                 </button>
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="flex flex-col gap-2">
               <Stepper
                 text="Repetições"
                 inputLabel={`Repetições da série ${idx + 1} — ${name}`}

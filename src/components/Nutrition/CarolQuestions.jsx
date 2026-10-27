@@ -6,6 +6,7 @@ import { ANALYZE_TIMEOUT_MS } from '../../lib/edgeTimeouts';
 import { useAppStore } from '../../store';
 import { CAROL_TALK_CLASS, CAROL_TALK_STYLE, CAROL_SECONDARY_CLASS, CAROL_SECONDARY_STYLE } from '../shared/CarolActions';
 import { spellFem, fmtNumber } from '../../utils/verdicts/shared';
+import { FieldInput } from '../shared/registration/Field';
 
 /* As perguntas da Carol sobre uma refeição (bug #52, fase B, 2026-10-04:
    «em vez de a Carol estar a adivinhar determinadas situações, pode
@@ -138,7 +139,7 @@ export default function CarolQuestions({ meal, onAnswered, onLater }) {
             })}
           </div>
           {picked[q.id] === OUTRO && (
-            <input
+            <FieldInput
               aria-label={`Outra resposta: ${q.question}`}
               value={other[q.id] || ''}
               maxLength={60}
@@ -147,7 +148,7 @@ export default function CarolQuestions({ meal, onAnswered, onLater }) {
               // aplica-se logo; sem gramas a Carol volta a estimar a porção.
               placeholder={q.kind === 'quantidade' ? 'ex.: 20 g, ou "duas fatias grossas"' : undefined}
               onChange={(e) => setOther((o) => ({ ...o, [q.id]: e.target.value }))}
-              className="w-full mt-2.5 min-h-[44px] rounded-xl px-3 text-sm outline-none"
+              className="mt-2.5"
               style={{ background: 'var(--surface-soft)', border: '1px solid var(--border-glass)', color: 'var(--text-1)' }}
             />
           )}

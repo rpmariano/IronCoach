@@ -3,6 +3,7 @@ import PremiumModal from '../shared/PremiumModal';
 import { useAppStore } from '../../store';
 import { useToast } from '../shared/ToastProvider';
 import { deleteFoodRule, isQuantityRule, QUANTITY_SUFFIX, ruleLabel, saveFoodRule } from '../../utils/pantry';
+import { FieldInput } from '../shared/registration/Field';
 
 /* Corrigir — ou dizer à Carol — como se cozinha uma coisa (bug #52, fase C;
    mockup "Despensa e perguntas da Carol", ecrã 7). Uma regra escrita aqui
@@ -40,11 +41,11 @@ export default function FoodRuleSheet({ rule = null, onClose }) {
   const input = (id, label, val, set, props = {}) => (
     <label className="block" htmlFor={id}>
       <span className="block text-[11px] mb-1.5" style={{ color: 'var(--text-3)' }}>{label}</span>
-      <input
+      <FieldInput
         id={id}
         value={val}
         onChange={(e) => set(e.target.value)}
-        className="w-full min-h-[46px] rounded-xl px-3 text-[15px] font-bold outline-none disabled:opacity-60"
+        className="font-bold disabled:opacity-60"
         style={{ border: '1px solid var(--border-well)', background: 'var(--surface-well)', color: 'var(--text-1)' }}
         {...props}
       />
