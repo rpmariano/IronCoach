@@ -37,7 +37,7 @@ export default function PlanPrefillBanner({ items, describe, chosenId, onUse, on
 
       {chosen ? (
         <div className="flex items-start justify-between gap-2">
-          <p className="text-[12px] text-[var(--text-2)]">{L.chosen}: {describe(chosen)}</p>
+          <p className="min-w-0 text-[12px] text-[var(--text-2)] break-words [overflow-wrap:anywhere]">{L.chosen}: {describe(chosen)}</p>
           {onChange && (
             <button type="button" onClick={onChange} className="tap-h-44 shrink-0 text-[11px] font-bold underline" style={{ color: accent }}>Mudar</button>
           )}
@@ -55,7 +55,7 @@ export default function PlanPrefillBanner({ items, describe, chosenId, onUse, on
           <ul className="space-y-2">
             {items.map(item => (
               <li key={item.id} className="flex items-center gap-2">
-                <span className="flex-1 min-w-0 text-[12px] text-[var(--text-1)]">{describe(item)}</span>
+                <span className="flex-1 min-w-0 text-[12px] text-[var(--text-1)] break-words [overflow-wrap:anywhere]">{describe(item)}</span>
                 <button type="button" onClick={() => onUse(item)} aria-label={`${L.use}: ${describe(item)}`} className={`${btn} shrink-0`} style={{ borderColor: border, color: accent, background: tint }}>
                   {L.use}
                 </button>
