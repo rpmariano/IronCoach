@@ -95,6 +95,11 @@ Deno.test("wantsMuscleGain: memória (objetivo/preferência, sem negação) ou m
   assert(wantsMuscleGain(note("objetivo_pessoal", "Quer ganhar massa muscular este inverno"), null, null)?.startsWith("memória"));
   assert(wantsMuscleGain(note("preferencia_treino", "Gosta de treino de hipertrofia"), null, null));
   assert(wantsMuscleGain(note("objetivo_pessoal", "Ficar mais forte: força nas pernas e no tronco"), null, null));
+  assert(wantsMuscleGain(note("objetivo_pessoal", "Quer aumentar a força máxima no agachamento"), null, null));
+  assert(wantsMuscleGain(note("objetivo_pessoal", "Ganhar força este bloco"), null, null));
+  // «Força» sozinha é o treino de força de qualquer corredor, não um objetivo de massa.
+  assertEquals(wantsMuscleGain(note("preferencia_treino", "Faz treino de força 2x por semana"), null, null), null);
+  assertEquals(wantsMuscleGain(note("objetivo_pessoal", "Manter a força enquanto prepara a maratona"), null, null), null);
   assertEquals(wantsMuscleGain(note("objetivo_pessoal", "Não quer ganhar massa, só correr"), null, null), null);
   assertEquals(wantsMuscleGain(note("limitacao_fisica", "Sem força na mão esquerda"), null, null), null);
   assertEquals(wantsMuscleGain(note("objetivo_pessoal", "Baixar para 72 kg até à maratona"), null, null), null);

@@ -113,11 +113,13 @@ export function strengthNames(prescription: any): string[] {
 
 /* O atleta quer ganhar massa ou força (decisão do Rui, 2026-10-27): a
    memória (objetivo_pessoal / preferencia_treino com «massa», «hipertrofia»,
-   «força», «músculo», «volume», «ganhar peso», sem negação) ou o perfil (uma
+   «ganhar/aumentar força», «ficar mais forte», «força máxima», «músculo»,
+   «volume», «ganhar peso», sem negação) ou o perfil (uma
    massa magra alvo acima da última medida — a muscle_mass_kg não é fiável,
    Bloco 5 #1). Devolve de onde veio, para o contexto; null se não há sinal.
    Um pedido no chat lê-o a Carol pela doutrina. */
-const GAIN_RE = /\b(massa( muscular)?|hipertrofia|forca|musculo|musculad[oa]|ganhar volume|ganhar peso|ganho muscular|bulk\w*)\b/;
+// «Força» sozinha não: um corredor tem sempre «treino de força» na memória.
+const GAIN_RE = /\b(massa( muscular)?|hipertrofia|(ganhar|aumentar|ganho de)( a)? forca|ficar mais fortes?|forca maxima|musculo|musculad[oa]|ganhar volume|ganhar peso|ganho muscular|bulk\w*)\b/;
 const GAIN_NEGATED_RE = /\b(nao|sem|nunca|evitar|nada de)\b(\s+\w+){0,3}\s*$/;
 export function wantsMuscleGain(
   // deno-lint-ignore no-explicit-any

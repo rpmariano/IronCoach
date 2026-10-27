@@ -6589,7 +6589,7 @@ export function buildSystemInstruction(
     `ou numa sessão própria — postura, balanço dos braços, equilíbrio muscular. No trail, mais unilateral, excêntricos de ` +
     `quadríceps (descidas) e tornozelo.\n` +
     `    – QUER GANHAR MASSA OU FORÇA (o contexto diz OBJETIVO DE GINÁSIO, ou ele pede no chat «massa», «hipertrofia», ` +
-    `«força», «músculo»): sessões de corpo inteiro ou divididas (superior/inferior); tronco superior em hipertrofia, 6-12 reps ` +
+    `«ganhar força», «ficar mais forte», «músculo» — «treino de força» sozinho não é isto): sessões de corpo inteiro ou divididas (superior/inferior); tronco superior em hipertrofia, 6-12 reps ` +
     `a RPE 7-9. As pernas conciliam-se com a corrida.\n` +
     `    – Sempre: nada de pernas pesadas (3-6 reps) nas 48 h antes de séries, tempo, fartlek, subidas ou longo, nem na semana ` +
     `de uma prova (aí: mobilidade, core, tronco superior leve). As limitações físicas da memória e a proximidade da prova ` +
