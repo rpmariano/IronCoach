@@ -550,7 +550,10 @@ async function readPlan(ctx: ReadCtx) {
         id: it.id,
         date: it.planned_date,
         kind: it.kind,
-        title: (it.training_type as string | null) || (cats.length ? cats.join(", ") : null),
+        // O tipo de treino legível («continuo» → «Corrida contínua», pedido do
+        // CoP 2026-10-27); um tipo fora do RUN_LABEL sai tal e qual.
+        title: (it.training_type ? RUN_LABEL[String(it.training_type)] ?? String(it.training_type) : null) ||
+          (cats.length ? cats.join(", ") : null),
         duration_min: num(it.target_duration_min),
         distance_km: num(it.target_distance_km),
         status: it.status ?? null,

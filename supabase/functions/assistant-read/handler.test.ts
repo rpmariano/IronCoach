@@ -584,6 +584,17 @@ Deno.test("plan: prescrição mal formada não rebenta — blocos sem nome caem,
   assert(!("pace" in g) && !("zone" in g), JSON.stringify(g));
 });
 
+Deno.test("plan: o title é o tipo de treino legível — «continuo» sai «Corrida contínua»", async () => {
+  const db = await scenario();
+  const run = db.tables.coach_plan_items.find((it) => it.id === "A-pi-run")!;
+  for (const [tt, label] of [["continuo", "Corrida contínua"], ["longo", "Rodagem longa"], ["intervalos", "Treino intervalado"]]) {
+    run.training_type = tt;
+    const { data } = await (await call(db, `resource=plan&${PLAN_PERIOD}`)).json();
+    const r = data.find((it: Row) => it.id === "A-pi-run");
+    assertEquals([r.title, r.description], [label, `${label} · 8 km`]);
+  }
+});
+
 Deno.test("plan: sem ritmo nem zona escritos, pace e zone não vão", async () => {
   const db = await scenario();
   const run = db.tables.coach_plan_items.find((it) => it.id === "A-pi-run")!;
