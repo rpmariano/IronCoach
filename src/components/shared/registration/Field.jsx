@@ -52,3 +52,7 @@ export function Field({ label, hint = null, className = '', children }) {
 export function FieldBlock({ className = '', children, ...rest }) {
   return <div className={`${BLOCK_CLS} ${className}`.trim()} {...rest}>{children}</div>;
 }
+
+export const FieldSelect = forwardRef(function FieldSelect({ className = '', ...props }, ref) {
+  return <select ref={ref} className={`${FIELD_CLS} ${className}`.trim()} {...props} />;
+});

@@ -1,4 +1,5 @@
 import React from 'react';
+import { FieldInput } from './registration/Field';
 
 /* Campo de tempo h:mm:ss com máscara (pedido 2026-09-13): no telemóvel o
    teclado numérico não tem ":" — o atleta só conseguia escrever "51,28" ou
@@ -32,7 +33,7 @@ export default function DurationInput({ value, onChange, className = '', ...rest
     onChange(next);
   };
   return (
-    <input
+    <FieldInput
       type="text"
       inputMode="numeric"
       autoComplete="off"
