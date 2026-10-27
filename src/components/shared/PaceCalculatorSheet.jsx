@@ -9,6 +9,7 @@ import { parseDurationToSeconds, formatDuration, formatPace } from '../../utils/
 import {
   paceFromTotal, totalFromPace, parseDistanceKm, formatDistanceKm, DISTANCIAS_RAPIDAS,
 } from '../../utils/paceMath';
+import { FieldInput } from './registration/Field';
 
 /* Calculadora de ritmo — o atleta põe a distância e UM dos dois valores
    (ritmo ou tempo total), e o outro sai sozinho.
@@ -54,7 +55,7 @@ export default function PaceCalculatorSheet({ onClose }) {
         <SectionLabel tone="run">A distância</SectionLabel>
         <GlassCard padding={14} radius={20}>
           <div className="flex items-center gap-2">
-            <input
+            <FieldInput
               type="text"
               inputMode="decimal"
               autoComplete="off"
@@ -63,7 +64,7 @@ export default function PaceCalculatorSheet({ onClose }) {
               value={distancia}
               onChange={(e) => setDistancia(e.target.value)}
               placeholder="Ex.: 21,1"
-              className="flex-1 min-w-0 bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 outline-none transition-colors focus:border-[var(--run)]"
+              className="flex-1 min-w-0"
               style={{ minHeight: 'var(--tap)', color: 'var(--text-1)', fontSize: 17, fontWeight: 800, fontVariantNumeric: 'tabular-nums' }}
             />
             <span className="text-[13px] font-bold shrink-0" style={{ color: 'var(--text-4)' }}>km</span>
@@ -141,7 +142,6 @@ function CampoTempo({ id, rotulo, sufixo, valor, derivado, onChange }) {
           value={valor}
           onChange={onChange}
           placeholder="0:00"
-          className="w-full bg-[var(--surface-soft)] border rounded-xl px-3 outline-none transition-colors focus:border-[var(--run)]"
           style={{
             minHeight: 'var(--tap)',
             paddingRight: sufixo ? 34 : 12,

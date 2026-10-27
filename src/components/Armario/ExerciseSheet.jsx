@@ -3,6 +3,7 @@ import PremiumModal from '../shared/PremiumModal';
 import { useAppStore } from '../../store';
 import { useToast } from '../shared/ToastProvider';
 import { MAX_MACHINE_SETTINGS, MUSCLE_GROUPS, deleteExercise, exerciseSubline, saveExercise } from '../../utils/exerciseLocker';
+import { FieldInput } from '../shared/registration/Field';
 
 /* Um exercício do Armário (decisões 10 e 14 de specs/plano-registo-plano-coach.md):
    ajustar o nome, o grupo muscular e a afinação da máquina ("banco furo 3,
@@ -53,8 +54,8 @@ export default function ExerciseSheet({ exercise = null, onClose }) {
       <div className="px-5 py-4 space-y-3" data-testid="exercise-sheet">
         <label className="block" htmlFor="exercise-name">
           <span className="block text-[11px] mb-1.5" style={{ color: 'var(--text-3)' }}>Nome</span>
-          <input id="exercise-name" value={name} maxLength={80} onChange={(e) => setName(e.target.value)}
-            className="w-full min-h-[46px] rounded-xl px-3 text-[15px] font-bold outline-none" style={field} />
+          <FieldInput id="exercise-name" value={name} maxLength={80} onChange={(e) => setName(e.target.value)}
+            className="font-bold" style={field} />
         </label>
 
         <div>
@@ -89,8 +90,8 @@ export default function ExerciseSheet({ exercise = null, onClose }) {
 
         <label className="block" htmlFor="exercise-settings">
           <span className="block text-[11px] mb-1.5" style={{ color: 'var(--text-3)' }}>Afinação da máquina (opcional) — ex.: banco furo 3, pino 6</span>
-          <input id="exercise-settings" value={settings} maxLength={MAX_MACHINE_SETTINGS} onChange={(e) => setSettings(e.target.value)}
-            className="w-full min-h-[46px] rounded-xl px-3 text-sm outline-none" style={field} />
+          <FieldInput id="exercise-settings" value={settings} maxLength={MAX_MACHINE_SETTINGS} onChange={(e) => setSettings(e.target.value)}
+             style={field} />
         </label>
         <p className="text-[11.5px]" style={{ color: 'var(--text-muted)' }}>Aparece da próxima vez que registares este exercício.</p>
 

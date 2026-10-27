@@ -3,6 +3,7 @@ import { X } from 'lucide-react';
 import Chip from '../Chip';
 import { foodKey } from '@formulas/foodKey.ts';
 import { describeLast, exerciseFromLocker } from '../../../utils/gymSets';
+import { FieldInput } from './Field';
 
 /* "+ Adicionar do Armário" (registo unificado, F1 — decisão 7): pesquisa
    instantânea no catálogo pessoal, com filtro por grupo muscular. Tocar num
@@ -23,14 +24,14 @@ export default function ExerciseLockerPicker({ rows, onPick, onClose }) {
   return (
     <div className="mb-3 rounded-xl border border-[var(--border-glass)] bg-[var(--surface-glass)] p-3" role="region" aria-label="Biblioteca de exercícios">
       <div className="flex items-center gap-2 mb-2">
-        <input
+        <FieldInput
           type="search"
           autoFocus
           aria-label="Procurar na biblioteca"
           value={query}
           onChange={e => setQuery(e.target.value)}
           placeholder="Procurar exercício…"
-          className="flex-1 min-w-0 min-h-[44px] bg-transparent border-b border-[var(--border-glass)] text-sm text-white outline-none focus:border-[var(--mod-ginasio-to)] placeholder-[var(--text-muted)]"
+          className="flex-1 min-w-0"
         />
         <button type="button" onClick={onClose} aria-label="Fechar a biblioteca" className="tap-44 text-[var(--text-3)] shrink-0">
           <X size={16} />
