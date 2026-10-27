@@ -407,6 +407,81 @@ Deno.test("runProposeTrainingPlan: prescrição numa corrida é descartada", asy
   assertEquals(calls.itemInserts[0].prescription, null);
 });
 
+// ── Ginásio: restrição de braços e variedade (bug do Rui, 2026-10-27) ─────
+const forca = (name: string) => ({ type: "forca", name, sets: 3, reps: 10, goal: "descida controlada" });
+const RUI_SESSION = [
+  { type: "cardio", name: "Bicicleta estacionária", duration_min: 10, goal: "aquecer em Z2" },
+  forca("Cadeira extensora"), forca("Cadeira flexora"), forca("Gémeos na máquina"),
+];
+const gymDay = (planned_date: string, blocks: unknown[]) => ({ planned_date, kind: "ginasio", categories: ["Pernas"], prescription_blocks: blocks });
+
+Deno.test("runProposeTrainingPlan: com a restrição de braços, um exercício que carrega os braços é recusado e nada grava", async () => {
+  for (const bad of ["Prancha", "Goblet squat", "Lunges com halteres", "Remada sentada"]) {
+    const { sb, calls } = makePlanSb();
+    const result = await runProposeTrainingPlan(sb, "user-1", {
+      ...VALID_PLAN, items: [gymDay("2026-08-12", [forca("Leg press"), forca(bad)])],
+    }, null, null, { upperBodyRestricted: true });
+    assert(result.startsWith("Erro no treino 1:") && result.includes(`«${bad}»`), result);
+    assertEquals(calls.itemInserts.length, 0);
+  }
+});
+
+Deno.test("runProposeTrainingPlan: com a restrição, uma sessão só de pernas e tronco sem carga nos braços grava — fora do Armário", async () => {
+  const { sb, calls } = makePlanSb();
+  const result = await runProposeTrainingPlan(sb, "user-1", {
+    ...VALID_PLAN,
+    items: [
+      gymDay("2026-08-11", [forca("Leg press"), forca("Hip thrust na máquina"), forca("Abdutora"), forca("Dead bug")]),
+      gymDay("2026-08-14", [forca("Búlgaro sem carga"), forca("Peso morto a uma perna sem carga"), forca("Elevação de gémeos"), forca("Hollow hold")]),
+    ],
+  }, null, null, { upperBodyRestricted: true });
+  assertStringIncludes(result, "Plano criado com 2 treino(s)");
+  // deno-lint-ignore no-explicit-any
+  const names = calls.itemInserts.flatMap((it: any) => it.prescription.blocks.map((b: any) => b.name));
+  const armario = ["Bicicleta estacionária", "Cadeira extensora", "Cadeira flexora", "Gémeos na máquina", "Canelas", "Passadeira"];
+  assert(names.every((n: string) => !armario.includes(n)), "todos fora do Armário do Rui");
+});
+
+Deno.test("runProposeTrainingPlan: sem a restrição, a prancha passa", async () => {
+  const { sb } = makePlanSb();
+  const result = await runProposeTrainingPlan(sb, "user-1", { ...VALID_PLAN, items: [gymDay("2026-08-12", [forca("Leg press"), forca("Prancha")])] });
+  assertStringIncludes(result, "Plano criado");
+});
+
+Deno.test("runProposeTrainingPlan: duas sessões de ginásio seguidas iguais são recusadas (o caso do Rui)", async () => {
+  const { sb, calls } = makePlanSb();
+  const result = await runProposeTrainingPlan(sb, "user-1", {
+    ...VALID_PLAN, items: [gymDay("2026-08-11", RUI_SESSION), VALID_PLAN.items[0], gymDay("2026-08-13", RUI_SESSION)],
+  });
+  assert(result.startsWith("Erro: o ginásio de 2026-08-13 repete o de 2026-08-11"), result);
+  assertEquals(calls.itemInserts.length, 0);
+});
+
+Deno.test("runProposeTrainingPlan: sessões que rodam os estímulos gravam; o aquecimento pode repetir", async () => {
+  const { sb } = makePlanSb();
+  const bike = RUI_SESSION[0];
+  const result = await runProposeTrainingPlan(sb, "user-1", {
+    ...VALID_PLAN,
+    items: [
+      gymDay("2026-08-11", [bike, forca("Leg press"), forca("Cadeira flexora"), forca("Abdutora"), forca("Dead bug")]),
+      gymDay("2026-08-13", [bike, forca("Búlgaro sem carga"), forca("Cadeira flexora"), forca("Ponte de glúteos"), forca("Hollow hold")]),
+    ],
+  });
+  assertStringIncludes(result, "Plano criado com 2 treino(s)");
+});
+
+Deno.test("runProposeTrainingPlan: a primeira sessão compara-se com a última do plano aceite antes do período", async () => {
+  const prior = [
+    { planned_date: "2026-08-08", kind: "ginasio", prescription: { blocks: [forca("Leg press"), forca("Abdutora"), forca("Dead bug")] } },
+    { planned_date: "2026-08-09", kind: "ginasio", prescription: { blocks: RUI_SESSION } },
+    // Dentro do período (vai ser substituído): não conta.
+    { planned_date: "2026-08-10", kind: "ginasio", prescription: { blocks: [forca("Búlgaro"), forca("Hollow hold")] } },
+  ];
+  const { sb } = makePlanSb();
+  const result = await runProposeTrainingPlan(sb, "user-1", { ...VALID_PLAN, items: [gymDay("2026-08-12", RUI_SESSION)] }, null, null, { priorGym: prior });
+  assert(result.startsWith("Erro: o ginásio de 2026-08-12 repete o de 2026-08-09"), result);
+});
+
 Deno.test("schema: prescription_blocks não abre um 3.º nível de arrays (só items[] → prescription_blocks[])", () => {
   const block = buildTools(allowedToolsFor("E"));
   // deno-lint-ignore no-explicit-any
@@ -5109,7 +5184,7 @@ Deno.test("handler: o bloco, as ferramentas e o turno do mapa só com inscriçã
   // A guarda do plano relê os papéis se uma ferramenta da competição gravou
   // neste pedido (revisão das correções da Fase 2).
   assertStringIncludes(src, "planSeriesIntentsStale = planSeriesIntentsStale || (cupToolOn && !result.startsWith(\"Erro\"));");
-  assertStringIncludes(src, "result = await runProposeTrainingPlan(sb, userId, args || {}, planSeriesIntents, planContinuationIn);");
+  assertStringIncludes(src, "result = await runProposeTrainingPlan(sb, userId, args || {}, planSeriesIntents, planContinuationIn, planGymRules);");
   assertStringIncludes(src, "      seriesBlock?.text ?? null,\n    );");
   // cup_updated só aparece quando é true — a resposta de quem não está inscrito fica igual.
   assertEquals(src.includes("cup_updated: cupWasUpdated"), false);
@@ -6130,7 +6205,7 @@ Deno.test("handler: plan_resume — a regra volta a correr no turno, no «Manda�
   assertStringIncludes(src, "const planResumeLaterAsked = chipText === PLAN_RESUME_LATER.toLowerCase() && await lastModelIsPlanResume(sb, userId);");
   assertStringIncludes(src, "|| targetsUpdateAsked || planResumeLaterAsked || planResumeSendStale ? new Set(READ_TOOL_NAMES)");
   assertStringIncludes(src, 'if (proactiveTrigger === "plan_resume") suggestions = [PLAN_RESUME_SEND, PLAN_RESUME_LATER];');
-  assertStringIncludes(src, "result = await runProposeTrainingPlan(sb, userId, args || {}, planSeriesIntents, planContinuationIn);");
+  assertStringIncludes(src, "result = await runProposeTrainingPlan(sb, userId, args || {}, planSeriesIntents, planContinuationIn, planGymRules);");
   // O chip «Manda» sem retoma válida: só leitura, não é turno de plano, e ela diz que o plano já não está a meio.
   assertStringIncludes(src, "const planResumeSendStale = chipText === PLAN_RESUME_SEND.toLowerCase() && !planResumeAsked;");
   assertStringIncludes(src, "|| planResumeLaterAsked || planResumeSendStale ? new Set(READ_TOOL_NAMES)");

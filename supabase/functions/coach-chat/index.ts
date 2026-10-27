@@ -19,6 +19,7 @@ import { wearStatus as sharedWearStatus, WEAR_LEVEL_LABELS, WEAR_ATTENTION_PCT, 
 import { computeBMR as sharedComputeBMR, computeTDEE as sharedComputeTDEE, TDEE_ACTIVITY_FACTOR } from "../_shared/formulas/tdee.ts";
 import { estimate1RM } from "../_shared/formulas/epley.ts";
 import { buildPrescription, describePrescription, stripPrescribedLoad } from "../_shared/formulas/planPrescription.ts";
+import { hasUpperBodyRestriction, repeatedExercises, strengthNames, upperBodyLoad } from "../_shared/formulas/gymExerciseRules.ts";
 import { recentExecutionLines } from "../_shared/formulas/planExecution.ts";
 import { resolveMaxHR, resolveHrZones, zoneOf, type HeartRateZones, type ObservedHrReading } from "../_shared/formulas/heartRateZones.ts";
 import { ageFromBirthDate } from "../_shared/formulas/age.ts";
@@ -3340,6 +3341,11 @@ export async function runProposeTrainingPlan(
   sb: any, userId: string, args: any, seriesIntents: Record<string, SeriesIntent> | null = null,
   // Num turno de continuação, os treinos só podem cair nesta semana.
   partWindow: PlanContinuation | null = null,
+  // As regras do ginásio (gymExerciseRules.ts): a restrição de membros
+  // superiores da memória e os treinos de ginásio do plano aceite em curso,
+  // para a variedade face à última sessão antes desta proposta.
+  // deno-lint-ignore no-explicit-any
+  gymRules: { upperBodyRestricted?: boolean; priorGym?: any[] } | null = null,
 ): Promise<string> {
   const { period_start, period_end, summary, items, replace_active_plan } = args || {};
   const raceId = typeof args?.race_id === "string" && args.race_id.trim() ? args.race_id.trim() : null;
@@ -3528,6 +3534,20 @@ export async function runProposeTrainingPlan(
       ? buildPrescription(item.prescription_blocks)
       : { prescription: null, issue: null };
     if (prescriptionIssue) console.warn(`propose_training_plan: prescrição do treino ${n} descartada — ${prescriptionIssue}`);
+    // A restrição de membros superiores da memória cumpre-se à letra: nada
+    // que carregue braços, ombros ou mãos (bug do Rui, 2026-10-27).
+    if (gymRules?.upperBodyRestricted && item.kind === "ginasio") {
+      const blockNames: string[] = (prescription?.blocks ?? []).map((b) => b.name);
+      for (const name of blockNames) {
+        const why = upperBodyLoad(name);
+        if (why) {
+          return `Erro no treino ${n}: «${name}» carrega os membros superiores (${why}), e a memória do atleta tem a restrição de não fazer exercícios de braços. ` +
+            `Nada de pranchas nem apoios nas mãos, pesos nas mãos (goblet, halteres, barra, kettlebell) nem remadas. Troca por um que só use as pernas e o tronco ` +
+            `sem carga nos braços: leg press, hip thrust na máquina, ponte de glúteos, abdutora/adutora, step-ups ou lunges sem carga, búlgaro sem carga, ` +
+            `peso morto a uma perna sem carga, elevação de gémeos, dead bug, hollow hold.`;
+        }
+      }
+    }
     rows.push({
       user_id: userId,
       planned_date: item.planned_date,
@@ -3573,6 +3593,33 @@ export async function runProposeTrainingPlan(
     });
   }
   rows.sort((a, b) => a.planned_date.localeCompare(b.planned_date));
+
+  // Variedade (bug do Rui, 2026-10-27): duas sessões de ginásio seguidas não
+  // são a mesma sessão. A primeira desta proposta compara-se com a última do
+  // plano aceite em curso antes do período (a parte anterior, a semana antes).
+  {
+    // deno-lint-ignore no-explicit-any
+    const gym = rows.filter((r: any) => r.kind === "ginasio" && r.prescription);
+    // deno-lint-ignore no-explicit-any
+    const prior = (gymRules?.priorGym ?? []).filter((it: any) =>
+      it?.kind === "ginasio" && typeof it.planned_date === "string" && it.planned_date < period_start && strengthNames(it.prescription).length
+    // deno-lint-ignore no-explicit-any
+    ).sort((a: any, b: any) => a.planned_date.localeCompare(b.planned_date)).pop();
+    // deno-lint-ignore no-explicit-any
+    const chain: { date: string; names: string[] }[] = [
+      ...(prior ? [{ date: prior.planned_date, names: strengthNames(prior.prescription) }] : []),
+      // deno-lint-ignore no-explicit-any
+      ...gym.map((r: any) => ({ date: r.planned_date, names: strengthNames(r.prescription) })),
+    ];
+    for (let k = 1; k < chain.length; k++) {
+      const shared = repeatedExercises(chain[k - 1].names, chain[k].names);
+      if (shared) {
+        return `Erro: o ginásio de ${chain[k].date} repete o de ${chain[k - 1].date} (${shared.join(", ")}). Duas sessões seguidas não podem ser a mesma — ` +
+          `no máximo metade dos exercícios de força em comum. Roda os estímulos (quadríceps, posterior, glúteo médio, unilateral, gémeos/tibial, ` +
+          `core anti-extensão/anti-rotação) e usa exercícios fora do histórico do atleta sempre que servirem o objetivo.`;
+      }
+    }
+  }
 
   // Se o atleta confirmou que quer substituir o plano de treino ativo, a
   // proposta REGISTA qual é (supersedes_plan_id) mas não o mexe já: a
@@ -6431,8 +6478,22 @@ export function buildSystemInstruction(
     `  • Corredor: pernas a 3-6 reps pesadas ou 6-12 controladas, sempre a RPE 6-8 — nunca até à ` +
     `falha; séries de 15+ reps nas pernas não (Bloco 3 #10/#11).\n` +
     `  • Cardio no ginásio (bicicleta, remo, passadeira, piscina): duração/distância/voltas alvo e o objetivo (zona, cadência).\n` +
-    `  • Usa os nomes dos exercícios que o atleta já registou (histórico de ginásio) quando servirem — é por eles ` +
-    `que o registo encontra a última carga.\n\n` +
+    `  • ESCOLHA DOS EXERCÍCIOS: o histórico de ginásio do atleta é preferência e referência de carga, NÃO o limite. ` +
+    `Escolhe pelo objetivo — num corredor: força de pernas, glúteos, core, estabilidade e prevenção de lesões — de um ` +
+    `catálogo largo, mesmo exercícios que ele nunca fez: quadríceps (leg press, agachamento, step-up, cadeira extensora), ` +
+    `posterior (peso morto romeno, cadeira flexora, ponte/hip thrust, nórdico assistido), glúteo médio (abdutora, passo ` +
+    `lateral com elástico, clamshell), unilateral (búlgaro, lunges, step-up, peso morto a uma perna), pliometria leve quando ` +
+    `ele tem base e não há prova perto (saltos à caixa baixa, skipping, saltos a pés juntos), gémeos/tibial (elevação de ` +
+    `gémeos, sóleo sentado, tibial anterior), core anti-extensão/anti-rotação (dead bug, hollow hold, pallof press, prancha). ` +
+    `Quando um exercício que ele já registou serve, usa o nome dele — é por esse nome que o registo encontra a última carga.\n` +
+    `  • VARIEDADE: duas sessões de ginásio seguidas — dentro do plano e face à última do plano anterior — nunca são a mesma ` +
+    `sessão: no máximo metade dos exercícios de força em comum. Roda os estímulos dentro da semana e entre semanas; o ` +
+    `aquecimento de cardio pode repetir. O servidor recusa o plano que repita.\n` +
+    `  • LIMITAÇÕES FÍSICAS DA MEMÓRIA cumprem-se à letra. «Sem exercícios de braços» (ou de membros superiores) = nada que ` +
+    `carregue braços, ombros ou mãos: nada de pranchas nem apoios nas mãos (flexões, bird dog, mountain climbers), nada de ` +
+    `pesos nas mãos (goblet, lunges com halteres, barra, kettlebell), nada de remadas nem remo. Válidos: leg press, hip thrust ` +
+    `na máquina, ponte de glúteos, abdutora/adutora, step-ups e lunges sem carga nas mãos, búlgaro sem carga, peso morto a ` +
+    `uma perna sem carga, elevação de gémeos, dead bug, hollow hold. O servidor recusa o plano que não cumpra.\n\n` +
     `PLANO ATIVO EM CURSO: se o contexto abaixo indicar um PLANO ACEITE EM CURSO, não propões ` +
     `um novo plano enquanto esse microciclo não terminar — a menos que o atleta refira ` +
     `explicitamente um dos seguintes sinais de interrupção:\n` +
@@ -7655,6 +7716,8 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
       .order("category", { ascending: true })
       .order("updated_at", { ascending: false });
     const coachNotesContext = buildCoachNotesContext(coachNotes);
+    // O que o servidor faz cumprir nos treinos de ginásio do plano (gymExerciseRules.ts).
+    const planGymRules = { upperBodyRestricted: hasUpperBodyRestriction(coachNotes), priorGym: activePlanItems };
 
     // ── Histórico de conversa (últimas MAX_HISTORY mensagens) ────────────
     const { data: recentHistory } = await sb
@@ -8430,7 +8493,7 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
             if (fresh?.active) planSeriesIntents = fresh.intentByRaceId;
             planSeriesIntentsStale = false;
           }
-          result = await runProposeTrainingPlan(sb, userId, args || {}, planSeriesIntents, planContinuationIn);
+          result = await runProposeTrainingPlan(sb, userId, args || {}, planSeriesIntents, planContinuationIn, planGymRules);
           planWasProposed = planWasProposed || result.startsWith("Plano criado");
           // A parte que falta (se falta): vai na resposta como plan_continuation.
           if (result.startsWith("Plano criado")) planContinuationOut = nextPlanContinuation(args || {}, planContinuationIn);
