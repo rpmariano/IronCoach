@@ -301,7 +301,7 @@ Deno.test("buildYesterdaySection (bug #94): só ginásio ontem — nada de «0 k
   };
   const s = buildYesterdaySection("2026-10-27", [], [gym]);
   assert(!/0[.,]0 ?km|0 corrida|Corridas ontem/.test(s), s);
-  assertStringIncludes(s, "Ginásio Pernas (Pernas; 54 min no total — 16 min de cardio (Bicicleta estacionária) e 38 min de força; esforço 7/10)");
+  assertStringIncludes(s, "Ginásio Pernas (Pernas; 54 min registados, com 16 min de cardio (Bicicleta estacionária) — não deduzas daqui o tempo de força; esforço 7/10)");
   assertStringIncludes(s, "(ex.: o treino de ginásio de ontem)");
   assertStringIncludes(s, "nunca digas «0 km» nem «0 min»");
   assertEquals(buildYesterdaySection("2026-10-27", [], []), "");

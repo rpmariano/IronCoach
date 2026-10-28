@@ -8,6 +8,8 @@
 // distinta (activity_periods) e a duração da sessão é a soma deles — sem
 // contar duas vezes o mesmo período, nem o mesmo treino visto em dois prints.
 
+import { cardioSpecFor } from "./cardioFields.ts";
+
 export type ActivityPeriod = { kind: "forca" | "cardio" | "outro"; start: number | null; duration: number };
 
 /** O pedaço do schema de resposta do Gemini (sem limites nos arrays: o 400 de 2026-09-05). */
@@ -78,29 +80,50 @@ export function combinedDuration(periods: ActivityPeriod[]): number | null {
 }
 
 /** A duração da sessão: a soma dos períodos, se a leitura trouxe dois ou mais
- *  distintos; senão a que o Gemini leu. */
+ *  distintos; senão a que o Gemini leu. Contra a dupla contagem (revisão do
+ *  lote): um período que é o resumo dos outros (dura a soma deles) sai; e sem
+ *  horas de início, uma soma acima de 1,25× a duração lida só vale se a lida
+ *  for a de UMA das atividades (o caso do Rui: leu-se só a das máquinas) —
+ *  se a lida já é um total, fica a lida. */
 export function sessionDurationSeconds(readDuration: number | null, rawPeriods: unknown): number | null {
-  const combined = combinedDuration(parseActivityPeriods(rawPeriods));
-  return combined !== null && combined <= MAX_PERIOD_S ? combined : readDuration;
+  let periods = parseActivityPeriods(rawPeriods);
+  const summary = periods.find((p) => {
+    const rest = periods.filter((o) => o !== p).reduce((t, o) => t + o.duration, 0);
+    return periods.length >= 3 && Math.abs(p.duration - rest) <= 60;
+  });
+  if (summary) periods = periods.filter((p) => p !== summary);
+  const combined = combinedDuration(periods);
+  if (combined === null || combined > MAX_PERIOD_S) return readDuration;
+  const unordered = periods.some((p) => p.start === null);
+  if (unordered && readDuration && combined > readDuration * 1.25 && !periods.some((p) => Math.abs(p.duration - readDuration) <= 60)) {
+    return readDuration;
+  }
+  return combined;
 }
 
 type SetLike = { exercise_name?: string | null; reps?: number | null; weight?: number | null; duration_seconds?: number | null };
 
 /** A duração em texto, com o cardio à parte quando as séries de cardio têm
- *  tempo: «54 min no total — 16 min de cardio (Bicicleta estacionária) e 38 min
- *  de força». Sem duração, null (nunca «0 min»). */
+ *  tempo: «54 min registados, com 16 min de cardio (Bicicleta estacionária)».
+ *  Cardio é o que o catálogo conhece como cardio (cardioSpecFor) — uma prancha
+ *  de 60 s não é. Não se tira a força por subtração: numa sessão antiga o
+ *  total é só o das máquinas e o cardio não está lá dentro (revisão do lote);
+ *  só quando o cardio passa o total se sabe que não estão somados, e aí
+ *  diz-se cada um. Sem duração, null (nunca «0 min»). */
 export function durationBreakdown(totalSeconds: number | null | undefined, sets: SetLike[] | null | undefined): string | null {
   const total = Number(totalSeconds);
   if (!(total > 0)) return null;
   const cardio = new Map<string, number>();
   for (const s of sets ?? []) {
     const d = Number(s?.duration_seconds);
-    if (!(d > 0) || s?.reps || s?.weight) continue;
-    const name = typeof s?.exercise_name === "string" && s.exercise_name.trim() ? s.exercise_name.trim() : "cardio";
+    if (!(d > 0) || s?.reps || s?.weight || !cardioSpecFor(s?.exercise_name)) continue;
+    const name = String(s.exercise_name).trim();
     cardio.set(name, (cardio.get(name) ?? 0) + d);
   }
   const cardioS = [...cardio.values()].reduce((a, b) => a + b, 0);
   const min = (s: number) => Math.round(s / 60);
-  if (!cardioS || total - cardioS < 60) return `${min(total)} min`;
-  return `${min(total)} min no total — ${min(cardioS)} min de cardio (${[...cardio.keys()].join(", ")}) e ${min(total - cardioS)} min de força`;
+  const names = [...cardio.keys()].join(", ");
+  if (!cardioS || Math.abs(total - cardioS) < 60) return `${min(total)} min`;
+  if (cardioS > total) return `${min(total)} min registados na sessão e ${min(cardioS)} min de cardio (${names}) à parte`;
+  return `${min(total)} min registados, com ${min(cardioS)} min de cardio (${names}) — não deduzas daqui o tempo de força`;
 }
