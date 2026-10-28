@@ -108,3 +108,14 @@ Deno.test("bug #82: um aquecimento de 5 min não faz do treino de pernas um trei
   assertStringIncludes(p, WARMUP_CATEGORY_RULE);
   assertStringIncludes(WARMUP_CATEGORY_RULE, "parte principal do treino");
 });
+
+Deno.test("normalizePreview (bug #94): prints da bicicleta e das máquinas — a duração é a soma", () => {
+  const parsed = {
+    session_name: "Pernas", duration_seconds: 2309,
+    activity_periods: [{ kind: "cardio", start_time: null, duration_seconds: 948 }, { kind: "forca", start_time: null, duration_seconds: 2309 }],
+    exercises: [{ name: "Bicicleta estacionária", type: "cardio", sets: [{ duration_seconds: 948, distance_km: 7.25 }] }],
+  };
+  assertEquals(normalizePreview(parsed, 0, "forca").metrics.duration_seconds, 3257);
+  assertEquals(normalizePreview({ ...parsed, activity_periods: [] }, 0, "forca").metrics.duration_seconds, 2309);
+  assert("activity_periods" in PREVIEW_SCHEMA.properties);
+});

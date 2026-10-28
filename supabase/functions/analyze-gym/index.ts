@@ -56,6 +56,7 @@ import {
 } from "../_shared/geminiFetch.ts";
 import { addUsage, emptyUsage, type GeminiUsage, usageFromGemini } from "../_shared/geminiUsage.ts";
 import { withUsageRecording } from "../_shared/usageRecorder.ts";
+import { ACTIVITY_PERIODS_PROMPT, ACTIVITY_PERIODS_SCHEMA, durationBreakdown, sessionDurationSeconds } from "../_shared/formulas/sessionDuration.ts";
 
 const MAX_PHOTOS = 6;
 const MAX_NOTES_LENGTH = 500;
@@ -108,6 +109,9 @@ const RESPONSE_SCHEMA = {
     max_hr: { type: "NUMBER", nullable: true },
     exertion: { type: "NUMBER", nullable: true },
     volume_kg: { type: "NUMBER", nullable: true },
+    // Bug #94: uma atividade por print distinto (bicicleta + máquinas), para a
+    // duração da sessão ser a soma (sessionDuration.ts).
+    activity_periods: ACTIVITY_PERIODS_SCHEMA,
     // Tudo o que o print mostra e a app ainda não guarda. Não vai para a BD:
     // é registado nos logs para depois decidirmos o que vale a pena promover a
     // coluna própria (ver logEvent 'gym_analysis' no cliente).
@@ -170,7 +174,7 @@ const METRICS_PROMPT =
   "o mostrar (ex.: \"6/10\" num campo chamado Exertion, Esforço ou RPE). " +
   "Se vires o Volume Total da sessão em kg, extrai o número para volume_kg. " +
   "Devolve null em qualquer campo que não esteja visível — nunca inventes nem " +
-  "estimes valores.\n\n" +
+  "estimes valores. " + ACTIVITY_PERIODS_PROMPT + "\n\n" +
   "Por fim, preenche extra_fields com TODOS os outros dados numéricos ou " +
   "textuais que o ecrã mostre sobre esta sessão e que não caibam em nenhum dos " +
   "campos acima (exemplos: volume total, número de recordes pessoais, hora de " +
@@ -422,7 +426,8 @@ async function analyzeWithGemini(
 
   const metrics: GymMetrics = {
     // 24h de tecto: chega para qualquer sessão e apanha leituras absurdas.
-    duration_seconds: intInRange(parsed.duration_seconds, 1, 86400),
+    // Prints de atividades diferentes somam-se (bug #94, sessionDuration.ts).
+    duration_seconds: sessionDurationSeconds(intInRange(parsed.duration_seconds, 1, 86400), parsed.activity_periods),
     calories_kcal: intInRange(parsed.calories_kcal, 0, 20000),
     avg_hr: intInRange(parsed.avg_hr, 1, 299),
     max_hr: intInRange(parsed.max_hr, 1, 299),
@@ -809,6 +814,12 @@ export function planningFrameSection(hasPlan: boolean, hasUpcomingRace: boolean,
 // anteriores (de qualquer tipo), e escreve a análise na estrutura comum aos
 // registos (GYM_ANALYSIS_RULES) — um comentário por sessão, não uma análise
 // de tendência de treino.
+/** « - 8km, 45 min, esforço 6/10» — só o que existe; sem nada, "" (nunca «0 min» nem «undefined/10», bug #94). */
+export function activityFacts(parts: (string | null)[]): string {
+  const p = parts.filter(Boolean);
+  return p.length ? ` - ${p.join(", ")}` : "";
+}
+
 async function generateGymCoachNotes(
   session: {
     date: string;
@@ -874,7 +885,8 @@ async function generateGymCoachNotes(
     `Tipo: ${kindLabel}`,
     session.classTypes?.length ? `Modalidade: ${session.classTypes.join(", ")}` : null,
     session.categories.length ? `Grupos musculares: ${session.categories.join(", ")}` : null,
-    m.duration_seconds ? `Duração: ${Math.round(m.duration_seconds / 60)} min` : null,
+    // O cardio à parte da força, quando as séries de cardio têm tempo (bug #94).
+    durationBreakdown(m.duration_seconds, session.sets) ? `Duração: ${durationBreakdown(m.duration_seconds, session.sets)}` : null,
     m.calories_kcal ? `Calorias: ${m.calories_kcal} kcal` : null,
     hrZoneLine ? hrZoneLine : m.avg_hr ? `FC média: ${m.avg_hr} bpm` : null,
     m.max_hr ? `FC máxima: ${m.max_hr} bpm` : null,
@@ -906,7 +918,11 @@ async function generateGymCoachNotes(
   const executionSection = planExecutionPromptSection(plan.exec, plan.autoLinked);
 
   const crossActivitiesSection = sameDayRuns.length > 0
-    ? `\nOUTRAS ATIVIDADES HOJE: O atleta também registou corrida ou caminhada hoje: ` + sameDayRuns.map(r => `${isWalk(r) ? 'Caminhada' : (r.training_type ? `Corrida (${r.training_type})` : 'Corrida')} - ${r.distance_km}km em ${Math.round(r.duration_seconds/60)}m, Esforço: ${r.effort_rpe}/10`).join('; ') + `. Tens que comentar sobre o volume duplo e a carga total/desgaste que isto causa num só dia (uma caminhada pesa pouco: não a trates como uma corrida)!\n`
+    ? `\nOUTRAS ATIVIDADES HOJE: O atleta também registou corrida ou caminhada hoje: ` + sameDayRuns.map((r) => `${isWalk(r) ? 'Caminhada' : (r.training_type ? `Corrida (${r.training_type})` : 'Corrida')}${activityFacts([
+      Number(r.distance_km) > 0 ? `${r.distance_km}km` : null,
+      Number(r.duration_seconds) > 0 ? `${Math.round(r.duration_seconds / 60)} min` : null,
+      Number(r.effort_rpe) > 0 ? `esforço ${r.effort_rpe}/10` : null,
+    ])}`).join('; ') + `. Tens que comentar sobre o volume duplo e a carga total/desgaste que isto causa num só dia (uma caminhada pesa pouco: não a trates como uma corrida)!\n`
     : ``;
 
   const prompt =
