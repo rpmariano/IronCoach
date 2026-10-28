@@ -619,7 +619,8 @@ Deno.test("runProposeTrainingPlan: pernas pesadas nas 48 h antes de uma corrida 
     const result = await runProposeTrainingPlan(sb, "user-1", {
       ...VALID_PLAN, items: [gymDay("2026-08-11", [reps("Agachamento", 5), reps("Leg press", 6), reps("Dead bug", 10)]), run(gap, hardType)],
     });
-    assert(result.startsWith("Erro: o ginásio de 2026-08-11 tem pernas pesadas"), `${hardType}: ${result}`);
+    assert(result.startsWith("Erro: pernas pesadas") && result.includes(`2026-08-11 (Agachamento, Leg press) está a menos de 48 h do ${hardType}`), `${hardType}: ${result}`);
+    assertStringIncludes(result, "no próprio dia de uma corrida dura (depois dela) ou com 3+ dias de folga");
     assertEquals(calls.itemInserts.length, 0);
   }
   // Três dias antes, ou antes de um contínuo, ou pernas a 10: passa.
@@ -639,12 +640,43 @@ Deno.test("runProposeTrainingPlan: na semana de uma prova, nada de pernas pesada
   const race = [{ id: "r1", name: "Corrida do Tejo", date: "2026-08-20", distance_km: 10, race_priority: "b" }];
   const plan = (blocks: unknown[]) => ({ ...VALID_PLAN, items: [gymDay("2026-08-14", blocks)] });
   const heavy = await runProposeTrainingPlan(makePlanSbWithRaces(race).sb, "user-1", plan([reps("Agachamento", 4), reps("Dead bug", 10)]));
-  assert(heavy.startsWith("Erro: o ginásio de 2026-08-14 tem pernas pesadas (Agachamento) na semana da prova \"Corrida do Tejo\""), heavy);
+  assertStringIncludes(heavy, `2026-08-14 (Agachamento) está na semana da prova "Corrida do Tejo" (2026-08-20)`);
   const light = await runProposeTrainingPlan(makePlanSbWithRaces(race).sb, "user-1", plan([reps("Agachamento", 12), reps("Supino", 6)]));
   assertStringIncludes(light, "Plano criado");
   // Oito dias antes já não é a semana da prova.
   const before = await runProposeTrainingPlan(makePlanSbWithRaces(race).sb, "user-1", { ...VALID_PLAN, items: [gymDay("2026-08-12", [reps("Agachamento", 4), reps("Dead bug", 10)])] });
   assertStringIncludes(before, "Plano criado");
+});
+
+Deno.test("runProposeTrainingPlan: todos os conflitos de pernas pesadas numa só mensagem", async () => {
+  const run = (planned_date: string, training_type: string) => ({ planned_date, kind: "corrida", training_type, target_distance_km: 8 });
+  const { sb } = makePlanSb();
+  const result = await runProposeTrainingPlan(sb, "user-1", {
+    ...VALID_PLAN,
+    items: [
+      gymDay("2026-08-10", [reps("Agachamento", 5), reps("Dead bug", 10)]), run("2026-08-11", "intervalos"),
+      gymDay("2026-08-13", [reps("Peso morto romeno", 5), reps("Hollow hold", 10)]), run("2026-08-15", "longo"),
+    ],
+  });
+  assertStringIncludes(result, "2026-08-10 (Agachamento) está a menos de 48 h do intervalos de 2026-08-11");
+  assertStringIncludes(result, "2026-08-13 (Peso morto romeno) está a menos de 48 h do longo de 2026-08-15");
+  // No próprio dia da corrida dura (depois dela) passa.
+  const same = await runProposeTrainingPlan(makePlanSb().sb, "user-1", {
+    ...VALID_PLAN, items: [run("2026-08-11", "intervalos"), gymDay("2026-08-11", [reps("Agachamento", 5), reps("Dead bug", 10)])],
+  });
+  assertStringIncludes(same, "Plano criado");
+});
+
+Deno.test("runProposeTrainingPlan: semana da prova — só as principais (A/B) bloqueiam; C e jornadas do Troféu não", async () => {
+  const heavyGym = { ...VALID_PLAN, items: [gymDay("2026-08-14", [reps("Agachamento", 4), reps("Dead bug", 10)])] };
+  const race = (race_priority: string) => [{ id: "r1", name: "Corrida do Tejo", date: "2026-08-20", distance_km: 10, race_priority }];
+  assertStringIncludes(await runProposeTrainingPlan(makePlanSbWithRaces(race("a")).sb, "user-1", heavyGym), "na semana da prova");
+  assertStringIncludes(await runProposeTrainingPlan(makePlanSbWithRaces(race("c")).sb, "user-1", heavyGym), "Plano criado");
+  // Uma jornada do Troféu (com papel no bloco) também não, mesmo marcada B.
+  assertStringIncludes(await runProposeTrainingPlan(makePlanSbWithRaces(race("b")).sb, "user-1", heavyGym, { r1: "controlar" }), "Plano criado");
+  // Saltos e isometria não são pernas pesadas.
+  const plyo = { ...VALID_PLAN, items: [gymDay("2026-08-14", [reps("Saltos à caixa", 5), reps("Agachamento isométrico na parede", 1), reps("Dead bug", 10)])] };
+  assertStringIncludes(await runProposeTrainingPlan(makePlanSbWithRaces(race("a")).sb, "user-1", plyo), "Plano criado");
 });
 
 Deno.test("handler: objetivo de massa e regras de conciliação ligados (ligações no código)", async () => {

@@ -117,3 +117,33 @@ Deno.test("heavyLegExercises: pernas a ≤ 6 reps; tronco superior, pernas a 8+ 
   ] }), ["Agachamento", "Peso morto romeno"]);
   assertEquals(heavyLegExercises(null), []);
 });
+
+Deno.test("revisão de a93b2773..61665b38: restrição com verbo de causa, massa só muscular, negação por oração, saltos/isometria, elevações na barra", () => {
+  const lim = (note: string) => [{ category: "limitacao_fisica", note }];
+  // 1. Com um verbo de causa pelo meio é restrição.
+  for (const t of ["Evitar exercícios que causem dor nos ombros", "Evitar movimentos que agravem a lesão do ombro", "Não fazer nada que provoque dor no ombro esquerdo"]) {
+    assert(hasUpperBodyRestriction(lim(t)), t);
+  }
+  assert(!hasUpperBodyRestriction(lim("Sem nenhum tipo de problema nos ombros")));
+  assert(!hasUpperBodyRestriction(lim("Sem dores nos ombros")));
+  // 2. Massa gorda, corporal e o índice não são objetivo de massa.
+  const obj = (n: string) => [{ category: "objetivo_pessoal", note: n }];
+  for (const t of ["Baixar a massa gorda para 15%", "Perder 3 kg de massa gorda", "Quer melhorar o índice de massa corporal", "Manter a massa muscular durante a maratona"]) {
+    assertEquals(wantsMuscleGain(obj(t), null, null), null, t);
+  }
+  assert(wantsMuscleGain(obj("Quer ganhar massa"), null, null));
+  // 7. A negação só vale na oração dela; todas as ocorrências contam.
+  assert(wantsMuscleGain(obj("Maratona sem lesões e ganhar massa muscular"), null, null));
+  assert(wantsMuscleGain(obj("Não quer perder massa muscular, mas quer hipertrofia nos ombros"), null, null));
+  assertEquals(wantsMuscleGain(obj("Não quer ganhar massa"), null, null), null);
+  // 4. Saltos e isometria não são pesados; 1 «rep» também não.
+  assertEquals(heavyLegExercises({ blocks: [
+    { type: "forca", name: "Saltos à caixa", sets: 4, reps: 5 }, { type: "forca", name: "Jump squat", sets: 3, reps: 5 },
+    { type: "forca", name: "Agachamento isométrico", sets: 3, reps: 1 }, { type: "forca", name: "Wall sit", sets: 3, reps: 2 },
+    { type: "forca", name: "Agachamento", sets: 3, reps: 1 }, { type: "forca", name: "Agachamento", sets: 5, reps: 5 },
+  ] }), ["Agachamento"]);
+  // 6. Elevações na barra numa nota.
+  assert(upperBodyLoadInText("Acabar com elevações de pernas na barra 3x10"));
+  assert(upperBodyLoadInText("Elevações de joelhos na barra fixa"));
+  assertEquals(upperBodyLoadInText("Elevação de pernas deitado 3x12"), null);
+});

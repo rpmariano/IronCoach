@@ -55,6 +55,7 @@ import {
   requestDeadlines,
 } from "../_shared/geminiFetch.ts";
 import { withUsageRecording } from "../_shared/usageRecorder.ts";
+import { durationBreakdown } from "../_shared/formulas/sessionDuration.ts";
 import { geminiHeaders, geminiUrl, geminiWithFallback, thinkingConfig } from "../_shared/geminiModel.ts";
 
 const MAX_PHOTOS = 6;
@@ -500,25 +501,92 @@ export function buildWeeklyVolumeLine(
   return `${currentWeek.km.toFixed(1)} km em ${currentWeek.count} corrida(s), semana de calendário (segunda a domingo)${aDecorrer}`;
 }
 
+/* Uma sessão de ginásio em texto, só com o que existe — nunca «0m» nem
+   «RPE ?/10» — e com o cardio à parte da força (bug #94): «Ginásio Pernas
+   (Pernas; 54 min no total — 16 min de cardio (Bicicleta estacionária) e 38
+   min de força; esforço 7/10)». */
+// deno-lint-ignore no-explicit-any
+export function gymFacts(g: any): string {
+  const facts = [
+    Array.isArray(g?.categories) && g.categories.length ? g.categories.join("/") : null,
+    durationBreakdown(g?.duration_seconds, g?.workout_session_sets),
+    Number(g?.exertion) > 0 ? `esforço ${g.exertion}/10` : null,
+  ].filter(Boolean);
+  return `Ginásio ${g?.name || "Treino"}${facts.length ? ` (${facts.join("; ")})` : ""}`;
+}
+
+/* O dia anterior, só com o que houve (bug #94): sem corridas ontem, não há
+   linha nem exemplo de «0.0 km de corrida»; os zeros e os ausentes não entram. */
+// deno-lint-ignore no-explicit-any
+export function buildYesterdaySection(yesterdayISO: string, yesterdayRuns: any[], yesterdayGym: any[]): string {
+  if (!yesterdayRuns.length && !yesterdayGym.length) return "";
+  const totalKm = yesterdayRuns.reduce((sum, r) => sum + (Number(r.distance_km) || 0), 0);
+  const runDetails = yesterdayRuns.map((r, i) => {
+    const facts = [
+      Number(r.distance_km) > 0 ? `${Number(r.distance_km).toFixed(1)} km` : null,
+      Number(r.effort_rpe) > 0 ? `RPE ${r.effort_rpe}/10` : null,
+    ].filter(Boolean);
+    return `${i + 1}.ª corrida${facts.length ? `: ${facts.join(", ")}` : ""}`;
+  }).join(", ");
+  const example = [
+    yesterdayRuns.length > 1 && totalKm > 0 ? `as ${yesterdayRuns.length} corridas de ontem, ${totalKm.toFixed(1)} km no total` : null,
+    yesterdayRuns.length === 1 && totalKm > 0 ? `${totalKm.toFixed(1)} km de corrida ontem` : null,
+    yesterdayGym.length ? "o treino de ginásio de ontem" : null,
+  ].filter(Boolean).join(" mais ");
+  return `\nATIVIDADES REGISTADAS NO DIA ANTERIOR (${yesterdayISO}):\n` +
+    (yesterdayRuns.length
+      ? `- Corridas ontem: ${yesterdayRuns.length}${totalKm > 0 ? `, ${totalKm.toFixed(1)} km no total` : ""} [${runDetails}].\n`
+      : "") +
+    (yesterdayGym.length ? `- Ginásio ontem: ${yesterdayGym.map(gymFacts).join(", ")}.\n` : "") +
+    `REGRA DO DIA ANTERIOR: cita o que o atleta fez ontem${example ? ` (ex.: ${example})` : ""}, só com os números acima — ` +
+    `o que não está aqui não aconteceu, e nunca digas «0 km» nem «0 min» de nada. Com cardio e força no ginásio, fala de cada um. ` +
+    `NUNCA digas que ele fez apenas uma corrida de 20 km se ele registou duas corridas de 20 km (40 km)!`;
+}
+
 /** Os parciais em ritmo por volta — é daqui que ela lê a gestão do esforço
  *  (saída rápida demais, quebra no fim, final mais forte). Um parcial sem
  *  distância ou sem tempo fica de fora, mas os outros mantêm o número da volta. */
 export function formatSplitsLine(splits: unknown): string | null {
   if (!Array.isArray(splits)) return null;
+  // O formato do "Pace" deste prompt (5'20"), não o "5.20" do ecrã — no
+  // mesmo texto, os dois lado a lado liam-se como 5,2 minutos. Arredonda
+  // o total de segundos, para 4'59,6" dar 5'00" e não 4'60".
+  const fmt = (sec: number) => `${Math.floor(sec / 60)}'${String(sec % 60).padStart(2, "0")}"`;
   // Menos de 0,1 km é o relógio a parar (bug #61: 0,02 km em 6 s virava um
   // "pico a 5'00"" que a Carol criticava): não é uma volta, fica de fora.
-  const paces = splits.filter((s) => Number(s?.distance_km) >= 0.1).slice(0, 45).map((s, i) => {
+  const laps = splits.filter((s) => Number(s?.distance_km) >= 0.1).slice(0, 45).map((s, i) => {
     const d = Number(s?.distance_km);
     const t = Number(s?.time_seconds);
     if (!(d > 0 && t > 0)) return null;
-    // O formato do "Pace" deste prompt (5'20"), não o "5.20" do ecrã — no
-    // mesmo texto, os dois lado a lado liam-se como 5,2 minutos. Arredonda
-    // o total de segundos, para 4'59,6" dar 5'00" e não 4'60".
-    const sec = Math.round(t / d);
-    return `${i + 1}: ${Math.floor(sec / 60)}'${String(sec % 60).padStart(2, "0")}"`;
-  }).filter((p): p is string => p !== null);
-  return paces.length >= 2 ? `Parciais (ritmo de cada volta, por km): ${paces.join(" · ")}` : null;
+    // Bug #94: só uma volta de ~1 km é «um km». A sobra final (0,12 km em
+    // 35 s) ou uma volta de 400 m mostra a distância, para nunca passar por
+    // «o último quilómetro a 4'52"».
+    const full = d >= FULL_KM_MIN && d <= FULL_KM_MAX;
+    const dist = d < 1 ? `${Math.round(d * 1000)} m` : `${String(Math.round(d * 100) / 100).replace(".", ",")} km`;
+    return { n: i + 1, sec: Math.round(t / d), full, dist };
+  }).filter((p): p is { n: number; sec: number; full: boolean; dist: string } => p !== null);
+  if (laps.length < 2) return null;
+  let line = `Parciais (ritmo de cada volta, por km): ` +
+    laps.map((l) => `${l.n}${l.full ? "" : ` (${l.dist})`}: ${fmt(l.sec)}`).join(" · ");
+  const fullKm = laps.filter((l) => l.full);
+  if (fullKm.length >= 2) {
+    const fastest = fullKm.reduce((a, b) => (b.sec < a.sec ? b : a));
+    const slowest = fullKm.reduce((a, b) => (b.sec > a.sec ? b : a));
+    if (fastest.sec !== slowest.sec) line += `. Km mais rápido: o ${fastest.n} (${fmt(fastest.sec)}); mais lento: o ${slowest.n} (${fmt(slowest.sec)})`;
+  }
+  const partial = laps.filter((l) => !l.full);
+  if (partial.length) {
+    const ex = partial[partial.length - 1];
+    line += `. As voltas que não são de 1 km (${partial.map((l) => `${l.n}: ${l.dist}`).join(", ")}) nunca são «um km» — nem o mais ` +
+      `rápido, nem o mais lento, nem «o último km», nem «1 km em …»; se falares de uma, diz a distância («os ${ex.dist} da volta ${ex.n} a ` +
+      `${fmt(ex.sec)}/km»)`;
+  }
+  return line;
 }
+
+// Uma volta «de 1 km» (bug #94): o GPS mede 0,98 ou 1,02, mas 0,12 é uma sobra.
+const FULL_KM_MIN = 0.9;
+const FULL_KM_MAX = 1.1;
 
 /** O tempo passado em cada zona de frequência cardíaca, tal como o relógio o mostrou. */
 export function formatHrZonesLine(zones: unknown): string | null {
@@ -725,20 +793,10 @@ async function generateCoachNotes(
   const yesterdayGym = recentGym.filter((g) => g.date === yesterdayISO);
   const sameDayGym = recentGym.filter((g) => g.date === run.date);
 
-  let yesterdaySection = "";
-  if (yesterdayRuns.length > 0 || yesterdayGym.length > 0) {
-    const totalYesterdayKm = yesterdayRuns.reduce((sum, r) => sum + (Number(r.distance_km) || 0), 0);
-    const runDetails = yesterdayRuns.map((r, i) => `${i + 1}.ª corrida: ${Number(r.distance_km || 0).toFixed(1)}km (RPE ${r.effort_rpe || '?'}/10)`).join(", ");
-    const gymDetails = yesterdayGym.map(g => `Ginásio ${g.name || 'Treino'} (${(g.categories || []).join('/') || ''}, ${Math.round((g.duration_seconds || 0)/60)}m, RPE ${g.exertion || '?'}/10)`).join(", ");
-    
-    yesterdaySection = `\nATIVIDADES REGISTADAS NO DIA ANTERIOR (${yesterdayISO}):\n` +
-      `- Total de corridas ontem: ${yesterdayRuns.length} corrida(s) somando ${totalYesterdayKm.toFixed(1)} km [${runDetails}].\n` +
-      (yesterdayGym.length > 0 ? `- Ginásio ontem: ${yesterdayGym.length} sessão/sessões [${gymDetails}].\n` : '') +
-      `REGRA DO DIA ANTERIOR: Deves citar explicitamente TODO o volume e treinos que o atleta realizou ontem (ex.: ${yesterdayRuns.length > 1 ? `as ${yesterdayRuns.length} corridas de ontem totalizando ${totalYesterdayKm.toFixed(1)} km` : `${totalYesterdayKm.toFixed(1)} km de corrida ontem`}${yesterdayGym.length > 0 ? ` mais o treino de ginásio` : ''}). NUNCA digas que ele fez apenas uma corrida de 20 km se ele registou duas corridas de 20 km (40 km)!`;
-  }
+  const yesterdaySection = buildYesterdaySection(yesterdayISO, yesterdayRuns, yesterdayGym);
 
   const crossActivitiesSection = sameDayGym.length > 0
-    ? `\nOUTRAS ATIVIDADES HOJE: O atleta também registou ginásio hoje: ` + sameDayGym.map(g => `${g.name || 'Treino'} (${(g.categories || []).join(', ')}) - Duração: ${Math.round((g.duration_seconds || 0)/60)}m, Esforço: ${g.exertion}/10`).join('; ') + `. Tens que comentar sobre a carga total deste dia e o desgaste envolvido!\n`
+    ? `\nOUTRAS ATIVIDADES HOJE: O atleta também registou ginásio hoje: ` + sameDayGym.map(gymFacts).join('; ') + `. Tens que comentar sobre a carga total deste dia e o desgaste envolvido!\n`
     : ``;
 
   const sameDayRunsSection = sameDayRuns.length > 0
@@ -978,7 +1036,7 @@ async function attachCoachNotes(
     const [{ data: recentGym }, { data: sameDayRuns }, { data: hrProfile }] = await Promise.all([
       sb
         .from("workout_sessions")
-        .select("date, name, categories, exertion, duration_seconds")
+        .select("date, name, categories, exertion, duration_seconds, workout_session_sets(exercise_name, reps, weight, duration_seconds)")
         .eq("user_id", userId)
         .gte("date", sevenDaysAgoISO)
         .lte("date", ctx.date),

@@ -1,9 +1,11 @@
-import { assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
+import { assert, assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
 import {
   buildWeeklyVolumeLine,
   computeRunRecordContext,
   formatHrZonesLine,
   formatSplitsLine,
+  buildYesterdaySection,
+  gymFacts,
   keepImageOnlyDetails,
   planningFrameSection,
   resolvePhotoPaths,
@@ -163,7 +165,9 @@ Deno.test("formatSplitsLine: o ritmo de cada volta, com o número da volta mesmo
       { distance_km: 1, time_seconds: 312 },
       { distance_km: 0.5, time_seconds: 160 },
     ]),
-    "Parciais (ritmo de cada volta, por km): 1: 5'00\" · 3: 5'12\" · 4: 5'20\"",
+    "Parciais (ritmo de cada volta, por km): 1: 5'00\" · 3: 5'12\" · 4 (500 m): 5'20\". Km mais rápido: o 1 (5'00\"); mais lento: o 3 (5'12\")" +
+      ". As voltas que não são de 1 km (4: 500 m) nunca são «um km» — nem o mais rápido, nem o mais lento, nem «o último km», nem " +
+      "«1 km em …»; se falares de uma, diz a distância («os 500 m da volta 4 a 5'20\"/km»)",
   );
 });
 
@@ -188,14 +192,14 @@ Deno.test("formatSplitsLine: o resto de 0,02 km (relógio a parar) não é uma v
       { distance_km: 1, time_seconds: 387 },
       { distance_km: 0.02, time_seconds: 6 },
     ]),
-    "Parciais (ritmo de cada volta, por km): 1: 6'25\" · 2: 6'27\"",
+    "Parciais (ritmo de cada volta, por km): 1: 6'25\" · 2: 6'27\". Km mais rápido: o 1 (6'25\"); mais lento: o 2 (6'27\")",
   );
 });
 
 Deno.test("formatSplitsLine: 4'59,6\" arredonda para 5'00\", não 4'60\"", () => {
   assertEquals(
     formatSplitsLine([{ distance_km: 1, time_seconds: 299.6 }, { distance_km: 1, time_seconds: 305 }]),
-    "Parciais (ritmo de cada volta, por km): 1: 5'00\" · 2: 5'05\"",
+    "Parciais (ritmo de cada volta, por km): 1: 5'00\" · 2: 5'05\". Km mais rápido: o 1 (5'00\"); mais lento: o 2 (5'05\")",
   );
 });
 
@@ -263,4 +267,50 @@ Deno.test("caminhada: nunca é recorde de corrida, e não esconde os recordes da
 
 Deno.test("TRAINING_TYPE_KEYS: a ativação pré-prova grava-se como tipo de treino (bug #84)", () => {
   assertEquals(TRAINING_TYPE_KEYS.includes("ativacao"), true);
+});
+
+// ── Bug #94 (Rui, 28/10): o km mais rápido, o «0 km de corrida» e o ginásio de ontem ──
+const RUI_SPLITS = [
+  { distance_km: 1, time_seconds: 333 }, { distance_km: 1, time_seconds: 330 }, { distance_km: 1, time_seconds: 317 },
+  { distance_km: 1, time_seconds: 317 }, { distance_km: 1, time_seconds: 325 }, { distance_km: 0.12, time_seconds: 35 },
+];
+
+Deno.test("formatSplitsLine (bug #94): a sobra de 0,12 km não é um km — o mais rápido é o de 5'17\"", () => {
+  const line = formatSplitsLine(RUI_SPLITS)!;
+  assert(line.includes("6 (120 m): 4'52\""), line);
+  assert(line.includes("Km mais rápido: o 3 (5'17\"); mais lento: o 1 (5'33\")"), line);
+  assert(line.includes("nunca são «um km»") && line.includes("«os 120 m da volta 6 a 4'52\"/km»"), line);
+  assert(!line.includes("6: 4'52"), line);
+});
+
+Deno.test("formatSplitsLine: voltas de 400 m (intervalos) — sem «km mais rápido», com a distância", () => {
+  const line = formatSplitsLine([{ distance_km: 0.4, time_seconds: 100 }, { distance_km: 0.4, time_seconds: 98 }, { distance_km: 0.4, time_seconds: 101 }])!;
+  assert(line.startsWith("Parciais (ritmo de cada volta, por km): 1 (400 m): 4'10\" · 2 (400 m): 4'05\""), line);
+  assert(!line.includes("Km mais rápido"), line);
+  // 0,98 km do GPS é um km.
+  assert(formatSplitsLine([{ distance_km: 0.98, time_seconds: 300 }, { distance_km: 1.02, time_seconds: 310 }])!.includes("Km mais rápido: o 2 (5'04\"); mais lento: o 1 (5'06\")"));
+});
+
+Deno.test("buildYesterdaySection (bug #94): só ginásio ontem — nada de «0 km de corrida», cardio à parte", () => {
+  const gym = {
+    name: "Pernas", categories: ["Pernas"], exertion: 7, duration_seconds: 3257,
+    workout_session_sets: [
+      { exercise_name: "Cadeira extensora", reps: 12, weight: 40, duration_seconds: null },
+      { exercise_name: "Bicicleta estacionária", reps: null, weight: null, duration_seconds: 948 },
+    ],
+  };
+  const s = buildYesterdaySection("2026-10-27", [], [gym]);
+  assert(!/0[.,]0 ?km|0 corrida|Corridas ontem/.test(s), s);
+  assertStringIncludes(s, "Ginásio Pernas (Pernas; 54 min no total — 16 min de cardio (Bicicleta estacionária) e 38 min de força; esforço 7/10)");
+  assertStringIncludes(s, "(ex.: o treino de ginásio de ontem)");
+  assertStringIncludes(s, "nunca digas «0 km» nem «0 min»");
+  assertEquals(buildYesterdaySection("2026-10-27", [], []), "");
+});
+
+Deno.test("buildYesterdaySection / gymFacts: zeros e ausentes não entram", () => {
+  const s = buildYesterdaySection("2026-10-27", [{ distance_km: 8, effort_rpe: null }, { distance_km: 0, effort_rpe: 0 }], []);
+  assertStringIncludes(s, "- Corridas ontem: 2, 8.0 km no total [1.ª corrida: 8.0 km, 2.ª corrida].");
+  assert(!s.includes("RPE ?") && !s.includes("0.0 km"), s);
+  assertEquals(gymFacts({ name: "Treino", categories: [], duration_seconds: 0, exertion: null }), "Ginásio Treino");
+  assertEquals(gymFacts({ name: "Força", categories: ["Peito"], duration_seconds: 2700, exertion: 6 }), "Ginásio Força (Peito; 45 min; esforço 6/10)");
 });

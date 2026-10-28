@@ -9,6 +9,7 @@
 
 import { cardioSpecFor } from "../_shared/formulas/cardioFields.ts";
 import { foodKey } from "../_shared/formulas/foodKey.ts";
+import { ACTIVITY_PERIODS_SCHEMA, sessionDurationSeconds } from "../_shared/formulas/sessionDuration.ts";
 
 export const MAX_PREVIEW_EXERCISES = 30;
 export const MAX_PREVIEW_SETS = 30;
@@ -26,6 +27,8 @@ export const PREVIEW_SCHEMA = {
     avg_hr: { type: "NUMBER", nullable: true },
     max_hr: { type: "NUMBER", nullable: true },
     exertion: { type: "NUMBER", nullable: true },
+    // Bug #94: uma atividade por print distinto, somadas na duração.
+    activity_periods: ACTIVITY_PERIODS_SCHEMA,
     exercises: {
       type: "ARRAY",
       items: {
@@ -236,7 +239,7 @@ export function normalizePreview(parsed: any, planBlockCount: number, kind: stri
     categories: strList(parsed?.categories),
     class_types: kind === "aula" ? strList(parsed?.class_types) : [],
     metrics: {
-      duration_seconds: intIn(parsed?.duration_seconds, 1, 86400),
+      duration_seconds: sessionDurationSeconds(intIn(parsed?.duration_seconds, 1, 86400), parsed?.activity_periods),
       calories_kcal: intIn(parsed?.calories_kcal, 0, 20000),
       avg_hr: intIn(parsed?.avg_hr, 1, 299),
       max_hr: intIn(parsed?.max_hr, 1, 299),

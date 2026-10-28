@@ -1,5 +1,6 @@
 import { assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
 import {
+  activityFacts,
   buildGymHistoryBlock,
   canonicalMuscleGroup,
   formatExerciseLines,
@@ -122,4 +123,9 @@ Deno.test("planningFrameSection: sem plano e com prova, diz qual é a prova de r
   assertStringIncludes(bloco, `A prova de referência é "Maratona de Lisboa" (2026-10-11, 42,2 km), a próxima prova principal.`);
   assertEquals(planningFrameSection(false, true, null), planningFrameSection(false, true));
   assertEquals(planningFrameSection(true, true, principal), "");
+});
+
+Deno.test("activityFacts (bug #94): só o que existe — nunca «0m» nem «undefined/10»", () => {
+  assertEquals(activityFacts(["8km", null, "esforço 6/10"]), " - 8km, esforço 6/10");
+  assertEquals(activityFacts([null, null]), "");
 });
