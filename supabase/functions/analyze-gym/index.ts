@@ -400,7 +400,7 @@ async function analyzeWithGemini(
     GEMINI_TIMEOUT_MS,
     GEMINI_RETRIES,
     deadline,
-  ));
+  ), deadline);
 
   if (!geminiRes.ok) {
     const errText = await geminiRes.text();
@@ -537,7 +537,7 @@ async function previewWithGemini(
     GEMINI_TIMEOUT_MS,
     GEMINI_RETRIES,
     deadline,
-  ));
+  ), deadline);
   if (!geminiRes.ok) {
     const errText = await geminiRes.text();
     console.error("Gemini error (preview):", geminiRes.status, errText);
@@ -600,7 +600,7 @@ export async function inferMuscleGroupsFromNotes(
       INFER_TIMEOUT_MS,
       0,
       deadline,
-    ));
+    ), deadline);
     if (!res.ok) {
       console.warn("inferMuscleGroupsFromNotes: Gemini", res.status);
       return { categories: [], usage };
@@ -972,7 +972,7 @@ async function generateGymCoachNotes(
       45000,
       0,
       deadline,
-    ));
+    ), deadline);
     if (!res.ok) {
       console.warn("Gym coach generation failed:", res.status, await res.text());
       return { text: null };

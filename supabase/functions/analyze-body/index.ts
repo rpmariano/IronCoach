@@ -451,7 +451,7 @@ async function analyzeWithGemini(
     GEMINI_TIMEOUT_MS,
     GEMINI_RETRIES,
     deadline,
-  ));
+  ), deadline);
 
   if (!geminiRes.ok) {
     const errText = await geminiRes.text();
@@ -520,7 +520,7 @@ async function previewWithGemini(
     GEMINI_TIMEOUT_MS,
     GEMINI_RETRIES,
     deadline,
-  ));
+  ), deadline);
   if (!res.ok) {
     const errText = await res.text();
     console.error("Gemini error (preview):", res.status, errText);
@@ -617,7 +617,7 @@ async function generateBodySummaryFromMetrics(
       45000,
       0,
       deadline,
-    ));
+    ), deadline);
     if (!res.ok) {
       console.warn("Body manual summary generation failed:", res.status, await res.text());
       return { text: null, goalsReview: null, usage: null };

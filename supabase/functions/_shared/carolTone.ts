@@ -130,7 +130,10 @@ export function carolRecordAnalysisRules(spec: RecordAnalysisSpec): string {
 // pedidos. Qualquer outro: falha genérica. O código HTTP e "processar" eram
 // linguagem de sistema na voz dela (revisão de 2026-09-26): o código fica só
 // no log do servidor, que quem chama já escreve (console.error) antes disto.
+// 402 (créditos esgotados, 29-10-2026): não é coisa de minutos nem do registo
+// dele — diz-se que está parada do lado dela, sem pedir para repetir já.
 export function upstreamErrorText(status: number | null): string {
+  if (status === 402) return "A minha análise está parada do meu lado, não é do teu registo. Volto a analisar assim que isto se resolver.";
   if (status === 429) return "Não consegui responder agora. Tenta daqui a uns minutos.";
   if (status === null) return "Não consegui responder a tempo. Tenta outra vez daqui a pouco.";
   return "Não consegui ler isto agora. Tenta outra vez daqui a pouco.";
