@@ -25,6 +25,7 @@
    mesmo, e só o aviso nos logs diz que o raciocínio deixou de estar limitado. */
 
 import { hasTimeFor } from "./geminiFetch.ts";
+import { afterResponse, defaultCircuit, type GeminiCircuit, safeCheck } from "./geminiCircuit.ts";
 
 /** O modelo que o alias apontava a 2026-09-27 (ai_usage.model).
  *  TEMPORÁRIO (30-10-2026): o gemini-3.8-flash está sobrecarregado desde a
@@ -83,19 +84,30 @@ export function attemptTimeoutMs(timeoutMs: number, attemptDeadline: number, now
  * corre com primaryDeadline(deadline), para sobrar tempo ao de recurso. O 402
  * e os outros erros devolvem-se tal como vieram. `send` recebe o prazo da
  * tentativa e passa-o ao fetchGeminiWithTimeout.
+ * O disjuntor (geminiCircuit.ts, 30-10-2026): aberto, o principal nem se
+ * chama — o recurso vai logo, com o prazo inteiro; fechado ou em teste, o
+ * resultado do principal fica registado (falha = ocupado ou sem resposta).
  */
 export async function withBusyFallback(
   send: (model: string, attemptDeadline: number) => Promise<Response>,
   primary: string,
   deadline = Number.POSITIVE_INFINITY,
   fallbackModel = GEMINI_BUSY_FALLBACK_MODEL,
+  circuit: GeminiCircuit = defaultCircuit(),
 ): Promise<Response> {
+  if (primary !== fallbackModel && (await safeCheck(circuit, primary)) === "open") {
+    console.warn(`[gemini] disjuntor aberto: ${primary} saltado; direto a ${fallbackModel}`);
+    return await send(fallbackModel, deadline);
+  }
   let res: Response | null = null;
   let err: unknown = null;
   try {
     res = await send(primary, primary === fallbackModel ? deadline : primaryDeadline(deadline));
   } catch (e) {
     err = e;
+  }
+  if (primary !== fallbackModel) {
+    await afterResponse(circuit.record(primary, !!res && !GEMINI_BUSY_FALLBACK_STATUSES.has(res.status)));
   }
   if (res && !GEMINI_BUSY_FALLBACK_STATUSES.has(res.status)) return res;
   if (primary === fallbackModel || !hasTimeFor(deadline)) {
