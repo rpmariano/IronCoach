@@ -77,7 +77,7 @@ import {
   latestTargetsProposals, parseTargetsReview, targetsPayload, targetsReviewKey, TARGETS_KEEP_ANSWER, TARGETS_UPDATE_ANSWER,
 } from "./targetsReview.ts";
 // Só a chave no header (x-goog-api-key); o coach-chat continua no alias.
-import { geminiHeaders, thinkingConfig } from "../_shared/geminiModel.ts";
+import { geminiHeaders, thinkingConfig, withBusyFallback } from "../_shared/geminiModel.ts";
 import {
   isPlanRequest, PLAN_RESUME_LATER, PLAN_RESUME_LATER_REPLY, PLAN_RESUME_SEND, type PlanResumeCandidate, planResumeFacts,
 } from "../_shared/formulas/planResume.ts";
@@ -1522,8 +1522,8 @@ ${facts.join("\n")}`
 }
 
 async function generateRaceCaption(geminiKey: string, o: RaceOutcome, firstName: string | null, deadline = Number.POSITIVE_INFINITY): Promise<{ caption: string; usage: GeminiUsage }> {
-  const res = await fetchGeminiWithTimeout(
-    `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`,
+  const res = await withBusyFallback((model) => fetchGeminiWithTimeout(
+    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
     {
       method: "POST",
       headers: geminiHeaders(geminiKey),
@@ -1535,7 +1535,7 @@ async function generateRaceCaption(geminiKey: string, o: RaceOutcome, firstName:
     CAPTION_TIMEOUT_MS,
     1,
     deadline,
-  );
+  ), GEMINI_MODEL, deadline);
   if (!res.ok) throw new Error(`Gemini ${res.status}`);
   const data = await res.json();
   // deno-lint-ignore no-explicit-any
@@ -8338,8 +8338,9 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
     let useRecommendationsSchema = !recommendationsSchemaRejected && !planTurn;
     let useLowThinking = planTurn && !lowThinkingRejected;
     async function callGemini(withTools = true) {
-      const res = await fetchGeminiWithTimeout(
-        `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`,
+      // Ocupado ou sem resposta: outro Flash, dentro do prazo (withBusyFallback, 29-10-2026).
+      const res = await withBusyFallback((model) => fetchGeminiWithTimeout(
+        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
         {
           method: "POST",
           headers: geminiHeaders(geminiKey!),
@@ -8391,7 +8392,7 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
         // a volta a cortar. As de "ocupado" (503) repetem-se dentro do prazo.
         0,
         chatDeadline,
-      );
+      ), GEMINI_MODEL, chatDeadline);
       return res;
     }
 

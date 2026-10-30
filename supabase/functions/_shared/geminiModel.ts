@@ -24,9 +24,55 @@
    mostrar o modelo do alias; num 400 de thinking o modelo é provavelmente o
    mesmo, e só o aviso nos logs diz que o raciocínio deixou de estar limitado. */
 
+import { hasTimeFor } from "./geminiFetch.ts";
+
 /** O modelo que o alias apontava a 2026-09-27 (ai_usage.model). */
 export const GEMINI_MODEL = "gemini-3.8-flash";
 export const GEMINI_FALLBACK_MODEL = "gemini-flash-latest";
+
+/* O Flash para onde se cai quando o modelo principal está ocupado (503 e
+   afins, 429) ou não responde (incidente de 29-10-2026: o gemini-3.8-flash deu
+   503 três vezes, e antes ficou 15 s sem responder com o pedido em paralelo —
+   o analyze-meal acabou em 502). A geração 3.8 só tem um Flash; este é o Flash
+   estável anterior (ai.google.dev/gemini-api/docs/models, 29-10-2026). Num
+   só sítio — muda-se aqui quando sair outro. */
+export const GEMINI_BUSY_FALLBACK_MODEL = "gemini-3.6-flash";
+export const GEMINI_BUSY_FALLBACK_STATUSES: ReadonlySet<number> = new Set([429, 500, 502, 503, 504]);
+/* Créditos pré-pagos esgotados (402 RESOURCE_EXHAUSTED, 29-10-2026 às 22:08).
+   NÃO cai para outro modelo: a conta é a mesma, o outro dava o mesmo 402. */
+export const GEMINI_CREDITS_STATUS = 402;
+
+/**
+ * Chama `send(primary)` e, se o modelo estiver ocupado (GEMINI_BUSY_FALLBACK_STATUSES)
+ * ou não responder (send lança: tempo ou rede), tenta uma vez `fallbackModel`
+ * — só se ainda couber uma tentativa útil antes de `deadline`. O 402 e os
+ * outros erros devolvem-se tal como vieram.
+ */
+export async function withBusyFallback(
+  send: (model: string) => Promise<Response>,
+  primary: string,
+  deadline = Number.POSITIVE_INFINITY,
+  fallbackModel = GEMINI_BUSY_FALLBACK_MODEL,
+): Promise<Response> {
+  let res: Response | null = null;
+  let err: unknown = null;
+  try {
+    res = await send(primary);
+  } catch (e) {
+    err = e;
+  }
+  if (res && !GEMINI_BUSY_FALLBACK_STATUSES.has(res.status)) return res;
+  if (primary === fallbackModel || !hasTimeFor(deadline)) {
+    if (res) return res;
+    throw err;
+  }
+  const why = res ? `respondeu ${res.status}` : `não respondeu (${err instanceof Error ? err.message : String(err)})`;
+  console.warn(`[gemini] ocupado: ${primary} ${why}; a tentar ${fallbackModel} — ver GEMINI_BUSY_FALLBACK_MODEL em _shared/geminiModel.ts`);
+  if (res) {
+    try { await res.body?.cancel(); } catch (_) { /* nada a libertar */ }
+  }
+  return await send(fallbackModel);
+}
 
 /* Níveis: todas as chamadas usam "low".
    "minimal" seria o natural para a extração de prints (ler números não ganha
@@ -69,15 +115,17 @@ export async function needsFallback(res: Response): Promise<boolean> {
 }
 
 /**
- * Chama `send(model, withThinking)` com o modelo fixo e, se ele já não
- * existir ou recusar o thinkingConfig, repete uma vez no alias sem ele.
- * `send` monta o pedido (URL com geminiUrl(model, …) e generationConfig com
- * ...thinkingConfig(nível, withThinking)).
+ * Chama `send(model, withThinking)` com o modelo fixo; ocupado ou sem
+ * resposta, tenta o GEMINI_BUSY_FALLBACK_MODEL (withBusyFallback, dentro de
+ * `deadline`); e, se o modelo já não existir ou recusar o thinkingConfig,
+ * repete uma vez no alias sem ele. `send` monta o pedido (URL com
+ * geminiUrl(model, …) e generationConfig com ...thinkingConfig(nível, withThinking)).
  */
 export async function geminiWithFallback(
   send: (model: string, withThinking: boolean) => Promise<Response>,
+  deadline = Number.POSITIVE_INFINITY,
 ): Promise<Response> {
-  const res = await send(GEMINI_MODEL, true);
+  const res = await withBusyFallback((model) => send(model, true), GEMINI_MODEL, deadline);
   if (!(await needsFallback(res))) return res;
   // O motivo do Google vai no aviso: sem ele não se sabia porquê (o 400 de
   // "minimal" em 27-09-2026 só se diagnosticou por exclusão).

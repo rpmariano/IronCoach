@@ -446,7 +446,7 @@ async function runGeminiItemsRequest(
       retries,
       deadline,
     )
-  );
+  , deadline);
 
   if (!geminiRes.ok) {
     const errText = await geminiRes.text();
@@ -531,7 +531,7 @@ async function extractItemsFromNotes(
       2,
       deadline,
     )
-  );
+  , deadline);
   if (!geminiRes.ok) {
     const errText = await geminiRes.text();
     console.error("Gemini error (observações):", geminiRes.status, errText);
@@ -675,7 +675,7 @@ async function analyzePantryFood(
       GEMINI_RETRIES,
       deadline,
     )
-  );
+  , deadline);
   if (!geminiRes.ok) {
     console.error("Gemini error:", geminiRes.status, await geminiRes.text());
     if (GEMINI_RETRYABLE_STATUSES.has(geminiRes.status)) throw new Error(geminiBusyMessage("ler este alimento"));
@@ -1182,7 +1182,7 @@ async function generateMealCoachNotes(
         0,
         deadline,
       )
-    );
+    , deadline);
     if (!res.ok) {
       console.warn("Meal coach generation failed:", res.status, await res.text());
       return { text: null, usage: null };

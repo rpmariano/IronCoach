@@ -147,3 +147,21 @@ Deno.test("revisão de a93b2773..61665b38: restrição com verbo de causa, massa
   assert(upperBodyLoadInText("Elevações de joelhos na barra fixa"));
   assertEquals(upperBodyLoadInText("Elevação de pernas deitado 3x12"), null);
 });
+
+Deno.test("revisão do lote 6024d2bc: «e» entre nomes, causa só com verbo de causa, negação até à vírgula/«mas»", () => {
+  const obj = (n: string) => [{ category: "objetivo_pessoal", note: n }];
+  const lim = (n: string) => [{ category: "limitacao_fisica", note: n }];
+  // 4. «Sem perder força e massa muscular» é manter, não ganhar.
+  assertEquals(wantsMuscleGain(obj("Sem perder força e massa muscular"), null, null), null);
+  assertEquals(wantsMuscleGain(obj("Manter massa muscular"), null, null), null);
+  assert(wantsMuscleGain(obj("Maratona sem lesões e ganhar massa muscular"), null, null));
+  // 5. «que» sem verbo de causa não faz a restrição.
+  assert(!hasUpperBodyRestriction(lim("Sem problemas que afetem os ombros")));
+  for (const t of ["Evitar exercícios que causem dor nos ombros", "Evitar movimentos que agravem a lesão do ombro", "Não fazer nada que provoque dor no ombro esquerdo"]) {
+    assert(hasUpperBodyRestriction(lim(t)), t);
+  }
+  // 6. A negação acaba na vírgula ou no «mas».
+  assert(hasUpperBodyRestriction(lim("Sem lesões, mas evitar carga nos ombros")));
+  assert(hasUpperBodyRestriction(lim("Sem lesões mas evitar carga nos ombros")));
+  assert(!hasUpperBodyRestriction(lim("Sem dores nos ombros, joelho sensível")));
+});

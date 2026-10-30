@@ -19,17 +19,21 @@ const fold = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCa
    «não tem problemas nos braços», «sem nenhum tipo de problema nos ombros»
    — não é restrição (revisões do lote). Mas com um verbo de causa pelo meio
    é: «evitar exercícios que causem dor nos ombros», «não fazer nada que
-   provoque dor no ombro» (revisão de a93b2773..61665b38). */
+   provoque dor no ombro» (revisão de a93b2773..61665b38) — um verbo de causa,
+   não um «que» qualquer: «sem problemas que afetem os ombros» não é. Cada
+   negação lê-se até à vírgula ou ao «mas» (a lookahead não consome o texto):
+   «sem lesões, mas evitar carga nos ombros» é restrição (revisão do lote). */
 const UPPER_RESTRICTION_RE =
-  /\b(sem|nao|nunca|evitar|nada de|restricao|proibid[oa]s?)\b([^.;\n]{0,80}?)\b(bracos?|membros? superiores?|ombros?|cotovelos?|pulsos?|maos?)\b/g;
+  /\b(sem|nao|nunca|evitar|nada de|restricao|proibid[oa]s?)\b(?=([^.;,\n]{0,80}?)\b(bracos?|membros? superiores?|ombros?|cotovelos?|pulsos?|maos?)\b)/g;
 const NEGATED_PROBLEM_RE = /^\s*(\w+\s+){0,4}(dor|dores|problemas?|queixas?|lesao|lesoes|limitac\w*|desconforto)\b/;
-const CAUSE_RE = /\b(que|caus\w*|provoc\w*|agrav\w*)\b/;
+const CAUSE_RE = /\b(caus\w*|provo(c|qu)\w*|agrav\w*|pior\w*|doa|doer|doam|magoe\w*)\b/;
 
 // deno-lint-ignore no-explicit-any
 export function hasUpperBodyRestriction(notes: any[] | null | undefined): boolean {
   return (notes ?? []).some((n) => {
     if (n?.category !== "limitacao_fisica" || typeof n?.note !== "string") return false;
     for (const m of fold(n.note).matchAll(UPPER_RESTRICTION_RE)) {
+      if (/\b(mas|porem)\b/.test(m[2])) continue; // a negação acabou antes; a seguinte lê-se sozinha
       const negatesProblem = NEGATED_PROBLEM_RE.test(m[2]) && !CAUSE_RE.test(m[2]);
       if (!negatesProblem) return true;
     }
@@ -131,7 +135,11 @@ const GAIN_RE =
 // A negação vale só na oração da ocorrência: «maratona sem lesões e ganhar
 // massa muscular» é um objetivo de massa. Perder, baixar ou manter não é ganhar.
 const GAIN_NEGATED_RE = /\b(nao|sem|nunca|evitar|nada de|perder|baixar|reduzir|manter|preservar)\b(\s+\w+){0,3}\s*$/;
-const CLAUSE_BREAK_RE = /[.;,:!?\n]|\b(e|mas|porem)\b/g;
+// O «e» só parte a oração quando começa outra com verbo («sem lesões e
+// ganhar massa»); num par de nomes («sem perder força e massa muscular») a
+// negação abrange os dois (revisão do lote).
+const CLAUSE_BREAK_RE =
+  /[.;,:!?\n]|\b(mas|porem)\b|\be(?=\s+(ganhar|aumentar|ficar|fazer|quer\w*|melhorar|subir|treinar|correr|ter|construir|desenvolver)\b)/g;
 export function wantsMuscleGain(
   // deno-lint-ignore no-explicit-any
   notes: any[] | null | undefined,

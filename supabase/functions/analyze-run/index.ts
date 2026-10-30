@@ -879,7 +879,7 @@ async function generateCoachNotes(
       45000,
       0,
       deadline,
-    ));
+    ), deadline);
 
     if (!res.ok) {
       const bodyText = await res.text();
@@ -1173,7 +1173,7 @@ async function analyzeWithGemini(
     GEMINI_TIMEOUT_MS,
     GEMINI_RETRIES,
     deadline,
-  ));
+  ), deadline);
 
   if (!geminiRes.ok) {
     const errText = await geminiRes.text();

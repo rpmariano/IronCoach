@@ -194,7 +194,7 @@ async function readDiplomaWithGemini(
       GEMINI_RETRIES,
       deadline,
     )
-  );
+  , deadline);
   if (!res.ok) {
     const errText = await res.text();
     console.error("Gemini error:", res.status, errText);
