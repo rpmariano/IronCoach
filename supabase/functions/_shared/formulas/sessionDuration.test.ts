@@ -64,3 +64,12 @@ Deno.test("ACTIVITY_PERIODS_SCHEMA: sem limites nos arrays (o 400 de 2026-09-05)
   const s = JSON.stringify(ACTIVITY_PERIODS_SCHEMA);
   assert(!s.includes("minItems") && !s.includes("maxItems"));
 });
+
+Deno.test("sessionDurationSeconds: com horas de início, o período-resumo não se tira — a união já não o conta duas vezes", () => {
+  // Resumo 12:40–13:34:17 e as duas atividades dentro dele: a união é o resumo.
+  assertEquals(sessionDurationSeconds(3257, [
+    { kind: "cardio", start_time: "12:40", duration_seconds: 948 },
+    { kind: "forca", start_time: "12:55:48", duration_seconds: 2309 },
+    { kind: "outro", start_time: "12:40", duration_seconds: 3257 },
+  ]), 3257);
+});

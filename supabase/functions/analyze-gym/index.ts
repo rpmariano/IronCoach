@@ -383,7 +383,7 @@ async function analyzeWithGemini(
     parts.push({ inline_data: { mime_type: mime, data: b64 } });
   }
 
-  const geminiRes = await geminiWithFallback((model, withThinking) => fetchGeminiWithTimeout(
+  const geminiRes = await geminiWithFallback((model, withThinking, attemptDeadline) => fetchGeminiWithTimeout(
     geminiUrl(model),
     {
       method: "POST",
@@ -399,7 +399,7 @@ async function analyzeWithGemini(
     },
     GEMINI_TIMEOUT_MS,
     GEMINI_RETRIES,
-    deadline,
+    attemptDeadline,
   ), deadline);
 
   if (!geminiRes.ok) {
@@ -520,7 +520,7 @@ async function previewWithGemini(
   const parts: unknown[] = [{ text: prompt }];
   for (const b64 of images) parts.push({ inline_data: { mime_type: mime, data: b64 } });
 
-  const geminiRes = await geminiWithFallback((model, withThinking) => fetchGeminiWithTimeout(
+  const geminiRes = await geminiWithFallback((model, withThinking, attemptDeadline) => fetchGeminiWithTimeout(
     geminiUrl(model),
     {
       method: "POST",
@@ -536,7 +536,7 @@ async function previewWithGemini(
     },
     GEMINI_TIMEOUT_MS,
     GEMINI_RETRIES,
-    deadline,
+    attemptDeadline,
   ), deadline);
   if (!geminiRes.ok) {
     const errText = await geminiRes.text();
@@ -579,7 +579,7 @@ export async function inferMuscleGroupsFromNotes(
   let usage: GeminiUsage | null = null;
   if (!notes || !notes.trim() || !hasTimeFor(deadline)) return { categories: [], usage };
   try {
-    const res = await geminiWithFallback((model, withThinking) => fetchGeminiWithTimeout(
+    const res = await geminiWithFallback((model, withThinking, attemptDeadline) => fetchGeminiWithTimeout(
       geminiUrl(model),
       {
         method: "POST",
@@ -599,7 +599,7 @@ export async function inferMuscleGroupsFromNotes(
       },
       INFER_TIMEOUT_MS,
       0,
-      deadline,
+      attemptDeadline,
     ), deadline);
     if (!res.ok) {
       console.warn("inferMuscleGroupsFromNotes: Gemini", res.status);
@@ -944,7 +944,7 @@ async function generateGymCoachNotes(
     `\nDevolve a resposta obrigatoriamente no formato JSON com: "text" (análise do treinador), "intervention_needed" (boolean, true se o desvio do plano justificar que a IA inicie uma intervenção) e "intervention_reason" (string, justificação curta). Se não houver nada para comentar sobre a sessão, "text" pode ser null.`;
 
   try {
-    const res = await geminiWithFallback((model, withThinking) => fetchGeminiWithTimeout(
+    const res = await geminiWithFallback((model, withThinking, attemptDeadline) => fetchGeminiWithTimeout(
       geminiUrl(model),
       {
         method: "POST",
@@ -971,7 +971,7 @@ async function generateGymCoachNotes(
       },
       45000,
       0,
-      deadline,
+      attemptDeadline,
     ), deadline);
     if (!res.ok) {
       console.warn("Gym coach generation failed:", res.status, await res.text());

@@ -58,3 +58,23 @@ Deno.test("withUsageRecording: sem usage, usage null ou resposta não-JSON não 
   assertEquals(await text.text(), "ok");
   assertEquals(rows.length, 0);
 });
+
+Deno.test("recordUsage: chamadas de dois modelos (Flash de recurso) gravam uma linha por modelo", async () => {
+  const rows: UsageRow[] = [];
+  const insert = (r: UsageRow) => { rows.push(r); return Promise.resolve({ error: null }); };
+  await recordUsage("analyze-meal", null, {
+    input_tokens: 300, output_tokens: 30, cached_tokens: 0, thoughts_tokens: 0, calls: 2, model: "gemini-3.6-flash",
+    by_model: {
+      "gemini-3.8-flash": { input_tokens: 100, output_tokens: 10, cached_tokens: 0, thoughts_tokens: 0, calls: 1 },
+      "gemini-3.6-flash": { input_tokens: 200, output_tokens: 20, cached_tokens: 0, thoughts_tokens: 0, calls: 1 },
+    },
+  }, insert);
+  assertEquals(rows.map((r) => [r.model, r.input_tokens, r.calls]), [["gemini-3.8-flash", 100, 1], ["gemini-3.6-flash", 200, 1]]);
+  // Um só modelo, ou by_model que não cobre todas as chamadas: a linha única de sempre.
+  rows.length = 0;
+  await recordUsage("analyze-meal", null, {
+    input_tokens: 300, output_tokens: 30, calls: 2, model: "gemini-3.8-flash",
+    by_model: { "gemini-3.8-flash": { input_tokens: 100, output_tokens: 10, cached_tokens: 0, thoughts_tokens: 0, calls: 1 } },
+  }, insert);
+  assertEquals(rows.map((r) => [r.model, r.input_tokens, r.calls]), [["gemini-3.8-flash", 300, 2]]);
+});

@@ -25,7 +25,7 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 import { REFERENCE_WEIGHT_KG } from "../_shared/formulas/shoes.ts";
 import { upstreamErrorText } from "../_shared/carolTone.ts";
 import { usageFromGemini } from "../_shared/geminiUsage.ts";
-import { geminiHeaders, geminiUrl, geminiWithFallback, thinkingConfig } from "../_shared/geminiModel.ts";
+import { attemptTimeoutMs, geminiHeaders, geminiUrl, geminiWithFallback, thinkingConfig } from "../_shared/geminiModel.ts";
 import { withUsageRecording } from "../_shared/usageRecorder.ts";
 
 const corsHeaders = {
@@ -35,6 +35,9 @@ const corsHeaders = {
 };
 
 const GEMINI_TIMEOUT_MS = 30000;
+/* O prazo do pedido (revisão de fa525453): a app espera 35 s (ShoeCabinet);
+   o principal e o Flash de recurso repartem-no (primaryDeadline). */
+const SHOE_BUDGET_MS = 30000;
 
 // Peso a que a estimativa se reporta — importado de ../_shared/formulas/
 // shoes.ts (T1), a mesma fonte que src/utils/shoes.js usa no cliente para
@@ -66,9 +69,9 @@ function jsonResponse(body: unknown, status = 200): Response {
   });
 }
 
-async function fetchGeminiWithTimeout(url: string, options: RequestInit): Promise<Response> {
+async function fetchGeminiWithTimeout(url: string, options: RequestInit, deadline = Number.POSITIVE_INFINITY): Promise<Response> {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), GEMINI_TIMEOUT_MS);
+  const timer = setTimeout(() => controller.abort(), attemptTimeoutMs(GEMINI_TIMEOUT_MS, deadline));
   try {
     return await fetch(url, { ...options, signal: controller.signal });
   } catch (e) {
@@ -103,6 +106,7 @@ function buildPrompt(brand: string, model: string): string {
 // O consumo do Gemini que a resposta traz fica gravado em ai_usage pelo
 // servidor (_shared/usageRecorder.ts), não pela app.
 Deno.serve(withUsageRecording("estimate-shoe-lifespan", async (req) => {
+  const deadline = Date.now() + SHOE_BUDGET_MS;
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
@@ -141,7 +145,7 @@ Deno.serve(withUsageRecording("estimate-shoe-lifespan", async (req) => {
     let geminiRes: Response;
     try {
       // geminiModel, e não model: "model" aqui é o modelo da sapatilha.
-      geminiRes = await geminiWithFallback((geminiModel, withThinking) =>
+      geminiRes = await geminiWithFallback((geminiModel, withThinking, attemptDeadline) =>
         fetchGeminiWithTimeout(
           geminiUrl(geminiModel),
           {
@@ -157,7 +161,8 @@ Deno.serve(withUsageRecording("estimate-shoe-lifespan", async (req) => {
               },
             }),
           },
-        )
+          attemptDeadline,
+        ), deadline,
       );
     } catch (e) {
       return jsonResponse({ error: e instanceof Error ? e.message : "Falha a contactar a Carol." }, 502);

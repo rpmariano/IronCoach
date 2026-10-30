@@ -434,7 +434,7 @@ async function analyzeWithGemini(
   for (const b64 of images) {
     parts.push({ inline_data: { mime_type: mime, data: b64 } });
   }
-  const geminiRes = await geminiWithFallback((model, withThinking) => fetchGeminiWithTimeout(
+  const geminiRes = await geminiWithFallback((model, withThinking, attemptDeadline) => fetchGeminiWithTimeout(
     geminiUrl(model),
     {
       method: "POST",
@@ -450,7 +450,7 @@ async function analyzeWithGemini(
     },
     GEMINI_TIMEOUT_MS,
     GEMINI_RETRIES,
-    deadline,
+    attemptDeadline,
   ), deadline);
 
   if (!geminiRes.ok) {
@@ -503,7 +503,7 @@ async function previewWithGemini(
 ): Promise<{ preview: { metrics: Metrics; classifications: Record<string, string>; source_app: string }; usage: GeminiUsage }> {
   const parts: unknown[] = [{ text: buildPreviewPrompt(notes) }];
   for (const b64 of images) parts.push({ inline_data: { mime_type: mime, data: b64 } });
-  const res = await geminiWithFallback((model, withThinking) => fetchGeminiWithTimeout(
+  const res = await geminiWithFallback((model, withThinking, attemptDeadline) => fetchGeminiWithTimeout(
     geminiUrl(model),
     {
       method: "POST",
@@ -519,7 +519,7 @@ async function previewWithGemini(
     },
     GEMINI_TIMEOUT_MS,
     GEMINI_RETRIES,
-    deadline,
+    attemptDeadline,
   ), deadline);
   if (!res.ok) {
     const errText = await res.text();
@@ -598,7 +598,7 @@ async function generateBodySummaryFromMetrics(
     (notes && notes.trim() ? `\n\nObservação do utilizador sobre esta pesagem: "${notes.trim()}"` : "");
 
   try {
-    const res = await geminiWithFallback((model, withThinking) => fetchGeminiWithTimeout(
+    const res = await geminiWithFallback((model, withThinking, attemptDeadline) => fetchGeminiWithTimeout(
       geminiUrl(model),
       {
         method: "POST",
@@ -616,7 +616,7 @@ async function generateBodySummaryFromMetrics(
       },
       45000,
       0,
-      deadline,
+      attemptDeadline,
     ), deadline);
     if (!res.ok) {
       console.warn("Body manual summary generation failed:", res.status, await res.text());

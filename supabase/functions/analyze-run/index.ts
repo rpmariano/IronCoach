@@ -853,7 +853,7 @@ async function generateCoachNotes(
     `\nDevolve a resposta obrigatoriamente no formato JSON com: "text" (análise do treinador), "intervention_needed" (boolean, true se o desvio do plano justificar que a IA de chat inicie uma intervenção) e "intervention_reason" (string, justificação curta se a intervenção for necessária).`;
 
   try {
-    const res = await geminiWithFallback((model, withThinking) => fetchGeminiWithTimeout(
+    const res = await geminiWithFallback((model, withThinking, attemptDeadline) => fetchGeminiWithTimeout(
       geminiUrl(model),
       {
         method: "POST",
@@ -878,7 +878,7 @@ async function generateCoachNotes(
       },
       45000,
       0,
-      deadline,
+      attemptDeadline,
     ), deadline);
 
     if (!res.ok) {
@@ -1156,7 +1156,7 @@ async function analyzeWithGemini(
     parts.push({ inline_data: { mime_type: mime, data: b64 } });
   }
 
-  const geminiRes = await geminiWithFallback((model, withThinking) => fetchGeminiWithTimeout(
+  const geminiRes = await geminiWithFallback((model, withThinking, attemptDeadline) => fetchGeminiWithTimeout(
     geminiUrl(model),
     {
       method: "POST",
@@ -1172,7 +1172,7 @@ async function analyzeWithGemini(
     },
     GEMINI_TIMEOUT_MS,
     GEMINI_RETRIES,
-    deadline,
+    attemptDeadline,
   ), deadline);
 
   if (!geminiRes.ok) {

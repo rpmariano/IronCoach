@@ -6467,5 +6467,13 @@ Deno.test("handler: turno de plano com raciocínio low, sem recommendations, com
   // O log de cada ronda tem o tempo e os tokens.
   const log = src.slice(src.indexOf('console.log("coach-chat gemini", JSON.stringify({'), src.indexOf('console.log("coach-chat gemini", JSON.stringify({') + 1400);
   for (const k of ["ms: Date.now() - roundStartedAt,", 'thinking: useLowThinking ? "low" : "default",', "planTurn,", "thoughtsTokens:", "outputTokens:"]) assertStringIncludes(log, k);
-  assert(src.indexOf("roundStartedAt = Date.now();") < src.indexOf("geminiRes = await callGemini(!isFinalRound);"));
+  assert(src.indexOf("roundStartedAt = Date.now();") < src.indexOf("geminiRes = await callGemini(!isFinalRound, round === 0);"));
+});
+
+Deno.test("chat: o Flash de recurso só na ronda 0 — as seguintes ficam no modelo que respondeu (thoughtSignature, revisão de fa525453)", async () => {
+  const src = await Deno.readTextFile(new URL("./index.ts", import.meta.url));
+  assertStringIncludes(src, "geminiRes = await callGemini(!isFinalRound, round === 0);");
+  assertStringIncludes(src, "? await withBusyFallback(sendTo, GEMINI_MODEL, chatDeadline)");
+  assertStringIncludes(src, ": await sendTo(chatModel, chatDeadline);");
+  assertStringIncludes(src, 'error: upstreamErrorText(geminiRes.status, "chat"),');
 });

@@ -14,12 +14,15 @@
 
 import { CAROL_TONE_RULES_SHORT } from "../_shared/carolTone.ts";
 import { type GeminiUsage, usageFromGemini } from "../_shared/geminiUsage.ts";
-import { geminiHeaders, geminiUrl, geminiWithFallback, thinkingConfig } from "../_shared/geminiModel.ts";
+import { attemptTimeoutMs, geminiHeaders, geminiUrl, geminiWithFallback, thinkingConfig } from "../_shared/geminiModel.ts";
 import { kmTexto, nomeProprio, proactivePushMessage, RACE_EVE_AFTERNOON_MINUTES, startTimeMinutes, type ServerProactiveCandidate } from "../_shared/formulas/proactiveTriggers.ts";
 
 export const PUSH_TEXT_MIN = 15;
 export const PUSH_TEXT_MAX = 140;
 const GEMINI_TIMEOUT_MS = 10000;
+/* O prazo de cada texto (revisão de fa525453): o principal e, ocupado ou sem
+   resposta, o Flash de recurso — 10 s cada. Sem texto a tempo sai a frase fixa. */
+const PUSH_BUDGET_MS = 20000;
 
 export interface PushFacts {
   firstName?: string | null;
@@ -194,8 +197,9 @@ export async function composePushMessage(
      telemóvel — o número diz-se no chat, a ele. */
   const fixa = c.trigger === "intervention" || c.trigger === "missed_workout" || c.trigger === "leaderboard" || c.trigger === "percentile_ready";
   if (!geminiKey || fixa) return { ...fallback, generated: false, usage: null };
+  const deadline = Date.now() + PUSH_BUDGET_MS;
   try {
-    const res = await geminiWithFallback((model, withThinking) => fetchImpl(
+    const res = await geminiWithFallback((model, withThinking, attemptDeadline) => fetchImpl(
       geminiUrl(model),
       {
         method: "POST",
@@ -204,9 +208,9 @@ export async function composePushMessage(
           contents: [{ parts: [{ text: buildPushPrompt(c, facts) }] }],
           generationConfig: { maxOutputTokens: 1024, temperature: 0.8, ...thinkingConfig("low", withThinking) },
         }),
-        signal: AbortSignal.timeout(GEMINI_TIMEOUT_MS),
+        signal: AbortSignal.timeout(attemptTimeoutMs(GEMINI_TIMEOUT_MS, attemptDeadline)),
       },
-    ));
+    ), deadline);
     if (!res.ok) {
       console.warn("coach-proactive-tick: texto gerado falhou", res.status);
       return { ...fallback, generated: false, usage: null };
