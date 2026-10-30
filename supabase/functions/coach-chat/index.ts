@@ -136,6 +136,52 @@ export function createChatModelRouter(primary = CHAT_PRIMARY_MODEL) {
   };
 }
 
+/* O histórico para o Gemini (R3 de 8715a0b0, o 400 do 3.6 com o pedido real
+   do Rui). O histórico dele tem turnos «model» seguidos — as mensagens por
+   iniciativa da Carol, sem resposta dele pelo meio (…UMMUMMMU…). O 3.8
+   aceitava-os; é a diferença mais plausível para o pedido da sonda, que
+   passou no 3.6. Juntar cada sequência do mesmo papel num só turno é válido
+   em qualquer modelo e não perde nada. Um 1.º turno da Carol ganha antes uma
+   abertura do atleta; um texto vazio não vai (é um 400 genérico). */
+// deno-lint-ignore no-explicit-any
+export function normalizeChatContents(contents: any[]): any[] {
+  // deno-lint-ignore no-explicit-any
+  const out: any[] = [];
+  for (const c of contents) {
+    // deno-lint-ignore no-explicit-any
+    const parts = (c?.parts || []).filter((p: any) => !(typeof p?.text === "string" && Object.keys(p).length === 1 && !p.text.trim()));
+    if (!parts.length) continue;
+    const last = out[out.length - 1];
+    if (last && last.role === c.role) last.parts.push(...parts);
+    else out.push({ ...c, parts: [...parts] });
+  }
+  if (out[0]?.role === "model") out.unshift({ role: "user", parts: [{ text: "(continuação da nossa conversa)" }] });
+  return out;
+}
+
+/** A forma de um pedido ao Gemini, para o log de um 400 — sem uma palavra do
+ *  atleta nem do prompt: contagens, papéis e bytes por secção (R3 de 8715a0b0). */
+// deno-lint-ignore no-explicit-any
+export function describeRequestShape(model: string, system: string, contents: any[], tools: unknown) {
+  const roles = contents.map((c) => (c?.role === "model" ? "M" : "U")).join("");
+  // deno-lint-ignore no-explicit-any
+  const parts: any[] = contents.flatMap((c) => c?.parts || []);
+  const count = (pred: (p: Record<string, unknown>) => boolean) => parts.filter(pred).length;
+  return {
+    model,
+    contents: contents.length,
+    roles: roles.length > 80 ? `${roles.slice(0, 40)}…${roles.slice(-40)}` : roles,
+    maxSameRoleRun: Math.max(0, ...(roles.match(/U+|M+/g) || []).map((r) => r.length)),
+    parts: parts.length,
+    thoughtSignatures: count((p) => "thoughtSignature" in p || "thought_signature" in p),
+    functionCalls: count((p) => "functionCall" in p),
+    functionResponses: count((p) => "functionResponse" in p),
+    inlineData: count((p) => "inline_data" in p || "inlineData" in p),
+    emptyTexts: count((p) => typeof p.text === "string" && !String(p.text).trim()),
+    bytes: { system: system.length, contents: JSON.stringify(contents).length, tools: tools ? JSON.stringify(tools).length : 0 },
+  };
+}
+
 /* Quanto se espera pela resposta do modelo numa ronda. Um turno de plano é
    longo de propósito (milhares de tokens de saída, ver GEMINI_ATTEMPT_MS);
    uma conversa responde em segundos — 60 s chegam, e o resto do prazo fica
@@ -8337,8 +8383,9 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
     if (targetsApplied.length) finalSystemInstruction += "\n\n" + buildTargetsAppliedInstruction(targetsApplied);
     else if (targetsNotApplied) finalSystemInstruction += "\n\n" + buildTargetsNotAppliedInstruction(targetsNotApplied);
 
+    // Turnos seguidos do mesmo papel juntos num só (normalizeChatContents, R3 de 8715a0b0).
     // deno-lint-ignore no-explicit-any
-    const contents: any[] = [
+    const contents: any[] = normalizeChatContents([
       ...(history || []).map((m: { role: string; content: string }) => ({
         role: m.role,
         parts: [{ text: m.content }],
@@ -8355,13 +8402,17 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
                 : "")
         }]
       },
-    ];
+    ]);
 
     // Restringe as ferramentas ao que este caso permite (ver classifyTurn).
     // É a mesma regra do ESQUEMA DE DECISÃO no prompt, mas aqui é imposta:
     // o que não vai na lista o modelo não consegue chamar.
-    // As fotos seguem no último turno do atleta, a seguir ao texto.
-    if (chatImages.length) contents[contents.length - 1].parts.push(...userTurnParts("", chatImages).slice(1));
+    // As fotos seguem no último turno do atleta, a seguir ao texto (um turno
+    // dele, mesmo que o texto tenha ficado vazio e caído na normalização).
+    if (chatImages.length) {
+      if (contents[contents.length - 1]?.role !== "user") contents.push({ role: "user", parts: [] });
+      contents[contents.length - 1].parts.push(...userTurnParts("", chatImages).slice(1));
+    }
     const turnCase = classifyTurn(message, history);
     // Num turno por iniciativa dela não se propõe nada — só leitura e notas.
     // Com fotos, só leitura, notas e a Despensa: o texto de uma imagem não pode levar a Carol a mexer em planos, metas ou provas.
@@ -8564,6 +8615,11 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
       if (!geminiRes.ok) {
         const errText = await geminiRes.text();
         console.error("Gemini error:", geminiRes.status, errText, JSON.stringify({ round, turnCase, model: chatRouter.model, tools: isFinalRound ? [] : toolNamesSent, toolsBytes: isFinalRound ? 0 : toolsBytes, thinking: useLowThinking ? "low" : "default", ms: Date.now() - roundStartedAt }));
+        // Num 400, a forma do pedido (sem texto nenhum): é o que falta para
+        // atribuir um INVALID_ARGUMENT genérico (R3 de 8715a0b0).
+        if (geminiRes.status === 400) {
+          console.error("coach-chat: forma do pedido recusado", JSON.stringify(describeRequestShape(chatRouter.model, finalSystemInstruction, contents, isFinalRound ? null : toolsBlock)));
+        }
         /* A rede do raciocínio "low": o alias pode rodar para uma geração que
            não o aceite (já aconteceu com thinkingBudget). Num turno de plano
            não vai o esquema das recomendações, por isso um 400 aqui é do

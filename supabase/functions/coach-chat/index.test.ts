@@ -6018,7 +6018,7 @@ Deno.test("handler: o portão do mapa vem antes do Gemini e o registo vem com a 
   const gate = src.indexOf("if (cupMapLogKey && await cupMapAlreadySent(sb, userId, cupMapLogKey)) {");
   assert(gate > 0);
   assert(gate > src.indexOf("const cupMapShown = cupMapPrompt !== null"));
-  assert(gate < src.indexOf("const contents: any[] = ["));
+  assert(gate < src.indexOf("const contents: any[] = normalizeChatContents(["));
   assertStringIncludes(src.slice(gate, gate + 300), 'skipped: "already_sent",');
   const save = src.indexOf("const { data: modelMsg, error: modelMsgErr } = await insertModelMessage(");
   const record = src.indexOf("if (cupMapLogKey && !modelMsgErr) await recordCupMapDelivered(sb, userId, cupMapLogKey);");

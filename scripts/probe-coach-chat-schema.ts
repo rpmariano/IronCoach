@@ -40,6 +40,8 @@ async function probe(
   withTools: boolean,
   model = GEMINI_MODEL,
   extra: Record<string, unknown> = { maxOutputTokens: 4096 },
+  contents: unknown[] | null = null,
+  tools: unknown = null,
 ): Promise<boolean> {
   const url = urlFor(model);
   label = `[${model}] ${label}`;
@@ -50,8 +52,8 @@ async function probe(
           "preenche o campo recommendations com a data e o tipo.",
       }],
     },
-    contents: [{ role: "user", parts: [{ text: "Hoje (2026-09-25). Dormi mal e estou com as pernas pesadas. Amanhã descanso?" }] }],
-    ...(withTools ? { tools: buildTools(null) } : {}),
+    contents: contents ?? [{ role: "user", parts: [{ text: "Hoje (2026-09-25). Dormi mal e estou com as pernas pesadas. Amanhã descanso?" }] }],
+    ...(withTools ? { tools: tools ?? buildTools(null) } : {}),
     generationConfig: {
       temperature: 0.7,
       ...extra,
@@ -94,6 +96,17 @@ for (const model of [GEMINI_MODEL, GEMINI_BUSY_FALLBACK_MODEL]) {
     // Isolar o 400 de 30-10: o teto de saída do chat, e o thinking dos turnos de plano.
     await probe("como o chat: ferramentas + esquema + teto 32768", RESPONSE_SCHEMA, true, model, chatConfig),
     await probe("como um turno de plano: + thinking low, esquema de antes", RESPONSE_SCHEMA_BASE, true, model, planConfig),
+    // R3 de 8715a0b0 (o 400 do 3.6 no pedido real do Rui): as duas diferenças
+    // para os casos acima — turnos «model» seguidos no histórico (as mensagens
+    // por iniciativa da Carol) e as ferramentas do Troféu (com inscrição ativa).
+    await probe("histórico com turnos «model» seguidos (o do Rui)", RESPONSE_SCHEMA, true, model, chatConfig, [
+      { role: "user", parts: [{ text: "Bom dia" }] },
+      { role: "model", parts: [{ text: "Bom dia! Como dormiste?" }] },
+      { role: "model", parts: [{ text: "Lembra-te do treino de hoje." }] },
+      { role: "model", parts: [{ text: "Já registaste o pequeno-almoço?" }] },
+      { role: "user", parts: [{ text: "Amanhã descanso?" }] },
+    ]),
+    await probe("com as ferramentas do Troféu (inscrição ativa)", RESPONSE_SCHEMA, true, model, chatConfig, null, buildTools(null, true)),
   );
 }
 Deno.exit(results.every(Boolean) ? 0 : 1);

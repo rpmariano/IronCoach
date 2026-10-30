@@ -79,3 +79,38 @@ Deno.test("legenda da prova: tem a rede do 404 (geminiWithFallback), já que o m
   assert(body.includes("geminiWithFallback("), body.slice(0, 300));
   assert(!body.includes("withBusyFallback("), "sem a rede do 404");
 });
+
+// R3 de 8715a0b0: o 400 do 3.6 com o pedido real do Rui. A sonda passou com a
+// config do chat; o histórico dele tem turnos «model» seguidos (as mensagens
+// por iniciativa da Carol: …UMMUMMMU…). Junta-se cada sequência do mesmo papel
+// num só turno — válido em qualquer modelo — e regista-se a forma do pedido.
+import { describeRequestShape, normalizeChatContents } from "./index.ts";
+
+Deno.test("normalizeChatContents: turnos seguidos do mesmo papel juntam-se num só; nada se perde", () => {
+  const t = (role: string, text: string) => ({ role, parts: [{ text }] });
+  const out = normalizeChatContents([t("user", "u1"), t("model", "m1"), t("model", "m2"), t("model", "m3"), t("user", "u2"), t("user", "u3")]);
+  assertEquals(out.map((c) => c.role), ["user", "model", "user"]);
+  assertEquals(out[1].parts, [{ text: "m1" }, { text: "m2" }, { text: "m3" }]);
+  assertEquals(out[2].parts, [{ text: "u2" }, { text: "u3" }]);
+  // A começar por «model»: uma abertura do atleta antes, para o 1.º turno ser dele.
+  const m0 = normalizeChatContents([t("model", "olá"), t("user", "u")]);
+  assertEquals(m0.map((c) => c.role), ["user", "model", "user"]);
+  // Textos vazios não vão (uma parte vazia é um 400 genérico).
+  assertEquals(normalizeChatContents([t("user", "a"), t("model", ""), t("user", "b")]).map((c) => c.role), ["user"]);
+});
+
+Deno.test("describeRequestShape: a forma do pedido, sem texto nenhum do atleta", () => {
+  const contents = [
+    { role: "user", parts: [{ text: "SEGREDO do atleta" }] },
+    { role: "model", parts: [{ functionCall: { name: "x", args: {} }, thoughtSignature: "abc" }] },
+    { role: "user", parts: [{ functionResponse: { name: "x", response: {} } }, { inline_data: { mime_type: "image/jpeg", data: "AAA" } }] },
+  ];
+  const s = describeRequestShape("gemini-3.6-flash", "SISTEMA", contents, [{ functionDeclarations: [] }]);
+  assertEquals(s.model, "gemini-3.6-flash");
+  assertEquals(s.contents, 3);
+  assertEquals(s.roles, "UMU");
+  assertEquals([s.thoughtSignatures, s.functionCalls, s.functionResponses, s.inlineData], [1, 1, 1, 1]);
+  assertEquals(s.maxSameRoleRun, 1);
+  assert(s.bytes.system > 0 && s.bytes.contents > 0 && s.bytes.tools > 0);
+  assert(!JSON.stringify(s).includes("SEGREDO") && !JSON.stringify(s).includes("SISTEMA"));
+});
