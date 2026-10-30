@@ -51,8 +51,10 @@ export async function safeCheck(circuit: GeminiCircuit, model: string, timeoutMs
   }
 }
 
-/** Corre `p` depois da resposta quando o runtime o deixa; senão espera por ela. Nunca rejeita. */
-export async function afterResponse(p: Promise<unknown>): Promise<void> {
+/** Corre `p` depois da resposta quando o runtime o deixa; senão espera por ela,
+ *  no máximo `timeoutMs` — uma base lenta não segura a resposta (R3 de
+ *  5612ec2d). Nunca rejeita. */
+export async function afterResponse(p: Promise<unknown>, timeoutMs = CIRCUIT_CHECK_TIMEOUT_MS): Promise<void> {
   const safe = p.catch((e) => console.warn("[gemini] disjuntor: resultado não registado —", e instanceof Error ? e.message : e));
   // deno-lint-ignore no-explicit-any
   const rt = (globalThis as any).EdgeRuntime;
@@ -60,7 +62,9 @@ export async function afterResponse(p: Promise<unknown>): Promise<void> {
     rt.waitUntil(safe);
     return;
   }
-  await safe;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  await Promise.race([safe, new Promise<void>((resolve) => { timer = setTimeout(resolve, timeoutMs); })]);
+  clearTimeout(timer);
 }
 
 function supabaseCircuit(sb: SupabaseClient): GeminiCircuit {
