@@ -165,3 +165,26 @@ Deno.test("revisão do lote 6024d2bc: «e» entre nomes, causa só com verbo de 
   assert(hasUpperBodyRestriction(lim("Sem lesões mas evitar carga nos ombros")));
   assert(!hasUpperBodyRestriction(lim("Sem dores nos ombros, joelho sensível")));
 });
+
+Deno.test("revisão de fa525453: o «e» lido no texto todo — ganhar depois de uma negação noutra oração é objetivo", () => {
+  const obj = (n: string) => [{ category: "objetivo_pessoal", note: n }];
+  for (const t of [
+    "Sem lesões e ganhar força", "Correr sem dores e aumentar a força", "Sem lesões e ganhar peso", "Manter a corrida e ganhar volume",
+    "Não perder velocidade e ficar mais forte", "Sem lesões e mais massa muscular", "Correr sem lesões e hipertrofia",
+    "Maratona sem lesões e ganhar massa muscular",
+  ]) assert(wantsMuscleGain(obj(t), null, null), t);
+  for (const t of ["Sem perder força e massa muscular", "Manter massa muscular", "Não quer ganhar massa", "Não é para ganhar massa"]) {
+    assertEquals(wantsMuscleGain(obj(t), null, null), null, t);
+  }
+});
+
+Deno.test("revisão de fa525453: a vírgula não corta a restrição; «más» não é «mas»; impedir é causa", () => {
+  const lim = (n: string) => [{ category: "limitacao_fisica", note: n }];
+  assert(hasUpperBodyRestriction(lim("Evitar peso excessivo, sobretudo nos ombros")));
+  assert(hasUpperBodyRestriction(lim("Restrição médica, ombro esquerdo")));
+  assert(hasUpperBodyRestriction(lim("Evitar más posturas com carga nos ombros")));
+  assert(hasUpperBodyRestriction(lim("Sem lesões, mas evitar carga nos ombros")));
+  assert(hasUpperBodyRestriction(lim("Não fazer nada que impeça a recuperação do ombro")));
+  assert(!hasUpperBodyRestriction(lim("Sem dores nos ombros, joelho sensível")));
+  assert(!hasUpperBodyRestriction(lim("Sem problemas que afetem os ombros")));
+});

@@ -21,19 +21,27 @@ const fold = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCa
    é: «evitar exercícios que causem dor nos ombros», «não fazer nada que
    provoque dor no ombro» (revisão de a93b2773..61665b38) — um verbo de causa,
    não um «que» qualquer: «sem problemas que afetem os ombros» não é. Cada
-   negação lê-se até à vírgula ou ao «mas» (a lookahead não consome o texto):
-   «sem lesões, mas evitar carga nos ombros» é restrição (revisão do lote). */
+   negação lê-se até ao «mas» (a lookahead não consome o texto): «sem lesões,
+   mas evitar carga nos ombros» é restrição (revisão do lote). A vírgula não
+   corta: «evitar peso excessivo, sobretudo nos ombros», «restrição médica,
+   ombro esquerdo» (revisão de fa525453). O «mas» confere-se no texto
+   original: «más posturas» dobrado também dá «mas». */
 const UPPER_RESTRICTION_RE =
-  /\b(sem|nao|nunca|evitar|nada de|restricao|proibid[oa]s?)\b(?=([^.;,\n]{0,80}?)\b(bracos?|membros? superiores?|ombros?|cotovelos?|pulsos?|maos?)\b)/g;
+  /\b(sem|nao|nunca|evitar|nada de|restricao|proibid[oa]s?)\b(?=([^.;\n]{0,80}?)\b(bracos?|membros? superiores?|ombros?|cotovelos?|pulsos?|maos?)\b)/g;
 const NEGATED_PROBLEM_RE = /^\s*(\w+\s+){0,4}(dor|dores|problemas?|queixas?|lesao|lesoes|limitac\w*|desconforto)\b/;
-const CAUSE_RE = /\b(caus\w*|provo(c|qu)\w*|agrav\w*|pior\w*|doa|doer|doam|magoe\w*)\b/;
+const CAUSE_RE = /\b(caus\w*|provo(c|qu)\w*|agrav\w*|pior\w*|doa|doer|doam|magoe\w*|impe(c|ç)\w*|impedir)\b/;
 
 // deno-lint-ignore no-explicit-any
 export function hasUpperBodyRestriction(notes: any[] | null | undefined): boolean {
   return (notes ?? []).some((n) => {
     if (n?.category !== "limitacao_fisica" || typeof n?.note !== "string") return false;
-    for (const m of fold(n.note).matchAll(UPPER_RESTRICTION_RE)) {
-      if (/\b(mas|porem)\b/.test(m[2])) continue; // a negação acabou antes; a seguinte lê-se sozinha
+    const original = n.note.normalize("NFC").toLowerCase();
+    const t = fold(original);
+    const aligned = original.length === t.length;
+    for (const m of t.matchAll(UPPER_RESTRICTION_RE)) {
+      const from = (m.index ?? 0) + m[1].length;
+      const middle = aligned ? original.slice(from, from + m[2].length) : m[2];
+      if (/(^|[^\p{L}])(mas|porém|porem)([^\p{L}]|$)/u.test(middle)) continue; // a negação acabou antes; a seguinte lê-se sozinha
       const negatesProblem = NEGATED_PROBLEM_RE.test(m[2]) && !CAUSE_RE.test(m[2]);
       if (!negatesProblem) return true;
     }
@@ -135,11 +143,31 @@ const GAIN_RE =
 // A negação vale só na oração da ocorrência: «maratona sem lesões e ganhar
 // massa muscular» é um objetivo de massa. Perder, baixar ou manter não é ganhar.
 const GAIN_NEGATED_RE = /\b(nao|sem|nunca|evitar|nada de|perder|baixar|reduzir|manter|preservar)\b(\s+\w+){0,3}\s*$/;
-// O «e» só parte a oração quando começa outra com verbo («sem lesões e
-// ganhar massa»); num par de nomes («sem perder força e massa muscular») a
-// negação abrange os dois (revisão do lote).
-const CLAUSE_BREAK_RE =
-  /[.;,:!?\n]|\b(mas|porem)\b|\be(?=\s+(ganhar|aumentar|ficar|fazer|quer\w*|melhorar|subir|treinar|correr|ter|construir|desenvolver)\b)/g;
+/* Onde começa a oração de uma ocorrência, lido no texto TODO (revisão de
+   fa525453: a versão anterior procurava o verbo depois do «e» num texto já
+   cortado antes dele). Partem a oração a pontuação, o «mas»/«porém» e o «e»
+   — menos o «e» de um par de coisas perdidas ou mantidas: «sem perder força
+   e massa muscular» nega as duas. Um «é» (verbo) não é «e»: confere-se no
+   texto original, que tem o mesmo comprimento do dobrado. */
+const HARD_BREAK_RE = /[.;,:!?\n]|\b(mas|porem)\b/g;
+const AND_RE = /\be\b/g;
+const LOSS_PAIR_RE = /\b(perder|baixar|reduzir|manter|preservar)\s+((a|o|as|os)\s+)?(forca|massa|musculo|peso|volume)(\s+muscular)?\s*$/;
+function clauseStart(t: string, original: string, idx: number): number {
+  const hardBefore = (pos: number) => {
+    let s = 0;
+    for (const b of t.matchAll(HARD_BREAK_RE)) if ((b.index ?? 0) < pos) s = Math.max(s, (b.index ?? 0) + b[0].length);
+    return s;
+  };
+  let start = hardBefore(idx);
+  const aligned = original.length === t.length;
+  for (const e of t.matchAll(AND_RE)) {
+    const at = e.index ?? 0;
+    if (at < start || at >= idx) continue;
+    if (aligned && original[at] !== "e" && original[at] !== "E") continue; // «é»
+    if (!LOSS_PAIR_RE.test(t.slice(hardBefore(at), at))) start = at + 1;
+  }
+  return start;
+}
 export function wantsMuscleGain(
   // deno-lint-ignore no-explicit-any
   notes: any[] | null | undefined,
@@ -148,11 +176,11 @@ export function wantsMuscleGain(
 ): string | null {
   for (const n of notes ?? []) {
     if ((n?.category !== "objetivo_pessoal" && n?.category !== "preferencia_treino") || typeof n?.note !== "string") continue;
-    const t = fold(n.note);
+    const original = n.note.normalize("NFC");
+    const t = fold(original);
     for (const m of t.matchAll(GAIN_RE)) {
-      const before = t.slice(0, m.index);
-      const clauseStart = Math.max(0, ...[...before.matchAll(CLAUSE_BREAK_RE)].map((b) => (b.index ?? 0) + b[0].length));
-      if (!GAIN_NEGATED_RE.test(before.slice(clauseStart))) return `memória: «${n.note.trim().slice(0, 120)}»`;
+      const idx = m.index ?? 0;
+      if (!GAIN_NEGATED_RE.test(t.slice(clauseStart(t, original, idx), idx))) return `memória: «${n.note.trim().slice(0, 120)}»`;
     }
   }
   const goal = Number(profile?.goal_lean_body_mass_kg);

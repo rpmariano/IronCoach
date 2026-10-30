@@ -174,7 +174,7 @@ async function readDiplomaWithGemini(
   geminiKey: string,
   deadline = Number.POSITIVE_INFINITY,
 ): Promise<{ reading: DiplomaReading; usage: GeminiUsage }> {
-  const res = await geminiWithFallback((geminiModel, withThinking) =>
+  const res = await geminiWithFallback((geminiModel, withThinking, attemptDeadline) =>
     fetchGeminiWithTimeout(
       geminiUrl(geminiModel),
       {
@@ -192,7 +192,7 @@ async function readDiplomaWithGemini(
       },
       GEMINI_TIMEOUT_MS,
       GEMINI_RETRIES,
-      deadline,
+      attemptDeadline,
     )
   , deadline);
   if (!res.ok) {

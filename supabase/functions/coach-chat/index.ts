@@ -1522,7 +1522,7 @@ ${facts.join("\n")}`
 }
 
 async function generateRaceCaption(geminiKey: string, o: RaceOutcome, firstName: string | null, deadline = Number.POSITIVE_INFINITY): Promise<{ caption: string; usage: GeminiUsage }> {
-  const res = await withBusyFallback((model) => fetchGeminiWithTimeout(
+  const res = await withBusyFallback((model, attemptDeadline) => fetchGeminiWithTimeout(
     `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
     {
       method: "POST",
@@ -1534,7 +1534,7 @@ async function generateRaceCaption(geminiKey: string, o: RaceOutcome, firstName:
     },
     CAPTION_TIMEOUT_MS,
     1,
-    deadline,
+    attemptDeadline,
   ), GEMINI_MODEL, deadline);
   if (!res.ok) throw new Error(`Gemini ${res.status}`);
   const data = await res.json();
@@ -8337,9 +8337,23 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
     const planTurn = !planResumeSendStale && isPlanTurn(message, turnCase, !!planContinuationIn);
     let useRecommendationsSchema = !recommendationsSchemaRejected && !planTurn;
     let useLowThinking = planTurn && !lowThinkingRejected;
-    async function callGemini(withTools = true) {
-      // Ocupado ou sem resposta: outro Flash, dentro do prazo (withBusyFallback, 29-10-2026).
-      const res = await withBusyFallback((model) => fetchGeminiWithTimeout(
+    /* Ocupado ou sem resposta: outro Flash, dentro do prazo (withBusyFallback,
+       29-10-2026) — só na ronda 0. Da 1.ª em diante o histórico leva as
+       functionCall com a thoughtSignature do modelo que as fez, e uma
+       assinatura de um modelo enviada a outro arrisca um 400 (revisão de
+       fa525453): as rondas seguintes ficam no modelo que respondeu à 0. */
+    let chatModel = GEMINI_MODEL;
+    async function callGemini(withTools = true, allowModelSwitch = true) {
+      const sendTo = (model: string, attemptDeadline: number) => {
+        chatModel = model;
+        return sendChat(model, attemptDeadline, withTools);
+      };
+      return allowModelSwitch
+        ? await withBusyFallback(sendTo, GEMINI_MODEL, chatDeadline)
+        : await sendTo(chatModel, chatDeadline);
+    }
+    async function sendChat(model: string, attemptDeadline: number, withTools: boolean) {
+      const res = await fetchGeminiWithTimeout(
         `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
         {
           method: "POST",
@@ -8391,8 +8405,8 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
         // Sem repetição por tempo: recomeçar do zero uma resposta lenta só
         // a volta a cortar. As de "ocupado" (503) repetem-se dentro do prazo.
         0,
-        chatDeadline,
-      ), GEMINI_MODEL, chatDeadline);
+        attemptDeadline,
+      );
       return res;
     }
 
@@ -8490,7 +8504,7 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
       }
       roundStartedAt = Date.now();
       try {
-        geminiRes = await callGemini(!isFinalRound);
+        geminiRes = await callGemini(!isFinalRound, round === 0);
       } catch (e) {
         // O caminho que falhou a 2026-09-24 sem deixar rasto nos logs: só a
         // app registava o timeout.
@@ -8539,7 +8553,7 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
           return jsonResponse({ error: "Não consegui responder agora. Manda outra vez daqui a uns minutos." }, 503);
         }
         return jsonResponse({
-          error: upstreamErrorText(geminiRes.status),
+          error: upstreamErrorText(geminiRes.status, "chat"),
           detail: errText.slice(0, 500),
         }, 502);
       }

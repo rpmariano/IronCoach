@@ -1,8 +1,81 @@
 import { assert, assertEquals, assertRejects } from "jsr:@std/assert@1";
 import {
-  GEMINI_BUSY_FALLBACK_MODEL, GEMINI_CREDITS_STATUS, GEMINI_FALLBACK_MODEL, GEMINI_MODEL, geminiHeaders, geminiUrl, geminiWithFallback,
-  thinkingConfig, withBusyFallback,
+  attemptTimeoutMs, GEMINI_BUSY_FALLBACK_MODEL, GEMINI_CREDITS_STATUS, GEMINI_FALLBACK_MODEL, GEMINI_FALLBACK_RESERVE_MS, GEMINI_MODEL,
+  geminiHeaders, geminiUrl, geminiWithFallback, primaryDeadline, thinkingConfig, withBusyFallback,
 } from "./geminiModel.ts";
+import { EXTRACTION_BUDGET_MS, fetchGeminiWithTimeout, hasTimeFor } from "./geminiFetch.ts";
+
+// ── O prazo repartido (revisão de fa525453 — o incidente de 29-10) ─────────
+Deno.test("primaryDeadline: o principal deixa a reserva ao de recurso; num prazo curto, metade; sem prazo, sem limite", () => {
+  const now = 1_000_000;
+  // A leitura de prints: 60 s — o principal até 35 s, o de recurso com 25 s.
+  assertEquals(primaryDeadline(now + EXTRACTION_BUDGET_MS, now), now + EXTRACTION_BUDGET_MS - GEMINI_FALLBACK_RESERVE_MS);
+  // As sapatilhas: 30 s — 15 + 15.
+  assertEquals(primaryDeadline(now + 30000, now), now + 15000);
+  // Curto demais para dois: o principal fica com tudo.
+  assertEquals(primaryDeadline(now + 12000, now), now + 12000);
+  assertEquals(primaryDeadline(Number.POSITIVE_INFINITY, now), Number.POSITIVE_INFINITY);
+  assertEquals(attemptTimeoutMs(40000, now + 15000, now), 15000);
+  assertEquals(attemptTimeoutMs(10000, now + 15000, now), 10000);
+  assertEquals(attemptTimeoutMs(10000, now - 5, now), 1000);
+});
+
+Deno.test("geminiWithFallback: «sem resposta» chega ao de recurso — o principal corre com o prazo reduzido", async () => {
+  const deadline = Date.now() + EXTRACTION_BUDGET_MS;
+  const seen: { model: string; d: number }[] = [];
+  const send = (model: string, _t: boolean, d: number) => {
+    seen.push({ model, d });
+    return model === GEMINI_MODEL ? Promise.reject(new Error("Não consegui responder a tempo.")) : Promise.resolve(new Response("{}"));
+  };
+  assertEquals((await geminiWithFallback(send, deadline)).status, 200);
+  assertEquals(seen.map((s) => s.model), [GEMINI_MODEL, GEMINI_BUSY_FALLBACK_MODEL]);
+  assert(seen[0].d <= deadline - GEMINI_FALLBACK_RESERVE_MS + 5, "o principal com a reserva tirada");
+  assertEquals(seen[1].d, deadline);
+  // E com o prazo reduzido o principal acaba a tempo: ainda cabe uma tentativa no de recurso.
+  assert(hasTimeFor(deadline, seen[0].d));
+});
+
+Deno.test("fetchGeminiWithTimeout + withBusyFallback: um principal pendurado é cortado no prazo dele e o de recurso responde", async () => {
+  const realFetch = globalThis.fetch;
+  const calls: string[] = [];
+  globalThis.fetch = ((url: string, opts: RequestInit) => {
+    calls.push(String(url));
+    if (String(url).includes(GEMINI_MODEL)) {
+      // Pendurado: só acaba quando o cortam.
+      return new Promise((_r, reject) => opts.signal?.addEventListener("abort", () => reject(new DOMException("abort", "AbortError"))));
+    }
+    return Promise.resolve(new Response("{}"));
+  }) as typeof fetch;
+  try {
+    const t0 = Date.now();
+    const deadline = t0 + 17000; // reserva = metade (8,5 s) → o principal corta aos ~8,5 s
+    const res = await withBusyFallback((m, d) => fetchGeminiWithTimeout(geminiUrl(m), {}, 40000, 1, d), GEMINI_MODEL, deadline);
+    assertEquals(res.status, 200);
+    assertEquals(calls.length, 2);
+    assert(calls[1].includes(GEMINI_BUSY_FALLBACK_MODEL));
+    assert(Date.now() - t0 < 12000, `demorou ${Date.now() - t0} ms`);
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});
+
+Deno.test("geminiWithFallback: o alias do 404 só dentro do prazo, e o aviso diz o modelo que respondeu", async () => {
+  const past = Date.now() - 1;
+  const r = recorder([new Response("gone", { status: 404 }), new Response("{}")]);
+  assertEquals((await geminiWithFallback(r.send, past)).status, 404);
+  assertEquals(r.calls.length, 1);
+  // O de recurso deu o 404: o aviso nomeia-o, não o principal.
+  const warns: string[] = [];
+  const realWarn = console.warn;
+  console.warn = (...a: unknown[]) => { warns.push(a.join(" ")); };
+  try {
+    const r2 = recorder([new Response("ocupado", { status: 503 }), new Response("gone", { status: 404 }), new Response("{}")]);
+    assertEquals((await geminiWithFallback(r2.send)).status, 200);
+  } finally {
+    console.warn = realWarn;
+  }
+  assert(warns.some((w) => w.startsWith(`[gemini] fallback: ${GEMINI_BUSY_FALLBACK_MODEL} respondeu 404`)), warns.join("\n"));
+});
 
 // Modelo fixo com rede (auditoria de custos de 2026-09-27) — ver o
 // cabeçalho de geminiModel.ts.

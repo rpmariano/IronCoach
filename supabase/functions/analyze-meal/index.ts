@@ -427,7 +427,7 @@ async function runGeminiItemsRequest(
   // deno-lint-ignore no-explicit-any
 ): Promise<{ items: any[]; usage: GeminiUsage; facts: CookingFact[]; questions: unknown }> {
   const withSource = schema === RESPONSE_SCHEMA_WITH_SOURCE;
-  const geminiRes = await geminiWithFallback((geminiModel, withThinking) =>
+  const geminiRes = await geminiWithFallback((geminiModel, withThinking, attemptDeadline) =>
     fetchGeminiWithTimeout(
       geminiUrl(geminiModel),
       {
@@ -444,7 +444,7 @@ async function runGeminiItemsRequest(
       },
       timeoutMs,
       retries,
-      deadline,
+      attemptDeadline,
     )
   , deadline);
 
@@ -512,7 +512,7 @@ async function extractItemsFromNotes(
   geminiKey: string,
   deadline = Number.POSITIVE_INFINITY,
 ): Promise<{ items: { name: string; grams: number | null }[]; usage: GeminiUsage }> {
-  const geminiRes = await geminiWithFallback((geminiModel, withThinking) =>
+  const geminiRes = await geminiWithFallback((geminiModel, withThinking, attemptDeadline) =>
     fetchGeminiWithTimeout(
       geminiUrl(geminiModel),
       {
@@ -529,7 +529,7 @@ async function extractItemsFromNotes(
       },
       20000,
       2,
-      deadline,
+      attemptDeadline,
     )
   , deadline);
   if (!geminiRes.ok) {
@@ -656,7 +656,7 @@ async function analyzePantryFood(
   deadline: number,
   // deno-lint-ignore no-explicit-any
 ): Promise<{ food: Record<string, any>; usage: GeminiUsage }> {
-  const geminiRes = await geminiWithFallback((geminiModel, withThinking) =>
+  const geminiRes = await geminiWithFallback((geminiModel, withThinking, attemptDeadline) =>
     fetchGeminiWithTimeout(
       geminiUrl(geminiModel),
       {
@@ -673,7 +673,7 @@ async function analyzePantryFood(
       },
       GEMINI_TIMEOUT_MS,
       GEMINI_RETRIES,
-      deadline,
+      attemptDeadline,
     )
   , deadline);
   if (!geminiRes.ok) {
@@ -1153,7 +1153,7 @@ async function generateMealCoachNotes(
     `\n${MEAL_DOCTRINE}\n`;
 
   try {
-    const res = await geminiWithFallback((geminiModel, withThinking) =>
+    const res = await geminiWithFallback((geminiModel, withThinking, attemptDeadline) =>
       fetchGeminiWithTimeout(
         geminiUrl(geminiModel),
         {
@@ -1180,7 +1180,7 @@ async function generateMealCoachNotes(
         },
         45000,
         0,
-        deadline,
+        attemptDeadline,
       )
     , deadline);
     if (!res.ok) {

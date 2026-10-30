@@ -56,6 +56,24 @@ export function usageRow(fn: string, userId: string | null, usage: any): UsageRo
   return row;
 }
 
+/** As linhas a gravar: uma por modelo quando o pedido somou chamadas de dois
+ *  ou mais (o Flash de recurso, 29-10-2026 — preços diferentes, revisão de
+ *  fa525453); senão a linha única de usageRow. Só se parte quando by_model
+ *  cobre todas as chamadas — uma chamada sem modelVersion ficava de fora. */
+// deno-lint-ignore no-explicit-any
+export function usageRows(fn: string, userId: string | null, usage: any): UsageRow[] {
+  const single = usageRow(fn, userId, usage);
+  if (!single) return [];
+  const byModel = usage?.by_model && typeof usage.by_model === "object" ? Object.entries(usage.by_model) : [];
+  // deno-lint-ignore no-explicit-any
+  const calls = byModel.reduce((t, [, v]: [string, any]) => t + int(v?.calls), 0);
+  if (byModel.length < 2 || calls !== single.calls) return [single];
+  return byModel
+    // deno-lint-ignore no-explicit-any
+    .map(([model, v]: [string, any]) => usageRow(fn, userId, { ...v, model }))
+    .filter((r): r is UsageRow => r !== null);
+}
+
 /** `sub` do JWT Bearer (sem verificar — ver cabeçalho), ou null. */
 export function userIdFromAuth(header: string | null): string | null {
   const token = header?.replace(/^Bearer\s+/i, "");
@@ -95,13 +113,13 @@ export async function recordUsage(
   usage: GeminiUsage | Record<string, unknown> | null | undefined,
   insert: Insert = defaultInsert,
 ): Promise<void> {
-  const row = usageRow(fn, userId, usage);
-  if (!row) return;
-  try {
-    const { error } = await insert(row);
-    if (error) console.warn(`[ai_usage] ${fn}: falha a gravar consumo`, error);
-  } catch (e) {
-    console.warn(`[ai_usage] ${fn}: falha a gravar consumo`, e);
+  for (const row of usageRows(fn, userId, usage)) {
+    try {
+      const { error } = await insert(row);
+      if (error) console.warn(`[ai_usage] ${fn}: falha a gravar consumo`, error);
+    } catch (e) {
+      console.warn(`[ai_usage] ${fn}: falha a gravar consumo`, e);
+    }
   }
 }
 

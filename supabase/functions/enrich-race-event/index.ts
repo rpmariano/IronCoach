@@ -35,7 +35,7 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 import { upstreamErrorText } from "../_shared/carolTone.ts";
 import { usageFromGemini } from "../_shared/geminiUsage.ts";
 import { withUsageRecording } from "../_shared/usageRecorder.ts";
-import { geminiHeaders, geminiUrl, geminiWithFallback, thinkingConfig } from "../_shared/geminiModel.ts";
+import { attemptTimeoutMs, geminiHeaders, geminiUrl, geminiWithFallback, thinkingConfig } from "../_shared/geminiModel.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -45,6 +45,10 @@ const corsHeaders = {
 
 const GEMINI_TIMEOUT_MS = 55000;
 const GEMINI_RETRIES = 1;
+/* O prazo do pedido, desde que chega (revisão de fa525453): a app espera 90 s
+   (RunAgenda); a leitura do site vem antes, e o resto fica para o Gemini e,
+   se ele estiver ocupado ou não responder, o Flash de recurso. */
+const ENRICH_BUDGET_MS = 80000;
 
 const MAIN_PAGE_FETCH_TIMEOUT_MS = 15000;
 const SUBPAGE_FETCH_TIMEOUT_MS = 9000;
@@ -72,21 +76,22 @@ async function fetchGeminiWithTimeout(
   options: RequestInit,
   timeoutMs = GEMINI_TIMEOUT_MS,
   retries = GEMINI_RETRIES,
+  deadline = Number.POSITIVE_INFINITY,
 ): Promise<Response> {
   for (let attempt = 0; ; attempt++) {
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    const timer = setTimeout(() => controller.abort(), attemptTimeoutMs(timeoutMs, deadline));
     try {
       const res = await fetch(url, { ...options, signal: controller.signal });
       clearTimeout(timer);
-      if (!res.ok && GEMINI_RETRYABLE_STATUSES.has(res.status) && attempt < retries) {
+      if (!res.ok && GEMINI_RETRYABLE_STATUSES.has(res.status) && attempt < retries && Date.now() + 1500 + 8000 <= deadline) {
         await new Promise((r) => setTimeout(r, 1500));
         continue;
       }
       return res;
     } catch (e) {
       clearTimeout(timer);
-      if (attempt < retries) continue;
+      if (attempt < retries && Date.now() + 8000 <= deadline) continue;
       throw new Error(upstreamErrorText(null));
     }
   }
@@ -386,6 +391,7 @@ const EXPERIENCE_LEVEL_VALUES = new Set(["iniciante", "basico", "medio", "avanca
 // O consumo do Gemini que a resposta traz fica gravado em ai_usage pelo
 // servidor (_shared/usageRecorder.ts), não pela app.
 Deno.serve(withUsageRecording("enrich-race-event", async (req) => {
+  const deadline = Date.now() + ENRICH_BUDGET_MS;
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
@@ -465,7 +471,7 @@ Deno.serve(withUsageRecording("enrich-race-event", async (req) => {
 
     let geminiRes: Response;
     try {
-      geminiRes = await geminiWithFallback((model, withThinking) => fetchGeminiWithTimeout(
+      geminiRes = await geminiWithFallback((model, withThinking, attemptDeadline) => fetchGeminiWithTimeout(
         geminiUrl(model),
         {
           method: "POST",
@@ -480,7 +486,10 @@ Deno.serve(withUsageRecording("enrich-race-event", async (req) => {
             },
           }),
         },
-      ));
+        GEMINI_TIMEOUT_MS,
+        GEMINI_RETRIES,
+        attemptDeadline,
+      ), deadline);
     } catch (e) {
       return jsonResponse({ error: e instanceof Error ? e.message : upstreamErrorText(null) }, 502);
     }

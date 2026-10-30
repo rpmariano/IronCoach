@@ -35,7 +35,7 @@ import { fetchTrainingWeatherBlock } from "../_shared/trainingWeatherFetch.ts";
 import { fetchSeriesBlock, seriesPromptSection, seriesRacePhaseText } from "../_shared/seriesBlock.ts";
 import { type GeminiUsage, usageFromGemini } from "../_shared/geminiUsage.ts";
 import { withUsageRecording } from "../_shared/usageRecorder.ts";
-import { geminiHeaders, geminiUrl, geminiWithFallback, thinkingConfig } from "../_shared/geminiModel.ts";
+import { attemptTimeoutMs, geminiHeaders, geminiUrl, geminiWithFallback, thinkingConfig } from "../_shared/geminiModel.ts";
 import { isWalkPlanItem, runMatchesPlanItem, runsOnly, walkIntensity, walksOnly } from "../_shared/formulas/runKinds.ts";
 
 const corsHeaders = {
@@ -45,6 +45,11 @@ const corsHeaders = {
 };
 
 const GEMINI_TIMEOUT_MS = 40000;
+/* O prazo do pedido, desde que chega (revisão de fa525453): a app espera 45 s
+   (invokeEdgeFunctionWithTimeout por omissão); dentro dele cabem a tentativa
+   no modelo principal e, se ele estiver ocupado ou não responder, uma no
+   Flash de recurso (geminiWithFallback). */
+const SUMMARY_BUDGET_MS = 40000;
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -831,7 +836,7 @@ export const WALKS_SUMMARY_RULE =
 // seriesBlock: o bloco da competição por jornadas (fetchSeriesBlock) — null
 // sem inscrição, e aí o prompt fica igual byte a byte.
 // deno-lint-ignore no-explicit-any
-async function generateSummary(ctx: Record<string, unknown>, geminiKey: string, todayConceptTitle: string, memoryBlock: string | null = null, seriesBlock: string | null = null): Promise<any> {
+async function generateSummary(ctx: Record<string, unknown>, geminiKey: string, todayConceptTitle: string, memoryBlock: string | null = null, seriesBlock: string | null = null, deadline = Number.POSITIVE_INFINITY): Promise<any> {
   const prompt =
     `És a Carol, a treinadora deste atleta amador numa app de corrida/fitness/nutrição. Geras quatro ` +
     `conteúdos independentes para o cartão diário da Home, em primeira pessoa. Nunca genérico. ` +
@@ -927,7 +932,7 @@ async function generateSummary(ctx: Record<string, unknown>, geminiKey: string, 
     `Inclui um exemplo prático ou número concreto. Termina com uma dica de aplicação imediata.\n\n` +
     MEAL_DOCTRINE;
 
-  const res = await geminiWithFallback((model, withThinking) => fetch(
+  const res = await geminiWithFallback((model, withThinking, attemptDeadline) => fetch(
     geminiUrl(model),
     {
       method: "POST",
@@ -943,9 +948,9 @@ async function generateSummary(ctx: Record<string, unknown>, geminiKey: string, 
           ...thinkingConfig("low", withThinking),
         },
       }),
-      signal: AbortSignal.timeout(GEMINI_TIMEOUT_MS),
+      signal: AbortSignal.timeout(attemptTimeoutMs(GEMINI_TIMEOUT_MS, attemptDeadline)),
     },
-  ));
+  ), deadline);
   if (!res.ok) {
     throw new Error(`Gemini ${res.status}: ${await res.text()}`);
   }
@@ -967,6 +972,7 @@ async function generateSummary(ctx: Record<string, unknown>, geminiKey: string, 
 Deno.serve(withUsageRecording("coach-daily-summary", async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "POST") return jsonResponse({ error: "Método não suportado" }, 405);
+  const deadline = Date.now() + SUMMARY_BUDGET_MS;
 
   try {
     const geminiKey = Deno.env.get("GEMINI_API_KEY");
@@ -1269,7 +1275,7 @@ Deno.serve(withUsageRecording("coach-daily-summary", async (req) => {
     let usage: GeminiUsage | null = null;
 
     try {
-      const result = await generateSummary(ctx, geminiKey, todayConcept.title, await memoryPromise, series?.text ?? null);
+      const result = await generateSummary(ctx, geminiKey, todayConcept.title, await memoryPromise, series?.text ?? null, deadline);
       generated = result.parsed;
       usage = result.usage;
     } catch (e) {

@@ -15,11 +15,18 @@ Deno.test("upstreamErrorText: nunca nomeia o serviço por trás, e distingue lim
   assertEquals(upstreamErrorText(429), "Não consegui responder agora. Tenta daqui a uns minutos.");
   assertStringIncludes(upstreamErrorText(null), "Não consegui responder a tempo");
   assertEquals(upstreamErrorText(500), "Não consegui ler isto agora. Tenta outra vez daqui a pouco.");
-  // 402 (créditos esgotados): parada do lado dela, sem «tenta já outra vez».
-  assertStringIncludes(upstreamErrorText(402), "não é do teu registo");
-  assert(!/tenta/i.test(upstreamErrorText(402)));
+  // 402 (créditos esgotados): parada do lado dela; sem prometer uma reanálise
+  // que não existe; no chat, sem «registo» (revisão de fa525453).
+  assertStringIncludes(upstreamErrorText(402), "parada do meu lado");
+  assertStringIncludes(upstreamErrorText(402, "chat"), "não consigo responder-te");
+  for (const t of [upstreamErrorText(402), upstreamErrorText(402, "chat")]) {
+    assert(!/assim que|volto a analisar|automatic/i.test(t), t);
+  }
+  assert(!/registo/i.test(upstreamErrorText(402, "chat")));
+  assertEquals(upstreamErrorText(503, "chat"), upstreamErrorText(503));
   for (const status of [429, null, 500, 502, 503, 402]) {
     assertCarolVoice(upstreamErrorText(status));
+    assertCarolVoice(upstreamErrorText(status, "chat"));
   }
 });
 

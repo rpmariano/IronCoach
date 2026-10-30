@@ -28,7 +28,13 @@ export type GeminiUsage = {
   calls: number;
   /** modelVersion da resposta (o alias "-latest" muda de modelo e de preço). */
   model?: string | null;
+  /** Os mesmos tokens por modelo. Com o Flash de recurso (29-10-2026) um pedido
+   *  pode somar chamadas de dois modelos, com preços diferentes: o registo grava
+   *  uma linha por modelo (usageRows, revisão de fa525453). */
+  by_model?: Record<string, ModelUsage>;
 };
+
+export type ModelUsage = { input_tokens: number; output_tokens: number; cached_tokens: number; thoughts_tokens: number; calls: number };
 
 export function emptyUsage(): GeminiUsage {
   return { input_tokens: 0, output_tokens: 0, cached_tokens: 0, thoughts_tokens: 0, calls: 0 };
@@ -37,13 +43,24 @@ export function emptyUsage(): GeminiUsage {
 // deno-lint-ignore no-explicit-any
 export function usageFromGemini(json: any): GeminiUsage {
   const m = json?.usageMetadata ?? {};
-  return {
+  const counts: ModelUsage = {
     input_tokens: (Number(m.promptTokenCount) || 0) + (Number(m.toolUsePromptTokenCount) || 0),
     output_tokens: Number(m.candidatesTokenCount) || 0,
     cached_tokens: Number(m.cachedContentTokenCount) || 0,
     thoughts_tokens: Number(m.thoughtsTokenCount) || 0,
     calls: 1,
-    model: typeof json?.modelVersion === "string" ? json.modelVersion : null,
+  };
+  const model = typeof json?.modelVersion === "string" && json.modelVersion ? json.modelVersion : null;
+  return { ...counts, model, ...(model ? { by_model: { [model]: { ...counts } } } : {}) };
+}
+
+function addModelUsage(a: ModelUsage | undefined, b: ModelUsage): ModelUsage {
+  return {
+    input_tokens: (a?.input_tokens ?? 0) + b.input_tokens,
+    output_tokens: (a?.output_tokens ?? 0) + b.output_tokens,
+    cached_tokens: (a?.cached_tokens ?? 0) + b.cached_tokens,
+    thoughts_tokens: (a?.thoughts_tokens ?? 0) + b.thoughts_tokens,
+    calls: (a?.calls ?? 0) + b.calls,
   };
 }
 
@@ -59,5 +76,15 @@ export function addUsage(a: GeminiUsage | null | undefined, b: GeminiUsage | nul
     calls: x.calls + y.calls,
     // O modelo mais recente que respondeu (numa soma é quase sempre o mesmo).
     model: y.model ?? x.model ?? null,
+    ...mergeByModel(x.by_model, y.by_model),
   };
+}
+
+function mergeByModel(a?: Record<string, ModelUsage>, b?: Record<string, ModelUsage>): { by_model?: Record<string, ModelUsage> } {
+  if (!a && !b) return {};
+  const out: Record<string, ModelUsage> = {};
+  for (const src of [a, b]) {
+    for (const [k, v] of Object.entries(src ?? {})) out[k] = addModelUsage(out[k], v);
+  }
+  return { by_model: out };
 }

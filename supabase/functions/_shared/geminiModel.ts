@@ -42,14 +42,40 @@ export const GEMINI_BUSY_FALLBACK_STATUSES: ReadonlySet<number> = new Set([429, 
    NÃO cai para outro modelo: a conta é a mesma, o outro dava o mesmo 402. */
 export const GEMINI_CREDITS_STATUS = 402;
 
+/* O que fica do prazo para o Flash de recurso (revisão de fa525453): sem
+   isto, o principal gastava o prazo inteiro (40 s de tentativa numa leitura
+   de 60 s) e, quando não respondia, já não cabia tentativa nenhuma — o «sem
+   resposta» do incidente de 29-10 nunca chegava ao fallback. O principal fica
+   até `deadline − reserva` (as repetições de «ocupado» e o pedido em
+   paralelo continuam lá dentro); o de recurso tem o resto. */
+export const GEMINI_FALLBACK_RESERVE_MS = 25000;
+
+/** O prazo da tentativa no modelo principal: o do pedido menos a reserva —
+ *  no máximo metade do que falta, para um prazo curto (as sapatilhas, 30 s)
+ *  também se repartir —, se ainda lhe couber uma tentativa útil; senão o prazo todo. */
+export function primaryDeadline(deadline: number, now = Date.now()): number {
+  if (!Number.isFinite(deadline)) return deadline;
+  const reserve = Math.min(GEMINI_FALLBACK_RESERVE_MS, (deadline - now) / 2);
+  const reserved = deadline - reserve;
+  return hasTimeFor(reserved, now) && hasTimeFor(deadline, reserved) ? reserved : deadline;
+}
+
+/** O limite de um fetch simples (as funções que não usam o fetchGeminiWithTimeout)
+ *  dentro do prazo da tentativa: nunca acima de `timeoutMs`, nunca abaixo de 1 s. */
+export function attemptTimeoutMs(timeoutMs: number, attemptDeadline: number, now = Date.now()): number {
+  return Math.max(1000, Math.min(timeoutMs, attemptDeadline - now));
+}
+
 /**
- * Chama `send(primary)` e, se o modelo estiver ocupado (GEMINI_BUSY_FALLBACK_STATUSES)
+ * Chama `send(primary, prazo)` e, se o modelo estiver ocupado (GEMINI_BUSY_FALLBACK_STATUSES)
  * ou não responder (send lança: tempo ou rede), tenta uma vez `fallbackModel`
- * — só se ainda couber uma tentativa útil antes de `deadline`. O 402 e os
- * outros erros devolvem-se tal como vieram.
+ * — só se ainda couber uma tentativa útil antes de `deadline`. O principal
+ * corre com primaryDeadline(deadline), para sobrar tempo ao de recurso. O 402
+ * e os outros erros devolvem-se tal como vieram. `send` recebe o prazo da
+ * tentativa e passa-o ao fetchGeminiWithTimeout.
  */
 export async function withBusyFallback(
-  send: (model: string) => Promise<Response>,
+  send: (model: string, attemptDeadline: number) => Promise<Response>,
   primary: string,
   deadline = Number.POSITIVE_INFINITY,
   fallbackModel = GEMINI_BUSY_FALLBACK_MODEL,
@@ -57,7 +83,7 @@ export async function withBusyFallback(
   let res: Response | null = null;
   let err: unknown = null;
   try {
-    res = await send(primary);
+    res = await send(primary, primary === fallbackModel ? deadline : primaryDeadline(deadline));
   } catch (e) {
     err = e;
   }
@@ -71,7 +97,7 @@ export async function withBusyFallback(
   if (res) {
     try { await res.body?.cancel(); } catch (_) { /* nada a libertar */ }
   }
-  return await send(fallbackModel);
+  return await send(fallbackModel, deadline);
 }
 
 /* Níveis: todas as chamadas usam "low".
@@ -115,23 +141,29 @@ export async function needsFallback(res: Response): Promise<boolean> {
 }
 
 /**
- * Chama `send(model, withThinking)` com o modelo fixo; ocupado ou sem
+ * Chama `send(model, withThinking, prazo)` com o modelo fixo; ocupado ou sem
  * resposta, tenta o GEMINI_BUSY_FALLBACK_MODEL (withBusyFallback, dentro de
  * `deadline`); e, se o modelo já não existir ou recusar o thinkingConfig,
- * repete uma vez no alias sem ele. `send` monta o pedido (URL com
- * geminiUrl(model, …) e generationConfig com ...thinkingConfig(nível, withThinking)).
+ * repete uma vez no alias sem ele — também só dentro do prazo. `send` monta o
+ * pedido (URL com geminiUrl(model, …), generationConfig com
+ * ...thinkingConfig(nível, withThinking)) e passa o prazo ao fetchGeminiWithTimeout.
  */
 export async function geminiWithFallback(
-  send: (model: string, withThinking: boolean) => Promise<Response>,
+  send: (model: string, withThinking: boolean, attemptDeadline: number) => Promise<Response>,
   deadline = Number.POSITIVE_INFINITY,
 ): Promise<Response> {
-  const res = await withBusyFallback((model) => send(model, true), GEMINI_MODEL, deadline);
-  if (!(await needsFallback(res))) return res;
+  let answered = GEMINI_MODEL;
+  const res = await withBusyFallback((model, d) => {
+    answered = model;
+    return send(model, true, d);
+  }, GEMINI_MODEL, deadline);
+  if (!(await needsFallback(res)) || !hasTimeFor(deadline)) return res;
   // O motivo do Google vai no aviso: sem ele não se sabia porquê (o 400 de
-  // "minimal" em 27-09-2026 só se diagnosticou por exclusão).
+  // "minimal" em 27-09-2026 só se diagnosticou por exclusão). O modelo é o
+  // que respondeu — pode ser já o de recurso.
   let reason = "";
   try { reason = (await res.clone().text()).replace(/\s+/g, " ").slice(0, 300); } catch (_) { /* sem corpo */ }
-  console.warn(`[gemini] fallback: ${GEMINI_MODEL} respondeu ${res.status}; a repetir em ${GEMINI_FALLBACK_MODEL} sem thinkingConfig — atualizar GEMINI_MODEL/nível em _shared/geminiModel.ts. Motivo: ${reason}`);
+  console.warn(`[gemini] fallback: ${answered} respondeu ${res.status}; a repetir em ${GEMINI_FALLBACK_MODEL} sem thinkingConfig — atualizar GEMINI_MODEL/nível em _shared/geminiModel.ts. Motivo: ${reason}`);
   try { await res.body?.cancel(); } catch (_) { /* nada a libertar */ }
-  return await send(GEMINI_FALLBACK_MODEL, false);
+  return await send(GEMINI_FALLBACK_MODEL, false, deadline);
 }

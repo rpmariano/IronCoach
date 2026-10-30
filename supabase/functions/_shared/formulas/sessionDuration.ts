@@ -87,7 +87,9 @@ export function combinedDuration(periods: ActivityPeriod[]): number | null {
  *  se a lida já é um total, fica a lida. */
 export function sessionDurationSeconds(readDuration: number | null, rawPeriods: unknown): number | null {
   let periods = parseActivityPeriods(rawPeriods);
-  const summary = periods.find((p) => {
+  // Só sem horas de início: com elas, a união dos intervalos já não conta o
+  // resumo duas vezes (revisão de fa525453).
+  const summary = periods.some((p) => p.start === null) && periods.find((p) => {
     const rest = periods.filter((o) => o !== p).reduce((t, o) => t + o.duration, 0);
     return periods.length >= 3 && Math.abs(p.duration - rest) <= 60;
   });
