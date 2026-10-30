@@ -26,8 +26,12 @@
 
 import { hasTimeFor } from "./geminiFetch.ts";
 
-/** O modelo que o alias apontava a 2026-09-27 (ai_usage.model). */
-export const GEMINI_MODEL = "gemini-3.8-flash";
+/** O modelo que o alias apontava a 2026-09-27 (ai_usage.model).
+ *  TEMPORÁRIO (30-10-2026): o gemini-3.8-flash está sobrecarregado desde a
+ *  manhã (503 / sem resposta em quase todos os pedidos) e cada pedido perdia
+ *  15-60 s nele antes de cair no recurso. Invertido com o de recurso até
+ *  haver disjuntor; repor "gemini-3.8-flash" aqui e no de recurso abaixo. */
+export const GEMINI_MODEL = "gemini-3.6-flash";
 export const GEMINI_FALLBACK_MODEL = "gemini-flash-latest";
 
 /* O Flash para onde se cai quando o modelo principal está ocupado (503 e
@@ -36,7 +40,7 @@ export const GEMINI_FALLBACK_MODEL = "gemini-flash-latest";
    o analyze-meal acabou em 502). A geração 3.8 só tem um Flash; este é o Flash
    estável anterior (ai.google.dev/gemini-api/docs/models, 29-10-2026). Num
    só sítio — muda-se aqui quando sair outro. */
-export const GEMINI_BUSY_FALLBACK_MODEL = "gemini-3.6-flash";
+export const GEMINI_BUSY_FALLBACK_MODEL = "gemini-3.8-flash"; // TEMPORÁRIO (30-10-2026): ver GEMINI_MODEL
 export const GEMINI_BUSY_FALLBACK_STATUSES: ReadonlySet<number> = new Set([429, 500, 502, 503, 504]);
 /* Créditos pré-pagos esgotados (402 RESOURCE_EXHAUSTED, 29-10-2026 às 22:08).
    NÃO cai para outro modelo: a conta é a mesma, o outro dava o mesmo 402. */
