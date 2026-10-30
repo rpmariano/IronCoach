@@ -6459,21 +6459,21 @@ Deno.test("handler: turno de plano com raciocínio low, sem recommendations, com
   const call = src.slice(src.indexOf("async function callGemini("), src.indexOf("async function callGemini(") + 4500);
   assertStringIncludes(call, '...thinkingConfig("low", useLowThinking),');
   // Um 400 num turno de plano repete a ronda sem o thinkingConfig, antes de qualquer outra coisa.
-  const err = src.indexOf("if (useLowThinking && geminiRes.status === 400) {");
-  assert(err > 0 && err < src.indexOf("if (shouldRetryWithoutRecommendations(geminiRes.status, errText, useRecommendationsSchema)) {"));
+  const err = src.indexOf("if (useLowThinking && geminiRes.status === 400 && hasTimeFor(chatDeadline)) {");
+  assert(err > 0 && err < src.indexOf("if (shouldRetryWithoutRecommendations(geminiRes.status, errText, useRecommendationsSchema) && hasTimeFor(chatDeadline)) {"));
   assertStringIncludes(src.slice(err, err + 700), "useLowThinking = false;");
-  assertStringIncludes(src.slice(err, err + 700), "lowThinkingRejected = true;");
+  assertStringIncludes(src.slice(err, err + 700), "if (!chatRouter.onFallback) lowThinkingRejected = true;");
   assertStringIncludes(src.slice(err, err + 700), 'console.warn("[gemini] fallback: thinkingConfig low recusado no coach-chat');
   // O log de cada ronda tem o tempo e os tokens.
   const log = src.slice(src.indexOf('console.log("coach-chat gemini", JSON.stringify({'), src.indexOf('console.log("coach-chat gemini", JSON.stringify({') + 1400);
   for (const k of ["ms: Date.now() - roundStartedAt,", 'thinking: useLowThinking ? "low" : "default",', "planTurn,", "thoughtsTokens:", "outputTokens:"]) assertStringIncludes(log, k);
-  assert(src.indexOf("roundStartedAt = Date.now();") < src.indexOf("geminiRes = await callGemini(!isFinalRound, round === 0);"));
+  assert(src.indexOf("roundStartedAt = Date.now();") < src.indexOf("geminiRes = await callGemini(!isFinalRound);"));
 });
 
 Deno.test("chat: o Flash de recurso só na ronda 0 — as seguintes ficam no modelo que respondeu (thoughtSignature, revisão de fa525453)", async () => {
   const src = await Deno.readTextFile(new URL("./index.ts", import.meta.url));
-  assertStringIncludes(src, "geminiRes = await callGemini(!isFinalRound, round === 0);");
-  assertStringIncludes(src, "? await withBusyFallback(sendTo, GEMINI_MODEL, chatDeadline)");
-  assertStringIncludes(src, ": await sendTo(chatModel, chatDeadline);");
+  assertStringIncludes(src, "geminiRes = await callGemini(!isFinalRound);");
+  assertStringIncludes(src, "return await chatRouter.send((model, attemptDeadline) => sendChat(model, attemptDeadline, withTools), chatDeadline);");
+  assertStringIncludes(src, "if (!chatRouter.onFallback) recommendationsSchemaRejected = true;");
   assertStringIncludes(src, 'error: upstreamErrorText(geminiRes.status, "chat"),');
 });
