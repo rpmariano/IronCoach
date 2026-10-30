@@ -1,5 +1,5 @@
 import { assert, assertEquals } from "jsr:@std/assert@1";
-import { type CircuitState, type GeminiCircuit, NO_CIRCUIT, safeCheck } from "./geminiCircuit.ts";
+import { afterResponse, type CircuitState, type GeminiCircuit, NO_CIRCUIT, safeCheck } from "./geminiCircuit.ts";
 import { GEMINI_BUSY_FALLBACK_MODEL, GEMINI_MODEL, withBusyFallback } from "./geminiModel.ts";
 
 // O disjuntor do principal (30-10-2026): um estado falso, injetado.
@@ -69,4 +69,14 @@ Deno.test("disjuntor: com o principal igual ao recurso não se consulta; sem con
   assertEquals(checks, []);
   assertEquals(s.calls.map((c) => c.model), [GEMINI_BUSY_FALLBACK_MODEL]);
   assertEquals(await NO_CIRCUIT.check("x"), "closed");
+});
+
+Deno.test("afterResponse (R3 de 5612ec2d): sem waitUntil, um registo pendurado não segura a resposta", async () => {
+  const t0 = Date.now();
+  const outcome = await Promise.race([
+    afterResponse(new Promise(() => {}), 50).then(() => "voltou"),
+    new Promise((r) => setTimeout(() => r("pendurado"), 1000)),
+  ]);
+  assertEquals(outcome, "voltou");
+  assert(Date.now() - t0 < 1000);
 });
