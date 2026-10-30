@@ -77,7 +77,7 @@ import {
   latestTargetsProposals, parseTargetsReview, targetsPayload, targetsReviewKey, TARGETS_KEEP_ANSWER, TARGETS_UPDATE_ANSWER,
 } from "./targetsReview.ts";
 // Só a chave no header (x-goog-api-key); o coach-chat continua no alias.
-import { GEMINI_FALLBACK_MODEL, GEMINI_MODEL as SHARED_GEMINI_MODEL, geminiHeaders, thinkingConfig, withBusyFallback } from "../_shared/geminiModel.ts";
+import { GEMINI_FALLBACK_MODEL, GEMINI_MODEL as SHARED_GEMINI_MODEL, geminiHeaders, geminiWithFallback, thinkingConfig, withBusyFallback } from "../_shared/geminiModel.ts";
 import {
   isPlanRequest, PLAN_RESUME_LATER, PLAN_RESUME_LATER_REPLY, PLAN_RESUME_SEND, type PlanResumeCandidate, planResumeFacts,
 } from "../_shared/formulas/planResume.ts";
@@ -117,13 +117,16 @@ export function createChatModelRouter(primary = CHAT_PRIMARY_MODEL) {
         return sendTo(m, d);
       };
       let res: Response;
+      const isFirst = firstCall;
       if (firstCall) {
         firstCall = false;
         res = await withBusyFallback(record, primary, deadline);
       } else {
         res = await record(model, deadline);
       }
-      if (res.status === 404 && model === primary && hasTimeFor(deadline)) {
+      // Só na 1.ª chamada: numa ronda seguinte o histórico já leva as
+      // thoughtSignature do principal, que não vão para outro modelo (R1 de 8715a0b0).
+      if (isFirst && res.status === 404 && model === primary && hasTimeFor(deadline)) {
         console.warn(`[gemini] fallback: ${primary} respondeu 404 no coach-chat; a repetir em ${GEMINI_FALLBACK_MODEL}`);
         try { await res.body?.cancel(); } catch (_) { /* nada a libertar */ }
         res = await record(GEMINI_FALLBACK_MODEL, deadline);
@@ -1570,7 +1573,9 @@ ${facts.join("\n")}`
 }
 
 async function generateRaceCaption(geminiKey: string, o: RaceOutcome, firstName: string | null, deadline = Number.POSITIVE_INFINITY): Promise<{ caption: string; usage: GeminiUsage }> {
-  const res = await withBusyFallback((model, attemptDeadline) => fetchGeminiWithTimeout(
+  // A rede completa (recurso em ocupado/sem resposta, alias num 404): o
+  // modelo do chat já não é o alias (R2 de 8715a0b0). Sem thinkingConfig.
+  const res = await geminiWithFallback((model, _withThinking, attemptDeadline) => fetchGeminiWithTimeout(
     `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
     {
       method: "POST",
@@ -1583,7 +1588,7 @@ async function generateRaceCaption(geminiKey: string, o: RaceOutcome, firstName:
     CAPTION_TIMEOUT_MS,
     1,
     attemptDeadline,
-  ), GEMINI_MODEL, deadline);
+  ), deadline);
   if (!res.ok) throw new Error(`Gemini ${res.status}`);
   const data = await res.json();
   // deno-lint-ignore no-explicit-any

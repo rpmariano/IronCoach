@@ -57,3 +57,25 @@ Deno.test("chat: uma ronda que não é de plano não espera 100 s pelo principal
   assert(chatAttemptMs(false) <= 60000);
   assertEquals(chatAttemptMs(true), 100000);
 });
+
+Deno.test("chat: o alias só num 404 da 1.ª chamada — numa ronda seguinte, um 404 não leva as thoughtSignature para outro modelo (R1 de 8715a0b0)", async () => {
+  const calls: string[] = [];
+  let n = 0;
+  const send = (model: string) => {
+    calls.push(model);
+    n++;
+    return Promise.resolve(new Response("", { status: n === 1 ? 200 : 404 }));
+  };
+  const router = createChatModelRouter();
+  assertEquals((await router.send(send, Date.now() + 60000)).status, 200);
+  assertEquals((await router.send(send, Date.now() + 60000)).status, 404);
+  assertEquals(calls, [CHAT_PRIMARY_MODEL, CHAT_PRIMARY_MODEL]);
+});
+
+Deno.test("legenda da prova: tem a rede do 404 (geminiWithFallback), já que o modelo do chat deixou de ser o alias (R2 de 8715a0b0)", async () => {
+  const src = await Deno.readTextFile(new URL("./index.ts", import.meta.url));
+  const start = src.indexOf("async function generateRaceCaption(");
+  const body = src.slice(start, src.indexOf("\n}", start));
+  assert(body.includes("geminiWithFallback("), body.slice(0, 300));
+  assert(!body.includes("withBusyFallback("), "sem a rede do 404");
+});
