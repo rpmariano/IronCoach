@@ -551,7 +551,7 @@ Deno.test("jornadas: o bloco da competição entra no prompt pela secção próp
   assertStringIncludes(src, "memoryPromptSection(memoryBlock) +\n    seriesPromptSection(seriesBlock) +\n    `Contexto do atleta:");
   assertStringIncludes(src, 'const seriesPromise = fetchSeriesBlock(sb, userId, today, { channel: "daily" });');
   assertStringIncludes(src, "seriesIntents: series?.active ? series.intentByRaceId : null,");
-  assertStringIncludes(src, "await memoryPromise, series?.text ?? null);");
+  assertStringIncludes(src, "await memoryPromise, series?.text ?? null, deadline);");
   // Sem bloco, a secção é vazia: o prompt de quem não está inscrito não muda.
   assertEquals(seriesPromptSection(null), "");
 });
