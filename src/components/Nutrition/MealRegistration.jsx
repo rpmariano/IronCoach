@@ -22,6 +22,7 @@ import RegistrationSection from '../shared/registration/RegistrationSection';
 import useRegistrationExit from '../shared/registration/useRegistrationExit';
 import PlanPrefillBanner from '../shared/registration/PlanPrefillBanner';
 import { mealSuggestionsFor } from '../../utils/planPrefill';
+import { FieldInput, FieldTextarea } from '../shared/registration/Field';
 
 /* Espelha MEAL_TYPES em supabase/functions/analyze-meal e mealTypeLabel()
    em src/utils/nutrition.js — as duas usam hífen (ex.: "pequeno-almoco"). A
@@ -793,23 +794,21 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
         <div className="grid grid-cols-2 gap-2">
           <div className="min-w-0">
             <label htmlFor="mr-data-da-refeicao" className="text-[11px] text-[var(--text-3)] mb-1.5 block">Data da refeição</label>
-            <input
+            <FieldInput
               id="mr-data-da-refeicao"
               type="date"
               value={date}
               max={format(new Date(), 'yyyy-MM-dd')}
               onChange={e => { setDate(e.target.value); setPlanChoice(null); setIsFormDirty(true); }}
-              className="w-full min-h-[var(--tap)] bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2.5 text-sm text-[var(--text-1)] outline-none focus:border-[var(--focus-ring)] shadow-sm transition"
             />
           </div>
           <div className="min-w-0">
             <label htmlFor="mr-hora-da-refeicao" className="text-[11px] text-[var(--text-3)] mb-1.5 block">Hora da refeição</label>
-            <input
+            <FieldInput
               id="mr-hora-da-refeicao"
               type="time"
               value={mealTime}
               onChange={e => { mealTimeTouchedRef.current = true; setMealTime(e.target.value); setIsFormDirty(true); }}
-              className="w-full min-h-[var(--tap)] bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2.5 text-sm text-[var(--text-1)] outline-none focus:border-[var(--focus-ring)] shadow-sm transition"
             />
           </div>
         </div>
@@ -950,7 +949,7 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
           >
             <p className="text-[12px] font-bold text-[var(--text-3)] mb-2">Adicionar alimento</p>
             <div className="grid grid-cols-[1fr_4.5rem_auto] gap-2">
-              <input
+              <FieldInput
                 ref={itemNameRef}
                 type="text"
                 enterKeyHint="done"
@@ -959,16 +958,16 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
                 value={itemName}
                 onChange={e => { setItemName(e.target.value); setIsFormDirty(true); }}
                 onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); if (itemName.trim()) handleAddItem(); } }}
-                className="w-full min-w-0 min-h-[44px] bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 text-sm text-[var(--text-1)] outline-none focus:border-[var(--mod-nutricao-to)] transition"
+                className="min-w-0"
               />
-              <input
+              <FieldInput
                 type="number" min="1" step="1" inputMode="numeric"
                 aria-label="Gramas do alimento a adicionar (opcional)"
                 placeholder="g"
                 value={itemGrams}
                 onChange={e => { setItemGrams(e.target.value); setIsFormDirty(true); }}
                 onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); if (itemName.trim()) handleAddItem(); } }}
-                className="w-full min-h-[44px] bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-2 text-sm text-center text-[var(--text-1)] outline-none focus:border-[var(--mod-nutricao-to)] transition"
+                className="text-center"
               />
               <button
                 type="button"
@@ -1040,20 +1039,20 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
                 <div key={item.key} className="flex items-center gap-2 bg-[var(--surface-faint)] border border-[var(--border-glass)] rounded-xl px-3 py-2">
                   {isEditing ? (
                     <>
-                      <input
+                      <FieldInput
                         type="text"
                         aria-label={`Nome do alimento: ${item.name}`}
                         value={item.name}
                         onChange={e => { updateManualItem(item.key, { name: e.target.value }); setIsFormDirty(true); }}
-                        className="flex-1 text-xs font-bold text-[var(--text-1)] outline-none bg-transparent"
+                        className="flex-1 font-bold"
                       />
-                      <input
+                      <FieldInput
                         type="number" min="1"
                         aria-label={`Gramas de ${item.name}`}
                         value={item.grams}
                         onFocus={keepFieldVisible}
                         onChange={e => { updateManualItem(item.key, { grams: e.target.value }); setIsFormDirty(true); }}
-                        className="w-14 text-xs text-[var(--text-3)] text-right outline-none bg-transparent"
+                        className="w-16! px-2! text-right"
                       />
                       <span className="text-[11px] text-[var(--text-3)]">g</span>
                     </>
@@ -1072,14 +1071,14 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
                        tocar num alimento da despensa trazia a porção habitual
                        (90 g) e não havia forma de pôr os 150 g antes de gravar. */
                     <label className="flex items-center gap-1 shrink-0">
-                      <input
+                      <FieldInput
                         type="number" min="1" step="1" inputMode="numeric"
                         aria-label={`Gramas de ${item.name}`}
                         value={item.grams ?? ''}
                         placeholder="g"
                         onFocus={keepFieldVisible}
                         onChange={e => { updateManualItem(item.key, { grams: e.target.value === '' ? null : Number(e.target.value) }); setIsFormDirty(true); }}
-                        className="w-16 min-h-[44px] rounded-lg px-2 text-sm text-right outline-none bg-[var(--surface-soft)] border border-[var(--border-glass)] text-[var(--text-1)]"
+                        className="w-[72px]! px-2! text-right"
                       />
                       <span className="text-[11px] text-[var(--text-3)]">g</span>
                     </label>
@@ -1105,14 +1104,14 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
         <RegistrationSection step={3} title="Observações" optional done={notes.trim().length > 0}>
         <div>
           <label htmlFor="mr-observacoes-opcional-ex-big-mac-bi" className="text-[11px] text-[var(--text-3)] mb-1.5 block px-1">Observações (opcional) — ex.: "Big Mac", "bife frito em azeite"</label>
-          <textarea id="mr-observacoes-opcional-ex-big-mac-bi"
+          <FieldTextarea id="mr-observacoes-opcional-ex-big-mac-bi"
             rows="2"
             maxLength="500"
             placeholder="Detalhes que mudam os valores nutricionais... ou a refeição toda: «2 ovos mexidos, 1 torrada e um café»"
             value={notes}
             onChange={e => { setNotes(e.target.value); setIsFormDirty(true); }}
             aria-describedby="mr-notes-only-hint"
-            className="w-full bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2.5 text-[13px] text-[var(--text-1)] placeholder-[var(--text-muted)] outline-none focus:border-[var(--focus-ring)] resize-none shadow-sm transition"
+            className="resize-none"
           />
           {/* Sem alimentos nem fotos, as observações chegam: a Carol lê-as e
               estrutura a refeição (decisão 15). Diz-se ANTES de ele carregar. */}

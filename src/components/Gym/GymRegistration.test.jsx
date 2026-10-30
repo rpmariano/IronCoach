@@ -1006,6 +1006,8 @@ describe('GymRegistration — pré-preenchimento pelo plano (F3)', () => {
     await waitFor(() => screen.getAllByLabelText(/Peso da série/).forEach(w => expect(w).toHaveAttribute('placeholder', '40')));
     expect(screen.getByLabelText('Tempo (min) — Bicicleta')).toHaveAttribute('placeholder', '20');
     expect(screen.getByText(/Os números do plano são sugestão/)).toBeInTheDocument();
+    // Os exercícios vêm colapsados (#91): abre-se o da Extensões de pernas.
+    fireEvent.click(screen.getByRole('button', { name: /^Abrir Extensões de pernas$/ }));
     // "Marcar todas" confirma o exercício inteiro tal e qual.
     fireEvent.click(screen.getByRole('button', { name: /Marcar todas as séries de Extensões de pernas/ }));
     screen.getAllByLabelText(/Repetições da série/).forEach(r => expect(r).toHaveValue(12));
@@ -1017,7 +1019,8 @@ describe('GymRegistration — pré-preenchimento pelo plano (F3)', () => {
     render(<GymRegistration onClose={onClose} />);
     fireEvent.click(screen.getByRole('button', { name: /^Usar o plano/ }));
     await waitFor(() => expect(screen.getAllByLabelText(/Peso da série/)[0]).toHaveAttribute('placeholder', '40'));
-    // Fez 2 das 3 séries.
+    // Fez 2 das 3 séries (o exercício vem colapsado: abre-se).
+    fireEvent.click(screen.getByRole('button', { name: /^Abrir Extensões de pernas$/ }));
     fireEvent.click(screen.getByRole('button', { name: /^Série 1 de Extensões de pernas feita$/ }));
     fireEvent.click(screen.getByRole('button', { name: /^Série 2 de Extensões de pernas feita$/ }));
     fireEvent.click(screen.getByRole('button', { name: /Analisar treino/i }));

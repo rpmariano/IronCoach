@@ -466,3 +466,19 @@ describe('PlanoScreen', () => {
     expect(screen.getByTestId('plano-screen')).not.toHaveTextContent('à Carol');
   });
 });
+
+describe('PlanoScreen — abre no dia de hoje (bug #90)', () => {
+  it('rola para o dia de hoje, centrado', async () => {
+    const original = Element.prototype.scrollIntoView;
+    const chamadas = [];
+    Element.prototype.scrollIntoView = function scrollIntoView(opts) { chamadas.push({ id: this.getAttribute('data-testid'), opts }); };
+    try {
+      setup();
+      await vi.waitFor(() => expect(chamadas.length).toBeGreaterThan(0));
+      expect(chamadas[0].id).toBe(`plano-dia-${today}`);
+      expect(chamadas[0].opts).toMatchObject({ block: 'center' });
+    } finally {
+      Element.prototype.scrollIntoView = original;
+    }
+  });
+});

@@ -308,7 +308,7 @@ export default function DayPlanCard({ plans = [], planItems = [], raceEvents = [
             type="button"
             data-testid="day-plan-exercicios-resumo"
             aria-expanded={open}
-            aria-controls="day-plan-detail"
+            aria-controls={open ? 'day-plan-detail' : undefined}
             onClick={() => setOpen((o) => !o)}
             className="block w-full min-h-[44px] mt-0.5 text-left text-[12.5px] font-bold"
             style={{ color: 'var(--text-2)' }}

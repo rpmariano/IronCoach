@@ -73,11 +73,12 @@ export default function PantrySection() {
             <label className="flex-1 min-h-[44px] rounded-xl flex items-center gap-2 px-3" style={{ border: '1px solid var(--border-glass)', background: 'var(--surface-soft)' }}>
               <Search size={16} style={{ color: 'var(--text-muted)' }} />
               <span className="sr-only">Procurar alimento</span>
+              {/* O label já é a caixa: o input fica nu. */}
               <input
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder="Procurar alimento"
-                className="flex-1 min-w-0 bg-transparent outline-none text-sm"
+                className="flex-1 min-w-0 bg-transparent border-0 outline-none text-[16px]"
                 style={{ color: 'var(--text-1)' }}
               />
             </label>

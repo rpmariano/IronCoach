@@ -5,6 +5,7 @@ import { useAppStore } from '../../store';
 import { useToast } from '../shared/ToastProvider';
 import { deleteMealTemplate, foodKey, isKnownFood, pantrySuggestions, portionText, saveMealTemplate, templateItems, templateTotals, toNumber } from '../../utils/pantry';
 import { MEAL_TYPE_OPTIONS } from '../../utils/nutrition';
+import { FieldInput } from '../shared/registration/Field';
 
 /* Criar ou ajustar uma refeição predefinida (bug #63, fase D, 2026-10-17;
    specs/carol-quantidades-habitos-refeicoes.md §5.2): um nome, o tipo de
@@ -64,9 +65,9 @@ export default function MealTemplateSheet({ template = null, initial = null, onC
       <div className="px-5 py-4 space-y-3" data-testid="meal-template-sheet">
         <label className="block" htmlFor="template-name">
           <span className="block text-[11px] mb-1.5" style={{ color: 'var(--text-3)' }}>Nome (ex.: Pequeno-almoço de treino)</span>
-          <input id="template-name" value={name} maxLength={60} onChange={(e) => setName(e.target.value)}
+          <FieldInput id="template-name" value={name} maxLength={60} onChange={(e) => setName(e.target.value)}
             // Nova a partir de uma refeição: o nome vem sugerido e selecionado, pronto a trocar.
-            autoFocus={!!initial && !template} onFocus={(e) => { if (initial && !template && !selectedOnce.current) { selectedOnce.current = true; e.target.select(); } }} className="w-full min-h-[46px] rounded-xl px-3 text-[15px] font-bold outline-none" style={field} />
+            autoFocus={!!initial && !template} onFocus={(e) => { if (initial && !template && !selectedOnce.current) { selectedOnce.current = true; e.target.select(); } }} className="font-bold" style={field} />
         </label>
 
         <div>
@@ -100,9 +101,9 @@ export default function MealTemplateSheet({ template = null, initial = null, onC
                   )}
                 </span>
                 <label className="flex items-center gap-1 shrink-0">
-                  <input type="number" min="1" step="1" inputMode="numeric" value={it.grams} aria-label={`Gramas de ${it.name}`}
+                  <FieldInput type="number" min="1" step="1" inputMode="numeric" value={it.grams} aria-label={`Gramas de ${it.name}`}
                     onChange={(e) => setItems((prev) => prev.map((x) => (x.key === it.key ? { ...x, grams: e.target.value } : x)))}
-                    className="w-16 min-h-[44px] rounded-lg px-2 text-sm text-right outline-none" style={field} />
+                    className="w-[72px]! px-2! text-right" style={field} />
                   <span className="text-[12px]" style={{ color: 'var(--text-4)' }}>g</span>
                 </label>
                 <button type="button" aria-label={`Tirar ${it.name}`} onClick={() => setItems((prev) => prev.filter((x) => x.key !== it.key))}
@@ -122,7 +123,7 @@ export default function MealTemplateSheet({ template = null, initial = null, onC
 
         <label className="block" htmlFor="template-food">
           <span className="block text-[11px] mb-1.5" style={{ color: 'var(--text-3)' }}>Juntar alimento da despensa</span>
-          <input id="template-food" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Procurar na despensa" className="w-full min-h-[44px] rounded-xl px-3 text-sm outline-none" style={field} />
+          <FieldInput id="template-food" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Procurar na despensa"  style={field} />
         </label>
         {suggestions.length > 0 && (
           <div role="listbox" aria-label="Da tua despensa" className="rounded-xl overflow-hidden" style={{ border: '1px solid var(--border-glass-strong)', background: 'var(--surface-strong)' }}>

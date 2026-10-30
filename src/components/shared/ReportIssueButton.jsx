@@ -6,6 +6,7 @@ import { currentPageLabel } from '../../lib/utils';
 import { useToast } from './ToastProvider';
 import PremiumModal from './PremiumModal';
 import { Button } from './Button';
+import { FieldInput, FieldTextarea } from './registration/Field';
 
 /* O botão arrasta-se (pedido 2026-09-23: tapava a caixa de texto do Coach).
    Ao largar encosta à margem mais perto e a posição fica neste telemóvel
@@ -270,26 +271,25 @@ export default function ReportIssueButton() {
         <div className="p-6 space-y-4 bg-[var(--bg-sheet)] text-[var(--text-2)]">
           <div className="space-y-1.5">
             <label className="text-xs font-semibold text-[var(--text-3)]">Título <span className="text-[var(--danger)]">*</span></label>
-            <input
+            <FieldInput
               type="text"
               autoFocus
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               placeholder="Resume o problema numa frase curta..."
               maxLength={80}
-              className="w-full min-h-[44px] bg-[var(--bg-app)] border border-[var(--border-glass-strong)] rounded-xl py-2.5 px-3 text-xs text-[var(--text-2)] outline-none"
               disabled={submitting}
             />
           </div>
 
           <div className="space-y-1.5">
             <label className="text-xs font-semibold text-[var(--text-3)]">O que aconteceu?</label>
-            <textarea
+            <FieldTextarea
               rows={4}
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder="Descreve o problema — o que fizeste e o que esperavas que acontecesse..."
-              className="w-full bg-[var(--bg-app)] border border-[var(--border-glass-strong)] rounded-xl py-2.5 px-3 text-xs text-[var(--text-2)] outline-none resize-none"
+              className="resize-none"
               disabled={submitting}
             />
           </div>

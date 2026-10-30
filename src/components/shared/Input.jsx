@@ -1,5 +1,6 @@
 import React, { forwardRef } from 'react';
 import { cn } from './Button';
+import { FieldInput } from './registration/Field';
 
 /**
  * Componente Base de Input (Design System)
@@ -11,13 +12,14 @@ export const Input = forwardRef(({
   icon,
   ...props
 }, ref) => {
-  const baseClasses = 'w-full bg-[var(--surface-glass)] border rounded-2xl px-4 py-3 text-sm text-white placeholder:text-[var(--text-muted)] focus:outline-none focus:ring-2 transition-all duration-300';
+  // O aspeto vem do Field (o padrão dos registos); aqui só o estado de erro e o ícone.
+  const baseClasses = '';
   
   const borderClasses = error 
-    ? 'border-[var(--tint-danger-bd)] focus:ring-[var(--danger)]' 
-    : 'border-[var(--border-glass)] focus:ring-[var(--focus-ring)]';
+    ? 'border-[var(--tint-danger-bd)]! focus:border-[var(--danger)]!' 
+    : '';
 
-  const iconPadding = icon ? 'pl-11' : '';
+  const iconPadding = icon ? 'pl-11!' : '';
 
   return (
     <div className="relative w-full">
@@ -26,7 +28,7 @@ export const Input = forwardRef(({
           {icon}
         </div>
       )}
-      <input
+      <FieldInput
         ref={ref}
         className={cn(baseClasses, borderClasses, iconPadding, className)}
         {...props}

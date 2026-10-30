@@ -5,6 +5,7 @@ import { useAppStore } from '../../store';
 import { useToast } from '../shared/ToastProvider';
 import { compressImage } from '../../lib/image';
 import { confirmPantryFood, deletePantryFood, EDITABLE_NUTRIENTS, foodKey, listWords, missingMicroWords, saveFoodVariant, savePantryFood, variantsOf } from '../../utils/pantry';
+import { FieldInput, FieldTextarea } from '../shared/registration/Field';
 
 /* Adicionar ou ajustar um alimento da despensa (bug #48, fase C; mockup
    "Despensa e perguntas da Carol", ecrãs 8 e 9). Tudo o que entra é
@@ -143,10 +144,10 @@ export default function PantryFoodSheet({ food = null, parent = null, onClose, o
   const field = (key, label, props = {}) => (
     <label className="block">
       <span className="block text-[11px] mb-1.5" style={{ color: 'var(--text-3)' }}>{label}</span>
-      <input
+      <FieldInput
         value={form[key]}
         onChange={(e) => setForm((f) => ({ ...f, [key]: e.target.value }))}
-        className="w-full min-h-[44px] rounded-[10px] px-3 text-[15px] font-extrabold outline-none"
+        className="font-extrabold"
         style={{ border: '1px solid var(--border-well)', background: 'var(--surface-well)', color: 'var(--text-1)' }}
         {...props}
       />
@@ -178,13 +179,13 @@ export default function PantryFoodSheet({ food = null, parent = null, onClose, o
             </div>
             <label className="block">
               <span className="block text-[11px] mb-1.5" style={{ color: 'var(--text-3)' }}>O que é, e a porção que costumas comer</span>
-              <textarea
+              <FieldTextarea
                 rows={2}
                 maxLength={300}
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder="Ex.: pão de mistura do Lidl, uma fatia de 40 g"
-                className="w-full rounded-xl px-3 py-2.5 text-[15px] outline-none resize-none"
+                className="resize-none"
                 style={{ border: '1px solid var(--border-well)', background: 'var(--surface-well)', color: 'var(--text-1)' }}
               />
             </label>
@@ -222,12 +223,12 @@ export default function PantryFoodSheet({ food = null, parent = null, onClose, o
               <div className="grid grid-cols-4 gap-1.5">
                 {EDITABLE_NUTRIENTS.map(({ key, label }) => (
                   <label key={key} className="block text-center">
-                    <input
+                    <FieldInput
                       aria-label={`${label} por 100 g`}
                       inputMode="decimal"
                       value={form[key]}
                       onChange={(e) => setForm((f) => ({ ...f, [key]: e.target.value }))}
-                      className="w-full min-h-[44px] rounded-[10px] text-center text-[15px] font-extrabold outline-none"
+                      className="text-center font-extrabold px-1.5!"
                       style={{ border: '1px solid var(--border-well)', background: 'var(--surface-well)', color: 'var(--text-1)' }}
                     />
                     <span className="block text-[10.5px] mt-1" style={{ color: 'var(--text-4)' }}>{label}</span>
