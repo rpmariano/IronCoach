@@ -77,22 +77,70 @@ import {
   latestTargetsProposals, parseTargetsReview, targetsPayload, targetsReviewKey, TARGETS_KEEP_ANSWER, TARGETS_UPDATE_ANSWER,
 } from "./targetsReview.ts";
 // Só a chave no header (x-goog-api-key); o coach-chat continua no alias.
-import { geminiHeaders, thinkingConfig, withBusyFallback } from "../_shared/geminiModel.ts";
+import { GEMINI_FALLBACK_MODEL, GEMINI_MODEL as SHARED_GEMINI_MODEL, geminiHeaders, thinkingConfig, withBusyFallback } from "../_shared/geminiModel.ts";
 import {
   isPlanRequest, PLAN_RESUME_LATER, PLAN_RESUME_LATER_REPLY, PLAN_RESUME_SEND, type PlanResumeCandidate, planResumeFacts,
 } from "../_shared/formulas/planResume.ts";
 import { currentPlanResume } from "../_shared/planResumeData.ts";
 
-// Alias que segue sempre o modelo flash estável mais recente — evita 404s
-// quando a Google descontinua uma versão fixa (confirmado em produção: fixar
-// em "gemini-2.5-flash" resultou em 404 "no longer available to new users"
-// dias depois). O preço de usar o alias é que os parâmetros aceites por
-// generationConfig podem mudar de geração para geração (ver thinkingConfig
-// abaixo) — por isso esta função evita depender de campos específicos de uma
-// geração de modelo.
-// Exportado para a validação do esquema contra a API real
-// (scripts/probe-coach-chat-schema.ts) usar exatamente o mesmo modelo.
-export const GEMINI_MODEL = "gemini-flash-latest";
+/* O modelo do chat: o fixo de _shared/geminiModel.ts (o mesmo das outras
+   funções). Até 30-10-2026 era o alias "gemini-flash-latest", escolhido para
+   evitar 404s quando a Google descontinua uma versão fixa (fixar em
+   "gemini-2.5-flash" resultou em 404 "no longer available to new users").
+   Esse risco fica coberto pelo router (createChatModelRouter): num 404 — e só
+   num 404 — o chat passa para o alias. Ocupado ou sem resposta, vai para o
+   Flash de recurso, e o pedido fica nesse modelo até ao fim.
+   Exportado para a validação do esquema contra a API real
+   (scripts/probe-coach-chat-schema.ts) usar exatamente o mesmo modelo. */
+export const GEMINI_MODEL = SHARED_GEMINI_MODEL;
+export const CHAT_PRIMARY_MODEL = GEMINI_MODEL;
+
+/* O encaminhamento de modelo de UM pedido do chat (incidente de 30-10-2026,
+   09:50: o principal ficou pendurado 98 s, o 3.6 deu 400, a rede do esquema
+   repetiu a ronda 0 e essa repetição voltou ao principal pendurado até aos
+   125 s — o Rui ficou sem resposta).
+   - Só a 1.ª chamada pode cair no Flash de recurso (withBusyFallback): a
+     partir daí, todas as chamadas do pedido — repetições sem esquema ou sem
+     thinking, rondas de ferramentas — vão ao modelo que respondeu. Nunca se
+     volta a um principal que já não respondeu, e as thoughtSignature de um
+     modelo não vão para outro.
+   - O alias só num 404 do principal. */
+export function createChatModelRouter(primary = CHAT_PRIMARY_MODEL) {
+  let model = primary;
+  let firstCall = true;
+  return {
+    get model() { return model; },
+    get onFallback() { return model !== primary; },
+    async send(sendTo: (model: string, attemptDeadline: number) => Promise<Response>, deadline: number): Promise<Response> {
+      const record = (m: string, d: number) => {
+        model = m;
+        return sendTo(m, d);
+      };
+      let res: Response;
+      if (firstCall) {
+        firstCall = false;
+        res = await withBusyFallback(record, primary, deadline);
+      } else {
+        res = await record(model, deadline);
+      }
+      if (res.status === 404 && model === primary && hasTimeFor(deadline)) {
+        console.warn(`[gemini] fallback: ${primary} respondeu 404 no coach-chat; a repetir em ${GEMINI_FALLBACK_MODEL}`);
+        try { await res.body?.cancel(); } catch (_) { /* nada a libertar */ }
+        res = await record(GEMINI_FALLBACK_MODEL, deadline);
+      }
+      return res;
+    },
+  };
+}
+
+/* Quanto se espera pela resposta do modelo numa ronda. Um turno de plano é
+   longo de propósito (milhares de tokens de saída, ver GEMINI_ATTEMPT_MS);
+   uma conversa responde em segundos — 60 s chegam, e o resto do prazo fica
+   para o Flash de recurso se o principal ficar pendurado. */
+const CHAT_ATTEMPT_MS = 60000;
+export function chatAttemptMs(planTurn: boolean): number {
+  return planTurn ? GEMINI_ATTEMPT_MS : CHAT_ATTEMPT_MS;
+}
 const MAX_HISTORY   = 30;   // mensagens mais recentes enviadas ao Gemini
 const MAX_MSG_LEN   = 2000; // caracteres máximos por mensagem
 const MAX_TOOL_ROUNDS = 4;  // idas-e-voltas de function calling antes de forçar resposta final
@@ -8337,20 +8385,13 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
     const planTurn = !planResumeSendStale && isPlanTurn(message, turnCase, !!planContinuationIn);
     let useRecommendationsSchema = !recommendationsSchemaRejected && !planTurn;
     let useLowThinking = planTurn && !lowThinkingRejected;
-    /* Ocupado ou sem resposta: outro Flash, dentro do prazo (withBusyFallback,
-       29-10-2026) — só na ronda 0. Da 1.ª em diante o histórico leva as
-       functionCall com a thoughtSignature do modelo que as fez, e uma
-       assinatura de um modelo enviada a outro arrisca um 400 (revisão de
-       fa525453): as rondas seguintes ficam no modelo que respondeu à 0. */
-    let chatModel = GEMINI_MODEL;
-    async function callGemini(withTools = true, allowModelSwitch = true) {
-      const sendTo = (model: string, attemptDeadline: number) => {
-        chatModel = model;
-        return sendChat(model, attemptDeadline, withTools);
-      };
-      return allowModelSwitch
-        ? await withBusyFallback(sendTo, GEMINI_MODEL, chatDeadline)
-        : await sendTo(chatModel, chatDeadline);
+    /* Ocupado ou sem resposta: outro Flash, dentro do prazo — só na 1.ª
+       chamada do pedido; todas as seguintes (repetições, rondas de
+       ferramentas) ficam no modelo que respondeu (createChatModelRouter,
+       incidente de 30-10-2026). */
+    const chatRouter = createChatModelRouter();
+    async function callGemini(withTools = true) {
+      return await chatRouter.send((model, attemptDeadline) => sendChat(model, attemptDeadline, withTools), chatDeadline);
     }
     async function sendChat(model: string, attemptDeadline: number, withTools: boolean) {
       const res = await fetchGeminiWithTimeout(
@@ -8401,7 +8442,8 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
             },
           }),
         },
-        GEMINI_ATTEMPT_MS,
+        // Um turno de plano espera até 100 s; uma conversa, 60 (chatAttemptMs).
+        chatAttemptMs(planTurn),
         // Sem repetição por tempo: recomeçar do zero uma resposta lenta só
         // a volta a cortar. As de "ocupado" (503) repetem-se dentro do prazo.
         0,
@@ -8504,7 +8546,7 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
       }
       roundStartedAt = Date.now();
       try {
-        geminiRes = await callGemini(!isFinalRound, round === 0);
+        geminiRes = await callGemini(!isFinalRound);
       } catch (e) {
         // O caminho que falhou a 2026-09-24 sem deixar rasto nos logs: só a
         // app registava o timeout.
@@ -8516,18 +8558,21 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
 
       if (!geminiRes.ok) {
         const errText = await geminiRes.text();
-        console.error("Gemini error:", geminiRes.status, errText, JSON.stringify({ round, turnCase, tools: isFinalRound ? [] : toolNamesSent, toolsBytes: isFinalRound ? 0 : toolsBytes, thinking: useLowThinking ? "low" : "default", ms: Date.now() - roundStartedAt }));
+        console.error("Gemini error:", geminiRes.status, errText, JSON.stringify({ round, turnCase, model: chatRouter.model, tools: isFinalRound ? [] : toolNamesSent, toolsBytes: isFinalRound ? 0 : toolsBytes, thinking: useLowThinking ? "low" : "default", ms: Date.now() - roundStartedAt }));
         /* A rede do raciocínio "low": o alias pode rodar para uma geração que
            não o aceite (já aconteceu com thinkingBudget). Num turno de plano
            não vai o esquema das recomendações, por isso um 400 aqui é do
            thinkingConfig até prova em contrário: repete-se a ronda, uma vez,
            sem ele — o turno fica só mais lento, como antes. */
-        if (useLowThinking && geminiRes.status === 400) {
+        // Só se ainda couber uma tentativa útil (30-10-2026: a repetição da ronda 0
+        // passava dos 125 s). No Flash de recurso, a recusa não se fixa na
+        // instância — pode ser só desse modelo.
+        if (useLowThinking && geminiRes.status === 400 && hasTimeFor(chatDeadline)) {
           // O mesmo prefixo do geminiWithFallback: nos logs vê-se que o alias
           // rodou e que o raciocínio deixou de estar limitado nesta instância.
           console.warn("[gemini] fallback: thinkingConfig low recusado no coach-chat — a repetir sem ele", JSON.stringify({ round, turnCase, status: geminiRes.status }));
           useLowThinking = false;
-          lowThinkingRejected = true;
+          if (!chatRouter.onFallback) lowThinkingRejected = true;
           round--;
           continue;
         }
@@ -8535,10 +8580,10 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
            Repete-se esta mesma ronda, uma vez, sem o campo — o atleta tem a
            resposta na mesma, sem recomendações gravadas — e a instância
            deixa de o enviar. Nunca mais o chat abaixo por causa do esquema. */
-        if (shouldRetryWithoutRecommendations(geminiRes.status, errText, useRecommendationsSchema)) {
-          console.error("coach-chat: RESPONSE_SCHEMA com recommendations recusado pela API — a repetir sem ele", JSON.stringify({ round, turnCase }));
+        if (shouldRetryWithoutRecommendations(geminiRes.status, errText, useRecommendationsSchema) && hasTimeFor(chatDeadline)) {
+          console.error("coach-chat: RESPONSE_SCHEMA com recommendations recusado pela API — a repetir sem ele", JSON.stringify({ round, turnCase, model: chatRouter.model }));
           useRecommendationsSchema = false;
-          recommendationsSchemaRejected = true;
+          if (!chatRouter.onFallback) recommendationsSchemaRejected = true;
           round--;
           continue;
         }

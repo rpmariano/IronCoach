@@ -13,12 +13,17 @@
 // terminal):
 //   GEMINI_API_KEY=... deno run --allow-net --allow-env scripts/probe-coach-chat-schema.ts
 //
-// Resultado esperado: as três linhas com HTTP 200. Um 400 na primeira ou na
+// Desde 30-10-2026 corre também no Flash de recurso (GEMINI_BUSY_FALLBACK_MODEL)
+// e com a configuração completa do chat (CHAT_MAX_OUTPUT_TOKENS, thinking
+// "low"): foi aí que o 3.6-flash deu 400 INVALID_ARGUMENT em produção.
+//
+// Resultado esperado: todas as linhas com HTTP 200. Um 400 na primeira ou na
 // segunda quer dizer que o esquema novo não pode ir para produção como está
 // (a rede do coach-chat repetiria cada pedido sem o campo — funciona, mas
 // cada mensagem pagava uma ida e volta falhada).
 
-import { GEMINI_MODEL, RESPONSE_SCHEMA, RESPONSE_SCHEMA_BASE, buildTools } from "../supabase/functions/coach-chat/index.ts";
+import { CHAT_MAX_OUTPUT_TOKENS, GEMINI_MODEL, RESPONSE_SCHEMA, RESPONSE_SCHEMA_BASE, buildTools } from "../supabase/functions/coach-chat/index.ts";
+import { GEMINI_BUSY_FALLBACK_MODEL } from "../supabase/functions/_shared/geminiModel.ts";
 
 const key = Deno.env.get("GEMINI_API_KEY");
 if (!key) {
@@ -27,9 +32,17 @@ if (!key) {
 }
 
 // A chave vai no header (x-goog-api-key), nunca na URL — ver _shared/geminiModel.ts.
-const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
+const urlFor = (model: string) => `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
 
-async function probe(label: string, schema: unknown, withTools: boolean): Promise<boolean> {
+async function probe(
+  label: string,
+  schema: unknown,
+  withTools: boolean,
+  model = GEMINI_MODEL,
+  extra: Record<string, unknown> = { maxOutputTokens: 4096 },
+): Promise<boolean> {
+  const url = urlFor(model);
+  label = `[${model}] ${label}`;
   const body = {
     system_instruction: {
       parts: [{
@@ -41,7 +54,7 @@ async function probe(label: string, schema: unknown, withTools: boolean): Promis
     ...(withTools ? { tools: buildTools(null) } : {}),
     generationConfig: {
       temperature: 0.7,
-      maxOutputTokens: 4096,
+      ...extra,
       response_mime_type: "application/json",
       response_schema: schema,
     },
@@ -70,9 +83,17 @@ async function probe(label: string, schema: unknown, withTools: boolean): Promis
   return true;
 }
 
-const results = [
-  await probe("esquema novo, com todas as ferramentas (uma ronda normal)", RESPONSE_SCHEMA, true),
-  await probe("esquema novo, sem ferramentas (a ronda final)", RESPONSE_SCHEMA, false),
-  await probe("esquema de antes, com todas as ferramentas (controlo)", RESPONSE_SCHEMA_BASE, true),
-];
+const chatConfig = { maxOutputTokens: CHAT_MAX_OUTPUT_TOKENS };
+const planConfig = { maxOutputTokens: CHAT_MAX_OUTPUT_TOKENS, thinkingConfig: { thinkingLevel: "low" } };
+const results = [];
+for (const model of [GEMINI_MODEL, GEMINI_BUSY_FALLBACK_MODEL]) {
+  results.push(
+    await probe("esquema novo, com todas as ferramentas (uma ronda normal)", RESPONSE_SCHEMA, true, model),
+    await probe("esquema novo, sem ferramentas (a ronda final)", RESPONSE_SCHEMA, false, model),
+    await probe("esquema de antes, com todas as ferramentas (controlo)", RESPONSE_SCHEMA_BASE, true, model),
+    // Isolar o 400 de 30-10: o teto de saída do chat, e o thinking dos turnos de plano.
+    await probe("como o chat: ferramentas + esquema + teto 32768", RESPONSE_SCHEMA, true, model, chatConfig),
+    await probe("como um turno de plano: + thinking low, esquema de antes", RESPONSE_SCHEMA_BASE, true, model, planConfig),
+  );
+}
 Deno.exit(results.every(Boolean) ? 0 : 1);
