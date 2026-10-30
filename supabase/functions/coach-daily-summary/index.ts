@@ -46,10 +46,10 @@ const corsHeaders = {
 
 const GEMINI_TIMEOUT_MS = 40000;
 /* O prazo do pedido, desde que chega (revisão de fa525453): a app espera 45 s
-   (invokeEdgeFunctionWithTimeout por omissão); dentro dele cabem a tentativa
+   (invokeEdgeFunctionWithTimeout por omissão), menos 3 s de folga; dentro dele cabem a tentativa
    no modelo principal e, se ele estiver ocupado ou não responder, uma no
    Flash de recurso (geminiWithFallback). */
-const SUMMARY_BUDGET_MS = 40000;
+const SUMMARY_BUDGET_MS = 42000;
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {

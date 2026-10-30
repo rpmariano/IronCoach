@@ -29,7 +29,7 @@ const fold = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCa
 const UPPER_RESTRICTION_RE =
   /\b(sem|nao|nunca|evitar|nada de|restricao|proibid[oa]s?)\b(?=([^.;\n]{0,80}?)\b(bracos?|membros? superiores?|ombros?|cotovelos?|pulsos?|maos?)\b)/g;
 const NEGATED_PROBLEM_RE = /^\s*(\w+\s+){0,4}(dor|dores|problemas?|queixas?|lesao|lesoes|limitac\w*|desconforto)\b/;
-const CAUSE_RE = /\b(caus\w*|provo(c|qu)\w*|agrav\w*|pior\w*|doa|doer|doam|magoe\w*|impe(c|ç)\w*|impedir)\b/;
+const CAUSE_RE = /\b(caus\w*|provo(c|qu)\w*|agrav\w*|pior\w*|doa|doer|doam|magoe\w*|impec\w*|impedir)\b/; // texto já dobrado: «impeça» chega como «impeca»
 
 // deno-lint-ignore no-explicit-any
 export function hasUpperBodyRestriction(notes: any[] | null | undefined): boolean {

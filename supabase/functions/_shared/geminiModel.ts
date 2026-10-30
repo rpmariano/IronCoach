@@ -50,12 +50,18 @@ export const GEMINI_CREDITS_STATUS = 402;
    paralelo continuam lá dentro); o de recurso tem o resto. */
 export const GEMINI_FALLBACK_RESERVE_MS = 25000;
 
+/* Num prazo curto, a parte do de recurso: o principal fica com 62%. A
+   preparação (contexto, meteorologia, leitura do site) come parte do prazo,
+   e com metade um resumo de 20-30 s caía no recurso sem precisar (revisão
+   de 70ccd43f). */
+export const GEMINI_FALLBACK_SHARE = 0.38;
+
 /** O prazo da tentativa no modelo principal: o do pedido menos a reserva —
- *  no máximo metade do que falta, para um prazo curto (as sapatilhas, 30 s)
- *  também se repartir —, se ainda lhe couber uma tentativa útil; senão o prazo todo. */
+ *  25 s, ou 38% do que falta num prazo curto (as sapatilhas, o resumo) —, se
+ *  ainda couber uma tentativa útil a cada um; senão o prazo todo. */
 export function primaryDeadline(deadline: number, now = Date.now()): number {
   if (!Number.isFinite(deadline)) return deadline;
-  const reserve = Math.min(GEMINI_FALLBACK_RESERVE_MS, (deadline - now) / 2);
+  const reserve = Math.min(GEMINI_FALLBACK_RESERVE_MS, (deadline - now) * GEMINI_FALLBACK_SHARE);
   const reserved = deadline - reserve;
   return hasTimeFor(reserved, now) && hasTimeFor(deadline, reserved) ? reserved : deadline;
 }

@@ -8,10 +8,12 @@ import { EXTRACTION_BUDGET_MS, fetchGeminiWithTimeout, hasTimeFor } from "./gemi
 // ── O prazo repartido (revisão de fa525453 — o incidente de 29-10) ─────────
 Deno.test("primaryDeadline: o principal deixa a reserva ao de recurso; num prazo curto, metade; sem prazo, sem limite", () => {
   const now = 1_000_000;
-  // A leitura de prints: 60 s — o principal até 35 s, o de recurso com 25 s.
-  assertEquals(primaryDeadline(now + EXTRACTION_BUDGET_MS, now), now + EXTRACTION_BUDGET_MS - GEMINI_FALLBACK_RESERVE_MS);
-  // As sapatilhas: 30 s — 15 + 15.
-  assertEquals(primaryDeadline(now + 30000, now), now + 15000);
+  // Um prazo longo (90 s): o de recurso fica com os 25 s da reserva.
+  assertEquals(primaryDeadline(now + 90000, now), now + 90000 - GEMINI_FALLBACK_RESERVE_MS);
+  // A leitura de prints (60 s): 38% = 22,8 s para o de recurso, 37,2 s para o principal.
+  assertEquals(primaryDeadline(now + EXTRACTION_BUDGET_MS, now), now + 37200);
+  // As sapatilhas (30 s) e o resumo depois da preparação (~30 s): 62% para o principal (revisão de 70ccd43f).
+  assertEquals(primaryDeadline(now + 30000, now), now + 18600);
   // Curto demais para dois: o principal fica com tudo.
   assertEquals(primaryDeadline(now + 12000, now), now + 12000);
   assertEquals(primaryDeadline(Number.POSITIVE_INFINITY, now), Number.POSITIVE_INFINITY);
@@ -29,7 +31,7 @@ Deno.test("geminiWithFallback: «sem resposta» chega ao de recurso — o princi
   };
   assertEquals((await geminiWithFallback(send, deadline)).status, 200);
   assertEquals(seen.map((s) => s.model), [GEMINI_MODEL, GEMINI_BUSY_FALLBACK_MODEL]);
-  assert(seen[0].d <= deadline - GEMINI_FALLBACK_RESERVE_MS + 5, "o principal com a reserva tirada");
+  assert(seen[0].d <= deadline - 8000, "o principal com a reserva tirada");
   assertEquals(seen[1].d, deadline);
   // E com o prazo reduzido o principal acaba a tempo: ainda cabe uma tentativa no de recurso.
   assert(hasTimeFor(deadline, seen[0].d));
@@ -48,12 +50,12 @@ Deno.test("fetchGeminiWithTimeout + withBusyFallback: um principal pendurado é 
   }) as typeof fetch;
   try {
     const t0 = Date.now();
-    const deadline = t0 + 17000; // reserva = metade (8,5 s) → o principal corta aos ~8,5 s
+    const deadline = t0 + 22000; // reserva = 38% (8,4 s) → o principal corta aos ~13,6 s
     const res = await withBusyFallback((m, d) => fetchGeminiWithTimeout(geminiUrl(m), {}, 40000, 1, d), GEMINI_MODEL, deadline);
     assertEquals(res.status, 200);
     assertEquals(calls.length, 2);
     assert(calls[1].includes(GEMINI_BUSY_FALLBACK_MODEL));
-    assert(Date.now() - t0 < 12000, `demorou ${Date.now() - t0} ms`);
+    assert(Date.now() - t0 < 17000, `demorou ${Date.now() - t0} ms`);
   } finally {
     globalThis.fetch = realFetch;
   }

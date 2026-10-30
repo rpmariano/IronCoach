@@ -48,7 +48,7 @@ const GEMINI_RETRIES = 1;
 /* O prazo do pedido, desde que chega (revisão de fa525453): a app espera 90 s
    (RunAgenda); a leitura do site vem antes, e o resto fica para o Gemini e,
    se ele estiver ocupado ou não responder, o Flash de recurso. */
-const ENRICH_BUDGET_MS = 80000;
+const ENRICH_BUDGET_MS = 85000;
 
 const MAIN_PAGE_FETCH_TIMEOUT_MS = 15000;
 const SUBPAGE_FETCH_TIMEOUT_MS = 9000;
