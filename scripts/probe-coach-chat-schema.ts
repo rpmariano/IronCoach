@@ -22,7 +22,7 @@
 // (a rede do coach-chat repetiria cada pedido sem o campo — funciona, mas
 // cada mensagem pagava uma ida e volta falhada).
 
-import { CHAT_MAX_OUTPUT_TOKENS, GEMINI_MODEL, RESPONSE_SCHEMA, RESPONSE_SCHEMA_BASE, buildSystemInstruction, buildTools } from "../supabase/functions/coach-chat/index.ts";
+import { CHAT_MAX_OUTPUT_TOKENS, GEMINI_MODEL, RESPONSE_SCHEMA, RESPONSE_SCHEMA_BASE, SERIES_TOOLS, buildSystemInstruction, buildTools } from "../supabase/functions/coach-chat/index.ts";
 import { GEMINI_BUSY_FALLBACK_MODEL } from "../supabase/functions/_shared/geminiModel.ts";
 
 const key = Deno.env.get("GEMINI_API_KEY");
@@ -96,6 +96,51 @@ const doctrine = buildSystemInstruction(null, noBio, null, null, "", "", null, n
 const filler = Array.from({ length: 900 }, (_, i) => `- 2026-10-${String(1 + (i % 28)).padStart(2, "0")}: corrida de ${5 + (i % 12)} km a 5'${10 + (i % 40)}"/km, FC média ${140 + (i % 25)} bpm, RPE ${4 + (i % 5)}/10.`).join("\n");
 const big = (doctrine + "\n\nDADOS DE CONTEXTO (enchimento para medir o teto):\n" + filler).slice(0, 150000);
 const planConfig = { maxOutputTokens: CHAT_MAX_OUTPUT_TOKENS, thinkingConfig: { thinkingLevel: "low" } };
+/* As ferramentas do Troféu isoladas (31-10-2026: «com as ferramentas do Troféu»
+   deu 400 no 3.6 e passa no 3.8). Cada caso manda só UMA declaração; nas da
+   culpada, um caso por campo: sem ele, ou com o tipo mudado. */
+// deno-lint-ignore no-explicit-any
+type Decl = any;
+const only = (decl: Decl) => [{ functionDeclarations: [decl] }];
+const clone = (d: Decl): Decl => JSON.parse(JSON.stringify(d));
+function variants(decl: Decl): [string, Decl][] {
+  const out: [string, Decl][] = [[`${decl.name} (tal como está)`, decl]];
+  for (const field of Object.keys(decl.parameters?.properties ?? {})) {
+    const without = clone(decl);
+    delete without.parameters.properties[field];
+    without.parameters.required = (without.parameters.required ?? []).filter((r: string) => r !== field);
+    if (!without.parameters.required.length) delete without.parameters.required;
+    out.push([`${decl.name} sem ${field}`, without]);
+    const f = decl.parameters.properties[field];
+    if (f?.type === "INTEGER") {
+      const asNumber = clone(decl);
+      asNumber.parameters.properties[field].type = "NUMBER";
+      out.push([`${decl.name}: ${field} INTEGER → NUMBER`, asNumber]);
+    }
+    if (Array.isArray(f?.enum)) {
+      const noEnum = clone(decl);
+      delete noEnum.parameters.properties[field].enum;
+      out.push([`${decl.name}: ${field} sem enum`, noEnum]);
+    }
+  }
+  const noRequired = clone(decl);
+  delete noRequired.parameters.required;
+  out.push([`${decl.name} sem required`, noRequired]);
+  const noDescription = clone(decl);
+  noDescription.description = "Ferramenta de teste.";
+  out.push([`${decl.name} com descrição curta`, noDescription]);
+  return out;
+}
+async function probeSeriesTools(model: string): Promise<boolean[]> {
+  const r: boolean[] = [];
+  for (const decl of SERIES_TOOLS) {
+    for (const [label, d] of variants(decl)) {
+      r.push(await probe(`Troféu — ${label}`, RESPONSE_SCHEMA, true, model, chatConfig, null, only(d)));
+    }
+  }
+  return r;
+}
+
 const results = [];
 for (const model of [GEMINI_MODEL, GEMINI_BUSY_FALLBACK_MODEL]) {
   results.push(
@@ -119,8 +164,11 @@ for (const model of [GEMINI_MODEL, GEMINI_BUSY_FALLBACK_MODEL]) {
     // 31-10: o system instruction do chat chega aos 147 KB nos pedidos que o 3.6
     // recusa. A doutrina real (~98 KB) e depois ~150 KB: se só o grande dá 400,
     // é um teto de tamanho.
-    await probe("system com a doutrina real (~98 KB)", RESPONSE_SCHEMA, true, model, chatConfig, null, buildTools(null, true), doctrine),
-    await probe("system de ~150 KB (doutrina + dados de enchimento)", RESPONSE_SCHEMA, true, model, chatConfig, null, buildTools(null, true), big),
+    // Sem as ferramentas do Troféu (31-10: elas sozinhas dão 400 no 3.6): só o tamanho.
+    await probe("system com a doutrina real (~98 KB), sem Troféu", RESPONSE_SCHEMA, true, model, chatConfig, null, buildTools(null, false), doctrine),
+    await probe("system de ~150 KB (doutrina + enchimento), sem Troféu", RESPONSE_SCHEMA, true, model, chatConfig, null, buildTools(null, false), big),
+    // 1. As ferramentas do Troféu, uma a uma e campo a campo (só a declaração em causa).
+    ...(await probeSeriesTools(model)),
   );
 }
 Deno.exit(results.every(Boolean) ? 0 : 1);
