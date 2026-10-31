@@ -5379,7 +5379,7 @@ Deno.test("guarda do plano: 3 dias fáceis antes de uma jornada para atacar; 2 a
 Deno.test("handler: o bloco, as ferramentas e o turno do mapa só com inscrição ativa (ligações no código)", async () => {
   const src = await Deno.readTextFile(new URL("./index.ts", import.meta.url));
   assertStringIncludes(src, "const seriesToolsOn = seriesBlock?.active === true;");
-  assertStringIncludes(src, "const toolsBlock = buildTools(allowedTools, seriesToolsOn, chatImages.length > 0);");
+  assertStringIncludes(src, "const toolsAll = buildTools(allowedTools, seriesToolsOn, chatImages.length > 0);");
   assertStringIncludes(src, "const cupMapPrompt = cupMapFirst !== null && seriesBlock?.active ? buildCupMapTurn(seriesBlock, cupMapFirst) : null;");
   assertStringIncludes(src, "raceConflictPrompt ? raceConflictPrompt : cupMapPrompt ? cupMapPrompt : planDivergence.length > 0");
   // O guião do race_conflict sai de _shared/raceConflictPrompt.ts; a inversão
@@ -5392,7 +5392,7 @@ Deno.test("handler: o bloco, as ferramentas e o turno do mapa só com inscriçã
   // neste pedido (revisão das correções da Fase 2).
   assertStringIncludes(src, "planSeriesIntentsStale = planSeriesIntentsStale || (cupToolOn && !result.startsWith(\"Erro\"));");
   assertStringIncludes(src, "result = await runProposeTrainingPlan(sb, userId, args || {}, planSeriesIntents, planContinuationIn, planGymRules);");
-  assertStringIncludes(src, "      seriesBlock?.text ?? null,\n    );");
+  assertStringIncludes(src, "      seriesBlock?.text ?? null,\n      planDoctrine,\n    );");
   // cup_updated só aparece quando é true — a resposta de quem não está inscrito fica igual.
   assertEquals(src.includes("cup_updated: cupWasUpdated"), false);
   assertEquals(src.includes("cup_updated: false"), false);

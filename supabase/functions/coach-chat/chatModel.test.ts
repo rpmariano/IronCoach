@@ -163,3 +163,57 @@ Deno.test("handler: o tamanho do prompt por secção vai para o log em cada pedi
   assert(src.includes('console.log("coach-chat prompt", JSON.stringify({'));
   assert(src.includes("memory: promptSizeReport(memoryNamed),"));
 });
+
+// Corte (1), 31-10-2026: a doutrina de plano e o propose_training_plan só em
+// turnos de plano. Na dúvida, incluem-se: um pedido indireto não pode ficar sem ela.
+import { buildSystemInstruction, needsPlanDoctrine, PLAN_DOCTRINE_STUB } from "./index.ts";
+
+Deno.test("needsPlanDoctrine: pedidos de plano diretos e indiretos incluem a doutrina", () => {
+  for (const m of [
+    "Faz-me um plano para a meia", "o que faço esta semana?", "e amanhã, corro ou descanso?", "Posso ajustar os treinos?",
+    "Tenho a maratona daqui a 6 semanas", "Preciso de mudar o ginásio de quinta", "Que treino faço hoje?", "o que como antes do longo?",
+  ]) assert(needsPlanDoctrine(m, "E", false, null), m);
+});
+
+Deno.test("needsPlanDoctrine: dor, doença, cansaço ou viagem (a doutrina de adaptação propõe um plano ajustado) incluem-na", () => {
+  for (const m of ["Dói-me o joelho desde ontem", "Estou com gripe", "Ando muito cansado", "Vou viajar na quinta", "Tenho uma lesão no gémeo"]) {
+    assert(needsPlanDoctrine(m, "E", false, null), m);
+  }
+});
+
+Deno.test("needsPlanDoctrine: a resposta ao diagnóstico (sem palavra-chave) inclui-a pela última mensagem da Carol", () => {
+  assert(needsPlanDoctrine("3, sem lactose", "E", false, "Antes de te preparar o plano: quantos dias por semana consegues treinar?"));
+  assert(needsPlanDoctrine("sim, quero", "E", false, "Queres que te proponha a semana com mais um treino de força?"));
+});
+
+Deno.test("needsPlanDoctrine: casos de plano e continuações sempre; leitura só e conversa sem plano, não", () => {
+  assert(needsPlanDoctrine("", "A", false, null));
+  assert(needsPlanDoctrine("Muda a terça", "F_PLAN", false, null));
+  assert(needsPlanDoctrine("", "E", true, null));
+  assertEquals(needsPlanDoctrine("Aceitei o plano.", "C", false, null), false); // só leitura
+  assertEquals(needsPlanDoctrine("Obrigada pela explicação do VO2máx", "E", false, "O VO2máx é o consumo máximo de oxigénio."), false);
+  assertEquals(needsPlanDoctrine("Olá Carol!", "E", false, null), false);
+});
+
+Deno.test("buildSystemInstruction: sem a doutrina de plano vai o stub; por omissão vai tudo", () => {
+  const bio = { height_cm: null, weight_kg: null, gender: null, birth_date: null, experience_level: null, resting_hr_bpm: null, dietary_restrictions: null, dietary_notes: null };
+  const base = [null, bio, null, null, "", "", null, null, null, null, null, null] as const;
+  // deno-lint-ignore no-explicit-any
+  const full = (buildSystemInstruction as any)(...base);
+  const pad: unknown[] = [...base];
+  while (pad.length < 46) pad.push(null);
+  // deno-lint-ignore no-explicit-any
+  const lean = (buildSystemInstruction as any)(...pad, false);
+  assert(full.includes("PLANOS COM MAIS DE 7 DIAS") && full.includes("DIAGNÓSTICO ANTES DE PROPOR OU EDITAR"));
+  assert(!lean.includes("PLANOS COM MAIS DE 7 DIAS") && !lean.includes("DIAGNÓSTICO ANTES DE PROPOR OU EDITAR"));
+  assert(lean.includes(PLAN_DOCTRINE_STUB));
+  assert(full.length - lean.length > 10000, String(full.length - lean.length));
+  // A nutrição (refeição pontual, save_meal_suggestions) fica nos dois.
+  assert(lean.includes("SUGESTÕES ALIMENTARES E PLANO ALIMENTAR"));
+});
+
+Deno.test("handler: sem a doutrina de plano, o propose_training_plan não vai nas ferramentas (ligações no código)", async () => {
+  const src = await Deno.readTextFile(new URL("./index.ts", import.meta.url));
+  assert(src.includes("const planDoctrine = !readOnlyTurn && needsPlanDoctrine("));
+  assert(src.includes('planDoctrine ? toolsAll : withoutTool(toolsAll, "propose_training_plan")'));
+});
