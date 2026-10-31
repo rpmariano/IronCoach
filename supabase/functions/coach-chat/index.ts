@@ -190,6 +190,32 @@ export function describeRequestShape(model: string, system: string, contents: an
   };
 }
 
+/** Os tamanhos (caracteres) das secções de um prompt, da maior para a menor,
+ *  sem as vazias — para o log, sem texto nenhum (31-10-2026: o system
+ *  instruction do chat chega aos 147 KB e o 3.6 recusa-o com 400). */
+export function promptSizeReport(parts: Record<string, unknown>): Record<string, number> {
+  return Object.fromEntries(
+    Object.entries(parts)
+      .map(([k, v]): [string, number] => [k, typeof v === "string" ? v.length : 0])
+      .filter(([, n]) => n > 0)
+      .sort((a, b) => b[1] - a[1]),
+  );
+}
+
+/** A parte fixa do system instruction (a doutrina, igual para todos os
+ *  atletas): o buildSystemInstruction sem dados nenhuns. Mede-se uma vez. */
+let staticDoctrineCache: number | null = null;
+export function staticDoctrineChars(): number {
+  if (staticDoctrineCache === null) {
+    const noBio = {
+      height_cm: null, weight_kg: null, gender: null, birth_date: null, experience_level: null, resting_hr_bpm: null,
+      dietary_restrictions: null, dietary_notes: null,
+    };
+    staticDoctrineCache = buildSystemInstruction(null, noBio, null, null, "", "", null, null, null, null, null, null).length;
+  }
+  return staticDoctrineCache;
+}
+
 /* Quanto se espera pela resposta do modelo numa ronda. Um turno de plano é
    longo de propósito (milhares de tokens de saída, ver GEMINI_ATTEMPT_MS);
    uma conversa responde em segundos — 60 s chegam, e o resto do prazo fica
@@ -8177,42 +8203,44 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
     // Do mais largo para o mais próximo: a época, o que já conquistou, as
     // metas, o que se disse em cada registo, e o cartão de hoje.
     const memoryBlocks = await (memoryBlocksPromise ??= fetchChatMemoryBlocks(sb, userId, todayISO, profile));
-    const memorySections = [
+    // Com nome por bloco, para o log dos tamanhos (promptSizeReport); a ordem é a do objeto.
+    const memoryNamed: Record<string, string | null | undefined> = {
       // O check-in primeiro: é o estado de hoje, e pode trazer alarmes.
-      memoryBlocks.checkin,
+      checkin: memoryBlocks.checkin,
       // O tempo previsto para a prova, se ela for nos próximos 7 dias.
-      await raceWeatherPromise,
+      raceWeather: await raceWeatherPromise,
       // No balanço, o tempo que esteve na prova (5.6).
-      await raceObservedWeatherPromise,
+      raceObservedWeather: await raceObservedWeatherPromise,
       // O tempo para os treinos de hoje e amanhã (5.6).
-      await trainingWeatherPromise,
-      memoryBlocks.portrait,
-      memoryBlocks.raceHistory,
+      trainingWeather: await trainingWeatherPromise,
+      portrait: memoryBlocks.portrait,
+      raceHistory: memoryBlocks.raceHistory,
       // A vitrina de badges, logo a seguir às provas concluídas: é a mesma
       // pergunta ("o que ele já fez/conquistou") noutra escala — e as
       // regras do 6 #6 viajam dentro do bloco, não num sítio à parte.
-      memoryBlocks.badges,
+      badges: memoryBlocks.badges,
       // O resto da Vitrina (2026-09-25): badges por ver, "Onde estás" e as
       // tabelas com nomes — a mesma vitrina, as mesmas regras.
-      memoryBlocks.vitrina,
-      memoryBlocks.proposals,
-      buildBodyGoalsContext(profile, (bodyAssessments || [])[0] ?? null, lisbonTodayISO()),
-      memoryBlocks.records,
+      vitrina: memoryBlocks.vitrina,
+      proposals: memoryBlocks.proposals,
+      bodyGoals: buildBodyGoalsContext(profile, (bodyAssessments || [])[0] ?? null, lisbonTodayISO()),
+      records: memoryBlocks.records,
       // Os prints que costumam faltar nas corridas (1.9) — logo a seguir aos
       // registos, porque é sobre como eles chegam à app. Só em turnos com
       // mensagem do atleta: num turno em que é ela a abrir a conversa
       // (proativo, intervenção, "Adaptar Plano") a conversa é sobre outro
       // assunto, e a regra é nunca abrir com isto. Como nos badges, a
       // proteção a sério é o bloco não estar lá, não a instrução dentro dele.
-      message && !proactiveTrigger ? memoryBlocks.captureCoverage : null,
+      captureCoverage: message && !proactiveTrigger ? memoryBlocks.captureCoverage : null,
       // O que ela prescreveu e o que aconteceu (Fase 3).
-      memoryBlocks.adherence,
-      memoryBlocks.dailyCard,
-      memoryBlocks.impressions,
+      adherence: memoryBlocks.adherence,
+      dailyCard: memoryBlocks.dailyCard,
+      impressions: memoryBlocks.impressions,
       // O que ela disse fora da app e se foi tocado (P.9) — também no turno
       // proativo (ambos passam por aqui, mesma promessa memoryBlocksPromise).
-      memoryBlocks.pushes,
-    ].filter(Boolean);
+      pushes: memoryBlocks.pushes,
+    };
+    const memorySections = Object.values(memoryNamed).filter(Boolean);
     if (memorySections.length > 0) {
       finalSystemInstruction += "\n\n--- A TUA MEMÓRIA ALARGADA (o que já sabes, disseste e viste deste atleta fora desta conversa) ---\n" +
         memorySections.join("\n\n");
@@ -8390,6 +8418,27 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
     // O «Atualiza os objetivos» aplicado: ela só confirma o que ficou.
     if (targetsApplied.length) finalSystemInstruction += "\n\n" + buildTargetsAppliedInstruction(targetsApplied);
     else if (targetsNotApplied) finalSystemInstruction += "\n\n" + buildTargetsNotAppliedInstruction(targetsNotApplied);
+
+    // O tamanho do system instruction por secção (31-10-2026: 147 KB, e o 3.6
+    // recusa-o com 400) — só números, para decidir o que cortar.
+    {
+      const doctrine = staticDoctrineChars();
+      const memoryChars = Object.values(memoryNamed).reduce((t: number, v) => t + (typeof v === "string" ? v.length : 0), 0);
+      console.log("coach-chat prompt", JSON.stringify({
+        total: finalSystemInstruction.length,
+        doctrine,
+        data: systemInstruction.length - doctrine,
+        memoryTotal: memoryChars,
+        extras: finalSystemInstruction.length - systemInstruction.length - memoryChars,
+        args: promptSizeReport({
+          nutritionTargetsLine, bodyMetricsLine, nutritionSummary, waterSummary, gymSummary, gymMetricsLine, runningSummary,
+          acwrLine, raceEventsContext, planContext, coachNotesContext, shoesContext, weeklyRunningContext, runAnalyticsPanel,
+          gymAnalyticsPanel, nutritionAnalyticsPanel, readinessPanel, racePhasesPanel, mealHabitsPanel, suggestionAdherencePanel,
+          racePlanContext, splitsContext, raceEveContext, raceFollowupContext, series: seriesBlock?.text,
+        }),
+        memory: promptSizeReport(memoryNamed),
+      }));
+    }
 
     // Turnos seguidos do mesmo papel juntos num só (normalizeChatContents, R3 de 8715a0b0).
     // deno-lint-ignore no-explicit-any

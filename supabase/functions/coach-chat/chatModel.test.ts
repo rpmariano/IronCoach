@@ -145,3 +145,21 @@ Deno.test("chat: um 400 do principal na 1.ª chamada salta para o outro modelo; 
   assertEquals((await r3.send(thenFail, Date.now() + 60000)).status, 400);
   assertEquals(later, [CHAT_PRIMARY_MODEL, CHAT_PRIMARY_MODEL]);
 });
+
+// 31-10: o system instruction do chat chega aos 147 KB; para propor cortes
+// mede-se por secção em cada pedido (sem o texto, só tamanhos).
+import { promptSizeReport, staticDoctrineChars } from "./index.ts";
+
+Deno.test("promptSizeReport: tamanhos por secção, do maior para o menor, sem as vazias nem texto", () => {
+  const r = promptSizeReport({ a: "xx", b: null, c: "xxxx", d: "", e: undefined, f: "SEGREDO" });
+  assertEquals(Object.entries(r), [["f", 7], ["c", 4], ["a", 2]]);
+  assert(!JSON.stringify(r).includes("SEGREDO"));
+  // A doutrina fixa (igual para todos os atletas) mede-se uma vez e é grande.
+  assert(staticDoctrineChars() > 50000, String(staticDoctrineChars()));
+});
+
+Deno.test("handler: o tamanho do prompt por secção vai para o log em cada pedido (ligações no código)", async () => {
+  const src = await Deno.readTextFile(new URL("./index.ts", import.meta.url));
+  assert(src.includes('console.log("coach-chat prompt", JSON.stringify({'));
+  assert(src.includes("memory: promptSizeReport(memoryNamed),"));
+});
