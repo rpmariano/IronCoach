@@ -922,7 +922,7 @@ const DECISION_PHRASES: Record<string, "A" | "B" | "C" | "D"> = {
 // nada que o atleta tenha de decidir, e é ao reagir a uma recusa que ele
 // explica o porquê — o momento em que há mais para aprender.
 // save_pantry_food só é declarada com fotos no pedido (buildTools) e, como a nota, não deixa nada por decidir.
-const READ_TOOL_NAMES = ["get_nutrition_history", "get_gym_history", "get_running_history", "save_coach_note", "resolve_intervention", "save_pantry_food"];
+export const READ_TOOL_NAMES = ["get_nutrition_history", "get_gym_history", "get_running_history", "save_coach_note", "resolve_intervention", "save_pantry_food"];
 
 export type TurnCase = "A" | "B" | "C" | "D" | "F_PLAN" | "F_GOALS" | "E";
 
@@ -981,6 +981,52 @@ export function needsPlanDoctrine(message: string, turnCase: TurnCase, forced: b
   if (turnCase !== "E") return false;
   if (isPlanRequest(message)) return true;
   return PLAN_HINT_RE.test(foldPlanText(message)) || PLAN_HINT_RE.test(foldPlanText(lastModelText));
+}
+
+/* O teto de ferramentas por pedido (31-10-2026, sondas do Rui): o 3.6 dá 400
+   com 11 ferramentas e passa com 10, sejam quais forem — enums e propriedades
+   não contam — e o 3.8 passou a recusar o conjunto de 11 também. Os turnos de
+   plano com inscrição ativa eram 9 + as 2 do Troféu: o Troféu sai deles
+   (aprovado pelo Rui). A guarda corta pela ordem de CAP_DROP_ORDER, com
+   aviso no log, se alguma combinação nova passar o teto. */
+export const MAX_TOOLS_PER_REQUEST = 10;
+const CAP_DROP_ORDER = ["set_cup_season_goal", "set_cup_participation", "save_pantry_food", "resolve_intervention", "update_race_event"];
+
+/** Num turno de plano com inscrição ativa, o que a Carol diz se ele falar do Troféu. */
+export const SERIES_DEFERRED_NOTE =
+  "COMPETIÇÃO POR JORNADAS NESTE TURNO: não tens as ferramentas do Troféu (set_cup_participation, set_cup_season_goal) " +
+  "neste turno de plano. Se o atleta te disser uma decisão, um papel numa jornada ou o objetivo da época, diz-lhe numa " +
+  "frase que o gravas na mensagem seguinte — e grava-o quando ele responder.";
+
+// deno-lint-ignore no-explicit-any
+function enforceToolCap(tools: { functionDeclarations: any[] }[], context: string) {
+  const decls = tools[0]?.functionDeclarations ?? [];
+  if (decls.length <= MAX_TOOLS_PER_REQUEST) return tools;
+  // deno-lint-ignore no-explicit-any
+  let kept = [...decls];
+  const dropped: string[] = [];
+  for (const name of CAP_DROP_ORDER) {
+    if (kept.length <= MAX_TOOLS_PER_REQUEST) break;
+    if (kept.some((d) => d?.name === name)) {
+      kept = kept.filter((d) => d?.name !== name);
+      dropped.push(name);
+    }
+  }
+  while (kept.length > MAX_TOOLS_PER_REQUEST) dropped.push(kept.pop()?.name);
+  console.warn(`[coach-chat] mais de ${MAX_TOOLS_PER_REQUEST} ferramentas (${decls.length}) — cortadas: ${dropped.join(", ")}`, context);
+  return [{ ...tools[0], functionDeclarations: kept }];
+}
+
+/** As ferramentas de um pedido do chat: o caso do turno, só leitura, o Troféu
+ *  (fora dos turnos de plano), a Despensa (com fotos), o propose_training_plan
+ *  (só com a doutrina de plano) e o teto MAX_TOOLS_PER_REQUEST. */
+export function chatToolsFor(
+  allowed: Set<string> | null,
+  o: { seriesOn: boolean; photos: boolean; planDoctrine: boolean },
+) {
+  const tools = buildTools(allowed, o.seriesOn && !o.planDoctrine, o.photos);
+  const lean = o.planDoctrine ? tools : withoutTool(tools, "propose_training_plan");
+  return enforceToolCap(lean, JSON.stringify({ allowed: allowed ? [...allowed] : "todas", ...o }));
 }
 
 /** As ferramentas sem uma delas (o propose_training_plan fora dos turnos de plano). */
@@ -8550,9 +8596,15 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
     // As SERIES_TOOLS só com inscrição ativa (o filtro do caso aplica-se por
     // cima). Sem ela, o payload é o de sempre, byte a byte.
     const seriesToolsOn = seriesBlock?.active === true;
-    const toolsAll = buildTools(allowedTools, seriesToolsOn, chatImages.length > 0);
-    // Sem a doutrina de plano, também sem a ferramenta de o propor.
-    const toolsBlock = planDoctrine ? toolsAll : withoutTool(toolsAll, "propose_training_plan");
+    // O caso, só leitura, o Troféu (fora dos turnos de plano), a Despensa, o
+    // propose_training_plan (só com a doutrina de plano) e o teto de 10.
+    const toolsBlock = chatToolsFor(allowedTools, {
+      seriesOn: seriesToolsOn,
+      photos: chatImages.length > 0,
+      planDoctrine,
+    });
+    // Num turno de plano com inscrição, o Troféu ficou de fora: ela diz que grava a seguir.
+    if (planDoctrine && seriesToolsOn) finalSystemInstruction += "\n\n" + SERIES_DEFERRED_NOTE;
     const toolNamesSent = toolsBlock[0].functionDeclarations.map((t: { name: string }) => t.name);
     const toolsBytes = JSON.stringify(toolsBlock).length;
 
@@ -8896,7 +8948,7 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
         } else if (name === "set_cup_participation" || name === "set_cup_season_goal") {
           // Só com inscrição ativa e se o caso as deixou seguir: sem isso é
           // como se não existissem.
-          const cupToolOn = seriesToolsOn && (!allowedTools || allowedTools.has(name));
+          const cupToolOn = seriesToolsOn && toolNamesSent.includes(name);
           result = !cupToolOn
             ? `Erro: função desconhecida "${name}".`
             : name === "set_cup_participation"

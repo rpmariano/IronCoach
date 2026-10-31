@@ -5379,7 +5379,7 @@ Deno.test("guarda do plano: 3 dias fáceis antes de uma jornada para atacar; 2 a
 Deno.test("handler: o bloco, as ferramentas e o turno do mapa só com inscrição ativa (ligações no código)", async () => {
   const src = await Deno.readTextFile(new URL("./index.ts", import.meta.url));
   assertStringIncludes(src, "const seriesToolsOn = seriesBlock?.active === true;");
-  assertStringIncludes(src, "const toolsAll = buildTools(allowedTools, seriesToolsOn, chatImages.length > 0);");
+  assertStringIncludes(src, "seriesOn: seriesToolsOn,");
   assertStringIncludes(src, "const cupMapPrompt = cupMapFirst !== null && seriesBlock?.active ? buildCupMapTurn(seriesBlock, cupMapFirst) : null;");
   assertStringIncludes(src, "raceConflictPrompt ? raceConflictPrompt : cupMapPrompt ? cupMapPrompt : planDivergence.length > 0");
   // O guião do race_conflict sai de _shared/raceConflictPrompt.ts; a inversão

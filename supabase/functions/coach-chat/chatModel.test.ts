@@ -215,5 +215,49 @@ Deno.test("buildSystemInstruction: sem a doutrina de plano vai o stub; por omiss
 Deno.test("handler: sem a doutrina de plano, o propose_training_plan não vai nas ferramentas (ligações no código)", async () => {
   const src = await Deno.readTextFile(new URL("./index.ts", import.meta.url));
   assert(src.includes("const planDoctrine = !readOnlyTurn && needsPlanDoctrine("));
-  assert(src.includes('planDoctrine ? toolsAll : withoutTool(toolsAll, "propose_training_plan")'));
+  assert(src.includes('const lean = o.planDoctrine ? tools : withoutTool(tools, "propose_training_plan");'));
+});
+
+// 31-10-2026 (sonda): o 3.6 recusa mais de 10 ferramentas num pedido, e o 3.8
+// passou a recusar o conjunto de 11 também. Teto no código, e o Troféu sai dos
+// turnos de plano com inscrição ativa.
+import { allowedToolsFor, chatToolsFor, MAX_TOOLS_PER_REQUEST, READ_TOOL_NAMES, SERIES_DEFERRED_NOTE, type TurnCase } from "./index.ts";
+// O mesmo cálculo do handler: só leitura (proativo, fotos, revisão de metas…) ou o caso do turno.
+const allowedFor = (turnCase: TurnCase, readOnly: boolean) => (readOnly ? new Set(READ_TOOL_NAMES) : allowedToolsFor(turnCase));
+
+Deno.test("chatToolsFor: nunca mais de 10 ferramentas, em todas as combinações de turno × inscrição × fotos × plano", () => {
+  assertEquals(MAX_TOOLS_PER_REQUEST, 10);
+  for (const turnCase of ["A", "B", "C", "D", "F_PLAN", "F_GOALS", "E"] as const) {
+    for (const seriesOn of [false, true]) {
+      for (const photos of [false, true]) {
+        for (const planDoctrine of [false, true]) {
+          for (const readOnly of [false, true]) {
+            const decls = chatToolsFor(allowedFor(turnCase, readOnly || photos), { seriesOn, photos, planDoctrine })[0].functionDeclarations;
+            const names = decls.map((d: { name: string }) => d.name);
+            const label = JSON.stringify({ turnCase, seriesOn, photos, planDoctrine, readOnly });
+            assert(names.length <= MAX_TOOLS_PER_REQUEST, `${label}: ${names.length} ferramentas`);
+            assertEquals(new Set(names).size, names.length, label);
+            if (!planDoctrine) assert(!names.includes("propose_training_plan"), label);
+            // Turno de plano com inscrição: o Troféu sai.
+            if (planDoctrine && names.includes("propose_training_plan")) assert(!names.some((n: string) => n.startsWith("set_cup")), label);
+          }
+        }
+      }
+    }
+  }
+});
+
+Deno.test("chatToolsFor: o caso do incidente — E com plano e inscrição ativa — fica com 9, sem o Troféu; sem plano, o Troféu fica", () => {
+  const plan = chatToolsFor(allowedFor("E", false), { seriesOn: true, photos: false, planDoctrine: true })[0].functionDeclarations.map((d: { name: string }) => d.name);
+  assertEquals(plan.length, 9);
+  assert(plan.includes("propose_training_plan") && !plan.includes("set_cup_participation"));
+  const chat = chatToolsFor(allowedFor("E", false), { seriesOn: true, photos: false, planDoctrine: false })[0].functionDeclarations.map((d: { name: string }) => d.name);
+  assert(chat.includes("set_cup_participation") && chat.includes("set_cup_season_goal") && !chat.includes("propose_training_plan"));
+  assert(SERIES_DEFERRED_NOTE.includes("mensagem seguinte"));
+});
+
+Deno.test("handler: as ferramentas vêm do chatToolsFor e o aviso do Troféu entra nos turnos de plano (ligações no código)", async () => {
+  const src = await Deno.readTextFile(new URL("./index.ts", import.meta.url));
+  assert(src.includes("const toolsBlock = chatToolsFor(allowedTools, {"));
+  assert(src.includes(String.raw`if (planDoctrine && seriesToolsOn) finalSystemInstruction += "\n\n" + SERIES_DEFERRED_NOTE;`));
 });
