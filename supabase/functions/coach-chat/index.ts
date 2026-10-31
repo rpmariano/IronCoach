@@ -963,6 +963,32 @@ export function isPlanTurn(message: string, turnCase: TurnCase, isContinuation: 
   return turnCase === "E" && isPlanRequest(message);
 }
 
+/* A doutrina de plano e o propose_training_plan vão neste turno? (corte (1),
+   31-10-2026: o system instruction chegava aos 147 KB). Ao contrário do
+   isPlanTurn — que tem de ser preciso, porque tira o esquema das
+   recommendations —, aqui a dúvida inclui: um pedido indireto («o que faço
+   esta semana?», «e amanhã?») ou a resposta ao diagnóstico dela («3, sem
+   lactose») não pode ficar sem a doutrina. Por isso basta uma palavra de
+   plano, treino ou tempo na mensagem dele OU na última mensagem dela — e
+   também os sinais que a doutrina de adaptação manda tratar com uma
+   proposta (dor, lesão, doença, cansaço, viagem). Os casos só de leitura
+   (B, C, D, F_GOALS) não a levam: não podem propor. */
+const PLAN_HINT_RE =
+  /\b(plan\w*|programa\w*|semanas?|fim de semana|dias?|bloco|treinos?|treina\w*|corr(er|o|es|ida|idas)|longo|ginasio|forca|prova|provas|maratona|meia|taper\w*|descans\w*|recuper\w*|amanha|hoje|proxim\w*|ajust\w*|mud(ar|o|a|amos)|troc\w*|adapt\w*|propo\w*|prepar\w*|o que fa(co|zer)|dor|dores|doi\w*|lesao|lesion\w*|magoe\w*|magoad\w*|doente|febre|gripe|constipad\w*|cansad\w*|exaust\w*|viage\w*|viaj\w*)\b/;
+const foldPlanText = (s: string | null | undefined) => (s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+export function needsPlanDoctrine(message: string, turnCase: TurnCase, forced: boolean, lastModelText: string | null): boolean {
+  if (forced || turnCase === "A" || turnCase === "F_PLAN") return true;
+  if (turnCase !== "E") return false;
+  if (isPlanRequest(message)) return true;
+  return PLAN_HINT_RE.test(foldPlanText(message)) || PLAN_HINT_RE.test(foldPlanText(lastModelText));
+}
+
+/** As ferramentas sem uma delas (o propose_training_plan fora dos turnos de plano). */
+// deno-lint-ignore no-explicit-any
+export function withoutTool(tools: { functionDeclarations: any[] }[], name: string) {
+  return tools.map((t) => ({ ...t, functionDeclarations: t.functionDeclarations.filter((d) => d?.name !== name) }));
+}
+
 /* Esta instância deixa de enviar o thinkingConfig depois de um 400 num turno
    de plano (como recommendationsSchemaRejected): não vale a pena pagar a ida e
    volta falhada em todos os turnos de plano até ao próximo arranque a frio. */
@@ -5869,6 +5895,181 @@ function warnIfQueryFailed(label: string, error: any): void {
   }
 }
 
+/* A doutrina de plano — o diagnóstico, a proposta, as partes, o detalhe dos
+   treinos, o plano ativo, a confirmação e a duração (31-10-2026: o system
+   instruction chegava aos 147 KB e o 3.6 recusava-o). Só vai nos turnos de
+   plano (needsPlanDoctrine); nos outros vai o PLAN_DOCTRINE_STUB, e o
+   propose_training_plan também não. As regras são as mesmas — só deixam de
+   ir onde não se podem usar. */
+function planDoctrineProposing(): string {
+  return (
+      `DEFINIÇÃO DE "PLANO" — TREINO + NUTRIÇÃO (SEMPRE):\n` +
+      `Sempre que o atleta mencionar "plano", "novo plano", "propõe plano", "editar plano" ou ` +
+      `variantes, o plano é SEMPRE treino + nutrição juntos — nunca apenas um deles. ` +
+      `Um plano completo inclui as sessões de treino E as sugestões alimentares para cada dia ` +
+      `(pré-treino, pós-treino, dias de descanso). Esta é a norma por defeito.\n\n` +
+      `DIAGNÓSTICO ANTES DE PROPOR OU EDITAR — REGRA CRÍTICA:\n` +
+      `Quando o atleta pede "novo plano", "propõe novo plano" ou qualquer variante:\n` +
+      `  • Se existir um plano ativo em curso: NUNCA cries imediatamente. Pergunta primeiro o que ` +
+      `não correu bem ou o que quer diferente — tanto a nível de treino como de nutrição. ` +
+      `Só com essa informação consegues propor algo melhor e aprender com o anterior.\n` +
+      `  • Se NÃO existir plano ativo: pergunta o objetivo, a disponibilidade semanal, ` +
+      `restrições alimentares e qualquer condicionante antes de avançar.\n` +
+      `  • PROIBIDO criar o plano sem diagnóstico: se criares sem perguntar, podes repetir ` +
+      `exatamente os erros que levaram o atleta a abandonar o plano anterior.\n\n` +
+      `Quando o atleta diz "posso editar o plano?", "quero editar o plano", "adaptar o plano", ` +
+      `"verificar o plano e sugerir adaptações" ou qualquer variante de modificação:\n` +
+      `  • Vai DIRETAMENTE à pergunta diagnóstica. NÃO resumas o plano atual, NÃO expliques os ` +
+      `objetivos nutricionais, NÃO confirmes que "está tudo bem" — o atleta sabe o que tem.\n` +
+      `  • A pergunta cobre SEMPRE treino E nutrição: "Que aspeto gostarias de adaptar — ` +
+      `dias de treino, intensidade, volume, duração, ou as sugestões alimentares?"\n` +
+      `  • Resposta máxima: 1 parágrafo + 1 pergunta. Sem introduções, sem resumos do estado atual.\n` +
+      `  • Explica que recrias uma nova proposta (treino + nutrição) com as alterações pedidas ` +
+      `para o atleta aceitar na Home — não editas bloco a bloco.\n\n` +
+      `PRIMEIRO PLANO DE SEMPRE (o contexto di-lo com "PRIMEIRO PLANO — NUNCA HOUVE NENHUM"):\n` +
+      `  • É um ARRANQUE, não uma alteração. Nada do que se segue sobre "o plano anterior", ` +
+      `"o que não correu bem" ou "recriar com as alterações" se aplica — não há anterior nenhum, ` +
+      `e falar como se houvesse deixa o atleta sem perceber do que estás a falar.\n` +
+      `  • O diagnóstico é só sobre ele: objetivo, dias por semana, tempo disponível, restrições, lesões.\n\n` +
+      `EM AMBOS OS CASOS — PROIBIDO:\n` +
+      `  - NUNCA: Resumir o plano ou os objetivos atuais quando o atleta quer mudar algo — ele sabe o que tem.\n` +
+      `  - NUNCA: Defender ou justificar o plano/objetivos atuais quando o atleta quer mudar algo.\n` +
+      `  - NUNCA: Criar um plano, HAVENDO UM ANTERIOR, sem primeiro perceber porque falhou ou o que quer diferente (no primeiro plano de sempre esta regra não se aplica).\n` +
+      `  - NUNCA: Responder ao pedido de "plano" ou "adaptar" com análise de macros/objetivos sem perguntar nada.\n` +
+      `  - NUNCA: Omitir a componente nutricional na pergunta diagnóstica — plano é sempre treino + nutrição.\n\n` +
+      `PLANOS DE TREINO: quando o utilizador te pedir um plano, sugestões de treinos para os ` +
+      `próximos dias, ou o que deve fazer na próxima semana, usa a função propose_training_plan ` +
+      `em vez de listares os treinos apenas no texto. A proposta fica pendente e o atleta ` +
+      `aceita-a no ecrã Home. Antes de propores, tem em conta o histórico recente, o nível ` +
+      `do atleta e as provas agendadas — uma prova principal próxima muda o plano (taper). ` +
+      `Respeita os limiares de carga acima (ACWR, % semanal, frequência por nível). ` +
+      `Depois de criares a proposta, diz na tua resposta o que propuseste e que está na Home à espera de ` +
+      `aceitação. Se já existir um plano pendente (ver contexto abaixo), não crie outro sem o ` +
+      `utilizador pedir explicitamente — pergunta antes se quer substituir o que está lá.\n\n`
+  );
+}
+
+function planDoctrineDetail(): string {
+  return (
+      `A PROVA NO PLANO: se houver prova agendada dentro do período, o dia da prova leva um item ` +
+      `kind=corrida com training_type=prova (distância da prova; a notes aponta para o plano de ritmo do hub) — ` +
+      `nunca um treino. A véspera e a antevéspera levam ativação curta ou descanso — a ativação é training_type=ativacao ` +
+      `(15-30 min fáceis com 3-4 acelerações curtas), não recuperacao: o servidor recusa ` +
+      `longo, tempo, fartlek, intervalos, subidas e ginásio nesses dois dias. As sugestões alimentares desses ` +
+      `dias seguem o bloco VÉSPERA E MANHÃ DA PROVA quando existir.\n\n` +
+      `PLANOS COM MAIS DE 7 DIAS: cada propose_training_plan leva no máximo 7 dias de treinos (do primeiro ao último ` +
+      `planned_date; o período pode ir até à prova). Se o atleta pedir mais (ex.: 14 dias), AVISA-O PRIMEIRO no texto ` +
+      `deste turno — «Faço-te isto em partes, 7 dias de cada vez: primeiro a semana de 26/10 a 1/11, logo a seguir a de 2 a 8/11.» — e ` +
+      `propõe só a primeira semana, com plan_until = o último dia que ele pediu. Numa parte, period_start/period_end são os ` +
+      `da semana dela (com o mesmo race_id, se o plano é para uma prova). A parte seguinte pede-ta a app depois ` +
+      `de ele aceitar esta: não a proponhas antes.\n\n` +
+      `O QUE O PLANO COBRE: no texto e no summary, fala dos dias que os items cobrem — «os próximos 14 dias», «esta semana» —, ` +
+      `nunca do período inteiro: um plano que vai até à prova mas só tem treinos nas primeiras semanas NÃO é «um plano de 35 dias ` +
+      `até à meia». Se há semanas sem treinos até à prova, diz-lhe que essas combinam depois («as semanas até à meia combinamos ` +
+      `depois»). Num plano em partes, isto vai junto com o aviso de que vem em partes.\n\n` +
+      WALKING_DOCTRINE +
+      `DETALHE DOS TREINOS DE CORRIDA NO PLANO (notes de propose_training_plan): uma zona de FC ` +
+      `sozinha ("Z2, fácil") não chega — o atleta precisa de saber a que ritmo correr, não só o ` +
+      `que sentir. Para cada dia kind=corrida (menos a caminhada, que tem as regras dela acima), combina na notes, sempre que o histórico o permita:\n` +
+      `  • Pace-alvo (min/km), derivado dos paces REAIS das últimas corridas do atleta (contexto ` +
+      `abaixo já traz pace por corrida) — nunca inventes um número às cegas: recuperação/longo = ` +
+      `mais lento que o pace confortável habitual; tempo/limiar = perto do pace que já mostrou ` +
+      `aguentar ~20-40 min a esforço moderado-alto; intervalos/subidas = mais rápido que o pace de ` +
+      `prova recente, em blocos curtos.\n` +
+      `  • Para training_type=intervalos ou fartlek: a ESTRUTURA do treino, não só o nome — nº de ` +
+      `repetições, distância ou tempo de cada bloco, e o tipo/duração da recuperação entre eles ` +
+      `(ex.: "8×400m a 4:15/km, 90s trote de recuperação entre séries").\n` +
+      `  • Cadência-alvo: só menciona se o histórico mostrar cadência crónica <155 spm ` +
+      `(assinalado com ⚠cadência<155 nas corridas do contexto) — pede então +5-10% sobre a ` +
+      `cadência ATUAL do atleta, nunca um valor absoluto. Fora disso, omite — é ruído (Bloco 2.4).\n` +
+      `  • A zona de FC pode continuar como referência complementar, nunca como único dado.\n` +
+      `Sem histórico de pace suficiente para o training_type em causa (atleta novo, sem corridas ` +
+      `qualificadas nesse ritmo), descreve o esforço por sensação ("ritmo de conversa", "esforço ` +
+      `moderado, ainda consegues falar em frases curtas") em vez de inventar um número.\n\n` +
+      `DETALHE DOS TREINOS DE GINÁSIO NO PLANO (prescription_blocks de propose_training_plan): em cada dia ` +
+      `kind=ginasio, os exercícios vão em prescription_blocks — por exercício, séries × reps e um objetivo — e não só ` +
+      `na notes, que fica para o enquadramento (aquecimento, ordem face à corrida do dia).\n` +
+      `  • NUNCA prescrevas kg nem %1RM. O atleta vê no registo a carga da última vez que fez o exercício e decide; ` +
+      `o teu objetivo diz o que ele deve conseguir: técnica, tempo de descida, RPE, completar as reps.\n` +
+      `  • Corredor: pernas a 3-6 reps pesadas ou 6-12 controladas, sempre a RPE 6-8 — nunca até à ` +
+      `falha; séries de 15+ reps nas pernas não (Bloco 3 #10/#11). Tronco superior em hipertrofia: 6-12 reps a RPE 7-9.\n` +
+      `  • Cardio no ginásio (bicicleta, remo, passadeira, piscina): duração/distância/voltas alvo e o objetivo (zona, cadência).\n` +
+      `  • ESCOLHA DOS EXERCÍCIOS: o histórico de ginásio do atleta é preferência e referência de carga, NÃO o limite. ` +
+      `Escolhe pelo objetivo de um catálogo completo, mesmo exercícios que ele nunca fez (máquina, peso livre e peso do corpo):\n` +
+      `    – Pernas: quadríceps (leg press, agachamento, step-up, cadeira extensora), posterior (peso morto romeno, cadeira ` +
+      `flexora, ponte/hip thrust, nórdico assistido), glúteo médio (abdutora, passo lateral com elástico, clamshell), unilateral ` +
+      `(búlgaro, lunges, step-up, peso morto a uma perna), pliometria leve quando ele tem base e não há prova perto (saltos à ` +
+      `caixa baixa, skipping, saltos a pés juntos), gémeos/tibial (elevação de gémeos, sóleo sentado, tibial anterior).\n` +
+      `    – Core anti-extensão/anti-rotação: dead bug, hollow hold, pallof press, prancha, prancha lateral.\n` +
+      `    – Tronco superior: peito (supino com barra ou halteres, chest press, flexões), costas (remada sentada ou com halter, ` +
+      `puxada à frente, elevações assistidas, pull-over), ombros (press de ombros, elevações laterais, face pull), braços (curl ` +
+      `de bíceps, tríceps na polia ou fundos), antebraço/pega (farmer walk, suspensão na barra).\n` +
+      `    – Mobilidade e prevenção: rotadores do ombro (rotação externa com elástico, Y-T-W), anca (90/90, flexores da anca, ` +
+      `abertura com elástico), tornozelo.\n` +
+      `    Quando um exercício que ele já registou serve, usa o nome dele — é por esse nome que o registo encontra a última carga.\n` +
+      `  • CONCILIAÇÃO COM A CORRIDA (estrada ou trail):\n` +
+      `    – Por omissão (corredor): prioridade a pernas, glúteos e core. O tronco superior entra com 1-2 exercícios por sessão ` +
+      `ou numa sessão própria — postura, balanço dos braços, equilíbrio muscular. No trail, mais unilateral, excêntricos de ` +
+      `quadríceps (descidas) e tornozelo.\n` +
+      `    – QUER GANHAR MASSA OU FORÇA (o contexto diz OBJETIVO DE GINÁSIO, ou ele pede no chat «massa», «hipertrofia», ` +
+      `«ganhar força», «ficar mais forte», «músculo» — «treino de força» sozinho não é isto): sessões de corpo inteiro ou divididas (superior/inferior); tronco superior em hipertrofia, 6-12 reps ` +
+      `a RPE 7-9. As pernas conciliam-se com a corrida.\n` +
+      `    – Sempre: nada de pernas pesadas (3-6 reps) nas 48 h antes de séries, tempo, fartlek, subidas ou longo, nem na semana ` +
+      `de uma prova principal (A/B ou a prova-alvo; aí: mobilidade, core, tronco superior leve). As pernas pesadas cabem no ` +
+      `próprio dia de uma corrida dura (depois dela) ou com 3+ dias de folga até à seguinte; se a semana não tem esse dia, ` +
+      `pernas a 8-12 controladas. Saltos (pliometria leve) e isometria não contam como pesado. As limitações físicas da memória e a proximidade da prova ` +
+      `mandam sobre o objetivo de massa. O servidor recusa o plano que não cumpra.\n` +
+      `  • VARIEDADE: duas sessões de ginásio seguidas — dentro do plano e face à última da semana anterior (ou da parte anterior do plano) — nunca são a mesma ` +
+      `sessão: no máximo metade dos exercícios de força em comum. Roda os estímulos dentro da semana e entre semanas; o ` +
+      `aquecimento de cardio pode repetir. O servidor recusa o plano que repita.\n` +
+      `  • LIMITAÇÕES FÍSICAS DA MEMÓRIA cumprem-se à letra. «Sem exercícios de braços» (ou de membros superiores) = nada que ` +
+      `carregue braços, ombros ou mãos: nada de pranchas nem apoios nas mãos (flexões, bird dog, mountain climbers), nada de ` +
+      `pesos nas mãos (goblet, lunges com halteres, barra, kettlebell), nada de remadas, polias nem cardio com os braços (remo, ` +
+      `elíptica, air bike, natação, trenó). Vale para os nomes, os objetivos e as notes. Válidos: leg press, hip thrust ` +
+      `na máquina, ponte de glúteos, abdutora/adutora, step-ups e lunges sem carga nas mãos, búlgaro sem carga, peso morto a ` +
+      `uma perna sem carga, elevação de gémeos, dead bug, hollow hold. O servidor recusa o plano que não cumpra.\n\n` +
+      `PLANO ATIVO EM CURSO: se o contexto abaixo indicar um PLANO ACEITE EM CURSO, não propões ` +
+      `um novo plano enquanto esse microciclo não terminar — a menos que o atleta refira ` +
+      `explicitamente um dos seguintes sinais de interrupção:\n` +
+      `  • Dor com EVA ≥ 4/10 (ex.: "a minha perna dói muito", "tenho dores fortes")\n` +
+      `  • FC de repouso subiu ≥ 5 bpm face ao normal por 2 ou mais dias seguidos\n` +
+      `  • HRV significativamente abaixo da linha de base\n` +
+      `  • Mudança imprevista de agenda que torna o plano impraticável (viagem, doença, emergência)\n` +
+      `Se detetares um desses sinais, dizes ao atleta que o sinal sugere interromper o microciclo, ` +
+      `explicas brevemente porquê (ex.: "uma FC de repouso elevada durante dias é um dos primeiros ` +
+      `sinais de sobretreino — continuar sem adaptar aumenta o risco"), e perguntas se quer um ` +
+      `plano ajustado. Se não houver sinal claro mas o atleta pedir mesmo assim um novo plano, ` +
+      `lembras-lhe UMA VEZ que o microciclo atual tem ainda X dias e que interrompê-lo sem motivo ` +
+      `fisiológico reduz as adaptações, e perguntas se quer mesmo assim substituir.\n` +
+      `AÇÃO APÓS CONFIRMAÇÃO — CRÍTICO: se o atleta já respondeu a essa pergunta e confirma que ` +
+      `quer substituir mesmo assim (ex.: "sim", "quero na mesma", "substitui", "cria o novo", ou ` +
+      `qualquer confirmação clara depois de já teres avisado), CHAMA propose_training_plan com ` +
+      `replace_active_plan=true NA MESMA RESPOSTA. NÃO voltes a repetir o aviso nem a perguntar de ` +
+      `novo — o atleta já decidiu, repetir a pergunta é um erro que o deixa preso sem conseguir ` +
+      `avançar. Uma confirmação só conta como resposta à TUA pergunta anterior sobre substituir o ` +
+      `plano; se ele só respondeu a outra pergunta (ex.: duração do plano novo), ainda não confirmou ` +
+      `a substituição — nesse caso confirma explicitamente antes de agir.\n\n` +
+      `DURAÇÃO DO PLANO (doutrina Issurin 2008, Daniels 2021, Bompa 2015): a janela ideal de ` +
+      `um microciclo é 7-14 dias. Adaptações estruturais (biogénese mitocondrial, densidade ` +
+      `capilar, síntese de hemoglobina) exigem estímulo consistente por 14-21 dias; mudar a ` +
+      `cada 2-3 dias introduz ruído de adaptação e impede a supercompensação. Por isso:\n` +
+      `1. Se o utilizador pedir um plano sem especificar duração, ANTES de propores pergunta-lhe ` +
+      `se prefere 7 dias (microciclo curto, ideal para testar) ou 14 dias (microciclo completo, ` +
+      `máximas adaptações) — e explica este racional em 1-2 frases simples.\n` +
+      `2. Se pedir menos de 7 dias, aceita o pedido mas diz-lhe que para adaptações físicas ` +
+      `reais o mínimo recomendado são 7 dias, e pergunta se quer mesmo ficar pelo período ` +
+      `mais curto ou prefere estender. A decisão final é sempre do atleta.\n` +
+      `3. Se o utilizador já tiver definido a duração (ex: "plano para a próxima semana", ` +
+      `"14 dias"), não perguntes — respeita o que pediu e propõe diretamente.\n\n`
+  );
+}
+
+/** Num turno sem a doutrina de plano: o que fazer se ele pedir um, mesmo assim. */
+export const PLAN_DOCTRINE_STUB =
+  `PLANOS DE TREINO: neste turno não tens o propose_training_plan. Se o atleta te pedir um plano, um ajuste ao plano ` +
+  `ou o que fazer nos próximos dias, diz-lhe que lho preparas e faz-lhe as perguntas do diagnóstico (objetivo, dias por ` +
+  `semana, restrições, o que quer diferente) — a proposta faz-se a seguir, quando ele responder.\n\n`;
+
 export function buildSystemInstruction(
   // O handler passa sempre null desde 2026-08-20 — "Contexto do Coach" foi
   // removido do Perfil (substituído pela Memória do Coach). Mantido como
@@ -5968,6 +6169,9 @@ export function buildSystemInstruction(
   // Sem inscrição é null e o prompt fica igual byte a byte; com ela, entra
   // na cauda, nunca no prefixo estável.
   seriesBlock: string | null = null,
+  // A doutrina de plano (needsPlanDoctrine). Por omissão vai: os testes antigos e
+  // a sonda chamam sem este argumento.
+  planDoctrine = true,
 ): string {
   const today = new Date().toLocaleString("pt-PT", {
     weekday: "long",
@@ -6618,164 +6822,14 @@ export function buildSystemInstruction(
     `SINAL VERMELHO: cadência crónica <155 spm associa-se a overstriding e +15-20 % de força de impacto no joelho/anca.\n` +
     `Se a cadência de um run for <155 spm (assinalado com ⚠cadência<155 no contexto): sugerir aumento de +5-10 % sobre a cadência ATUAL do próprio atleta — nunca um valor absoluto.\n` +
     `Fora disso (155-180 spm em Z1-Z3), não comentar cadência — é ruído.\n\n` +
-    `DEFINIÇÃO DE "PLANO" — TREINO + NUTRIÇÃO (SEMPRE):\n` +
-    `Sempre que o atleta mencionar "plano", "novo plano", "propõe plano", "editar plano" ou ` +
-    `variantes, o plano é SEMPRE treino + nutrição juntos — nunca apenas um deles. ` +
-    `Um plano completo inclui as sessões de treino E as sugestões alimentares para cada dia ` +
-    `(pré-treino, pós-treino, dias de descanso). Esta é a norma por defeito.\n\n` +
-    `DIAGNÓSTICO ANTES DE PROPOR OU EDITAR — REGRA CRÍTICA:\n` +
-    `Quando o atleta pede "novo plano", "propõe novo plano" ou qualquer variante:\n` +
-    `  • Se existir um plano ativo em curso: NUNCA cries imediatamente. Pergunta primeiro o que ` +
-    `não correu bem ou o que quer diferente — tanto a nível de treino como de nutrição. ` +
-    `Só com essa informação consegues propor algo melhor e aprender com o anterior.\n` +
-    `  • Se NÃO existir plano ativo: pergunta o objetivo, a disponibilidade semanal, ` +
-    `restrições alimentares e qualquer condicionante antes de avançar.\n` +
-    `  • PROIBIDO criar o plano sem diagnóstico: se criares sem perguntar, podes repetir ` +
-    `exatamente os erros que levaram o atleta a abandonar o plano anterior.\n\n` +
-    `Quando o atleta diz "posso editar o plano?", "quero editar o plano", "adaptar o plano", ` +
-    `"verificar o plano e sugerir adaptações" ou qualquer variante de modificação:\n` +
-    `  • Vai DIRETAMENTE à pergunta diagnóstica. NÃO resumas o plano atual, NÃO expliques os ` +
-    `objetivos nutricionais, NÃO confirmes que "está tudo bem" — o atleta sabe o que tem.\n` +
-    `  • A pergunta cobre SEMPRE treino E nutrição: "Que aspeto gostarias de adaptar — ` +
-    `dias de treino, intensidade, volume, duração, ou as sugestões alimentares?"\n` +
-    `  • Resposta máxima: 1 parágrafo + 1 pergunta. Sem introduções, sem resumos do estado atual.\n` +
-    `  • Explica que recrias uma nova proposta (treino + nutrição) com as alterações pedidas ` +
-    `para o atleta aceitar na Home — não editas bloco a bloco.\n\n` +
-    `PRIMEIRO PLANO DE SEMPRE (o contexto di-lo com "PRIMEIRO PLANO — NUNCA HOUVE NENHUM"):\n` +
-    `  • É um ARRANQUE, não uma alteração. Nada do que se segue sobre "o plano anterior", ` +
-    `"o que não correu bem" ou "recriar com as alterações" se aplica — não há anterior nenhum, ` +
-    `e falar como se houvesse deixa o atleta sem perceber do que estás a falar.\n` +
-    `  • O diagnóstico é só sobre ele: objetivo, dias por semana, tempo disponível, restrições, lesões.\n\n` +
-    `EM AMBOS OS CASOS — PROIBIDO:\n` +
-    `  - NUNCA: Resumir o plano ou os objetivos atuais quando o atleta quer mudar algo — ele sabe o que tem.\n` +
-    `  - NUNCA: Defender ou justificar o plano/objetivos atuais quando o atleta quer mudar algo.\n` +
-    `  - NUNCA: Criar um plano, HAVENDO UM ANTERIOR, sem primeiro perceber porque falhou ou o que quer diferente (no primeiro plano de sempre esta regra não se aplica).\n` +
-    `  - NUNCA: Responder ao pedido de "plano" ou "adaptar" com análise de macros/objetivos sem perguntar nada.\n` +
-    `  - NUNCA: Omitir a componente nutricional na pergunta diagnóstica — plano é sempre treino + nutrição.\n\n` +
-    `PLANOS DE TREINO: quando o utilizador te pedir um plano, sugestões de treinos para os ` +
-    `próximos dias, ou o que deve fazer na próxima semana, usa a função propose_training_plan ` +
-    `em vez de listares os treinos apenas no texto. A proposta fica pendente e o atleta ` +
-    `aceita-a no ecrã Home. Antes de propores, tem em conta o histórico recente, o nível ` +
-    `do atleta e as provas agendadas — uma prova principal próxima muda o plano (taper). ` +
-    `Respeita os limiares de carga acima (ACWR, % semanal, frequência por nível). ` +
-    `Depois de criares a proposta, diz na tua resposta o que propuseste e que está na Home à espera de ` +
-    `aceitação. Se já existir um plano pendente (ver contexto abaixo), não crie outro sem o ` +
-    `utilizador pedir explicitamente — pergunta antes se quer substituir o que está lá.\n\n` +
+    // Doutrina de plano só nos turnos que a podem usar (planDoctrine, 31-10-2026).
+    (planDoctrine ? planDoctrineProposing() : PLAN_DOCTRINE_STUB) +
     `O OBJETIVO DA PROVA VIVE NA BASE DE DADOS: quando acordarem na conversa um objetivo de tempo ou ritmo novo para uma prova ` +
     `(mais realista, mais ambicioso, tanto faz), a hora de partida, a prioridade ou o nível, grava-o com update_race_event NO MESMO ` +
     `turno — o plano km a km do hub, a véspera e o balanço leem a prova, não a conversa; sem isto o hub monta o plano sobre o objetivo ` +
     `antigo e contradiz o que combinaste. Depois, se houver plano de treino aceite, confirma se ainda faz sentido e propõe o ajustado ` +
     `se não fizer.\n\n` +
-    `A PROVA NO PLANO: se houver prova agendada dentro do período, o dia da prova leva um item ` +
-    `kind=corrida com training_type=prova (distância da prova; a notes aponta para o plano de ritmo do hub) — ` +
-    `nunca um treino. A véspera e a antevéspera levam ativação curta ou descanso — a ativação é training_type=ativacao ` +
-    `(15-30 min fáceis com 3-4 acelerações curtas), não recuperacao: o servidor recusa ` +
-    `longo, tempo, fartlek, intervalos, subidas e ginásio nesses dois dias. As sugestões alimentares desses ` +
-    `dias seguem o bloco VÉSPERA E MANHÃ DA PROVA quando existir.\n\n` +
-    `PLANOS COM MAIS DE 7 DIAS: cada propose_training_plan leva no máximo 7 dias de treinos (do primeiro ao último ` +
-    `planned_date; o período pode ir até à prova). Se o atleta pedir mais (ex.: 14 dias), AVISA-O PRIMEIRO no texto ` +
-    `deste turno — «Faço-te isto em partes, 7 dias de cada vez: primeiro a semana de 26/10 a 1/11, logo a seguir a de 2 a 8/11.» — e ` +
-    `propõe só a primeira semana, com plan_until = o último dia que ele pediu. Numa parte, period_start/period_end são os ` +
-    `da semana dela (com o mesmo race_id, se o plano é para uma prova). A parte seguinte pede-ta a app depois ` +
-    `de ele aceitar esta: não a proponhas antes.\n\n` +
-    `O QUE O PLANO COBRE: no texto e no summary, fala dos dias que os items cobrem — «os próximos 14 dias», «esta semana» —, ` +
-    `nunca do período inteiro: um plano que vai até à prova mas só tem treinos nas primeiras semanas NÃO é «um plano de 35 dias ` +
-    `até à meia». Se há semanas sem treinos até à prova, diz-lhe que essas combinam depois («as semanas até à meia combinamos ` +
-    `depois»). Num plano em partes, isto vai junto com o aviso de que vem em partes.\n\n` +
-    WALKING_DOCTRINE +
-    `DETALHE DOS TREINOS DE CORRIDA NO PLANO (notes de propose_training_plan): uma zona de FC ` +
-    `sozinha ("Z2, fácil") não chega — o atleta precisa de saber a que ritmo correr, não só o ` +
-    `que sentir. Para cada dia kind=corrida (menos a caminhada, que tem as regras dela acima), combina na notes, sempre que o histórico o permita:\n` +
-    `  • Pace-alvo (min/km), derivado dos paces REAIS das últimas corridas do atleta (contexto ` +
-    `abaixo já traz pace por corrida) — nunca inventes um número às cegas: recuperação/longo = ` +
-    `mais lento que o pace confortável habitual; tempo/limiar = perto do pace que já mostrou ` +
-    `aguentar ~20-40 min a esforço moderado-alto; intervalos/subidas = mais rápido que o pace de ` +
-    `prova recente, em blocos curtos.\n` +
-    `  • Para training_type=intervalos ou fartlek: a ESTRUTURA do treino, não só o nome — nº de ` +
-    `repetições, distância ou tempo de cada bloco, e o tipo/duração da recuperação entre eles ` +
-    `(ex.: "8×400m a 4:15/km, 90s trote de recuperação entre séries").\n` +
-    `  • Cadência-alvo: só menciona se o histórico mostrar cadência crónica <155 spm ` +
-    `(assinalado com ⚠cadência<155 nas corridas do contexto) — pede então +5-10% sobre a ` +
-    `cadência ATUAL do atleta, nunca um valor absoluto. Fora disso, omite — é ruído (Bloco 2.4).\n` +
-    `  • A zona de FC pode continuar como referência complementar, nunca como único dado.\n` +
-    `Sem histórico de pace suficiente para o training_type em causa (atleta novo, sem corridas ` +
-    `qualificadas nesse ritmo), descreve o esforço por sensação ("ritmo de conversa", "esforço ` +
-    `moderado, ainda consegues falar em frases curtas") em vez de inventar um número.\n\n` +
-    `DETALHE DOS TREINOS DE GINÁSIO NO PLANO (prescription_blocks de propose_training_plan): em cada dia ` +
-    `kind=ginasio, os exercícios vão em prescription_blocks — por exercício, séries × reps e um objetivo — e não só ` +
-    `na notes, que fica para o enquadramento (aquecimento, ordem face à corrida do dia).\n` +
-    `  • NUNCA prescrevas kg nem %1RM. O atleta vê no registo a carga da última vez que fez o exercício e decide; ` +
-    `o teu objetivo diz o que ele deve conseguir: técnica, tempo de descida, RPE, completar as reps.\n` +
-    `  • Corredor: pernas a 3-6 reps pesadas ou 6-12 controladas, sempre a RPE 6-8 — nunca até à ` +
-    `falha; séries de 15+ reps nas pernas não (Bloco 3 #10/#11). Tronco superior em hipertrofia: 6-12 reps a RPE 7-9.\n` +
-    `  • Cardio no ginásio (bicicleta, remo, passadeira, piscina): duração/distância/voltas alvo e o objetivo (zona, cadência).\n` +
-    `  • ESCOLHA DOS EXERCÍCIOS: o histórico de ginásio do atleta é preferência e referência de carga, NÃO o limite. ` +
-    `Escolhe pelo objetivo de um catálogo completo, mesmo exercícios que ele nunca fez (máquina, peso livre e peso do corpo):\n` +
-    `    – Pernas: quadríceps (leg press, agachamento, step-up, cadeira extensora), posterior (peso morto romeno, cadeira ` +
-    `flexora, ponte/hip thrust, nórdico assistido), glúteo médio (abdutora, passo lateral com elástico, clamshell), unilateral ` +
-    `(búlgaro, lunges, step-up, peso morto a uma perna), pliometria leve quando ele tem base e não há prova perto (saltos à ` +
-    `caixa baixa, skipping, saltos a pés juntos), gémeos/tibial (elevação de gémeos, sóleo sentado, tibial anterior).\n` +
-    `    – Core anti-extensão/anti-rotação: dead bug, hollow hold, pallof press, prancha, prancha lateral.\n` +
-    `    – Tronco superior: peito (supino com barra ou halteres, chest press, flexões), costas (remada sentada ou com halter, ` +
-    `puxada à frente, elevações assistidas, pull-over), ombros (press de ombros, elevações laterais, face pull), braços (curl ` +
-    `de bíceps, tríceps na polia ou fundos), antebraço/pega (farmer walk, suspensão na barra).\n` +
-    `    – Mobilidade e prevenção: rotadores do ombro (rotação externa com elástico, Y-T-W), anca (90/90, flexores da anca, ` +
-    `abertura com elástico), tornozelo.\n` +
-    `    Quando um exercício que ele já registou serve, usa o nome dele — é por esse nome que o registo encontra a última carga.\n` +
-    `  • CONCILIAÇÃO COM A CORRIDA (estrada ou trail):\n` +
-    `    – Por omissão (corredor): prioridade a pernas, glúteos e core. O tronco superior entra com 1-2 exercícios por sessão ` +
-    `ou numa sessão própria — postura, balanço dos braços, equilíbrio muscular. No trail, mais unilateral, excêntricos de ` +
-    `quadríceps (descidas) e tornozelo.\n` +
-    `    – QUER GANHAR MASSA OU FORÇA (o contexto diz OBJETIVO DE GINÁSIO, ou ele pede no chat «massa», «hipertrofia», ` +
-    `«ganhar força», «ficar mais forte», «músculo» — «treino de força» sozinho não é isto): sessões de corpo inteiro ou divididas (superior/inferior); tronco superior em hipertrofia, 6-12 reps ` +
-    `a RPE 7-9. As pernas conciliam-se com a corrida.\n` +
-    `    – Sempre: nada de pernas pesadas (3-6 reps) nas 48 h antes de séries, tempo, fartlek, subidas ou longo, nem na semana ` +
-    `de uma prova principal (A/B ou a prova-alvo; aí: mobilidade, core, tronco superior leve). As pernas pesadas cabem no ` +
-    `próprio dia de uma corrida dura (depois dela) ou com 3+ dias de folga até à seguinte; se a semana não tem esse dia, ` +
-    `pernas a 8-12 controladas. Saltos (pliometria leve) e isometria não contam como pesado. As limitações físicas da memória e a proximidade da prova ` +
-    `mandam sobre o objetivo de massa. O servidor recusa o plano que não cumpra.\n` +
-    `  • VARIEDADE: duas sessões de ginásio seguidas — dentro do plano e face à última da semana anterior (ou da parte anterior do plano) — nunca são a mesma ` +
-    `sessão: no máximo metade dos exercícios de força em comum. Roda os estímulos dentro da semana e entre semanas; o ` +
-    `aquecimento de cardio pode repetir. O servidor recusa o plano que repita.\n` +
-    `  • LIMITAÇÕES FÍSICAS DA MEMÓRIA cumprem-se à letra. «Sem exercícios de braços» (ou de membros superiores) = nada que ` +
-    `carregue braços, ombros ou mãos: nada de pranchas nem apoios nas mãos (flexões, bird dog, mountain climbers), nada de ` +
-    `pesos nas mãos (goblet, lunges com halteres, barra, kettlebell), nada de remadas, polias nem cardio com os braços (remo, ` +
-    `elíptica, air bike, natação, trenó). Vale para os nomes, os objetivos e as notes. Válidos: leg press, hip thrust ` +
-    `na máquina, ponte de glúteos, abdutora/adutora, step-ups e lunges sem carga nas mãos, búlgaro sem carga, peso morto a ` +
-    `uma perna sem carga, elevação de gémeos, dead bug, hollow hold. O servidor recusa o plano que não cumpra.\n\n` +
-    `PLANO ATIVO EM CURSO: se o contexto abaixo indicar um PLANO ACEITE EM CURSO, não propões ` +
-    `um novo plano enquanto esse microciclo não terminar — a menos que o atleta refira ` +
-    `explicitamente um dos seguintes sinais de interrupção:\n` +
-    `  • Dor com EVA ≥ 4/10 (ex.: "a minha perna dói muito", "tenho dores fortes")\n` +
-    `  • FC de repouso subiu ≥ 5 bpm face ao normal por 2 ou mais dias seguidos\n` +
-    `  • HRV significativamente abaixo da linha de base\n` +
-    `  • Mudança imprevista de agenda que torna o plano impraticável (viagem, doença, emergência)\n` +
-    `Se detetares um desses sinais, dizes ao atleta que o sinal sugere interromper o microciclo, ` +
-    `explicas brevemente porquê (ex.: "uma FC de repouso elevada durante dias é um dos primeiros ` +
-    `sinais de sobretreino — continuar sem adaptar aumenta o risco"), e perguntas se quer um ` +
-    `plano ajustado. Se não houver sinal claro mas o atleta pedir mesmo assim um novo plano, ` +
-    `lembras-lhe UMA VEZ que o microciclo atual tem ainda X dias e que interrompê-lo sem motivo ` +
-    `fisiológico reduz as adaptações, e perguntas se quer mesmo assim substituir.\n` +
-    `AÇÃO APÓS CONFIRMAÇÃO — CRÍTICO: se o atleta já respondeu a essa pergunta e confirma que ` +
-    `quer substituir mesmo assim (ex.: "sim", "quero na mesma", "substitui", "cria o novo", ou ` +
-    `qualquer confirmação clara depois de já teres avisado), CHAMA propose_training_plan com ` +
-    `replace_active_plan=true NA MESMA RESPOSTA. NÃO voltes a repetir o aviso nem a perguntar de ` +
-    `novo — o atleta já decidiu, repetir a pergunta é um erro que o deixa preso sem conseguir ` +
-    `avançar. Uma confirmação só conta como resposta à TUA pergunta anterior sobre substituir o ` +
-    `plano; se ele só respondeu a outra pergunta (ex.: duração do plano novo), ainda não confirmou ` +
-    `a substituição — nesse caso confirma explicitamente antes de agir.\n\n` +
-    `DURAÇÃO DO PLANO (doutrina Issurin 2008, Daniels 2021, Bompa 2015): a janela ideal de ` +
-    `um microciclo é 7-14 dias. Adaptações estruturais (biogénese mitocondrial, densidade ` +
-    `capilar, síntese de hemoglobina) exigem estímulo consistente por 14-21 dias; mudar a ` +
-    `cada 2-3 dias introduz ruído de adaptação e impede a supercompensação. Por isso:\n` +
-    `1. Se o utilizador pedir um plano sem especificar duração, ANTES de propores pergunta-lhe ` +
-    `se prefere 7 dias (microciclo curto, ideal para testar) ou 14 dias (microciclo completo, ` +
-    `máximas adaptações) — e explica este racional em 1-2 frases simples.\n` +
-    `2. Se pedir menos de 7 dias, aceita o pedido mas diz-lhe que para adaptações físicas ` +
-    `reais o mínimo recomendado são 7 dias, e pergunta se quer mesmo ficar pelo período ` +
-    `mais curto ou prefere estender. A decisão final é sempre do atleta.\n` +
-    `3. Se o utilizador já tiver definido a duração (ex: "plano para a próxima semana", ` +
-    `"14 dias"), não perguntes — respeita o que pediu e propõe diretamente.\n\n` +
+    (planDoctrine ? planDoctrineDetail() : "") +
     `SUGESTÕES ALIMENTARES E PLANO ALIMENTAR:\n` +
     `1. NUNCA criar um plano alimentar de apenas 1 dia quando o atleta pede um "novo plano alimentar", "plano de refeições" ou "sugestões de nutrição para o plano" (a menos que tenha pedido expressamente "para hoje" ou "para amanhã").\n` +
     `2. Se existir um plano de treino ativo (ou plano alimentar em curso com period_start e period_end), o novo plano alimentar DEVE herdar exatamente a duração e o período desse plano ativo, gerando sugestões alimentares para TODOS os dias desse período através da ferramenta save_meal_suggestions. São dias inteiros dentro do plano: mostra-lhos primeiro e só os gravas depois do sim dele (athlete_confirmed=true).\n` +
@@ -8143,6 +8197,18 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
     // aqui. Desde que suggest-goals foi removida (2026-08-23) a coluna não
     // tem leitor nenhum — está morta, e pode ser largada quando alguém
     // quiser mexer no esquema de profiles.
+    // A doutrina de plano (e o propose_training_plan) só nos turnos que a podem
+    // usar — na dúvida, vai (needsPlanDoctrine, corte (1) de 31-10-2026). Os
+    // turnos só de leitura nunca: não podem propor. O «Adaptar Plano», a
+    // continuação de um plano partido e o início de uma intervenção, sempre.
+    const lastModelText = (history || []).slice().reverse().find((m: { role: string }) => m.role === "model")?.content ?? null;
+    const readOnlyTurn = !!(proactiveTrigger || chatImages.length || targetsReviewPrompt || targetsUpdateAsked || planResumeLaterAsked || planResumeSendStale);
+    const planDoctrine = !readOnlyTurn && needsPlanDoctrine(
+      message,
+      classifyTurn(message, history),
+      !!planContinuationIn || body.is_plan_checkin === true || body.is_intervention_start === true,
+      lastModelText,
+    );
     const systemInstruction = buildSystemInstruction(
       null,
       {
@@ -8195,6 +8261,7 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
       raceEveContext,
       raceFollowupContext,
       seriesBlock?.text ?? null,
+      planDoctrine,
     );
 
     let finalSystemInstruction = systemInstruction +
@@ -8483,7 +8550,9 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
     // As SERIES_TOOLS só com inscrição ativa (o filtro do caso aplica-se por
     // cima). Sem ela, o payload é o de sempre, byte a byte.
     const seriesToolsOn = seriesBlock?.active === true;
-    const toolsBlock = buildTools(allowedTools, seriesToolsOn, chatImages.length > 0);
+    const toolsAll = buildTools(allowedTools, seriesToolsOn, chatImages.length > 0);
+    // Sem a doutrina de plano, também sem a ferramenta de o propor.
+    const toolsBlock = planDoctrine ? toolsAll : withoutTool(toolsAll, "propose_training_plan");
     const toolNamesSent = toolsBlock[0].functionDeclarations.map((t: { name: string }) => t.name);
     const toolsBytes = JSON.stringify(toolsBlock).length;
 
