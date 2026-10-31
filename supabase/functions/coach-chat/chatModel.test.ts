@@ -114,3 +114,34 @@ Deno.test("describeRequestShape: a forma do pedido, sem texto nenhum do atleta",
   assert(s.bytes.system > 0 && s.bytes.contents > 0 && s.bytes.tools > 0);
   assert(!JSON.stringify(s).includes("SEGREDO") && !JSON.stringify(s).includes("SISTEMA"));
 });
+
+// 31-10: o 3.6 (principal na troca temporária) dá 400 a pedidos reais do chat
+// (system de 147 KB); repetir sem o esquema no mesmo modelo não chegava.
+Deno.test("chat: um 400 do principal na 1.ª chamada salta para o outro modelo; a repetição sem esquema fica para se ele também der 400", async () => {
+  const calls: string[] = [];
+  const send = (model: string) => {
+    calls.push(model);
+    return Promise.resolve(new Response("", { status: model === CHAT_PRIMARY_MODEL ? 400 : 200 }));
+  };
+  const router = createChatModelRouter();
+  assertEquals((await router.send(send, Date.now() + 60000)).status, 200);
+  assertEquals(calls, [CHAT_PRIMARY_MODEL, GEMINI_BUSY_FALLBACK_MODEL]);
+  assertEquals(router.onFallback, true);
+
+  // Os dois dão 400: devolve-se o 400 do outro, e a repetição (sem esquema) fica nele.
+  const both: string[] = [];
+  const all400 = (model: string) => { both.push(model); return Promise.resolve(new Response("", { status: 400 })); };
+  const r2 = createChatModelRouter();
+  assertEquals((await r2.send(all400, Date.now() + 60000)).status, 400);
+  assertEquals((await r2.send(all400, Date.now() + 60000)).status, 400);
+  assertEquals(both, [CHAT_PRIMARY_MODEL, GEMINI_BUSY_FALLBACK_MODEL, GEMINI_BUSY_FALLBACK_MODEL]);
+
+  // Numa ronda seguinte, um 400 não muda de modelo (thoughtSignature).
+  let n = 0;
+  const later: string[] = [];
+  const r3 = createChatModelRouter();
+  const thenFail = (model: string) => { later.push(model); n++; return Promise.resolve(new Response("", { status: n === 1 ? 200 : 400 })); };
+  await r3.send(thenFail, Date.now() + 60000);
+  assertEquals((await r3.send(thenFail, Date.now() + 60000)).status, 400);
+  assertEquals(later, [CHAT_PRIMARY_MODEL, CHAT_PRIMARY_MODEL]);
+});

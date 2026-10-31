@@ -80,3 +80,9 @@ Deno.test("afterResponse (R3 de 5612ec2d): sem waitUntil, um registo pendurado n
   assertEquals(outcome, "voltou");
   assert(Date.now() - t0 < 1000);
 });
+
+Deno.test("disjuntor: a janela das falhas é 15 min (31-10: 3 falhas em 8 min ficavam em failures=1)", async () => {
+  const { CIRCUIT_WINDOW_SECONDS, circuitRecordParams } = await import("./geminiCircuit.ts");
+  assertEquals(CIRCUIT_WINDOW_SECONDS, 900);
+  assertEquals(circuitRecordParams("m", false), { p_model: "m", p_ok: false, p_window_seconds: 900 });
+});

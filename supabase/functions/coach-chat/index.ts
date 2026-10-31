@@ -77,7 +77,7 @@ import {
   latestTargetsProposals, parseTargetsReview, targetsPayload, targetsReviewKey, TARGETS_KEEP_ANSWER, TARGETS_UPDATE_ANSWER,
 } from "./targetsReview.ts";
 // Só a chave no header (x-goog-api-key); o coach-chat continua no alias.
-import { GEMINI_FALLBACK_MODEL, GEMINI_MODEL as SHARED_GEMINI_MODEL, geminiHeaders, geminiWithFallback, thinkingConfig, withBusyFallback } from "../_shared/geminiModel.ts";
+import { GEMINI_BUSY_FALLBACK_MODEL, GEMINI_FALLBACK_MODEL, GEMINI_MODEL as SHARED_GEMINI_MODEL, geminiHeaders, geminiWithFallback, thinkingConfig, withBusyFallback } from "../_shared/geminiModel.ts";
 import {
   isPlanRequest, PLAN_RESUME_LATER, PLAN_RESUME_LATER_REPLY, PLAN_RESUME_SEND, type PlanResumeCandidate, planResumeFacts,
 } from "../_shared/formulas/planResume.ts";
@@ -123,6 +123,14 @@ export function createChatModelRouter(primary = CHAT_PRIMARY_MODEL) {
         res = await withBusyFallback(record, primary, deadline);
       } else {
         res = await record(model, deadline);
+      }
+      // Um 400 do principal na 1.ª chamada salta para o outro Flash (31-10-2026:
+      // o 3.6 recusa pedidos reais do chat). A repetição sem esquema, no
+      // handler, fica para se o outro também der 400.
+      if (isFirst && res.status === 400 && model === primary && primary !== GEMINI_BUSY_FALLBACK_MODEL && hasTimeFor(deadline)) {
+        console.warn(`[gemini] ${primary} respondeu 400 no coach-chat; a tentar ${GEMINI_BUSY_FALLBACK_MODEL}`);
+        try { await res.body?.cancel(); } catch (_) { /* nada a libertar */ }
+        res = await record(GEMINI_BUSY_FALLBACK_MODEL, deadline);
       }
       // Só na 1.ª chamada: numa ronda seguinte o histórico já leva as
       // thoughtSignature do principal, que não vão para outro modelo (R1 de 8715a0b0).
