@@ -22,7 +22,7 @@
 // (a rede do coach-chat repetiria cada pedido sem o campo — funciona, mas
 // cada mensagem pagava uma ida e volta falhada).
 
-import { CHAT_MAX_OUTPUT_TOKENS, GEMINI_MODEL, RESPONSE_SCHEMA, RESPONSE_SCHEMA_BASE, buildTools } from "../supabase/functions/coach-chat/index.ts";
+import { CHAT_MAX_OUTPUT_TOKENS, GEMINI_MODEL, RESPONSE_SCHEMA, RESPONSE_SCHEMA_BASE, buildSystemInstruction, buildTools } from "../supabase/functions/coach-chat/index.ts";
 import { GEMINI_BUSY_FALLBACK_MODEL } from "../supabase/functions/_shared/geminiModel.ts";
 
 const key = Deno.env.get("GEMINI_API_KEY");
@@ -42,14 +42,15 @@ async function probe(
   extra: Record<string, unknown> = { maxOutputTokens: 4096 },
   contents: unknown[] | null = null,
   tools: unknown = null,
+  system: string | null = null,
 ): Promise<boolean> {
   const url = urlFor(model);
   label = `[${model}] ${label}`;
   const body = {
     system_instruction: {
       parts: [{
-        text: "És a Carol, treinadora de corrida. Responde em português de Portugal. Se recomendares descanso para um dia concreto, " +
-          "preenche o campo recommendations com a data e o tipo.",
+        text: system ?? ("És a Carol, treinadora de corrida. Responde em português de Portugal. Se recomendares descanso para um dia concreto, " +
+          "preenche o campo recommendations com a data e o tipo."),
       }],
     },
     contents: contents ?? [{ role: "user", parts: [{ text: "Hoje (2026-09-25). Dormi mal e estou com as pernas pesadas. Amanhã descanso?" }] }],
@@ -86,6 +87,14 @@ async function probe(
 }
 
 const chatConfig = { maxOutputTokens: CHAT_MAX_OUTPUT_TOKENS };
+const noBio = {
+  height_cm: null, weight_kg: null, gender: null, birth_date: null, experience_level: null, resting_hr_bpm: null,
+  dietary_restrictions: null, dietary_notes: null,
+};
+const doctrine = buildSystemInstruction(null, noBio, null, null, "", "", null, null, null, null, null, null);
+// Enchimento com o aspeto dos dados do contexto (linhas de registos), até ~150 KB.
+const filler = Array.from({ length: 900 }, (_, i) => `- 2026-10-${String(1 + (i % 28)).padStart(2, "0")}: corrida de ${5 + (i % 12)} km a 5'${10 + (i % 40)}"/km, FC média ${140 + (i % 25)} bpm, RPE ${4 + (i % 5)}/10.`).join("\n");
+const big = (doctrine + "\n\nDADOS DE CONTEXTO (enchimento para medir o teto):\n" + filler).slice(0, 150000);
 const planConfig = { maxOutputTokens: CHAT_MAX_OUTPUT_TOKENS, thinkingConfig: { thinkingLevel: "low" } };
 const results = [];
 for (const model of [GEMINI_MODEL, GEMINI_BUSY_FALLBACK_MODEL]) {
@@ -107,6 +116,11 @@ for (const model of [GEMINI_MODEL, GEMINI_BUSY_FALLBACK_MODEL]) {
       { role: "user", parts: [{ text: "Amanhã descanso?" }] },
     ]),
     await probe("com as ferramentas do Troféu (inscrição ativa)", RESPONSE_SCHEMA, true, model, chatConfig, null, buildTools(null, true)),
+    // 31-10: o system instruction do chat chega aos 147 KB nos pedidos que o 3.6
+    // recusa. A doutrina real (~98 KB) e depois ~150 KB: se só o grande dá 400,
+    // é um teto de tamanho.
+    await probe("system com a doutrina real (~98 KB)", RESPONSE_SCHEMA, true, model, chatConfig, null, buildTools(null, true), doctrine),
+    await probe("system de ~150 KB (doutrina + dados de enchimento)", RESPONSE_SCHEMA, true, model, chatConfig, null, buildTools(null, true), big),
   );
 }
 Deno.exit(results.every(Boolean) ? 0 : 1);
