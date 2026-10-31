@@ -141,6 +141,46 @@ async function probeSeriesTools(model: string): Promise<boolean[]> {
   return r;
 }
 
+/* O conjunto de ferramentas (31-10-2026, 2.ª sonda do Troféu): sem o Troféu são
+   9 ferramentas / 74 propriedades / 11 enums e passa; com ele 11 / 79 / 14 e dá
+   400 no 3.6. Tirar uma de cada vez e juntar só uma do Troféu separa o que conta:
+   o nº de ferramentas, de propriedades ou de enums. Cada linha diz os números. */
+// deno-lint-ignore no-explicit-any
+function complexity(decls: any[]) {
+  let props = 0, enums = 0, values = 0;
+  // deno-lint-ignore no-explicit-any
+  const walk = (n: any) => {
+    if (!n || typeof n !== "object") return;
+    if (Array.isArray(n.enum)) { enums++; values += n.enum.length; }
+    if (n.type === "ARRAY") walk(n.items);
+    for (const v of Object.values(n.properties ?? {})) { props++; walk(v); }
+  };
+  for (const d of decls) walk(d.parameters);
+  return `${decls.length} ferramentas / ${props} props / ${enums} enums / ${values} valores`;
+}
+async function probeToolSets(model: string): Promise<boolean[]> {
+  // deno-lint-ignore no-explicit-any
+  const all: any[] = buildTools(null, true)[0].functionDeclarations;
+  // deno-lint-ignore no-explicit-any
+  const set = (label: string, decls: any[]) =>
+    probe(`conjunto — ${label} [${complexity(decls)}]`, RESPONSE_SCHEMA, true, model, chatConfig, null, [{ functionDeclarations: decls }]);
+  const without = (...names: string[]) => all.filter((d) => !names.includes(d.name));
+  const noCup = without("set_cup_participation", "set_cup_season_goal");
+  const part = all.find((d) => d.name === "set_cup_participation");
+  const goal = all.find((d) => d.name === "set_cup_season_goal");
+  return [
+    await set("tudo (controlo: 400 no 3.6)", all),
+    await set("(a) tudo sem propose_training_plan", without("propose_training_plan")),
+    await set("(b) tudo sem save_meal_suggestions", without("save_meal_suggestions")),
+    await set("(c) tudo sem update_goals", without("update_goals")),
+    await set("sem Troféu + só set_cup_season_goal", [...noCup, goal]),
+    await set("sem Troféu + só set_cup_participation", [...noCup, part]),
+    // (d) a participação sozinha, tal como está — duas vezes, por causa dos 503.
+    await set("(d) set_cup_participation sozinha", [part]),
+    await set("(d) set_cup_participation sozinha (2.ª)", [part]),
+  ];
+}
+
 const results = [];
 for (const model of [GEMINI_MODEL, GEMINI_BUSY_FALLBACK_MODEL]) {
   results.push(
@@ -169,6 +209,8 @@ for (const model of [GEMINI_MODEL, GEMINI_BUSY_FALLBACK_MODEL]) {
     await probe("system de ~150 KB (doutrina + enchimento), sem Troféu", RESPONSE_SCHEMA, true, model, chatConfig, null, buildTools(null, false), big),
     // 1. As ferramentas do Troféu, uma a uma e campo a campo (só a declaração em causa).
     ...(await probeSeriesTools(model)),
+    // 2. O conjunto (31-10: cada ferramenta do Troféu passa sozinha; só o conjunto dá 400).
+    ...(await probeToolSets(model)),
   );
 }
 Deno.exit(results.every(Boolean) ? 0 : 1);
