@@ -29,6 +29,13 @@ export const NO_CIRCUIT: GeminiCircuit = {
   record: () => Promise.resolve(),
 };
 
+/** A janela em que as falhas contam (31-10-2026: 3 «sem resposta» em 8 min
+ *  ficaram em failures=1 com os 5 min da função SQL). Vai em cada registo. */
+export const CIRCUIT_WINDOW_SECONDS = 900;
+export function circuitRecordParams(model: string, ok: boolean) {
+  return { p_model: model, p_ok: ok, p_window_seconds: CIRCUIT_WINDOW_SECONDS };
+}
+
 /** Quanto se espera pela base antes de seguir como fechado. */
 export const CIRCUIT_CHECK_TIMEOUT_MS = 1500;
 /** O estado lido guarda-se na instância só este tempo (um pedido do chat faz
@@ -81,7 +88,7 @@ function supabaseCircuit(sb: SupabaseClient): GeminiCircuit {
       return state;
     },
     async record(model, ok) {
-      const { data, error } = await sb.rpc("gemini_circuit_record", { p_model: model, p_ok: ok });
+      const { data, error } = await sb.rpc("gemini_circuit_record", circuitRecordParams(model, ok));
       if (error) throw new Error(error.message);
       const state = (data === "open" ? "open" : "closed") as CircuitState;
       cache.set(model, { state, at: Date.now() });
