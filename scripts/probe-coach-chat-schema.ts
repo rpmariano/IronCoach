@@ -181,6 +181,23 @@ async function probeToolSets(model: string): Promise<boolean[]> {
   ];
 }
 
+/* O limite de ferramentas por pedido (31-10-2026: 10 passam, 11 dão 400 no 3.6;
+   o código corta em MAX_TOOLS_PER_REQUEST). Declarações mínimas — um só campo
+   de texto —, para medir só o nº de ferramentas. Se 11 passarem nos dois
+   modelos, o teto pode subir. */
+async function probeToolLimit(model: string): Promise<boolean[]> {
+  const tiny = (n: number) => Array.from({ length: n }, (_, i) => ({
+    name: `ferramenta_${i + 1}`,
+    description: "Ferramenta de teste — não a chames.",
+    parameters: { type: "OBJECT", properties: { nota: { type: "STRING" } } },
+  }));
+  return [
+    await probe("limite — 10 ferramentas mínimas", RESPONSE_SCHEMA, true, model, chatConfig, null, [{ functionDeclarations: tiny(10) }]),
+    await probe("limite — 11 ferramentas mínimas", RESPONSE_SCHEMA, true, model, chatConfig, null, [{ functionDeclarations: tiny(11) }]),
+    await probe("limite — 12 ferramentas mínimas", RESPONSE_SCHEMA, true, model, chatConfig, null, [{ functionDeclarations: tiny(12) }]),
+  ];
+}
+
 const results = [];
 for (const model of [GEMINI_MODEL, GEMINI_BUSY_FALLBACK_MODEL]) {
   results.push(
@@ -211,6 +228,8 @@ for (const model of [GEMINI_MODEL, GEMINI_BUSY_FALLBACK_MODEL]) {
     ...(await probeSeriesTools(model)),
     // 2. O conjunto (31-10: cada ferramenta do Troféu passa sozinha; só o conjunto dá 400).
     ...(await probeToolSets(model)),
+    // 3. O limite em si, com declarações mínimas (para sabermos se a Google o muda).
+    ...(await probeToolLimit(model)),
   );
 }
 Deno.exit(results.every(Boolean) ? 0 : 1);
