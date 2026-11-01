@@ -335,3 +335,23 @@ Deno.test("SPLIT_ANOMALY_RULE (bug #101): explicar com os dados, ou perguntar �
   assert(src.includes(String.raw`` + "`- ${SPLIT_ANOMALY_RULE}\\n` +"), "a regra vai no prompt da análise");
   assert(src.includes("elevation_gain_m: { type: \"NUMBER\", nullable: true },"), "e a leitura pede a subida por parcial");
 });
+
+// Revisão de 2026-11-01 (bloqueante): uma sessão de intervalos com as paragens
+// («Rest» a 0,00 km) não pode dar um recorde de 5 km pelo ritmo só das
+// repetições — o recorde entra no comentário da Carol (personalRecordKind).
+Deno.test("computeRunRecordContext: uma sessão de intervalos não inventa um recorde de 5 km", () => {
+  // O melhor 5 km de antes: 5,0 km em 26:40 (5:20/km).
+  const candidates = [{ date: "2026-08-01", distance_km: 5.0, duration_seconds: 1600 }];
+  // 4 × 1 km a 4:00 com 1:30 parado entre cada, aquecimento e arrefecimento a 6:00/km.
+  const splits = [
+    { distance_km: 1.5, time_seconds: 540 },
+    { distance_km: 1, time_seconds: 240 }, { distance_km: 0, time_seconds: 90 },
+    { distance_km: 1, time_seconds: 240 }, { distance_km: 0, time_seconds: 90 },
+    { distance_km: 1, time_seconds: 240 }, { distance_km: 0, time_seconds: 90 },
+    { distance_km: 1, time_seconds: 240 }, { distance_km: 1.5, time_seconds: 540 },
+  ];
+  const run = { id: "n", date: "2026-09-06", kind: "treino", training_type: "intervalos", distance_km: 7, duration_seconds: 2370, details: { splits } };
+  const { personalRecordKind } = computeRunRecordContext(run, candidates);
+  // Os primeiros 5 km com as paragens: 1650 s, 5:30/km — mais lento do que 5:20.
+  assertEquals(personalRecordKind, null);
+});
