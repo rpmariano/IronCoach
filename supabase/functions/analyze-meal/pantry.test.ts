@@ -144,9 +144,12 @@ Deno.test("applyPantry + parseQuestions: um alimento da despensa só se pergunta
   const ovoDespensa: PantryFood = { ...iogurteCompleto, name: "Ovo estrelado", name_key: "ovo estrelado" };
   const despensa = new Map([[ovoDespensa.name_key, ovoDespensa]]);
   const aberta: FoodRule = { topic: "ovos", topic_key: "ovos", value: "azeite", value_key: "azeite", confirmations: 1, status: "varia", source: "observacao" };
-  const q = [{ topic: "gordura dos ovos", item_name: "Ovo estrelado", question: "Em quê?", options: ["Azeite", "Manteiga"], assumed: "Azeite", impact_kcal: 80 }];
+  const q = [{ topic: "tipo de ovo", item_name: "Ovo estrelado", question: "Que ovo era?", options: ["Galinha", "Pato"], assumed: "Galinha", impact_kcal: 80 }];
   const semRegra = applyPantry([estimado("Ovo estrelado", 196)], despensa);
   assertEquals(parseQuestions(q, semRegra, [], () => "q"), []);
+  // Bug #109: a gordura em que foi estrelado pergunta-se sempre, mesmo sem regra em aberto.
+  const gordura = [{ topic: "gordura dos ovos", item_name: "Ovo estrelado", question: "Em quê?", options: ["Azeite", "Manteiga"], assumed: "Azeite", impact_kcal: 80 }];
+  assertEquals(parseQuestions(gordura, semRegra, [], () => "q").length, 1);
   const comRegra = applyPantry([estimado("Ovo estrelado", 196)], despensa, [aberta]);
   assertEquals((comRegra[0] as Record<string, unknown>).pantry_pending, true);
   assertEquals(parseQuestions(q, comRegra, [aberta], () => "q").length, 1);
@@ -157,11 +160,11 @@ Deno.test("applyPantry + parseQuestions: um alimento da despensa só se pergunta
 Deno.test("knowledgeSection: vazia sem nada; regras confirmadas, as que variam e a lista da despensa", () => {
   assertEquals(knowledgeSection([], []), "");
   const regras: FoodRule[] = [
-    { topic: "fritos", topic_key: "fritos", value: "azeite", value_key: "azeite", confirmations: 3, status: "confirmado", source: "observacao" },
+    { topic: "pele do frango", topic_key: "pele do frango", value: "sem pele", value_key: "sem pele", confirmations: 3, status: "confirmado", source: "observacao" },
     { topic: "batata", topic_key: "batata", value: "cozida", value_key: "cozida", confirmations: 1, status: "varia", source: "observacao" },
   ];
   const s = knowledgeSection([iogurte], regras);
-  assertStringIncludes(s, "fritos: azeite");
+  assertStringIncludes(s, "pele do frango: sem pele");
   // Fase C dos #58/#66: a observação desta refeição ganha ao hábito, dito às claras.
   assertStringIncludes(s, "A OBSERVAÇÃO DESTA REFEIÇÃO TEM PRIORIDADE");
   assertStringIncludes(s, "não assumas o que foi da última vez: batata");
@@ -346,7 +349,7 @@ Deno.test("learnFromMeal: conta cada alimento uma vez por refeição e diz o que
   const { sb, upserts } = makeSb([iogurte]);
   const { fromLabel } = await learnFromMeal(sb, "u1", [
     estimado("Iogurte grego 0%", 59), estimado("iogurte grego 0 %", 59), estimado("Barra proteica", 350, { from_label: true }),
-  ], [{ topic: "fritos", value: "azeite" }], NOW);
+  ], [{ topic: "pele do frango", value: "sem pele" }], NOW);
   const rows = upserts.athlete_foods[0].rows;
   assertEquals(rows.length, 2);
   assertEquals(upserts.athlete_foods[0].opts, { onConflict: "user_id,name_key" });
@@ -382,10 +385,10 @@ Deno.test("parseQuestions: a pergunta fica presa ao alimento da refeição, com 
 });
 
 Deno.test("parseQuestions: as regras da casa — ≥ 40 kcal ou ≥ 4 g de proteína, sem temas confirmados nem alimentos da despensa", () => {
-  const confirmada = regra({ topic: "salada", topic_key: "salada", status: "confirmado" });
+  const confirmada = regra({ topic: "salada", topic_key: "salada", value: "mista", value_key: "mista", status: "confirmado" });
   const qs = parseQuestions([
     pergunta({ impact_kcal: 30 }),                                    // pouco impacto
-    pergunta({ topic: "salada", item_name: "Salada mista" }),         // tema já confirmado
+    pergunta({ topic: "salada", item_name: "Salada mista", question: "A salada era de quê?", options: ["Alface", "Mista"], assumed: "Mista" }), // tema já confirmado
     pergunta({ item_name: "Bife" }),                                  // não está na refeição
     pergunta({ assumed: "Banha" }),                                   // assumida fora das opções
     pergunta({ options: ["Azeite"] }),                                // uma opção só
@@ -395,8 +398,11 @@ Deno.test("parseQuestions: as regras da casa — ≥ 40 kcal ou ≥ 4 g de prote
   ], [ovo, salada], [confirmada], ids);
   // "molho" é genérico: vai com o alimento (bug #74).
   assertEquals(qs.map((q) => q.topic), ["fritos", "molho (Salada mista)"]);
-  // Um alimento que já veio da despensa não se pergunta.
-  assertEquals(parseQuestions([pergunta()], [{ ...ovo, from_pantry: true }], [], ids), []);
+  // Um alimento que já veio da despensa não se pergunta — a não ser um
+  // ingrediente opcional (a gordura em que foi estrelado, bug #109).
+  const tipo = pergunta({ topic: "tipo de ovo", question: "Que ovo era?", options: ["Galinha", "Pato"], assumed: "Galinha" });
+  assertEquals(parseQuestions([tipo], [{ ...ovo, from_pantry: true }], [], ids), []);
+  assertEquals(parseQuestions([pergunta()], [{ ...ovo, from_pantry: true }], [], ids).length, 1);
   assertEquals(parseQuestions("nada", [ovo], [], ids), []);
 });
 
@@ -408,15 +414,23 @@ Deno.test("nextRuleRow: uma resposta conta como uma observação, marcada como r
 });
 
 Deno.test("learnRules: devolve como cada regra ficou; uma falha devolve vazio", async () => {
-  const { sb, upserts } = makeSb([], [regra({ value: "azeite", value_key: "azeite" })]);
-  const ficou = await learnRules(sb, "u1", [{ topic: "fritos", value: "azeite" }, { topic: "Fritos", value: "manteiga" }, { topic: "salada", value: "azeite e vinagre" }], "resposta", NOW);
+  const pele = regra({ topic: "pele do frango", topic_key: "pele do frango", value: "sem pele", value_key: "sem pele" });
+  const { sb, upserts } = makeSb([], [pele]);
+  const ficou = await learnRules(sb, "u1", [
+    { topic: "pele do frango", value: "sem pele" }, { topic: "Pele do frango", value: "com pele" }, { topic: "carne do hambúrguer", value: "vaca" },
+  ], "resposta", NOW);
   assertEquals(ficou, [
-    { topic: "fritos", value: "azeite", status: "confirmado" },
-    { topic: "salada", value: "azeite e vinagre", status: "por_confirmar" },
+    { topic: "pele do frango", value: "sem pele", status: "confirmado" },
+    { topic: "carne do hambúrguer", value: "vaca", status: "por_confirmar" },
   ]);
   assertEquals(upserts.athlete_food_rules[0].opts, { onConflict: "user_id,topic_key" });
   const { sb: falha } = makeSb([], [], true);
-  assertEquals(await learnRules(falha, "u1", [{ topic: "fritos", value: "azeite" }], "resposta", NOW), []);
+  assertEquals(await learnRules(falha, "u1", [{ topic: "pele do frango", value: "sem pele" }], "resposta", NOW), []);
+  // Bug #109: a manteiga, o azeite ou o molho não se aprendem — nem de respostas nem de observações.
+  const { sb: sb2, upserts: up2 } = makeSb();
+  assertEquals(await learnRules(sb2, "u1", [{ topic: "manteiga na sandes mista", value: "Sem manteiga" }, { topic: "fritos", value: "azeite" }], "resposta", NOW), []);
+  assertEquals(await learnRules(sb2, "u1", [{ topic: "molho da carne", value: "soja" }], "observacao", NOW), []);
+  assertEquals(up2.athlete_food_rules.length, 0);
 });
 
 // Revisão pré-master (2026-10-04): as perguntas seguem o nome final.
@@ -592,7 +606,8 @@ Deno.test("bug #74 (revisão): hábitos aprendidos sem prato já não vão para 
   assert(!s.includes("tempero: x"));
   // Quantidade sem prato é da própria manteiga (item à parte): fica — tirá-la calava a resposta dele.
   assertStringIncludes(s, "manteiga · quantidade: x");
-  assertStringIncludes(s, "tempero (Salada mista): x");
+  // Bug #109: o tempero aprendido de um prato também já não entra — pergunta-se sempre.
+  assert(!s.includes("tempero (Salada mista): x"));
   assertStringIncludes(s, "fritos: x");
   // Escrito por ele sem prato: vale para tudo, e o pedido di-lo.
   assertStringIncludes(s, "azeite (em qualquer prato): x");
@@ -609,7 +624,8 @@ Deno.test("bug #74 (revisão): o plural e a forma antiga \"quantidade de X\" tam
 });
 
 Deno.test("bug #74: o conhecimento diz que um hábito só vale para o prato que nomeia", () => {
-  const regras: FoodRule[] = [{ topic: "azeite na salada · quantidade", topic_key: "azeite na salada quantidade", value: "um fio", value_key: "um fio", confirmations: 2, status: "confirmado", source: "resposta" }];
+  // (Bug #109: «azeite na salada · quantidade» já não entra — o azeite pergunta-se sempre.)
+  const regras: FoodRule[] = [{ topic: "queijo na tosta · quantidade", topic_key: "queijo na tosta quantidade", value: "2 fatias", value_key: "2 fatias", confirmations: 2, status: "confirmado", source: "resposta" }];
   const s = knowledgeSection([], regras);
   assertStringIncludes(s, "Cada hábito vale SÓ para o prato ou alimento que nomeia");
 });
