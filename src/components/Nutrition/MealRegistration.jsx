@@ -23,6 +23,7 @@ import useRegistrationExit from '../shared/registration/useRegistrationExit';
 import PlanPrefillBanner from '../shared/registration/PlanPrefillBanner';
 import { mealSuggestionsFor } from '../../utils/planPrefill';
 import { FieldInput, FieldTextarea, caretToEnd } from '../shared/registration/Field';
+import { useClientRequestId, upsertById, saveErrorText } from '../../utils/clientRequestId';
 
 /* Espelha MEAL_TYPES em supabase/functions/analyze-meal e mealTypeLabel()
    em src/utils/nutrition.js — as duas usam hífen (ex.: "pequeno-almoco"). A
@@ -77,6 +78,8 @@ export function cleanGrams(v) {
 
 export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit = null }) {
   const { profile, meals, setMeals, loadInitialData, setNavGuard, coachPlans, coachPlanItems, session, pantryFoods: storedPantry, mealTemplates: storedTemplates, foodRules: storedRules, pantryLoaded, pantryUserId, loadPantry } = useAppStore();
+  // Idempotência (2026-11-01): o mesmo id em todas as tentativas de gravar este registo novo.
+  const requestId = useClientRequestId();
   // A despensa (bugs #48/#52, fase C): sugestões ao escrever e os habituais
   // desta refeição. Um alimento da despensa já não é analisado.
   // A que está em memória pode ser de outra conta (sessão trocada sem recarregar).
@@ -373,8 +376,9 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
   // A tarefa em si, separada do gesto: é ela que o "Tentar de novo" repete,
   // com as MESMAS fotos, alimentos, data, tipo e observações (useAnalysis guarda-a).
   const analyzePhotosTask = async () => {
-    const { data, error } = await invokeEdgeFunctionWithTimeout('analyze-meal', {
+    const saveRes = await invokeEdgeFunctionWithTimeout('analyze-meal', {
       body: {
+        client_request_id: requestId.get(),
         images: photos.map(p => p.base64),
         mime_type: 'image/jpeg',
         date,
@@ -384,7 +388,8 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
         ...(manualItems.length ? { items: manualItems.map(i => ({ name: i.name, grams: i.grams })) } : {}),
       },
     }, ANALYZE_TIMEOUT_MS);
-    if (error) throw new Error(error);
+    const { data, error } = saveRes;
+    if (error) throw new Error(saveErrorText(saveRes));
     if (data?.error) throw new Error(data.error);
 
     // A resposta traz meal e items em separado — o store espera-os juntos,
@@ -393,7 +398,8 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
     if (!Array.isArray(mealWithItems.meal_items) || mealWithItems.meal_items.length === 0) {
       console.warn('Aviso: análise retornou 0 itens', data);
     }
-    setMeals([...meals, mealWithItems]);
+    setMeals(upsertById(meals, mealWithItems));
+    requestId.renew();
     // A refeição ensinou a despensa (fase A): as sugestões seguintes já a contam.
     useAppStore.getState().loadPantry?.();
     finishCreateAndGoToCalendar(mealWithItems, 'Refeição registada', data.pantry_added?.length ? { pantryAdded: data.pantry_added } : {});
@@ -598,8 +604,9 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
   };
 
   const finalizeManualTask = async () => {
-    const { data, error } = await invokeEdgeFunctionWithTimeout('analyze-meal', {
+    const saveRes = await invokeEdgeFunctionWithTimeout('analyze-meal', {
       body: {
+        client_request_id: requestId.get(),
         mode: 'manual',
         date,
         meal_type: mealType,
@@ -608,11 +615,13 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
         items: manualItems.map(i => ({ name: i.name, grams: i.grams })),
       },
     }, ANALYZE_TIMEOUT_MS);
-    if (error) throw new Error(error);
+    const { data, error } = saveRes;
+    if (error) throw new Error(saveErrorText(saveRes));
     if (data?.error) throw new Error(data.error);
 
     const savedMeal = await persistMealTime(data.meal);
-    setMeals([...meals, savedMeal]);
+    setMeals(upsertById(meals, savedMeal));
+    requestId.renew();
     useAppStore.getState().loadPantry?.();
     finishCreateAndGoToCalendar(savedMeal, 'Refeição registada');
   };

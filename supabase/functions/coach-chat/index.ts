@@ -51,7 +51,8 @@ import { computeRunAcwr, RUN_ACWR_MIN_HISTORY_WEEKS } from "../_shared/formulas/
 import { fetchGeminiWithTimeout, hasTimeFor } from "../_shared/geminiFetch.ts";
 import { planLoadViolations, runLoadReading, type LoadPlanItem, type RunLoadReading } from "../_shared/formulas/runLoadAlert.ts";
 import { computeCrossMetrics } from "../_shared/formulas/crossMetrics.ts";
-import { computeReadinessIndex, readinessMealsStartISO } from "../_shared/formulas/readinessIndex.ts";
+import { computeReadinessIndex, READINESS_MIN_COMPLETE_DAYS_OCASIONAL, readinessMealsStartISO } from "../_shared/formulas/readinessIndex.ts";
+import { daysCompleteness, type MealLoggingProfile, mealLoggingProfile, mealsOfCompleteDays } from "../_shared/formulas/dayCompleteness.ts";
 import { computePhaseEvaluation } from "../_shared/formulas/racePhaseEvaluation.ts";
 import { computePhaseWindows, resolvePhaseState, type TrainingStatus } from "../_shared/formulas/racePhases.ts";
 import { getRecommendedPrepWeeks, getRacePrediction as sharedGetRacePrediction, computeEffectivePrepStart } from "../_shared/formulas/racePlanning.ts";
@@ -2648,6 +2649,26 @@ export function buildGymAnalyticsPanel(sessions: any[], todayISO: string, window
   return `PAINEL DE GINÁSIO (calculado, igual ao que o atleta vê na app):\n${lines.join("\n")}`;
 }
 
+/** O perfil de registo de refeições, para o prompt (dayCompleteness.ts). */
+export function loggingProfileText(p: Pick<MealLoggingProfile, "kind">): string {
+  return p.kind === "completo" ? "regista tudo" : "regista as refeições de vez em quando (ocasional)";
+}
+
+/** Dias com registo parcial e o atleta ocasional (2026-11-01, opção B do
+ *  Rui): o botão «dia incompleto» saiu e o servidor infere-o
+ *  (dayCompleteness.ts). Voz da Carol — aprovada pelo Coordenador. */
+export const PARTIAL_LOGGING_RULE =
+  `REGISTO DE REFEIÇÕES — DIAS PARCIAIS E O ATLETA OCASIONAL:\n` +
+  `Há atletas que registam tudo o que comem e outros que só registam de vez em quando, mais focados no treino. ` +
+  `Cada dia fechado vem marcado como completo ou parcial (só algumas refeições, ou muito abaixo do que ele costuma ` +
+  `comer), e o cumprimento calórico, a Disponibilidade Energética e a prontidão contam só os dias completos. Hoje ` +
+  `ainda está a decorrer.\n` +
+  `- Num dia parcial não sabes quanto ele comeu: nunca tires conclusões calóricas desse dia — nem "comeste pouco", ` +
+  `nem défice, nem "abaixo da meta", nem EA. O mesmo para hoje, que ainda não acabou.\n` +
+  `- Com o atleta ocasional (o perfil vem no resumo de nutrição): não lhe cobres registos, não lhe peças para ` +
+  `registar mais nem para completar um dia, e não comentes os dias sem registo. Fala do que ele registou e do ` +
+  `treino.\n`;
+
 // ─── Painel de indicadores de nutrição/corpo (Fase E — omnisciência) ───────
 // Mesmo racional dos painéis de corrida/ginásio: cumprimento de macros,
 // Disponibilidade Energética e composição corporal só existiam no ecrã
@@ -2682,19 +2703,39 @@ export function buildNutritionAnalyticsPanel(
   // `assessed_at:date` (ver BodyAssessmentRow acima) — normaliza aqui.
   const bodyForShared = (bodyAssessments || []).map((a) => ({ ...a, date: a.assessed_at }));
 
-  // Os últimos `windowDays` até hoje (hoje-(windowDays-1) .. hoje): o
-  // cumprimento calórico fica como estava antes de a lista trazer o dia a mais.
+  // Os últimos `windowDays` até hoje (hoje-(windowDays-1) .. hoje): os
+  // micronutrientes de hoje, mais abaixo.
   const mealWindowStart = addDaysISO(todayISO, -(windowDays - 1));
   const windowMeals = (meals || []).filter((m) => !!m?.date && m.date >= mealWindowStart && m.date <= todayISO);
 
-  const adherence = computeMacroAdherence(windowMeals, profile, bodyForShared, todayISO, RANGE);
+  // Os `windowDays` dias fechados (hoje-windowDays .. ontem) e o estado de
+  // cada um (2026-11-01, opção B do Rui — dayCompleteness.ts): o cumprimento
+  // calórico e a EA contam só os dias com o registo COMPLETO, e nunca hoje —
+  // a mesma régua do pilar da prontidão. Antes o cumprimento contava os dias
+  // até hoje: de manhã, com o pequeno-almoço, hoje puxava a média para baixo.
+  // O perfil vem dos 28 dias fechados (a consulta começa em hoje-28).
+  const closedDayList = Array.from({ length: windowDays }, (_, i) => addDaysISO(todayISO, -(i + 1)));
+  const logging = mealLoggingProfile(meals, todayISO, profile?.calorie_goal ?? null);
+  const dayStates = daysCompleteness(meals, closedDayList, { calorieTarget: profile?.calorie_goal ?? null, profile: logging, todayISO });
+  const nComplete = closedDayList.filter((d) => dayStates.get(d) === "completo").length;
+  const enoughComplete = logging.kind === "ocasional" ? nComplete >= READINESS_MIN_COMPLETE_DAYS_OCASIONAL : nComplete > 0;
+  const completeMeals = enoughComplete ? mealsOfCompleteDays(meals, dayStates) : [];
+  const closedSet = new Set(closedDayList);
+  const hasClosedMeals = (meals || []).some((m) => !!m?.date && closedSet.has(m.date));
+  const diasTxt = (n: number) => `${n} ${n === 1 ? "dia" : "dias"}`;
+  lines.push(
+    `- Registo de refeições (${windowDays} dias fechados, até ontem): ${nComplete} de ${windowDays} dias com registo completo — ` +
+      `as médias abaixo são só desses; hoje não entra · perfil: ${loggingProfileText(logging)}`,
+  );
+
+  const adherence = enoughComplete ? computeMacroAdherence(completeMeals, profile, bodyForShared, todayISO, RANGE) : null;
   if (adherence) {
     const complianceLabel: Record<string, string> = {
       no_data: "sem dados", critical: "crítico", low: "baixo", ok: "ok", over: "acima",
     };
     const zone = classifyCalorieCompliance(adherence.calories.compliance_pct);
     lines.push(
-      `- Cumprimento calórico (${windowDays}d): ${adherence.calories.compliance_pct}% (${complianceLabel[zone]}) · ` +
+      `- Cumprimento calórico (${diasTxt(nComplete)} com registo completo, até ontem): ${adherence.calories.compliance_pct}% (${complianceLabel[zone]}) · ` +
         `Proteína ${adherence.protein.actual_g_per_kg} g/kg (alvo ${(adherence.protein.target / adherence.weight).toFixed(1)}) · ` +
         `Hidratos ${adherence.carbs.actual_g_per_kg} g/kg · Gordura ${adherence.fat.actual_g_per_kg} g/kg`,
     );
@@ -2718,16 +2759,25 @@ export function buildNutritionAnalyticsPanel(
   const eaWindowStart = addDaysISO(todayISO, -windowDays);
   const closedDays = windowDays;
   const inEaWindow = (x: { date?: string | null }) => !!x?.date && x.date >= eaWindowStart && x.date <= eaLastClosedDay;
+  // Só os dias completos (2026-11-01): um dia de treino com o registo
+  // parcial conta como "sem registo completo", como um sem refeições.
   const ea = computeEnergyAvailabilityWindow(
-    (meals || []).filter(inEaWindow), bodyForShared,
+    completeMeals.filter(inEaWindow), bodyForShared,
     (runs || []).filter(inEaWindow), (gymSessions || []).filter(inEaWindow), todayISO, RANGE,
   );
   const eaLabel = `Disponibilidade Energética (${closedDays} ${closedDays === 1 ? "dia fechado" : "dias fechados"}, até ontem)`;
   const withoutMealsNote = ea.daysWithoutMeals > 0
-    ? `${ea.daysWithoutMeals} ${ea.daysWithoutMeals === 1 ? "dia de treino sem refeições registadas não entra" : "dias de treino sem refeições registadas não entram"} no cálculo`
+    ? `${ea.daysWithoutMeals} ${ea.daysWithoutMeals === 1 ? "dia de treino sem registo completo não entra" : "dias de treino sem registo completo não entram"} no cálculo`
     : "";
   const hasMealsToday = (meals || []).some((m) => m?.date === todayISO);
-  if (ea.daily.length > 0) {
+  if (!enoughComplete && hasClosedMeals) {
+    // Poucos dias completos (o ocasional, abaixo de 3): sem médias — e sem
+    // as tirar dos dias parciais.
+    lines.push(
+      `- Cumprimento calórico e ${eaLabel}: sem número — ${nComplete} de ${windowDays} dias com registo completo, ` +
+        `poucos para médias honestas`,
+    );
+  } else if (ea.daily.length > 0) {
     const eaStatusLabel: Record<string, string> = { critical: "crítica (RED-S)", subclinical: "subclínica", optimal: "ótima" };
     // O estado é o do último dia COM refeições (já não o último de treino) —
     // agora sempre um dia fechado, com a data.
@@ -2740,8 +2790,8 @@ export function buildNutritionAnalyticsPanel(
       : ` (massa magra ${ea.leanMassSource === "estimada" ? "estimada pelo peso e % de gordura" : "por omissão, sem avaliação corporal com gordura"})`;
     const nDays = ea.daily.length;
     lines.push(
-      `- ${eaLabel}: ${ea.average} kcal/kg MMG, média de ${nDays} ${nDays === 1 ? "dia" : "dias"} com refeições${leanText} — ` +
-        `último dia com refeições (${lastDayText}): ${eaStatusLabel[lastDay.status] ?? lastDay.status}` +
+      `- ${eaLabel}: ${ea.average} kcal/kg MMG, média de ${nDays} ${nDays === 1 ? "dia" : "dias"} com registo completo${leanText} — ` +
+        `último dia completo (${lastDayText}): ${eaStatusLabel[lastDay.status] ?? lastDay.status}` +
         (ea.isAtRisk ? " ⚠ risco de RED-S sustentado" : "") +
         (withoutMealsNote ? ` · ${withoutMealsNote}` : "") +
         (hasMealsToday ? " · hoje não entra (o dia ainda não acabou)" : ""),
@@ -6680,6 +6730,7 @@ export function buildSystemInstruction(
     `ou de uma chamada de função. Na dúvida sobre se um valor existe, chama a função — não ` +
     `adivinhes, e não inventes uma justificação (ex.: dizer que o atleta apagou um registo) para ` +
     `explicar uma resposta errada.\n\n` +
+    PARTIAL_LOGGING_RULE + `\n` +
     // ── Doutrina Bloco 4.1 — Nutrição base diária ───────────────────────────
     `NUTRIÇÃO — BASE DIÁRIA (Bloco 4.1 — ACSM/AND 2016, ISSN, Burke 2021):\n` +
     `PROTEÍNA (g/kg/dia) por nível e objetivo:\n` +
@@ -7488,7 +7539,7 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
     const { data: mealsFromReadinessStart, error: err_weekMeals } = await sb
       .from("meals")
       .select(
-        "date, created_at, meal_items(created_at, quantity_grams, calories_per_100g, protein_per_100g, carbs_per_100g, fat_per_100g, " +
+        "date, meal_type, created_at, meal_items(created_at, quantity_grams, calories_per_100g, protein_per_100g, carbs_per_100g, fat_per_100g, " +
           "fiber_per_100g, sugar_per_100g, sodium_per_100g, iron_mg_per_100g, calcium_mg_per_100g, " +
           "vitamin_c_mg_per_100g, potassium_mg_per_100g)",
       )
@@ -7526,21 +7577,27 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
         `- Refeições registadas: ${today.meals}`
       : `Hoje (${todayISO}): sem refeições registadas ainda.`;
 
+    // Cada dia fechado: completo ou parcial (2026-11-01, dayCompleteness.ts),
+    // com o perfil de registo dos 28 dias fechados.
+    const mealProfile = mealLoggingProfile(mealsFromReadinessStart || [], todayISO, (g.calorie_goal as number | null) ?? null);
+    const historyDays = Array.from({ length: NUTRITION_WINDOW_DAYS - 1 }, (_, i) => addDaysISO(todayISO, -(i + 1)));
+    const historyStates = daysCompleteness(mealsFromReadinessStart || [], historyDays, {
+      calorieTarget: (g.calorie_goal as number | null) ?? null, profile: mealProfile, todayISO,
+    });
     const historyLines: string[] = [];
-    for (let i = 1; i < NUTRITION_WINDOW_DAYS; i++) {
-      const d = new Date();
-      d.setUTCDate(d.getUTCDate() - i);
-      const iso = d.toISOString().slice(0, 10);
+    for (const iso of historyDays) {
       const day = byDate[iso];
       historyLines.push(
         day
-          ? `- ${iso}: ${day.kcal.toFixed(0)} kcal, ${day.prot.toFixed(0)}g proteína, ${day.carbs.toFixed(0)}g hidratos, ${day.fat.toFixed(0)}g gordura (${day.meals} refeições)`
+          ? `- ${iso}: ${day.kcal.toFixed(0)} kcal, ${day.prot.toFixed(0)}g proteína, ${day.carbs.toFixed(0)}g hidratos, ${day.fat.toFixed(0)}g gordura (${day.meals} refeições)` +
+            (historyStates.get(iso) === "parcial" ? " · registo parcial" : "")
           : `- ${iso}: sem refeições registadas`,
       );
     }
 
     const nutritionSummary =
       `${todaySummary}\n\n` +
+      `Registo de refeições: ${loggingProfileText(mealProfile)}.\n` +
       `Histórico dos ${NUTRITION_WINDOW_DAYS - 1} dias anteriores (metas diárias: ${g.calorie_goal ?? "–"} kcal / ${g.protein_goal ?? "–"}g proteína / ${g.carbs_goal ?? "–"}g hidratos / ${g.fat_goal ?? "–"}g gordura):\n` +
       historyLines.join("\n");
 

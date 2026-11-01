@@ -22,6 +22,7 @@ import type { RaceRun } from "./racePrediction.ts";
 import { PAIN_ALARM_THRESHOLD } from "./checkinAlarms.ts";
 import { getTaperDays } from "./taper.ts";
 import { runsOnly } from "./runKinds.ts";
+import { daysCompleteness, mealLoggingProfile, mealProfileStartISO, mealsOfCompleteDays, type MealForCompleteness } from "./dayCompleteness.ts";
 
 export interface ReadinessPillar {
   key: "acwr" | "ea" | "calories" | "vdot" | "tactic" | "checkin";
@@ -142,17 +143,28 @@ export function checkinPillar(c: CheckinForReadiness | null | undefined, ctx: Re
 }
 
 type RunInput = RunForAcwr & RunForVdot & RaceRun;
-type MealInput = MealForEA & MealForAdherence;
+type MealInput = MealForEA & MealForAdherence & MealForCompleteness;
 type BodyInput = BodyAssessmentForEA & BodyAssessmentForAdherence;
 type GymInput = GymSessionForEA;
 
-/** Primeiro dia de refeições de que o índice precisa: hoje-7, o início dos 7
- *  dias fechados (hoje-7 .. ontem). Quem alimenta computeReadinessIndex tem de
- *  carregar refeições a partir daqui — a Carol (coach-chat) só carregava
- *  hoje-6 e via 6 dias fechados contra os 7 do ecrã (revisão de 2026-10-05). */
+/** Primeiro dia de refeições de que o índice precisa. Era hoje-7, o início
+ *  dos 7 dias fechados (revisão de 2026-10-05: a Carol carregava hoje-6 e via
+ *  6 dias contra os 7 do ecrã). Desde 2026-11-01 é hoje-28: a nutrição só
+ *  conta os dias com o registo COMPLETO, e saber se um dia é completo
+ *  precisa do perfil de registo dos últimos 28 dias fechados
+ *  (dayCompleteness.ts). Quem alimenta computeReadinessIndex carrega
+ *  refeições a partir daqui, com o meal_type. */
 export function readinessMealsStartISO(todayISO: string): string {
-  return addDaysISO(todayISO, -7);
+  return mealProfileStartISO(todayISO);
 }
+
+/** O atleta OCASIONAL (dayCompleteness.ts) precisa de pelo menos 3 dias com
+ *  o registo completo nos 7 fechados para os pilares de nutrição terem
+ *  número; com menos ficam "sem dados" — fora da média, sem penalização. O
+ *  atleta que regista tudo conta com os dias completos que tiver. */
+export const READINESS_MIN_COMPLETE_DAYS_OCASIONAL = 3;
+/** Os dias fechados da nutrição e da EA. */
+export const READINESS_NUTRITION_DAYS = 7;
 
 function addDaysISO(dateISO: string, days: number): string {
   const d = new Date(dateISO + "T00:00:00Z");
@@ -243,8 +255,30 @@ export function computeReadinessIndex(
   const closedRuns = fechados(runsIn); // com caminhadas: é gasto (EA)
   const closedGym = fechados(gymSessions);
 
+  // Só os dias com o registo COMPLETO (2026-11-01, opção B do Rui): um dia
+  // com só o pequeno-almoço registado não é um dia em que se comeu 400 kcal —
+  // entrava na média e punha a nutrição e a EA em "crítico". O perfil vem dos
+  // 28 dias fechados; o atleta ocasional com menos de
+  // READINESS_MIN_COMPLETE_DAYS_OCASIONAL dias completos fica sem dados.
+  const loggingProfile = mealLoggingProfile(closedMeals, todayISO, profile?.calorie_goal ?? null);
+  const nutritionDays = Array.from({ length: READINESS_NUTRITION_DAYS }, (_, i) => addDaysISO(closedRef, -i));
+  const dayStates = daysCompleteness(closedMeals, nutritionDays, {
+    calorieTarget: profile?.calorie_goal ?? null, profile: loggingProfile, todayISO,
+  });
+  const completeDays = nutritionDays.filter((d) => dayStates.get(d) === "completo").length;
+  const enoughComplete = loggingProfile.kind === "ocasional"
+    ? completeDays >= READINESS_MIN_COMPLETE_DAYS_OCASIONAL
+    : completeDays > 0;
+  const completeMeals = enoughComplete ? mealsOfCompleteDays(closedMeals, dayStates) : [];
+  // Há refeições nos 7 dias fechados, mas não dias completos que cheguem.
+  const fewComplete = !enoughComplete && closedMeals.some((m) => m.date >= nutritionDays[nutritionDays.length - 1]);
+  const FEW_COMPLETE = `${completeDays} de ${READINESS_NUTRITION_DAYS} dias com o registo completo: poucos para avaliar.`;
+  const nosDias = completeDays === 1
+    ? `no único dia com registo completo dos últimos ${READINESS_NUTRITION_DAYS}`
+    : `nos ${completeDays} dias com registo completo dos últimos ${READINESS_NUTRITION_DAYS}`;
+
   // --- Pilar 2: Disponibilidade Energética ---
-  const ea = computeEnergyAvailabilityWindow(closedMeals, bodyAssessments || [], closedRuns, closedGym, closedRef, "semana");
+  const ea = computeEnergyAvailabilityWindow(completeMeals, bodyAssessments || [], closedRuns, closedGym, closedRef, "semana");
   const eaAvg = ea?.average ?? 0;
   // Revisão pré-deploy de 2026-10-04: "tem dados" = há dias com refeições na
   // janela, não "EA > 0". Com `eaAvg > 0` um dia de tirada longa só com o
@@ -261,38 +295,38 @@ export function computeReadinessIndex(
   const soHoje = closedMeals.length === 0 && (meals || []).some((m) => typeof m.date === "string" && m.date >= todayISO);
   const SEM_DADOS_HOJE = "Os registos de hoje só contam a partir de amanhã.";
   let eaScore = 0;
-  let eaDesc = soHoje ? SEM_DADOS_HOJE : "Sem dados nutricionais suficientes.";
+  let eaDesc = soHoje ? SEM_DADOS_HOJE : fewComplete ? FEW_COMPLETE : "Sem dados nutricionais suficientes.";
   if (!eaHasData) {
     // fica "Sem dados", score 0, fora da média
   } else if (eaAvg >= 45) {
     eaScore = 100;
-    eaDesc = `EA de ${eaTxt} kcal/kg nos últimos 7 dias fechados. Energia adequada para o treino.`;
+    eaDesc = `EA de ${eaTxt} kcal/kg ${nosDias}. Energia adequada para o treino.`;
   } else if (eaAvg >= 30) {
     eaScore = 60;
-    eaDesc = `EA de ${eaTxt} kcal/kg nos últimos 7 dias fechados. Subótima — come mais para sustentar o volume.`;
+    eaDesc = `EA de ${eaTxt} kcal/kg ${nosDias}. Subótima — come mais para sustentar o volume.`;
   } else {
     // EA ≤ 0 (o exercício gastou mais do que o que se comeu) fica com 0:
     // pior do que qualquer EA positiva abaixo de 30.
     eaScore = eaAvg > 0 ? 10 : 0;
-    eaDesc = `EA de ${eaTxt} kcal/kg nos últimos 7 dias fechados. Crítico — risco de RED-S. Aumenta a ingestão.`;
+    eaDesc = `EA de ${eaTxt} kcal/kg ${nosDias}. Crítico — risco de RED-S. Aumenta a ingestão.`;
   }
   pillars.push({ key: "ea", label: "Disponibilidade Energética", score: eaScore, desc: eaDesc, hasData: eaHasData });
 
   // --- Pilar 3: Compliance Calórica ---
-  const macros = computeMacroAdherence(closedMeals, profile, bodyAssessments || [], closedRef, "semana");
+  const macros = computeMacroAdherence(completeMeals, profile, bodyAssessments || [], closedRef, "semana");
   const calPct = macros?.calories?.compliance_pct ?? 0;
   const calZone = classifyCalorieCompliance(calPct);
   let calScore = 0;
-  let calDesc = soHoje ? SEM_DADOS_HOJE : "Sem dados de nutrição suficientes.";
+  let calDesc = soHoje ? SEM_DADOS_HOJE : fewComplete ? FEW_COMPLETE : "Sem dados de nutrição suficientes.";
   if (calZone === "ok") {
     calScore = 100;
-    calDesc = `${calPct}% do alvo calórico nos últimos 7 dias fechados. Nutrição alinhada com o esforço.`;
+    calDesc = `${calPct}% do alvo calórico ${nosDias}. Nutrição alinhada com o esforço.`;
   } else if (calZone === "low" || calZone === "over") {
     calScore = 65;
-    calDesc = `${calPct}% do alvo calórico nos últimos 7 dias fechados. Podes melhorar a consistência nutricional.`;
+    calDesc = `${calPct}% do alvo calórico ${nosDias}. Podes melhorar a consistência nutricional.`;
   } else if (calZone === "critical") {
     calScore = 20;
-    calDesc = `${calPct}% do alvo calórico nos últimos 7 dias fechados. Ingestão muito baixa para o volume de treino.`;
+    calDesc = `${calPct}% do alvo calórico ${nosDias}. Ingestão muito baixa para o volume de treino.`;
   }
   pillars.push({ key: "calories", label: "Nutrição", score: calScore, desc: calDesc, hasData: calZone !== "no_data" });
 

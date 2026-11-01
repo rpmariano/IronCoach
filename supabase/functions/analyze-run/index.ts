@@ -35,7 +35,7 @@ import {
 import { fetchSharedMemoryBlock, lisbonTodayISO, memoryPromptSection } from "../_shared/carolMemory.ts";
 import { fetchSeriesBlock, seriesPromptSection } from "../_shared/seriesBlock.ts";
 import { addUsage, type GeminiUsage, usageFromGemini } from "../_shared/geminiUsage.ts";
-import { computeBestPace, type BestPaceBucket } from "../_shared/formulas/bestPace.ts";
+import { computeBestPace, type BestPaceBucket, withProjectedSplits } from "../_shared/formulas/bestPace.ts";
 import { runRecordMoment } from "../_shared/formulas/runRecord.ts";
 import { formatPaceMinKm } from "../_shared/formulas/paceFormat.ts";
 import { resolveMaxHR, resolveHrZones, zoneOf } from "../_shared/formulas/heartRateZones.ts";
@@ -55,6 +55,7 @@ import {
   requestDeadlines,
 } from "../_shared/geminiFetch.ts";
 import { withUsageRecording } from "../_shared/usageRecorder.ts";
+import { findByClientRequestId, insertOnce, parseClientRequestId } from "../_shared/idempotency.ts";
 import { durationBreakdown } from "../_shared/formulas/sessionDuration.ts";
 import { parseAnsweredQuestions, parseRecordQuestions, RECORD_QUESTIONS_SCHEMA, recordAnswersSection, recordQuestionsRule, type RecordQuestion } from "../_shared/recordQuestions.ts";
 import { geminiHeaders, geminiUrl, geminiWithFallback, thinkingConfig } from "../_shared/geminiModel.ts";
@@ -1079,7 +1080,7 @@ async function attachCoachNotes(
     // serve). Projeção details->splits, nunca details inteiro.
     const { data: recordCandidates } = await sb
       .from("runs")
-      .select("date, kind, training_type, distance_km, duration_seconds, details:details->splits")
+      .select("date, kind, training_type, distance_km, duration_seconds, splits:details->splits")
       .eq("user_id", userId)
       .neq("id", run.id)
       .limit(1000);
@@ -1088,7 +1089,8 @@ async function attachCoachNotes(
     }
     const { bestPacesLine, personalRecordKind } = computeRunRecordContext(
       { id: run.id, date: ctx.date, kind: ctx.kind, training_type: ctx.training_type, distance_km: ctx.distance_km, duration_seconds: ctx.duration_seconds, details: ctx.details },
-      recordCandidates || [],
+      // deno-lint-ignore no-explicit-any
+      (recordCandidates || []).map((r: any) => withProjectedSplits(r)),
     );
 
     // Em que zona foi a FC média desta corrida (ação 5.4) — para o plano
@@ -1734,6 +1736,14 @@ Deno.serve(withUsageRecording("analyze-run", async (req) => {
     // do Coach, com o mesmo attachCoachNotes do modo normal. Sem isto, uma
     // corrida registada manualmente nunca tinha análise nenhuma; agora as
     // duas formas de registo passam pelo Coach.
+    // Idempotência (incidente de 2026-10-31, _shared/idempotency.ts): a mesma
+    // tentativa reenviada devolve a corrida já gravada, sem gravar outra.
+    const clientRequestId = parseClientRequestId(body.client_request_id);
+    // deno-lint-ignore no-explicit-any
+    const replay = (run: any) => jsonResponse({ run, replayed: true });
+    const alreadySaved = !body.run_id ? await findByClientRequestId(sb, "runs", userId, clientRequestId) : null;
+    if (alreadySaved) return replay(alreadySaved);
+
     if (body.mode === "manual") {
       const clientName = typeof body.name === "string" ? body.name.trim().slice(0, 120) : "";
       if (!clientName) return jsonResponse({ error: "Preenche o nome da corrida." }, 400);
@@ -1811,26 +1821,24 @@ Deno.serve(withUsageRecording("analyze-run", async (req) => {
         return jsonResponse({ run: updatedRun, usage: coachUsage });
       }
 
-      const { data: run, error: insertError } = await sb
-        .from("runs")
-        .insert({
-          user_id: userId,
-          date: body.date,
-          // A coluna é NOT NULL com default '{}' — null aqui rebentava o
-          // insert (violação de not-null) e voltava como 500 genérico.
-          photo_paths: [],
-          kind,
-          training_type: trainingType,
-          details,
-          notes: rawNotes,
-          name: clientName,
-          effort_rpe: effortRpe,
-          shoe_id: shoeId(body),
-          distance_km: extraction.distance_km,
-          duration_seconds: extraction.duration_seconds,
-        })
-        .select()
-        .single();
+      const { data: run, existing: savedMeanwhile, error: insertError } = await insertOnce(sb, "runs", userId, {
+        user_id: userId,
+        date: body.date,
+        // A coluna é NOT NULL com default '{}' — null aqui rebentava o
+        // insert (violação de not-null) e voltava como 500 genérico.
+        photo_paths: [],
+        kind,
+        training_type: trainingType,
+        details,
+        notes: rawNotes,
+        name: clientName,
+        effort_rpe: effortRpe,
+        shoe_id: shoeId(body),
+        distance_km: extraction.distance_km,
+        duration_seconds: extraction.duration_seconds,
+      }, clientRequestId);
+      // Outra tentativa do mesmo formulário gravou entretanto: é essa.
+      if (savedMeanwhile) return replay(savedMeanwhile);
       if (insertError) return jsonResponse({ error: `Falha a gravar corrida: ${insertError.message}` }, 500);
 
       const coachUsage = await attachCoachNotes(sb, userId, run, {
@@ -1933,24 +1941,25 @@ Deno.serve(withUsageRecording("analyze-run", async (req) => {
     const finalName = nameIsAuto ? buildAutoName(kind, periodLabel) : clientName;
 
     // 3. Gravar corrida
-    const { data: run, error: insertError } = await sb
-      .from("runs")
-      .insert({
-        user_id: userId,
-        date,
-        photo_paths: photoPaths,
-        kind,
-        training_type: trainingType,
-        details: detailsFromExtraction(kind, result.extraction, trainingType, raceType),
-        notes: rawNotes,
-        name: finalName,
-        effort_rpe: effortRpe,
-        shoe_id: shoeId(body),
-        distance_km: result.extraction.distance_km,
-        duration_seconds: result.extraction.duration_seconds,
-      })
-      .select()
-      .single();
+    const { data: run, existing: savedMeanwhile, error: insertError } = await insertOnce(sb, "runs", userId, {
+      user_id: userId,
+      date,
+      photo_paths: photoPaths,
+      kind,
+      training_type: trainingType,
+      details: detailsFromExtraction(kind, result.extraction, trainingType, raceType),
+      notes: rawNotes,
+      name: finalName,
+      effort_rpe: effortRpe,
+      shoe_id: shoeId(body),
+      distance_km: result.extraction.distance_km,
+      duration_seconds: result.extraction.duration_seconds,
+    }, clientRequestId);
+    // Outra tentativa gravou entretanto: é essa, e os prints desta saem.
+    if (savedMeanwhile) {
+      await sb.storage.from("run-photos").remove(photoPaths);
+      return replay(savedMeanwhile);
+    }
     if (insertError) {
       await sb.storage.from("run-photos").remove(photoPaths);
       return jsonResponse({ error: `Falha a gravar corrida: ${insertError.message}` }, 500);

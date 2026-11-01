@@ -26,6 +26,7 @@ import {
 import { geminiHeaders, geminiUrl, geminiWithFallback, thinkingConfig } from "../_shared/geminiModel.ts";
 import { addUsage, emptyUsage, type GeminiUsage, usageFromGemini } from "../_shared/geminiUsage.ts";
 import { withUsageRecording } from "../_shared/usageRecorder.ts";
+import { findByClientRequestId, insertOnce, parseClientRequestId } from "../_shared/idempotency.ts";
 import {
   applyPantry, type CarolQuestion, type CookingFact, EMPTY_PANTRY, fetchPantry, knowledgeSection, learnFromMeal, learnRules,
   isMicroColumn, microFromModel, optionGrams, parseCookingFacts, portionFacts, quantityAnswerGrams, parseQuestions, pickMealItem, remapQuestionItems, splitKnownWritten,
@@ -1663,6 +1664,18 @@ Deno.serve(withUsageRecording("analyze-meal", async (req) => {
       });
     }
 
+    // Idempotência (incidente de 2026-10-31, _shared/idempotency.ts): a mesma
+    // tentativa reenviada devolve a refeição já gravada, sem gravar outra.
+    // Daqui para baixo só há registo novo, edição e reanálise (meal_id).
+    const clientRequestId = parseClientRequestId(body.client_request_id);
+    // deno-lint-ignore no-explicit-any
+    const replay = async (meal: any) => {
+      const { data: mealItems } = await sb.from("meal_items").select("*").eq("meal_id", meal.id);
+      return jsonResponse({ meal: { ...meal, meal_items: mealItems ?? [] }, replayed: true });
+    };
+    const alreadySaved = !body.meal_id ? await findByClientRequestId(sb, "meals", userId, clientRequestId) : null;
+    if (alreadySaved) return await replay(alreadySaved);
+
     // ── Modo manual: registo sem fotos, todos os alimentos duma vez ────
     // O cliente só acumula {name, grams} localmente ao "Adicionar alimento"
     // — nada é consultado ao Gemini nesse momento. Só ao premir "Analisar
@@ -1795,14 +1808,12 @@ Deno.serve(withUsageRecording("analyze-meal", async (req) => {
         return jsonResponse({ meal: { ...updatedMeal, meal_items: savedItems }, usage: addUsage(estimated.usage, coachUsage) });
       }
 
-      const { data: meal, error: mealError } = await sb
-        .from("meals")
-        .insert({
-          user_id: userId, date: body.date, meal_type: body.meal_type, photo_paths: [], status: "ready", notes: rawNotes, ...mealTimeField,
-          carol_questions: estimated.questions.length ? estimated.questions : null,
-        })
-        .select()
-        .single();
+      const { data: meal, existing: savedMeanwhile, error: mealError } = await insertOnce(sb, "meals", userId, {
+        user_id: userId, date: body.date, meal_type: body.meal_type, photo_paths: [], status: "ready", notes: rawNotes, ...mealTimeField,
+        carol_questions: estimated.questions.length ? estimated.questions : null,
+      }, clientRequestId);
+      // Outra tentativa do mesmo formulário gravou entretanto: é essa.
+      if (savedMeanwhile) return await replay(savedMeanwhile);
       if (mealError) return jsonResponse({ error: `Falha a gravar refeição: ${mealError.message}` }, 500);
 
       const { data: savedItems, error: itemsError } = await sb
@@ -1969,14 +1980,15 @@ Deno.serve(withUsageRecording("analyze-meal", async (req) => {
       ),
       items, rawNotes,
     );
-    const { data: meal, error: mealError } = await sb
-      .from("meals")
-      .insert({
-        user_id: userId, date, meal_type, photo_paths: photoPaths, status: "ready", notes: rawNotes, ...mealTimeField,
-        carol_questions: questions.length ? questions : null,
-      })
-      .select()
-      .single();
+    const { data: meal, existing: savedMeanwhile, error: mealError } = await insertOnce(sb, "meals", userId, {
+      user_id: userId, date, meal_type, photo_paths: photoPaths, status: "ready", notes: rawNotes, ...mealTimeField,
+      carol_questions: questions.length ? questions : null,
+    }, clientRequestId);
+    // Outra tentativa gravou entretanto: é essa, e as fotos desta saem.
+    if (savedMeanwhile) {
+      await sb.storage.from("meal-photos").remove(photoPaths);
+      return await replay(savedMeanwhile);
+    }
     if (mealError) {
       await sb.storage.from("meal-photos").remove(photoPaths);
       return jsonResponse({ error: `Falha a gravar refeição: ${mealError.message}` }, 500);

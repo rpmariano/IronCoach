@@ -1,4 +1,4 @@
-import React, { forwardRef, useId } from 'react';
+import React, { forwardRef, useCallback, useId, useLayoutEffect, useRef } from 'react';
 
 /* O campo e o bloco dos registos — o padrão da Nutrição (MealRegistration), extraído para os
    outros registos o usarem em vez de cada um repetir as classes:
@@ -35,8 +35,45 @@ export const FieldInput = forwardRef(function FieldInput({ className = '', onFoc
   return <input ref={ref} onFocus={withKeepVisible(onFocus)} className={`${FIELD_CLS} ${className}`.trim()} {...props} />;
 });
 
-export const FieldTextarea = forwardRef(function FieldTextarea({ className = '', onFocus, rows = 2, ...props }, ref) {
-  return <textarea ref={ref} rows={rows} onFocus={withKeepVisible(onFocus)} className={`${FIELD_CLS} resize-none leading-snug ${className}`.trim()} {...props} />;
+/* Bug #96 (2026-11-01, print do Rui): o objetivo vindo do plano ficava numa caixa de 2 linhas com
+   scroll interno, cortado a meio, e a letra parecia maior e mais carregada do que a do nome.
+   · Cresce com o texto (valor inicial e ao escrever), sem scroll interno, até `maxHeight` px; daí
+     em diante, e só aí, faz scroll. Em JS e não `field-sizing: content`, que o Safari do iOS não tem.
+   · A mesma altura de linha do campo de uma linha (24 px, não `leading-snug`), e `text-size-adjust`
+     a 100%: o Chrome do Android aumenta ("font boosting") blocos de texto longos — o input de uma
+     linha nunca, a textarea com uma frase comprida sim. */
+export const TEXTAREA_MAX_HEIGHT = 240;
+
+export function fitTextarea(el, maxHeight = TEXTAREA_MAX_HEIGHT) {
+  if (!el) return;
+  el.style.height = 'auto';
+  const full = el.scrollHeight;
+  const next = Math.min(full, maxHeight);
+  // scrollHeight é 0 sem layout (testes): fica a altura das `rows`.
+  if (next > 0) el.style.height = `${next}px`;
+  el.style.overflowY = full > maxHeight ? 'auto' : 'hidden';
+}
+
+export const FieldTextarea = forwardRef(function FieldTextarea({ className = '', onFocus, onInput, rows = 2, maxHeight = TEXTAREA_MAX_HEIGHT, value, ...props }, ref) {
+  const inner = useRef(null);
+  const setRef = useCallback((el) => {
+    inner.current = el;
+    if (typeof ref === 'function') ref(el);
+    else if (ref) ref.current = el;
+  }, [ref]);
+  // O valor inicial (do plano, do Armário) e cada mudança de fora ajustam a altura.
+  useLayoutEffect(() => { fitTextarea(inner.current, maxHeight); }, [value, maxHeight]);
+  return (
+    <textarea
+      ref={setRef}
+      rows={rows}
+      value={value}
+      onFocus={withKeepVisible(onFocus)}
+      onInput={(e) => { fitTextarea(e.currentTarget, maxHeight); onInput?.(e); }}
+      className={`${FIELD_CLS} resize-none leading-6 [-webkit-text-size-adjust:100%] [text-size-adjust:100%] ${className}`.trim()}
+      {...props}
+    />
+  );
 });
 
 /** Etiqueta + controlo. `children` é uma função (id) => controlo, para o par label/id ficar ligado. */

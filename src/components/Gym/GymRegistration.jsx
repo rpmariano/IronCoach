@@ -25,6 +25,7 @@ import { usePersistedDraftMedia } from '../../utils/draftMediaPersistence';
 import { normalizeStartTime, startTimeInputValue } from '../../utils/startTime';
 import CarolInterventionActions from '../shared/CarolInterventionActions';
 import { FieldInput, FieldTextarea } from '../shared/registration/Field';
+import { useClientRequestId, upsertById, saveErrorText } from '../../utils/clientRequestId';
 import { printsNeedRead, AwaitingReadAction } from '../shared/registration/printsGate';
 import { PrintQuestions, questionsPayload, readQuestions } from '../shared/CarolQuestionsForm';
 
@@ -42,6 +43,8 @@ const MAX_PHOTOS = 6; // espelha MAX_PHOTOS em supabase/functions/analyze-gym
 
 export default function GymRegistration({ onClose, dateIso = null, sessionIdToEdit = null }) {
   const { profile, gymSessions, setGymSessions, loadInitialData, setNavGuard } = useAppStore();
+  // Idempotência (2026-11-01): o mesmo id em todas as tentativas de gravar este treino novo.
+  const requestId = useClientRequestId();
 
   
   const isEditing = !!sessionIdToEdit;
@@ -540,8 +543,9 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
   // mesmas fotos e os mesmos campos.
   const analyzePhotosTask = async () => {
     {
-      const { data, error } = await invokeEdgeFunctionWithTimeout('analyze-gym', {
+      const saveRes = await invokeEdgeFunctionWithTimeout('analyze-gym', {
         body: {
+          client_request_id: requestId.get(),
           images: photos.map(p => p.base64),
           mime_type: 'image/jpeg',
           date,
@@ -556,7 +560,8 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
           ...(photos.length ? questionsPayload(printQuestions, printAnswers) : {}),
         },
       }, ANALYZE_TIMEOUT_MS);
-      if (error) throw new Error(error);
+      const { data, error } = saveRes;
+      if (error) throw new Error(saveErrorText(saveRes));
       if (data?.error) throw new Error(data.error);
 
       const analysed = { ...data.session, workout_session_sets: data.sets || [] };
@@ -564,7 +569,8 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
         console.warn('Aviso: análise retornou 0 séries', data);
       }
       const sessionWithSets = await persistSessionStartTime(analysed);
-      setGymSessions([sessionWithSets, ...gymSessions]);
+      setGymSessions(upsertById(gymSessions, sessionWithSets));
+      requestId.renew();
       await completePlanItemForSession(sessionWithSets);
       useAppStore.getState().loadExerciseLocker?.();
       finishCreateAndGoToCalendar(sessionWithSets, 'Treino registado');
@@ -588,8 +594,9 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
     setIsSaving(true);
     setErrorMsg('');
     try {
-      const { data, error } = await invokeEdgeFunctionWithTimeout('analyze-gym', {
+      const saveRes = await invokeEdgeFunctionWithTimeout('analyze-gym', {
         body: {
+          client_request_id: requestId.get(),
           mode: 'manual',
           date,
           kind,
@@ -600,7 +607,8 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
           ...metricsAndSetsBody(),
         },
       }, ANALYZE_TIMEOUT_MS);
-      if (error) throw new Error(error);
+      const { data, error } = saveRes;
+      if (error) throw new Error(saveErrorText(saveRes));
       if (data?.error) throw new Error(data.error);
 
       const analysed = { ...data.session, workout_session_sets: data.sets || [] };
@@ -608,7 +616,8 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
         console.warn('Aviso: análise retornou 0 séries', data);
       }
       const sessionWithSets = await persistSessionStartTime(analysed);
-      setGymSessions([sessionWithSets, ...gymSessions]);
+      setGymSessions(upsertById(gymSessions, sessionWithSets));
+      requestId.renew();
 
       // Se esta sessão vem do plano (ou bate com um treino de ginásio
       // pendente nesse dia), marca o item como concluído — a data usada é a

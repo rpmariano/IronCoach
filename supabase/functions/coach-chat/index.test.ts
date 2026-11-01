@@ -5464,81 +5464,102 @@ Deno.test("buildGymAnalyticsPanel: aulas sem duração não dão '0 min totais';
   assertStringIncludes(b, "2 aulas, 45 min totais (em 1 de 2 aulas com duração registada)");
 });
 
-Deno.test("buildNutritionAnalyticsPanel: EA só com dias com refeições, diz a origem da massa magra e os dias de fora (N4)", () => {
-  const meals = [{ date: "2026-10-02", meal_items: [{ quantity_grams: 100, calories_per_100g: 2750 }] }];
+// Desde 2026-11-01 (opção B do Rui, dayCompleteness.ts) o cumprimento
+// calórico e a EA da Carol contam só os dias fechados com o registo
+// COMPLETO — um dia «cheio» são as 3 refeições principais.
+const refeicao = (date: string, meal_type: string, kcal: number) => ({ date, meal_type, meal_items: [{ quantity_grams: 100, calories_per_100g: kcal }] });
+const diaCheio = (date: string, kcal: number) =>
+  ["pequeno-almoco", "almoco", "jantar"].map((t) => refeicao(date, t, kcal / 3));
+const diasAte = (de: string, ate: string, kcal: number) => {
+  const out = [];
+  for (let d = de; d <= ate; d = new Date(Date.parse(d + "T00:00:00Z") + 86400000).toISOString().slice(0, 10)) out.push(...diaCheio(d, kcal));
+  return out;
+};
+
+Deno.test("buildNutritionAnalyticsPanel: EA só com dias completos, diz a origem da massa magra e os dias de fora (N4)", () => {
+  // 6 dias cheios e o 10-03 só com o pequeno-almoço (parcial) e 10 km.
+  const meals = [...diasAte("2026-09-27", "2026-10-02", 2750), refeicao("2026-10-03", "pequeno-almoco", 300)];
   const runs = [
-    { date: "2026-10-03", distance_km: 10 }, // dia de treino sem refeições, dentro da janela
-    { date: "2026-09-15", distance_km: 10 }, // fora da janela das refeições — não conta como "dia sem refeições"
+    { date: "2026-10-03", distance_km: 10 }, // dia de treino com o registo parcial, dentro da janela
+    { date: "2026-09-15", distance_km: 10 }, // fora da janela — não conta
   ];
   const out = buildNutritionAnalyticsPanel(meals, [], runs, [], null, "2026-10-04", 7)!;
+  assertStringIncludes(out, "Registo de refeições (7 dias fechados, até ontem): 6 de 7 dias com registo completo");
+  assertStringIncludes(out, "perfil: regista tudo");
   // 2750 kcal / 55 kg (massa magra por omissão) = 50 kcal/kg.
-  assertStringIncludes(out, "50 kcal/kg MMG, média de 1 dia com refeições");
+  assertStringIncludes(out, "50 kcal/kg MMG, média de 6 dias com registo completo");
   assertStringIncludes(out, "massa magra por omissão, sem avaliação corporal com gordura");
-  assertStringIncludes(out, "último dia com refeições (2026-10-02): ótima");
-  assertStringIncludes(out, "1 dia de treino sem refeições registadas não entra no cálculo");
+  assertStringIncludes(out, "último dia completo (2026-10-02): ótima");
+  assertStringIncludes(out, "1 dia de treino sem registo completo não entra no cálculo");
 });
 
 Deno.test("buildNutritionAnalyticsPanel: massa magra medida não leva nota; o último dia é o de ontem, com a data (N4)", () => {
-  const meals = [
-    { date: "2026-10-03", meal_items: [{ quantity_grams: 100, calories_per_100g: 2400 }] },
-    { date: "2026-10-04", meal_items: [{ quantity_grams: 100, calories_per_100g: 600 }] },
-  ];
+  const meals = [...diasAte("2026-09-27", "2026-10-03", 2400), refeicao("2026-10-04", "pequeno-almoco", 600)];
   const body = [{ assessed_at: "2026-09-20", weight_kg: 70, body_fat_pct: 15, lean_body_mass_kg: 60 }];
   const out = buildNutritionAnalyticsPanel(meals, body, [], [], null, "2026-10-04", 7)!;
   assertEquals(out.includes("massa magra por omissão"), false);
   assertEquals(out.includes("massa magra estimada"), false);
-  assertStringIncludes(out, "último dia com refeições (ontem, 2026-10-03)");
-  assertEquals(out.includes("sem refeições registadas"), false);
+  assertStringIncludes(out, "último dia completo (ontem, 2026-10-03)");
+  assertEquals(out.includes("sem registo completo não entra"), false);
 });
 
 // 2026-10-05: a EA da Carol conta só dias fechados (até ontem), como o ecrã e
 // a prontidão. Antes, de manhã, o pequeno-almoço de hoje com um treino dava
 // a média de 7 dias puxada para baixo e o "último dia" crítico.
 Deno.test("buildNutritionAnalyticsPanel: EA só com dias fechados — hoje não entra na média", () => {
-  const meals = [
-    { date: "2026-10-03", meal_items: [{ quantity_grams: 100, calories_per_100g: 2750 }] },
-    // Hoje, a meio: 300 kcal e uma corrida de 10 km — seria EA negativa.
-    { date: "2026-10-04", meal_items: [{ quantity_grams: 100, calories_per_100g: 300 }] },
-  ];
+  // Hoje, a meio: 300 kcal e uma corrida de 10 km — seria EA negativa.
+  const meals = [...diasAte("2026-09-27", "2026-10-03", 2750), refeicao("2026-10-04", "pequeno-almoco", 300)];
   const runs = [{ date: "2026-10-04", distance_km: 10 }];
   const out = buildNutritionAnalyticsPanel(meals, [], runs, [], null, "2026-10-04", 7)!;
-  // Só 2026-10-03: 2750 / 55 = 50 kcal/kg; a corrida de hoje não é "dia sem refeições".
-  assertStringIncludes(out, "Disponibilidade Energética (7 dias fechados, até ontem): 50 kcal/kg MMG, média de 1 dia com refeições");
-  assertStringIncludes(out, "último dia com refeições (ontem, 2026-10-03): ótima");
+  assertStringIncludes(out, "Disponibilidade Energética (7 dias fechados, até ontem): 50 kcal/kg MMG, média de 7 dias com registo completo");
+  assertStringIncludes(out, "último dia completo (ontem, 2026-10-03): ótima");
   assertStringIncludes(out, "hoje não entra (o dia ainda não acabou)");
   assertEquals(out.includes("crítica"), false);
-  assertEquals(out.includes("sem refeições registadas"), false);
+  assertEquals(out.includes("sem registo completo não entra"), false);
 });
 
-Deno.test("buildNutritionAnalyticsPanel: só refeições de hoje — EA sem número, sem meio dia de ingestão", () => {
-  const meals = [{ date: "2026-10-04", meal_items: [{ quantity_grams: 100, calories_per_100g: 600 }] }];
-  const out = buildNutritionAnalyticsPanel(meals, [], [], [], null, "2026-10-04", 7)!;
-  assertStringIncludes(out, "Disponibilidade Energética (7 dias fechados, até ontem): sem número — só há refeições de hoje, e o dia ainda não acabou");
+Deno.test("buildNutritionAnalyticsPanel: o atleta ocasional com 2 dias completos — sem médias, e sem as tirar dos parciais", () => {
+  const meals = [...diaCheio("2026-09-29", 1800), ...diaCheio("2026-10-01", 1800), refeicao("2026-10-03", "pequeno-almoco", 300)];
+  const runs = [{ date: "2026-10-03", distance_km: 12 }];
+  const out = buildNutritionAnalyticsPanel(meals, [], runs, [], { calorie_goal: 2400 }, "2026-10-04", 7)!;
+  assertStringIncludes(out, "2 de 7 dias com registo completo");
+  assertStringIncludes(out, "perfil: regista as refeições de vez em quando (ocasional)");
+  assertStringIncludes(out, "Cumprimento calórico e Disponibilidade Energética (7 dias fechados, até ontem): sem número — 2 de 7 dias com registo completo, poucos para médias honestas");
+  assertEquals(out.includes("Cumprimento calórico (2"), false);
   assertEquals(out.includes("kcal/kg MMG"), false);
 });
 
-// Revisão de 2026-10-05: a consulta de refeições da Carol começava em hoje-6,
-// mas a prontidão (e agora a EA do painel) conta os 7 dias FECHADOS, hoje-7 ..
-// ontem. A Home calcula com todas as refeições do store — a Carol tem de dar o
-// mesmo índice e o mesmo porquê.
+Deno.test("buildNutritionAnalyticsPanel: um dia parcial de quem regista tudo sai do cumprimento calórico", () => {
+  const profile = { weight_kg: 70, calorie_goal: 2400, protein_goal: 140, carbs_goal: 300, fat_goal: 70 };
+  const cheios = diasAte("2026-09-27", "2026-10-02", 2400);
+  const linha = (s: string) => s.split("\n").find((l) => l.includes("Cumprimento calórico"));
+  const sem = buildNutritionAnalyticsPanel(cheios, [], [], [], profile, "2026-10-04", 7)!;
+  const com = buildNutritionAnalyticsPanel([...cheios, refeicao("2026-10-03", "pequeno-almoco", 400)], [], [], [], profile, "2026-10-04", 7)!;
+  assertStringIncludes(linha(com)!, "Cumprimento calórico (6 dias com registo completo, até ontem): 100%");
+  assertEquals(linha(com), linha(sem));
+});
+
+// Revisão de 2026-10-05: a consulta de refeições da Carol tem de dar o mesmo
+// índice e o mesmo porquê que a Home, que calcula com todas as refeições do
+// store. Desde 2026-11-01 começa em hoje-28 (o perfil de registo).
 function semanaComDiaMaisAntigoMau(todayISO: string) {
   const day = (n: number) => {
     const d = new Date(todayISO + "T00:00:00Z");
     d.setUTCDate(d.getUTCDate() - n);
     return d.toISOString().slice(0, 10);
   };
-  const meal = (date: string, kcal: number) => ({ date, meal_items: [{ quantity_grams: 100, calories_per_100g: kcal }] });
-  // Todas as refeições do store (a Home): 3 semanas, com hoje-7 a 200 kcal.
+  // Todas as refeições do store (a Home): 3 semanas de dias cheios, com
+  // hoje-7 a 1300 kcal (ainda completo: ≥ 50% da mediana de 2500) e 25 km.
   const allMeals = [];
-  for (let n = 20; n >= 0; n--) allMeals.push(meal(day(n), n === 7 ? 200 : 2500));
+  for (let n = 20; n >= 0; n--) allMeals.push(...diaCheio(day(n), n === 7 ? 1300 : 2500));
   const runs = [{ date: day(7), distance_km: 25 }];
   return { allMeals, runs, day };
 }
 
-Deno.test("carolMealWindows: a consulta começa em hoje-7 (7 dias fechados) e a semana em hoje-6", () => {
-  assertEquals(carolMealWindows("2026-10-04", 7), { queryStartISO: "2026-09-27", weekStartISO: "2026-09-28" });
+Deno.test("carolMealWindows: a consulta começa em hoje-28 (o perfil de registo) e a semana em hoje-6", () => {
+  assertEquals(carolMealWindows("2026-10-04", 7), { queryStartISO: "2026-09-06", weekStartISO: "2026-09-28" });
   // Na viragem do mês também.
-  assertEquals(carolMealWindows("2026-10-01", 7), { queryStartISO: "2026-09-24", weekStartISO: "2026-09-25" });
+  assertEquals(carolMealWindows("2026-10-01", 7), { queryStartISO: "2026-09-03", weekStartISO: "2026-09-25" });
 });
 
 Deno.test("buildReadinessPanel: com a janela da consulta da Carol dá o mesmo que a Home com todas as refeições", () => {
@@ -5551,8 +5572,8 @@ Deno.test("buildReadinessPanel: com a janela da consulta da Carol dá o mesmo qu
   const home = buildReadinessPanel(runs, allMeals, [], [], profile, today, null)!;
   const carol = buildReadinessPanel(runs, queried, [], [], profile, today, null)!;
   assertEquals(carol, home);
-  // O dia hoje-7 (200 kcal, 25 km) pesa: a EA e o cumprimento calórico vêm dele.
-  assertStringIncludes(home, "nos últimos 7 dias fechados");
+  // O dia hoje-7 (1300 kcal, 25 km) pesa: a EA e o cumprimento calórico vêm dele.
+  assertStringIncludes(home, "nos 7 dias com registo completo dos últimos 7");
 
   // A consulta antiga (desde hoje-6) perdia esse dia e dava outro índice —
   // é isto que o teste guarda.
@@ -5560,26 +5581,35 @@ Deno.test("buildReadinessPanel: com a janela da consulta da Carol dá o mesmo qu
   assert(antiga !== home, "sem o dia hoje-7 a prontidão tem de ser diferente — senão o teste não prova nada");
 });
 
-Deno.test("buildNutritionAnalyticsPanel: com a lista da consulta, a EA é a do pilar da prontidão e o cumprimento calórico não muda", () => {
+Deno.test("buildNutritionAnalyticsPanel: com a lista da consulta, a EA e o cumprimento calórico são os do pilar da prontidão", () => {
   const today = "2026-10-04";
   const { allMeals, runs } = semanaComDiaMaisAntigoMau(today);
   const profile = { weight_kg: 70, calorie_goal: 2500, protein_goal: 140, carbs_goal: 300, fat_goal: 70 };
-  const { queryStartISO, weekStartISO } = carolMealWindows(today, 7);
+  const { queryStartISO } = carolMealWindows(today, 7);
   const queried = allMeals.filter((m) => m.date >= queryStartISO && m.date <= today);
-  const week = allMeals.filter((m) => m.date >= weekStartISO && m.date <= today);
 
   const out = buildNutritionAnalyticsPanel(queried, [], runs, [], profile, today, 7)!;
-  const eaPanel = /Disponibilidade Energética \(7 dias fechados, até ontem\): (-?[\d.]+) kcal\/kg MMG, média de 7 dias com refeições/.exec(out);
+  const eaPanel = /Disponibilidade Energética \(7 dias fechados, até ontem\): (-?[\d.]+) kcal\/kg MMG, média de 7 dias com registo completo/.exec(out);
   assert(eaPanel, out);
   const readiness = buildReadinessPanel(runs, queried, [], [], profile, today, null)!;
-  const eaPillar = /EA de (-?[\d,]+) kcal\/kg nos últimos 7 dias fechados/.exec(readiness);
+  const eaPillar = /EA de (-?[\d,]+) kcal\/kg nos 7 dias com registo completo dos últimos 7/.exec(readiness);
   assert(eaPillar, readiness);
   assertEquals(Number(eaPanel[1]).toFixed(1), eaPillar[1].replace(",", "."));
 
-  // O cumprimento calórico continua com os 7 dias até hoje (hoje-6 .. hoje):
-  // o dia a mais da consulta não entra.
+  // O cumprimento calórico é o dos 7 dias fechados completos — o mesmo do
+  // pilar, e o mesmo com a lista inteira da Home.
   const linhaCumprimento = (s: string) => s.split("\n").find((l) => l.includes("Cumprimento calórico"));
-  assertEquals(linhaCumprimento(out), linhaCumprimento(buildNutritionAnalyticsPanel(week, [], runs, [], profile, today, 7)!));
+  const calPillar = /(\d+)% do alvo calórico nos 7 dias com registo completo/.exec(readiness);
+  assert(calPillar, readiness);
+  assertStringIncludes(linhaCumprimento(out)!, `Cumprimento calórico (7 dias com registo completo, até ontem): ${calPillar[1]}%`);
+  assertEquals(linhaCumprimento(out), linhaCumprimento(buildNutritionAnalyticsPanel(allMeals, [], runs, [], profile, today, 7)!));
+});
+
+Deno.test("buildNutritionAnalyticsPanel: só refeições de hoje — EA sem número, sem meio dia de ingestão", () => {
+  const meals = [{ date: "2026-10-04", meal_items: [{ quantity_grams: 100, calories_per_100g: 600 }] }];
+  const out = buildNutritionAnalyticsPanel(meals, [], [], [], null, "2026-10-04", 7)!;
+  assertStringIncludes(out, "Disponibilidade Energética (7 dias fechados, até ontem): sem número — só há refeições de hoje, e o dia ainda não acabou");
+  assertEquals(out.includes("kcal/kg MMG"), false);
 });
 
 Deno.test("buildNutritionAnalyticsPanel: refeições de hoje sem alimentos discriminados — sem micronutrientes, sem falar de cobertura", () => {
@@ -6500,4 +6530,17 @@ Deno.test("staticDoctrineChars: mede a doutrina do turno — sem a de plano é m
   const full = doctrineChars(true), lean = doctrineChars(false);
   assertEquals(doctrineChars(), full);
   assert(lean < full - 10000, `${lean} vs ${full}`);
+});
+
+import { PARTIAL_LOGGING_RULE, loggingProfileText } from "./index.ts";
+
+Deno.test("dias parciais e o atleta ocasional (2026-11-01): a regra vai ao prompt, a consulta traz o meal_type e o histórico marca os parciais", async () => {
+  const src = await Deno.readTextFile(new URL("./index.ts", import.meta.url));
+  assertStringIncludes(src, String.raw`PARTIAL_LOGGING_RULE + ` + "`\\n` +");
+  assertStringIncludes(src, '"date, meal_type, created_at, meal_items(');
+  assertStringIncludes(src, '" · registo parcial"');
+  assertStringIncludes(PARTIAL_LOGGING_RULE, "nunca tires conclusões calóricas desse dia");
+  assertStringIncludes(PARTIAL_LOGGING_RULE, "não lhe cobres registos");
+  assertEquals(loggingProfileText({ kind: "ocasional" }), "regista as refeições de vez em quando (ocasional)");
+  assertEquals(loggingProfileText({ kind: "completo" }), "regista tudo");
 });

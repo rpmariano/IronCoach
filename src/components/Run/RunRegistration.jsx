@@ -46,6 +46,7 @@ import RegistrationSection from '../shared/registration/RegistrationSection';
 import { findPendingPlanItems } from '../../utils/planPrefill';
 import CarolInterventionActions from '../shared/CarolInterventionActions';
 import { FieldInput, FieldSelect, FieldTextarea } from '../shared/registration/Field';
+import { useClientRequestId, saveErrorText } from '../../utils/clientRequestId';
 import { printsNeedRead, AwaitingReadAction } from '../shared/registration/printsGate';
 import { PrintQuestions, questionsPayload, readQuestions } from '../shared/CarolQuestionsForm';
 
@@ -201,6 +202,8 @@ function planRunPrefill(item) {
 
 export default function RunRegistration({ onClose, dateIso = null, runIdToEdit = null }) {
   const { profile, runs, setRuns, setNavGuard, shoes, raceEvents, coachPlans, coachPlanItems } = useAppStore();
+  // Idempotência (2026-11-01): o mesmo id em todas as tentativas de gravar este registo novo.
+  const requestId = useClientRequestId();
 
   
 
@@ -1751,8 +1754,9 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
       const typed = typedFormFields();
       const hasTyped = Object.values(typed).some((v) => v !== null && !(Array.isArray(v) && v.length === 0));
       const reviewed = hasTyped && readState?.count === runPhotos.length;
-      const { data, error } = await invokeEdgeFunctionWithTimeout('analyze-run', {
+      const saveRes = await invokeEdgeFunctionWithTimeout('analyze-run', {
         body: {
+          client_request_id: requestId.get(),
           images: runPhotos.map(p => p.base64),
           mime_type: 'image/jpeg',
           date: runDate,
@@ -1769,10 +1773,13 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
           ...(runPhotos.length ? questionsPayload(printQuestions, printAnswers) : {}),
         },
       }, ANALYZE_TIMEOUT_MS);
-      if (error) throw new Error(error);
+      const { data, error } = saveRes;
+      if (error) throw new Error(saveErrorText(saveRes));
       if (data?.error) throw new Error(data.error);
 
       const createdRun = data.run;
+      // Gravada: a próxima gravação é sobre ela (run_id); um registo novo terá outro id.
+      requestId.renew();
       const extractedDetails = applyExtractedRun(createdRun);
 
       const missing = detectMissingRunMetrics(extractedDetails, createdRun.distance_km, createdRun.duration_seconds, isWalk(createdRun));
@@ -2048,8 +2055,9 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
       // manual atualiza-a em vez de criar uma segunda.
       const created = createdRunRef.current;
       setSavingWithCarol('manual');
-      const { data, error } = await invokeEdgeFunctionWithTimeout('analyze-run', {
+      const saveRes = await invokeEdgeFunctionWithTimeout('analyze-run', {
         body: {
+          ...(created ? {} : { client_request_id: requestId.get() }),
           mode: 'manual',
           ...(created ? { run_id: created.run.id } : {}),
           date: runDate,
@@ -2089,10 +2097,12 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
           leg_stiffness_kn_m: parseFloat(legStiffness) || null,
         },
       }, ANALYZE_TIMEOUT_MS);
-      if (error) throw new Error(error);
+      const { data, error } = saveRes;
+      if (error) throw new Error(saveErrorText(saveRes));
       if (data?.error) throw new Error(data.error);
 
       newlySavedRun = data.run;
+      if (!created) requestId.renew();
       forgetCreatedRun();
       upsertRunInStore(newlySavedRun);
 
