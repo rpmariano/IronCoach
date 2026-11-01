@@ -773,3 +773,29 @@ describe('BodyRegistration — #106: trocar um print volta a pedir a leitura', (
     expect(screen.getByRole('button', { name: 'Ler os prints e preencher' })).toBeInTheDocument();
   });
 });
+
+describe('BodyRegistration — #106: perguntas antigas não seguem depois de trocar de print', () => {
+  beforeEach(() => {
+    mocks.invoke.mockReset();
+    useAppStore.setState({ profile: PROFILE, bodyAssessments: [] });
+  });
+
+  it('trocar de print e a releitura falhar: o pedido sai sem carol_questions', async () => {
+    const Q = { id: 'b1', kind: 'contexto', topic: 'jejum', item_name: null, question: 'Em jejum?', options: ['Sim', 'Não'], assumed: 'Sim', impact_kcal: 0, impact_protein_g: 0, answer: null, answered_at: null };
+    render(<BodyRegistration onClose={vi.fn()} />);
+    await selectPhoto({ ler: false });
+    mocks.invoke.mockResolvedValueOnce({ data: { preview: { metrics: { weight_kg: 72.4 } }, questions: [Q] }, error: null });
+    fireEvent.click(screen.getByRole('button', { name: 'Ler os prints e preencher' }));
+    fireEvent.click(within(await screen.findByTestId('carol-question-b1')).getByRole('button', { name: 'Não' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Remover print 1' }));
+    await selectPhoto({ ler: false });
+    mocks.invoke.mockResolvedValueOnce({ data: null, error: 'O Coach está ocupado.' });
+    fireEvent.click(screen.getByRole('button', { name: 'Ler os prints e preencher' }));
+    await screen.findByText('O Coach está ocupado.');
+    setHora();
+    mocks.invoke.mockResolvedValueOnce({ data: { assessment: { id: 'a-1', date: '2026-11-01' } }, error: null });
+    fireEvent.click(screen.getByRole('button', { name: /Analisar avaliação/ }));
+    await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(3));
+    expect(mocks.invoke.mock.calls[2][1].body).not.toHaveProperty('carol_questions');
+  });
+});

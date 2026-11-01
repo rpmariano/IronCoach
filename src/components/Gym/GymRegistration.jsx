@@ -360,14 +360,14 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
         setPhotos(prev => [...prev, { dataUrl, base64 }]);
         // Prints novos: a leitura anterior (bem ou mal sucedida) deixa de valer (#106).
         setReviewedPhotos(null);
-        setReadAttempt(null);
+        setReadAttempt(null); setPrintQuestions([]); setPrintAnswers({});
       } catch (err) {
         console.warn('Falha a processar imagem', err);
       }
     }
   };
 
-  const removePhoto = (idx) => { setPhotos(prev => prev.filter((_, i) => i !== idx)); setReviewedPhotos(null); setReadAttempt(null); };
+  const removePhoto = (idx) => { setPhotos(prev => prev.filter((_, i) => i !== idx)); setReviewedPhotos(null); setReadAttempt(null); setPrintQuestions([]); setPrintAnswers({}); };
 
   /* O plano do dia (F3): os treinos pendentes do tipo, nos planos aceites.
      Vindo do botão "Registar sessão" já está ligado, sem banner. */
@@ -454,11 +454,12 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
       if (Object.keys(patch).length) setIsFormDirty(true);
       const readable = !!data.readable;
       setReviewedPhotos(fromPhotos && readable ? photos.length : null);
-      setPrintQuestions(readQuestions(data));
+      setPrintQuestions(fromPhotos ? readQuestions(data) : []); // só as de prints: uma leitura das notas não pergunta
       setPrintAnswers({});
       setReadNote({ tone: readable ? 'ok' : 'warn', text: readSummary(result, fromPhotos ? 'foto' : 'notas') });
     } catch (err) {
       console.error(err);
+      setPrintQuestions([]); setPrintAnswers({});
       setReadNote({ tone: 'warn', text: err.message || 'Não consegui ler agora. Tenta outra vez, ou escreve o treino abaixo.' });
     } finally {
       setReadAttempt(photos.length);
@@ -552,7 +553,7 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
           // Os prints já foram lidos e revistos: o servidor só os guarda.
           reviewed: reviewedPhotos !== null && reviewedPhotos === photos.length,
           ...metricsAndSetsBody(),
-          ...questionsPayload(printQuestions, printAnswers),
+          ...(photos.length ? questionsPayload(printQuestions, printAnswers) : {}),
         },
       }, ANALYZE_TIMEOUT_MS);
       if (error) throw new Error(error);
