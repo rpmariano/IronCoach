@@ -51,6 +51,7 @@ import {
 } from "../_shared/geminiFetch.ts";
 import { type GeminiUsage, usageFromGemini } from "../_shared/geminiUsage.ts";
 import { withUsageRecording } from "../_shared/usageRecorder.ts";
+import { fastingFromAnswers, parseAnsweredQuestions, parseRecordQuestions, RECORD_QUESTIONS_SCHEMA, recordAnswersSection, recordQuestionsRule, type RecordQuestion } from "../_shared/recordQuestions.ts";
 
 const MAX_PHOTOS = 6;
 const MAX_NOTES_LENGTH = 500;
@@ -519,8 +520,9 @@ async function previewWithGemini(
   notes: string | null,
   geminiKey: string,
   deadline = Number.POSITIVE_INFINITY,
-): Promise<{ preview: { metrics: Metrics; classifications: Record<string, string>; source_app: string }; usage: GeminiUsage }> {
-  const parts: unknown[] = [{ text: buildPreviewPrompt(notes) }];
+): Promise<{ preview: { metrics: Metrics; classifications: Record<string, string>; source_app: string }; questions: RecordQuestion[]; usage: GeminiUsage }> {
+  // As perguntas da Carol sobre o que os prints não deixam saber (bug #106).
+  const parts: unknown[] = [{ text: buildPreviewPrompt(notes) + recordQuestionsRule("body") }];
   for (const b64 of images) parts.push({ inline_data: { mime_type: mime, data: b64 } });
   const res = await geminiWithFallback((model, withThinking, attemptDeadline) => fetchGeminiWithTimeout(
     geminiUrl(model),
@@ -532,7 +534,7 @@ async function previewWithGemini(
         generationConfig: {
           ...thinkingConfig("low", withThinking),
           response_mime_type: "application/json",
-          response_schema: PREVIEW_SCHEMA,
+          response_schema: { ...PREVIEW_SCHEMA, properties: { ...PREVIEW_SCHEMA.properties, questions: RECORD_QUESTIONS_SCHEMA } },
         },
       }),
     },
@@ -555,7 +557,7 @@ async function previewWithGemini(
     throw new Error("A leitura devolveu um formato inesperado. Tenta novamente.");
   }
   const { metrics, classifications, sourceApp } = normalizeExtraction(parsed);
-  return { preview: { metrics, classifications, source_app: sourceApp }, usage };
+  return { preview: { metrics, classifications, source_app: sourceApp }, questions: parseRecordQuestions(parsed?.questions), usage };
 }
 
 const normalizarFonteCorpo = (v: unknown) => normalizarFonte(v, "corpo");
@@ -579,6 +581,8 @@ async function generateBodySummaryFromMetrics(
   fromPrints = false,
   // O jejum respondido no formulário (bug #103).
   fasting: boolean | null = null,
+  // As perguntas da leitura e as respostas dele (bug #106, recordAnswersSection).
+  answers = "",
   // `usage`: tokens desta chamada (null se não houve resposta do Gemini) —
   // antes não era devolvido, e o registo manual não contava para os custos.
 ): Promise<{ text: string | null; goalsReview: GoalsReview; usage: GeminiUsage | null }> {
@@ -598,6 +602,7 @@ async function generateBodySummaryFromMetrics(
     `${CAROL_TONE_RULES_SHORT}\n\n` +
     memoryPromptSection(memoryBlock) +
     weighingConditions(assessmentTime, notes, fasting) +
+    answers +
     (fromPrints
       ? "O atleta registou os seguintes valores de uma avaliação de composição corporal, lidos dos prints da " +
         `balança e revistos por ele:\n${metricLines}\n\n`
@@ -699,8 +704,12 @@ Deno.serve(withUsageRecording("analyze-body", async (req) => {
     const rawTime = typeof body.assessment_time === "string" && /^([01]\d|2[0-3]):[0-5]\d/.test(body.assessment_time)
       ? body.assessment_time.slice(0, 5)
       : null;
-    // O jejum respondido no formulário (bug #103); null num cliente antigo.
-    const rawFasting = parseFasting(body.fasting);
+    // As perguntas da leitura e as respostas dele (bug #106).
+    const answeredQuestions = parseAnsweredQuestions(body.carol_questions);
+    const answersBlock = recordAnswersSection(answeredQuestions);
+    // O jejum respondido no formulário (bug #103) ou a uma pergunta da leitura
+    // (#106); null num cliente antigo.
+    const rawFasting = parseFasting(body.fasting) ?? fastingFromAnswers(answeredQuestions);
 
     const metricSelect =
       "id, date, " + METRIC_FIELDS.map((f) => f.key).join(", ");
@@ -716,11 +725,12 @@ Deno.serve(withUsageRecording("analyze-body", async (req) => {
       if (imgs.length > MAX_PHOTOS) return jsonResponse({ error: `Máximo de ${MAX_PHOTOS} imagens por avaliação` }, 400);
       const mime = ["image/jpeg", "image/png", "image/webp"].includes(body.mime_type) ? body.mime_type : "image/jpeg";
       try {
-        const { preview, usage } = await previewWithGemini(imgs, mime, rawNotes, geminiKey, extractionDeadline);
+        const { preview, questions, usage } = await previewWithGemini(imgs, mime, rawNotes, geminiKey, extractionDeadline);
         // Ler e depois gravar é o caminho comum: os prints de apps que não se
         // reconhecem chegam ao Admin por aqui (no `reviewed` já não se leem).
         await checkAndLogAppImage(sb, userId, "body", imgs, mime, preview as unknown as Record<string, unknown>);
-        return jsonResponse({ preview, usage });
+        // Bug #106: as perguntas (0 a 3) — voltam no pedido de gravar em carol_questions.
+        return jsonResponse({ preview, questions, usage });
       } catch (e) {
         return jsonResponse({ error: e instanceof Error ? e.message : "Não consegui ler os prints." }, 502);
       }
@@ -777,7 +787,7 @@ Deno.serve(withUsageRecording("analyze-body", async (req) => {
       if (editingId) historyQuery = historyQuery.neq("id", editingId);
       const { data: history } = await historyQuery;
 
-      const summaryResult = await generateBodySummaryFromMetrics(metrics, rawNotes, history || [], geminiKey, await memoryPromise, await goalsCtxPromise, coachDeadline, rawTime, false, rawFasting);
+      const summaryResult = await generateBodySummaryFromMetrics(metrics, rawNotes, history || [], geminiKey, await memoryPromise, await goalsCtxPromise, coachDeadline, rawTime, false, rawFasting, answersBlock);
 
       if (editingId) {
         const { data: updated, error: updateError } = await sb
@@ -932,7 +942,7 @@ Deno.serve(withUsageRecording("analyze-body", async (req) => {
 
     // 2a. Já revisto: o resumo faz-se dos valores do formulário, sem nova leitura.
     if (reviewed) {
-      const summaryResult = await generateBodySummaryFromMetrics(typed!, rawNotes, history || [], geminiKey, await memoryPromise, await goalsCtxPromise, coachDeadline, rawTime, true, rawFasting);
+      const summaryResult = await generateBodySummaryFromMetrics(typed!, rawNotes, history || [], geminiKey, await memoryPromise, await goalsCtxPromise, coachDeadline, rawTime, true, rawFasting, answersBlock);
       const classifications = sanitizeClassifications(body.classifications, typed!);
       if (typeof body.classifications?.source_app === "string") {
         classifications.source_app = normalizarFonteCorpo(body.classifications.source_app);
