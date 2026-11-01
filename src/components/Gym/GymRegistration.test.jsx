@@ -1479,3 +1479,54 @@ describe('GymRegistration — #106: as perguntas são dos prints que estão lá'
     expect(mocks.invoke.mock.calls[1][1].body).not.toHaveProperty('carol_questions');
   });
 });
+
+/* Idempotência (2026-11-01): a 31-10 o mesmo treino ficou gravado 4 vezes — a resposta não chegou e
+   cada tentativa era um pedido novo. Um client_request_id por formulário novo, igual em todas as
+   tentativas; o servidor devolve o que já tinha gravado (replayed). */
+describe('GymRegistration — client_request_id (idempotência)', () => {
+  const onClose = vi.fn();
+  beforeEach(() => {
+    mocks.invoke.mockReset();
+    onClose.mockClear();
+    useAppStore.setState({ profile: PROFILE, gymSessions: [] });
+  });
+  const preencherEGravar = () => {
+    fireEvent.change(screen.getByPlaceholderText('Ex: 45m'), { target: { value: '50:00' } });
+    fireEvent.click(screen.getByRole('button', { name: /Analisar treino/i }));
+    gravarAssimSeHouver();
+  };
+
+  it('um timeout diz que tentar outra vez não duplica, e a 2.ª tentativa leva o mesmo id', async () => {
+    mocks.invoke
+      .mockResolvedValueOnce({ data: null, error: 'A operação demorou demasiado tempo a responder (timeout).', isTimeout: true })
+      .mockResolvedValueOnce({ data: { session: { id: 'sess-x' }, sets: [] }, error: null });
+    render(<GymRegistration onClose={onClose} />);
+    preencherEGravar();
+    expect(await screen.findByText(/tentar outra vez não o repete/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /Analisar treino/i }));
+    gravarAssimSeHouver();
+    await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(2));
+    const [a, b] = mocks.invoke.mock.calls.map((c) => c[1].body.client_request_id);
+    expect(a).toMatch(/^[0-9a-f-]{36}$/);
+    expect(b).toBe(a);
+  });
+
+  it('replayed: true conta como sucesso e não aparece duas vezes no store', async () => {
+    useAppStore.setState({ gymSessions: [{ id: 'sess-x', date: '2026-10-31' }] });
+    mocks.invoke.mockResolvedValue({ data: { session: { id: 'sess-x', date: '2026-10-31' }, sets: [], replayed: true }, error: null });
+    render(<GymRegistration onClose={onClose} />);
+    preencherEGravar();
+    await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(useAppStore.getState().gymSessions.filter((s) => s.id === 'sess-x')).toHaveLength(1));
+  });
+
+  it('a leitura dos prints (preview) não leva o id', async () => {
+    mocks.invoke.mockResolvedValue({ data: { preview: { exercises: [], metrics: {}, categories: [], class_types: [], session_name: '' }, readable: true }, error: null });
+    render(<GymRegistration onClose={onClose} />);
+    await selectPhoto({ ler: false });
+    fireEvent.click(screen.getByRole('button', { name: 'Ler os prints e preencher' }));
+    await waitFor(() => expect(mocks.invoke).toHaveBeenCalled());
+    expect(mocks.invoke.mock.calls[0][1].body.mode).toBe('preview');
+    expect(mocks.invoke.mock.calls[0][1].body).not.toHaveProperty('client_request_id');
+  });
+});

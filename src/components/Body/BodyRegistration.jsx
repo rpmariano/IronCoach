@@ -21,6 +21,7 @@ import useRegistrationExit from '../shared/registration/useRegistrationExit';
 import PhotoReadSection from '../shared/registration/PhotoReadSection';
 import RegistrationSection from '../shared/registration/RegistrationSection';
 import { FieldInput, FieldTextarea } from '../shared/registration/Field';
+import { useClientRequestId, upsertById, saveErrorText } from '../../utils/clientRequestId';
 import { printsNeedRead, AwaitingReadAction } from '../shared/registration/printsGate';
 import { PrintQuestions, questionsPayload, readQuestions } from '../shared/CarolQuestionsForm';
 
@@ -130,6 +131,8 @@ export function bodyReadNote({ filled, kept }) {
    A moldura (cabeçalho, saída, confirmação, ActionBar) é o RegistrationShell. */
 export default function BodyRegistration({ onClose, assessmentIdToEdit = null }) {
   const { bodyAssessments, setBodyAssessments, profile, loadInitialData, setNavGuard } = useAppStore();
+  // Idempotência (2026-11-01): o mesmo id em todas as tentativas de gravar este registo novo.
+  const requestId = useClientRequestId();
 
   const isEditing = !!assessmentIdToEdit;
 
@@ -418,8 +421,9 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
     const hasTyped = Object.keys(typed).length > 0;
     // Os prints já lidos e os mesmos, com valores no formulário: não se volta a ler.
     const reviewed = hasTyped && readState?.count === photos.length;
-    const { data, error } = await invokeEdgeFunctionWithTimeout('analyze-body', {
+    const saveRes = await invokeEdgeFunctionWithTimeout('analyze-body', {
       body: {
+        client_request_id: requestId.get(),
         images: photos.map(p => p.base64),
         mime_type: 'image/jpeg',
         date,
@@ -431,11 +435,13 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
         ...(photos.length ? questionsPayload(printQuestions, printAnswers) : {}),
       },
     }, ANALYZE_TIMEOUT_MS);
-    if (error) throw new Error(error);
+    const { data, error } = saveRes;
+    if (error) throw new Error(saveErrorText(saveRes));
     if (data?.error) throw new Error(data.error);
 
     const saved = await persistAssessmentTime(data.assessment);
-    setBodyAssessments([saved, ...bodyAssessments]);
+    setBodyAssessments(upsertById(bodyAssessments, saved));
+    requestId.renew();
     finishCreateAndGoToCalendar(saved, 'Avaliação registada');
   };
 
@@ -445,14 +451,16 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
     setIsSaving(true);
     setErrorMsg('');
     try {
-      const { data, error } = await invokeEdgeFunctionWithTimeout('analyze-body', {
-        body: { mode: 'manual', date, assessment_time: normalizeStartTime(assessmentTime), notes: notes.trim() || null, metrics: payloadMetricsOf(metrics), ...fastingField(notes) },
+      const saveRes = await invokeEdgeFunctionWithTimeout('analyze-body', {
+        body: { mode: 'manual', date, assessment_time: normalizeStartTime(assessmentTime), notes: notes.trim() || null, metrics: payloadMetricsOf(metrics), ...fastingField(notes), client_request_id: requestId.get() },
       }, ANALYZE_TIMEOUT_MS);
-      if (error) throw new Error(error);
+      const { data, error } = saveRes;
+      if (error) throw new Error(saveErrorText(saveRes));
       if (data?.error) throw new Error(data.error);
 
       const saved = await persistAssessmentTime(data.assessment);
-      setBodyAssessments([saved, ...bodyAssessments]);
+      setBodyAssessments(upsertById(bodyAssessments, saved));
+      requestId.renew();
       finishCreateAndGoToCalendar(saved, 'Avaliação registada');
     } catch (err) {
       console.error(err);
