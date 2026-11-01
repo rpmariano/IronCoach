@@ -18,6 +18,7 @@
 
 import { foodKey } from "../_shared/formulas/foodKey.ts";
 import { fetchVariants, linkVariants, type VariantIndex, variantKnowledge } from "./variants.ts";
+import { dedupeAdditionQuestions, isLearnedAdditionRule, isOptionalAdditionQuestion } from "./optionalAdditions.ts";
 
 export const NUTRIENT_COLUMNS = [
   "calories_per_100g", "protein_per_100g", "carbs_per_100g", "fat_per_100g",
@@ -237,7 +238,9 @@ export function knowledgeSection(foods: PantryFood[], rules: FoodRule[], variant
   //   manteiga quando vem como alimento à parte (contextualTopic não junta o
   //   prato quando o alimento É o ingrediente). Tirá-los calava a resposta
   //   dele — confirmada, não se volta a perguntar (revisão pré-master).
-  const certas = rules.filter((r) => r.status === "confirmado" && !isDishlessHabit(r));
+  // Bug #109: a manteiga, o azeite ou o molho aprendidos não entram — nunca
+  // se assumem do histórico; ela pergunta sempre (optionalAdditions.ts).
+  const certas = rules.filter((r) => r.status === "confirmado" && !isDishlessHabit(r) && !isLearnedAdditionRule(r));
   const variam = rules.filter((r) => r.status === "varia");
   const comVariantes = variantKnowledge(variants);
   if (!foods.length && !certas.length && !variam.length && !comVariantes) return "";
@@ -492,6 +495,9 @@ export async function learnRules(
     const unique = facts.filter((f) => {
       const k = foodKey(f.topic);
       if (!k || seenTopics.has(k)) return false;
+      // Bug #109: um ingrediente opcional (manteiga, azeite, molho…) não se
+      // aprende — da próxima vez pergunta-se outra vez.
+      if (isLearnedAdditionRule({ topic: f.topic, value: f.value, source })) return false;
       seenTopics.add(k);
       return true;
     });
@@ -642,7 +648,8 @@ export function parseQuestions(
   newId: () => string = () => crypto.randomUUID(),
 ): CarolQuestion[] {
   if (!Array.isArray(raw)) return [];
-  const confirmed = new Set(rules.filter((r) => r.status === "confirmado").map((r) => r.topic_key));
+  // Bug #109: uma regra aprendida sobre um ingrediente opcional não cala a pergunta.
+  const confirmed = new Set(rules.filter((r) => r.status === "confirmado" && !isLearnedAdditionRule(r)).map((r) => r.topic_key));
   const itemsByKey = new Map((items || []).map((it) => [foodKey(it?.name), it]));
   const seenTopics = new Set<string>();
   const out: CarolQuestion[] = [];
@@ -667,7 +674,9 @@ export function parseQuestions(
     const impactProtein = Number.isFinite(protein) && protein > 0 ? protein : 0;
     // Da despensa, só se há perguntas em aberto sobre ele (pantry_pending,
     // 2026-10-05) — foi por isso que o modelo foi chamado.
-    if (!topicKey || !question || options.length < 2 || !item || (item.from_pantry && !item.pantry_pending)) continue;
+    // Um ingrediente opcional pergunta-se mesmo num alimento da despensa (bug #109).
+    const addition = isOptionalAdditionQuestion({ topic, question, options, item_name: item?.name });
+    if (!topicKey || !question || options.length < 2 || !item || (item.from_pantry && !item.pantry_pending && !addition)) continue;
     if (isUnanswerableQuestion(question, options)) continue;
     if (impact < MIN_QUESTION_IMPACT_KCAL && impactProtein < MIN_QUESTION_IMPACT_PROTEIN_G) continue;
     if (confirmed.has(topicKey) || seenTopics.has(topicKey)) continue;
@@ -676,12 +685,15 @@ export function parseQuestions(
     seenTopics.add(topicKey);
     out.push({ id: newId(), kind, topic, item_name: String(item.name), question, options, assumed, impact_kcal: impact, impact_protein_g: impactProtein, answer: null, answered_at: null });
   }
-  // Ordem estável: com o mesmo peso fica a ordem do modelo.
-  return out
-    .map((q, i) => ({ q, i }))
-    .sort((a, b) => questionWeight(b.q) - questionWeight(a.q) || a.i - b.i)
-    .slice(0, MAX_QUESTIONS)
-    .map(({ q }) => q);
+  // Ordem estável: com o mesmo peso fica a ordem do modelo. Uma só pergunta
+  // por ingrediente opcional e alimento (bug #109: «levou manteiga?» e
+  // «quanta manteiga?» na mesma refeição).
+  return dedupeAdditionQuestions(
+    out
+      .map((q, i) => ({ q, i }))
+      .sort((a, b) => questionWeight(b.q) - questionWeight(a.q) || a.i - b.i)
+      .map(({ q }) => q),
+  ).slice(0, MAX_QUESTIONS);
 }
 
 /**

@@ -35,6 +35,7 @@ import {
   learnVariantFood, mergeVariantQuestions, normalizeVariantLabel, renameQuestionItems, resolveVariants, variantAnswer, variantName,
 } from "./variants.ts";
 import { foodKey } from "../_shared/formulas/foodKey.ts";
+import { nextTimeAdditionsSection, withButterQuestions } from "./optionalAdditions.ts";
 import { NOTES_EMPTY_MESSAGE, NOTES_ITEMS_SCHEMA, notesAreAnalyzable, notesItemsPrompt, parseNotesItems } from "./notesItems.ts";
 import { isWalk } from "../_shared/formulas/runKinds.ts";
 
@@ -240,7 +241,11 @@ const QUESTIONS_RULE =
   "[\"3 fatias finíssimas (~25 g)\", \"3 fatias finas (~35 g)\", \"3 fatias médias (~50 g)\"]. A assumed é a opção " +
   "que usaste em estimated_quantity_grams. Nunca sobre um alimento com gramas indicadas pelo utilizador.\n" +
   "Nunca sobre o que as observações já dizem, sobre um tema de \"Como cozinha, tempera e quanto costuma pôr\", nem sobre um alimento da " +
-  "lista que ele tem guardada. Na estimativa, usa o mais provável e diz qual foi em assumed. Cada pergunta: kind, " +
+  "lista que ele tem guardada. EXCEÇÃO — os ingredientes de confeção opcionais (manteiga, margarina, azeite, óleo, " +
+  "molhos, maionese, natas): se um alimento desta refeição os pode levar e as observações não dizem, pergunta SEMPRE, " +
+  "mesmo num alimento guardado e mesmo que ele já tenha respondido noutra refeição — nunca os assumas do que foi " +
+  "antes. Uma só pergunta por ingrediente e alimento (nunca \"levou manteiga?\" e \"quanta manteiga?\" na mesma " +
+  "refeição). Na estimativa, usa o mais provável e diz qual foi em assumed. Cada pergunta: kind, " +
   "topic (o tema, curto e SEMPRE com o prato ou alimento a que se aplica: \"tempero da salada\", \"ovos fritos\" — nunca só " +
   "\"tempero\" ou \"azeite\"; numa de quantidade, o alimento e o prato: \"azeite na salada\", \"manteiga no pão\"), " +
   "item_name (o nome EXATO do item " +
@@ -1152,6 +1157,7 @@ async function generateMealCoachNotes(
     (dayProgress ?? "") +
     assumedValuesSection(openQuestions) +
     answeredValuesSection(openQuestions) +
+    nextTimeAdditionsSection(openQuestions) +
     (meal.notes ? `Nota do utilizador: "${meal.notes}"\n` : "") +
     restricoes +
     workoutsText +
@@ -1724,12 +1730,17 @@ Deno.serve(withUsageRecording("analyze-meal", async (req) => {
           const v = resolveVariants(all, pantry.variants);
           estimated = {
             items: v.items, usage: est.usage, facts: est.facts,
-            questions: mergeVariantQuestions(parseQuestions(renameQuestionItems(est.questions, v.renames), v.items, pantry.rules), v.questions, v.renames),
+            // Bug #109: a manteiga no pão pergunta-se sempre (optionalAdditions.ts).
+            questions: withButterQuestions(
+              mergeVariantQuestions(parseQuestions(renameQuestionItems(est.questions, v.renames), v.items, pantry.rules), v.questions, v.renames),
+              v.items, rawNotes,
+            ),
           };
         } else {
           // Só da despensa, sem o modelo: a pergunta da variante sai na mesma (da base de dados).
           const v = resolveVariants(items.map((_, i) => known.get(i)!), pantry.variants);
-          estimated = { items: v.items, usage: emptyUsage(), facts: [], questions: v.questions };
+          // Bug #109: sem o modelo, a pergunta da manteiga no pão vem do servidor.
+          estimated = { items: v.items, usage: emptyUsage(), facts: [], questions: withButterQuestions(v.questions, v.items, rawNotes) };
         }
       } catch (e) {
         return jsonResponse({ error: e instanceof Error ? e.message : "Falha na estimativa." }, 502);
@@ -1949,10 +1960,14 @@ Deno.serve(withUsageRecording("analyze-meal", async (req) => {
 
     // 3. Gravar refeição + itens
     // A pergunta da variante faz-se sempre e não conta para as 5 do modelo.
-    const questions = mergeVariantQuestions(
-      parseQuestions(renameQuestionItems(rawQuestions, variantsOut.renames), items, pantry.rules),
-      variantsOut.questions,
-      variantsOut.renames,
+    // Bug #109: e a manteiga no pão, se o modelo não perguntou.
+    const questions = withButterQuestions(
+      mergeVariantQuestions(
+        parseQuestions(renameQuestionItems(rawQuestions, variantsOut.renames), items, pantry.rules),
+        variantsOut.questions,
+        variantsOut.renames,
+      ),
+      items, rawNotes,
     );
     const { data: meal, error: mealError } = await sb
       .from("meals")
