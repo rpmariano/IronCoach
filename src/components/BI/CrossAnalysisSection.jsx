@@ -1,6 +1,8 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { ChevronDown, BarChart2 } from 'lucide-react';
 import CrossMetricsChart from './CrossMetricsChart';
+import { periodRange } from './crossPeriod';
+import { relativeRangeCutoffISO } from '@formulas/relativeDateRange.ts';
 import AnalysisAlert from './AnalysisAlert';
 import { calculateCrossMetrics, getVDOTTrend, calculateWeightTrend } from '../../utils/biEngine';
 import { todayISO } from '../../lib/utils';
@@ -20,6 +22,10 @@ const OPEN_FALLBACK_MS = 450;
 // segura todas; isto cobre o uso fora dele).
 const SLICES_WEIGHT_VDOT = ['runs', 'body'];
 const SLICES_GYM_RUN = ['gym', 'runs'];
+// O ginásio vs. corrida lê o último mês (calculateCrossMetrics, 'mes'); o peso vs. VDOT, o
+// histórico todo. Nenhum segue a semana escolhida no Geral: uma tendência de uma semana são um
+// ou dois pontos. Por isso cada cartão diz o período que usa (pedido do Rui, 2026-11-01).
+const GYM_RUN_RANGE = 'mes';
 
 // Vírgula decimal pt-PT.
 function fmtDec(n, casas = 1) {
@@ -74,7 +80,7 @@ export default function CrossAnalysisSection({ runs, gymSessions, meals, bodyAss
   const gymRunReady = useAppStore((st) => sliceReady(st, SLICES_GYM_RUN));
 
   const crossData = useMemo(() =>
-    calculateCrossMetrics(runs || [], gymSessions || [], meals || [], bodyAssessments || [], 'mes'),
+    calculateCrossMetrics(runs || [], gymSessions || [], meals || [], bodyAssessments || [], GYM_RUN_RANGE),
     [runs, gymSessions, meals, bodyAssessments]
   );
 
@@ -135,6 +141,20 @@ export default function CrossAnalysisSection({ runs, gymSessions, meals, bodyAss
     return { enough: true, neutral };
   }, [closedWeeksWithRpe]);
 
+  // O período de cada cartão. O do peso vs. VDOT são as datas do primeiro e do último ponto (todo o
+  // histórico com pares); o do ginásio vs. corrida é o mês até hoje (o corte é exclusivo).
+  const weightVdotPeriod = vdotVsWeightData.length
+    ? `Todo o histórico · ${periodRange(vdotVsWeightData[0].date, vdotVsWeightData[vdotVsWeightData.length - 1].date)}`
+    : null;
+  const gymRunPeriod = useMemo(() => {
+    const today = todayISO();
+    const cutoff = relativeRangeCutoffISO(today, GYM_RUN_RANGE);
+    if (!cutoff) return null;
+    const from = new Date(`${cutoff}T00:00:00Z`);
+    from.setUTCDate(from.getUTCDate() + 1);
+    return `Último mês · ${periodRange(from.toISOString().slice(0, 10), today)}`;
+  }, []);
+
   // As séries entregues ao gráfico são memoizadas: uma referência nova a cada
   // render do Geral fazia chart.update() (e repetia o movimento sem motivo).
   const weightSeries = useMemo(() => ({
@@ -189,6 +209,9 @@ export default function CrossAnalysisSection({ runs, gymSessions, meals, bodyAss
       >
         <div className="overflow-hidden">
           <div className="px-4 pb-4 space-y-4 pt-2 border-t border-[var(--border-glass)]">
+            <p className="text-[11.5px] leading-[1.5] text-[var(--text-3)] px-1" data-testid="cross-period-note">
+              Estas análises não seguem a semana escolhida em cima: precisam de várias semanas. Cada uma diz o período que usa.
+            </p>
 
             {/* Weight vs VDOT */}
             {vdotVsWeightData.length > 0 ? (
@@ -198,6 +221,7 @@ export default function CrossAnalysisSection({ runs, gymSessions, meals, bodyAss
                   helpText="Mostra se perder peso está a melhorar o teu VDOT (capacidade aeróbica). Uma descida de peso com VDOT a subir é o sinal ideal de recomposição corporal eficaz para o corredor."
                   leftData={weightSeries}
                   rightData={vdotSeries}
+                  period={weightVdotPeriod}
                   ready={opened && weightVdotReady}
                 />
               </>
@@ -215,6 +239,7 @@ export default function CrossAnalysisSection({ runs, gymSessions, meals, bodyAss
                   helpText="Cruza o volume de ginásio (kg levantados) com o esforço percebido (RPE) nas corridas da mesma semana. As semanas sem RPE registado ficam em branco. Um RPE alto nas semanas de muito ginásio pode indicar fadiga central acumulada."
                   leftData={gymVolumeSeries}
                   rightData={runRpeSeries}
+                  period={gymRunPeriod}
                   ready={opened && gymRunReady}
                 />
                 {gymRunAnalysis.verdict ? (
