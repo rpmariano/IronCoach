@@ -56,6 +56,7 @@ import {
 } from "../_shared/geminiFetch.ts";
 import { addUsage, emptyUsage, type GeminiUsage, usageFromGemini } from "../_shared/geminiUsage.ts";
 import { withUsageRecording } from "../_shared/usageRecorder.ts";
+import { parseAnsweredQuestions, parseRecordQuestions, RECORD_QUESTIONS_SCHEMA, recordAnswersSection, recordQuestionsRule } from "../_shared/recordQuestions.ts";
 import { ACTIVITY_PERIODS_PROMPT, ACTIVITY_PERIODS_SCHEMA, durationBreakdown, sessionDurationSeconds } from "../_shared/formulas/sessionDuration.ts";
 
 const MAX_PHOTOS = 6;
@@ -514,9 +515,10 @@ async function previewWithGemini(
   geminiKey: string,
   deadline = Number.POSITIVE_INFINITY,
 ) {
-  const prompt = images.length
+  // As perguntas da Carol sobre o que os prints não deixam saber (bug #106).
+  const prompt = (images.length
     ? buildPrompt(kind, notes) + previewAddendum(planBlocks, lockerNames)
-    : notesOnlyPrompt(kind, notes ?? "", planBlocks, lockerNames);
+    : notesOnlyPrompt(kind, notes ?? "", planBlocks, lockerNames)) + recordQuestionsRule("gym");
   const parts: unknown[] = [{ text: prompt }];
   for (const b64 of images) parts.push({ inline_data: { mime_type: mime, data: b64 } });
 
@@ -530,7 +532,7 @@ async function previewWithGemini(
         generationConfig: {
           ...thinkingConfig("low", withThinking),
           response_mime_type: "application/json",
-          response_schema: PREVIEW_SCHEMA,
+          response_schema: { ...PREVIEW_SCHEMA, properties: { ...PREVIEW_SCHEMA.properties, questions: RECORD_QUESTIONS_SCHEMA } },
         },
       }),
     },
@@ -554,7 +556,13 @@ async function previewWithGemini(
   } catch {
     throw new Error("A leitura devolveu um formato inesperado. Tenta novamente.");
   }
-  return { preview: normalizePreview(parsed, planBlocks.length, kind), usage, raw: parsed as Record<string, unknown> };
+  return {
+    preview: normalizePreview(parsed, planBlocks.length, kind),
+    // deno-lint-ignore no-explicit-any
+    questions: parseRecordQuestions((parsed as any)?.questions),
+    usage,
+    raw: parsed as Record<string, unknown>,
+  };
 }
 
 // Registo sem fotos (manual ou edição) em que não se escolheu nenhum grupo
@@ -831,6 +839,8 @@ async function generateGymCoachNotes(
     // As séries desta sessão (lidas dos prints ou editadas à mão). Um registo
     // manual novo ainda não as tem — vêm depois, pelo cartão do treino.
     sets?: SetRow[];
+    // As perguntas da leitura e as respostas dele (bug #106, recordAnswersSection).
+    answers?: string;
   },
   // deno-lint-ignore no-explicit-any
   previousSessions: any[],
@@ -895,6 +905,7 @@ async function generateGymCoachNotes(
     session.notes ? `Nota do atleta (o que ele escreveu sobre o treino — exercícios, cargas, sensações): "${session.notes}"` : null,
   ].filter(Boolean).join("\n");
 
+  const answersBlock = session.answers ? `\n${session.answers}` : "";
   const exerciseLines = formatExerciseLines(session.sets);
   const exercisesSection = exerciseLines.length
     ? `\nExercícios registados nesta sessão:\n${exerciseLines.map((l) => `- ${l}`).join("\n")}\n`
@@ -931,7 +942,7 @@ async function generateGymCoachNotes(
     `${CAROL_TONE_RULES_SHORT}\n\n` +
     `${carolLanguageRule(experienceLevel)}\n\n` +
     memoryPromptSection(memoryBlock) +
-    `Sessão de hoje (${session.date}):\n${contextLines}\n` + exercisesSection +
+    `Sessão de hoje (${session.date}):\n${contextLines}\n` + exercisesSection + answersBlock +
     `\n${historyLine}\n` +
     (gymHistory ? `\n${gymHistory}\n` : "") +
     crossActivitiesSection + planSection + executionSection + `\n` +
@@ -1011,6 +1022,8 @@ async function attachGymCoachNotes(
   session: { id: string; coach_notes?: string | null },
   ctx: {
     date: string; kind: string; categories: string[]; classTypes?: string[]; metrics: GymMetrics; notes: string | null; sets?: SetRow[];
+    // As respostas às perguntas da leitura (bug #106).
+    answers?: string;
     // O treino do plano a que o registo corresponde e as metas por exercício (F4b).
     planLink?: PlanLink; meta?: ReturnType<typeof parseExercisesMeta>;
   },
@@ -1105,7 +1118,7 @@ async function attachGymCoachNotes(
     });
 
     const result = await generateGymCoachNotes(
-      { date: ctx.date, kind: ctx.kind, categories: ctx.categories, classTypes: ctx.classTypes, metrics: ctx.metrics, notes: ctx.notes, sets: ctx.sets },
+      { date: ctx.date, kind: ctx.kind, categories: ctx.categories, classTypes: ctx.classTypes, metrics: ctx.metrics, notes: ctx.notes, sets: ctx.sets, answers: ctx.answers },
       previous || [],
       planItems,
       frameRace,
@@ -1276,6 +1289,8 @@ Deno.serve(withUsageRecording("analyze-gym", async (req) => {
       return jsonResponse({
         preview: result.preview,
         readable: hasPreviewContent(result.preview),
+        // Bug #106: as perguntas (0 a 3) — voltam no pedido de gravar em carol_questions.
+        questions: result.questions,
         usage: result.usage,
       });
     }
@@ -1386,6 +1401,7 @@ Deno.serve(withUsageRecording("analyze-gym", async (req) => {
         const coachUsage = await attachGymCoachNotes(sb, userId, updatedSession, {
           date: body.date, kind, categories, classTypes, metrics: userMetrics, notes: rawNotes, sets: setRows,
           planLink: parsePlanLink(body), meta: editMetaValue ?? null,
+          answers: recordAnswersSection(parseAnsweredQuestions(body.carol_questions)),
         }, geminiKey, coachDeadline);
 
         return jsonResponse({
@@ -1445,6 +1461,7 @@ Deno.serve(withUsageRecording("analyze-gym", async (req) => {
       const coachUsage = await attachGymCoachNotes(sb, userId, session, {
         date: body.date, kind, categories, classTypes, metrics: userMetrics, notes: rawNotes, sets: newSets,
         planLink: parsePlanLink(body), meta: newMeta,
+        answers: recordAnswersSection(parseAnsweredQuestions(body.carol_questions)),
       }, geminiKey, coachDeadline);
 
       return jsonResponse({ session, sets: savedNewSets, ...usageField(addUsage(inferUsage, coachUsage)) });
@@ -1672,6 +1689,7 @@ Deno.serve(withUsageRecording("analyze-gym", async (req) => {
     const coachUsage = await attachGymCoachNotes(sb, userId, session, {
       date, kind, categories: mergedCategories, classTypes: mergedClassTypes, metrics: mergeMetrics(analysis.metrics), notes: rawNotes,
       sets: setRows, planLink: parsePlanLink(body), meta: parseExercisesMeta(body.exercises_meta),
+      answers: recordAnswersSection(parseAnsweredQuestions(body.carol_questions)),
     }, geminiKey, coachDeadline);
 
     // Com reviewed:true não houve leitura agora (a análise está vazia): o preview
