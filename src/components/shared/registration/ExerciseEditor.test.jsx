@@ -230,3 +230,19 @@ describe('ExerciseEditor — stepper sem valores absurdos', () => {
     expect(screen.getByLabelText(/^Peso da série 1 \(kg\) —/)).toHaveAttribute('min', '0');
   });
 });
+
+describe('ExerciseEditor — um aberto de cada vez e séries feitas (#95, #108)', () => {
+  it('abrir um exercício fecha o outro; o aberto e o concluído marcam-se no bloco', () => {
+    const feito = newExercise({ name: 'Supino', type: 'forca', sets: [{ ...newSet(), reps: '10', weight: '50', done: true }] });
+    render(<Harness initial={[newExercise({ name: 'Prensa', type: 'forca' }), feito]} />);
+    const [prensa, supino] = screen.getAllByTestId('exercicio-bloco');
+    expect(supino).toHaveAttribute('data-concluido', 'true');
+    fireEvent.click(screen.getByRole('button', { name: 'Abrir Prensa' }));
+    expect(prensa).toHaveAttribute('data-open', 'true');
+    fireEvent.click(screen.getByRole('button', { name: 'Abrir Supino' }));
+    expect(prensa).toHaveAttribute('data-open', 'false');
+    expect(supino).toHaveAttribute('data-open', 'true');
+    // A série feita é uma linha verde com os valores.
+    expect(screen.getByTestId('serie-feita')).toHaveTextContent('Série 1 · 10 reps × 50 kg');
+  });
+});

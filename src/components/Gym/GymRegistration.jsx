@@ -679,6 +679,10 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
   const [confirmPlanSets, setConfirmPlanSets] = useState(false);
   const [saveAfterMark, setSaveAfterMark] = useState(false);
   const unconfirmedPlanSets = exercises.some(hasUnconfirmedPlanSets);
+  /* #105: exercícios por terminar (alguma série sem ✓) → pergunta antes de gravar. Sem prints:
+     com prints, as séries vêm da leitura. As séries do plano por confirmar têm o seu próprio aviso. */
+  const [confirmUnfinished, setConfirmUnfinished] = useState(false);
+  const unfinishedExercises = exercises.filter(ex => (ex.name || '').trim() && ex.sets.some(st => !st.done));
   const handleAnalyze = () => {
     // Com prints, as séries do plano por confirmar caem e a leitura dos prints
     // preenche o que ele fez — "marcar todas" ali poria os alvos por cima do
@@ -688,8 +692,21 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
       setConfirmPlanSets(true);
       return;
     }
+    if (!isEditing && !photos.length && unfinishedExercises.length) {
+      exit.hideUnsaved();
+      setConfirmUnfinished(true);
+      return;
+    }
     doAnalyze();
   };
+  const closeUnfinishedDialog = () => { exit.cancelLeave(); setConfirmUnfinished(false); };
+  useEffect(() => {
+    if (!confirmUnfinished) return;
+    const onKey = (e) => { if (e.key === 'Escape') closeUnfinishedDialog(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [confirmUnfinished]);
   // "Voltar" (ou Escape, ou tocar fora) fecha sem gravar e esquece uma saída
   // pedida pelo "Gravar e sair" (M5).
   const closePlanSetsDialog = () => { exit.cancelLeave(); setConfirmPlanSets(false); };
@@ -752,6 +769,38 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
   );
 
   // Os diálogos das séries do plano ficam por cima, como antes.
+  const unfinishedDialog = confirmUnfinished ? (
+    <>
+      <div className="fixed inset-0 z-40 bg-[var(--bg-scrim)]" onClick={closeUnfinishedDialog} aria-hidden="true" />
+      <div
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby="gr-unfinished-title"
+        aria-describedby="gr-unfinished-desc"
+        data-testid="gr-unfinished-dialog"
+        className="fixed inset-x-0 bottom-0 z-50 p-4 pb-[calc(env(safe-area-inset-bottom)+16px)] rounded-t-2xl border-t border-[var(--border-glass)] bg-[var(--bg-sheet)] shadow-2xl"
+      >
+        <p id="gr-unfinished-title" className="text-sm font-bold text-[var(--text-1)] mb-1">
+          {unfinishedExercises.length === 1 ? 'Tens um exercício por terminar' : `Tens ${unfinishedExercises.length} exercícios por terminar`}
+        </p>
+        <p id="gr-unfinished-desc" className="text-[12px] text-[var(--text-2)] mb-3 break-words">
+          {unfinishedExercises.map(ex => ex.name.trim()).join(', ')} — há séries sem ✓. Queres gravar o treino assim?
+        </p>
+        <div className="flex flex-col gap-2">
+          <button type="button" autoFocus onClick={() => { setConfirmUnfinished(false); doAnalyze(); }}
+            className="min-h-[44px] rounded-xl text-[13px] font-bold"
+            style={{ background: 'var(--mod-ginasio-to)', color: 'var(--gym-ink)' }}>
+            Gravar assim
+          </button>
+          <button type="button" onClick={closeUnfinishedDialog}
+            className="min-h-[44px] rounded-xl text-[13px] font-bold border border-[var(--border-glass-strong)] text-[var(--text-1)]">
+            Cancelar e continuar o treino
+          </button>
+        </div>
+      </div>
+    </>
+  ) : null;
+
   const planSetsDialog = confirmPlanSets ? (
     <>
       {confirmPlanSets && (
@@ -801,7 +850,7 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
       isSaving={isSaving}
       confirmation={confirmation}
       primaryAction={primaryAction}
-      overlays={planSetsDialog}
+      overlays={<>{planSetsDialog}{unfinishedDialog}</>}
     >
       {/* Um cartão por passo (RegistrationSection): o espaço entre campos é o
           `gap` da secção — os `mb-*` dos filhos diretos deixam de contar. */}
@@ -908,24 +957,6 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
       </RegistrationSection>
 
       <RegistrationSection step={2} title="Exercícios" done={exercises.length > 0} className="[&>*]:mb-0!">
-        {/* Prints (opcional) — a Carol tira deles os exercícios e as métricas.
-            Escondido a editar: editar é sempre pelos
-            campos, sem foto nova (mesmo padrão da Corrida/Refeição). */}
-        {!isEditing && (
-          <PhotoReadSection
-            photos={photos}
-            maxPhotos={MAX_PHOTOS}
-            onSelect={handlePhotoSelect}
-            onRemove={removePhoto}
-            // Bug #72: sem botão "Ler os prints e preencher" — a Carol lê-os ao
-            // "Analisar treino" (analyze-gym, reviewed=false) e o que escreveste
-            // ganha sempre ao que ela ler (mergeMetrics, mergeTypedWithRead).
-            autoReadNote="Ao analisar, leio os prints sozinha. O que escreveres aqui ganha sempre ao que eu ler — não apago nada."
-            reading={reading}
-            note={readNote}
-          />
-        )}
-
         <ExerciseEditor
           exercises={exercises}
           onChange={(next) => { setExercises(next); setIsFormDirty(true); }}
@@ -996,13 +1027,18 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
                 // min-h-[44px] em vez de aspect-square: dez celulas de 44px de LARGURA nao
                 // cabem em 358px, e o piso do handoff e de altura (44 de largura so
                 // se exige a botoes que sao so icone).
-                className={`flex-1 min-h-[44px] rounded-lg flex items-center justify-center text-[13px] font-bold transition-colors border shadow-sm ${exertion == i + 1 ? 'bg-[var(--mod-ginasio-to)]/15 border-[var(--mod-ginasio-to)]/40 text-[var(--mod-ginasio-to)]' : 'bg-[var(--surface-glass)] border-[var(--border-glass)] text-[var(--text-3)]'}`}
+                aria-pressed={exertion == i + 1}
+                // #107: o escolhido em destaque — cheio na cor do módulo, número escuro e maior, contorno claro.
+                className={`flex-1 min-h-[44px] rounded-lg flex items-center justify-center font-bold transition-colors border shadow-sm ${exertion == i + 1 ? 'bg-[var(--mod-ginasio-to)] border-[var(--text-1)] text-[var(--gym-ink)] text-[16px] font-black ring-2 ring-[var(--mod-ginasio-to)]/45' : 'bg-[var(--surface-glass)] border-[var(--border-glass)] text-[var(--text-3)] text-[13px]'}`}
               >
                 {i + 1}
               </button>
             ))}
           </div>
-          <p className="text-[11px] text-[var(--text-3)] mt-1.5">1 = Muito leve · 10 = Máximo. Só preenche se sentires que ajuda a explicar como correu.</p>
+          <p className="text-[11px] text-[var(--text-3)] mt-1.5">
+            {exertion ? <strong className="text-[var(--text-1)]">Escolheste {exertion}. </strong> : null}
+            1 = Muito leve · 10 = Máximo. Só preenche se sentires que ajuda a explicar como correu.
+          </p>
         </div>
 
         <div>
@@ -1017,22 +1053,28 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
             placeholder="Contexto do treino..."
             className="resize-none"
           />
-          {!isEditing && photos.length === 0 && notes.trim().length >= 3 && (
-            <>
-              <button
-                type="button"
-                onClick={handleRead}
-                disabled={reading}
-                className="mt-2 min-h-[44px] px-3 rounded-xl border text-[12px] font-bold disabled:opacity-60"
-                style={{ borderColor: 'color-mix(in srgb, var(--mod-ginasio-to) 55%, transparent)', color: 'var(--mod-ginasio-to)', background: 'color-mix(in srgb, var(--mod-ginasio-to) 10%, transparent)' }}
-              >
-                {reading ? 'A ler…' : 'Preencher o formulário com isto'}
-              </button>
-              <p role="status" aria-live="polite" className="text-[12px] mt-2 text-[var(--text-2)]">{readNote?.text || ''}</p>
-            </>
-          )}
+          {/* #99: sem o botão «Preencher o formulário com isto» — as observações seguem com o
+              registo e a Carol lê-as ao analisar. */}
         </div>
       </RegistrationSection>
+
+      {/* #98: os prints da app de treino vêm no fim — tiram-se depois de registar os exercícios,
+          antes de gravar. Escondido a editar: editar é sempre pelos campos, sem foto nova (mesmo
+          padrão da Corrida/Refeição). Bug #72: sem botão "Ler os prints e preencher" — a Carol lê-os
+          ao "Analisar treino" e o que escreveste ganha sempre ao que ela ler. */}
+      {!isEditing && (
+        <RegistrationSection step={4} title="Prints da sessão" optional done={photos.length > 0} className="[&>*]:mb-0!">
+          <PhotoReadSection
+            photos={photos}
+            maxPhotos={MAX_PHOTOS}
+            onSelect={handlePhotoSelect}
+            onRemove={removePhoto}
+            autoReadNote="Ao analisar, leio os prints sozinha. O que escreveres aqui ganha sempre ao que eu ler — não apago nada."
+            reading={reading}
+            note={readNote}
+          />
+        </RegistrationSection>
+      )}
 
         {/* A intervenção da Carol neste registo — o mesmo componente do cartão
             e do "Registo Guardado" (2026-10-05): "Falar com a Carol" não
