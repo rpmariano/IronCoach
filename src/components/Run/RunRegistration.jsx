@@ -1016,7 +1016,9 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
       try {
         const { dataUrl, base64 } = await compressImage(file);
         setRunPhotos(prev => [...prev, { dataUrl, base64 }]);
+        // Prints novos: a leitura anterior (bem ou mal sucedida) deixa de valer (#106).
         setReadState(null);
+        setReadAttempt(null);
         setIsFormDirty(true);
       } catch (err) {
         console.warn('Falha a processar imagem', err);
@@ -1028,6 +1030,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
   const removePhoto = (index) => {
     setRunPhotos(prev => prev.filter((_, i) => i !== index));
     setReadState(null);
+    setReadAttempt(null);
     setIsFormDirty(true);
     clearStaleMissingMetrics();
   };

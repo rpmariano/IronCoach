@@ -67,17 +67,30 @@ async function tagged(response, build) {
   return new Response(body, { status: response.status, statusText: response.statusText, headers });
 }
 
-async function cacheFirst(request) {
-  const cache = await caches.open(ASSET_CACHE);
-  const hit = await cache.match(request);
-  if (hit) return hit;
+/* A cache nunca pode impedir a app de arrancar: um CacheStorage bloqueado, cheio ou estragado
+   faz cair para a rede, como se o service worker não existisse. A resposta da rede devolve-se logo
+   (sem esperar pela cópia: mantém o streaming na 1.ª carga); a cópia para a cache faz-se depois,
+   em `waitUntil`, e uma falha aí não muda nada. */
+async function cacheFirst(request, waitUntil) {
+  let cache = null;
+  try {
+    cache = await caches.open(ASSET_CACHE);
+    const hit = await cache.match(request);
+    if (hit) return hit;
+  } catch (e) {
+    cache = null;
+  }
   const response = await fetch(request);
   // Só respostas boas e da própria origem (sem opaque, sem erros, sem parciais).
-  if (response && response.ok && response.status === 200 && response.type === 'basic') {
-    try {
-      const meta = await readMeta(cache);
-      await cache.put(request, await tagged(response.clone(), meta.current));
-    } catch (e) { /* quota ou outro erro: serve-se na mesma */ }
+  if (cache && response && response.ok && response.status === 200 && response.type === 'basic') {
+    const copy = response.clone();
+    const save = (async () => {
+      try {
+        const meta = await readMeta(cache);
+        await cache.put(request, await tagged(copy, meta.current));
+      } catch (e) { /* quota ou outro erro: serve-se na mesma */ }
+    })();
+    if (waitUntil) waitUntil(save);
   }
   return response;
 }
@@ -111,7 +124,7 @@ self.addEventListener('fetch', (event) => {
   const req = event.request;
   if (req.method !== 'GET') return;
   if (!isCacheableAsset(req.url, self.registration.scope)) return;
-  event.respondWith(cacheFirst(req));
+  event.respondWith(cacheFirst(req, (p) => event.waitUntil(p)));
 });
 
 self.addEventListener('message', (event) => {

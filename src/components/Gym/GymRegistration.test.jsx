@@ -1415,3 +1415,20 @@ describe('GymRegistration — #106: as perguntas da leitura seguem com o registo
     expect(mocks.invoke.mock.calls[1][1].body).not.toHaveProperty('carol_questions');
   });
 });
+
+describe('GymRegistration — #106: trocar um print volta a pedir a leitura', () => {
+  beforeEach(() => {
+    mocks.invoke.mockReset();
+    useAppStore.setState({ profile: PROFILE, gymSessions: [], exerciseLocker: [], planItemPrefill: null });
+  });
+
+  it('tirar o print lido e juntar outro (mesma contagem) volta ao «Ler os prints e preencher»', async () => {
+    render(<GymRegistration onClose={vi.fn()} />);
+    await selectPhoto(); // lido (leitura falhada simulada): o Analisar abre-se
+    expect(screen.getByRole('button', { name: /Analisar treino/i })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Remover print 1' }));
+    await selectPhoto({ ler: false });
+    expect(screen.getByRole('button', { name: 'Ler os prints e preencher' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Analisar treino/i })).not.toBeInTheDocument();
+  });
+});

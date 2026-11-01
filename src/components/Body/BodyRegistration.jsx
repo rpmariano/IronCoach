@@ -370,7 +370,9 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
       try {
         const { dataUrl, base64 } = await compressImage(file);
         setPhotos(prev => [...prev, { dataUrl, base64 }]);
+        // Prints novos: a leitura anterior (bem ou mal sucedida) deixa de valer (#106).
         setReadState(null);
+        setReadAttempt(null);
         setIsFormDirty(true);
       } catch (err) {
         console.warn('Falha a processar imagem', err);
@@ -378,7 +380,7 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
     }
   };
 
-  const removePhoto = (idx) => { setPhotos(prev => prev.filter((_, i) => i !== idx)); setReadState(null); setIsFormDirty(true); };
+  const removePhoto = (idx) => { setPhotos(prev => prev.filter((_, i) => i !== idx)); setReadState(null); setReadAttempt(null); setIsFormDirty(true); };
 
   // ── Ler os prints para o formulário (sem gravar) ─────────────────────
   const handleRead = async () => {

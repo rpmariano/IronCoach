@@ -358,14 +358,16 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
       try {
         const { dataUrl, base64 } = await compressImage(file);
         setPhotos(prev => [...prev, { dataUrl, base64 }]);
+        // Prints novos: a leitura anterior (bem ou mal sucedida) deixa de valer (#106).
         setReviewedPhotos(null);
+        setReadAttempt(null);
       } catch (err) {
         console.warn('Falha a processar imagem', err);
       }
     }
   };
 
-  const removePhoto = (idx) => { setPhotos(prev => prev.filter((_, i) => i !== idx)); setReviewedPhotos(null); };
+  const removePhoto = (idx) => { setPhotos(prev => prev.filter((_, i) => i !== idx)); setReviewedPhotos(null); setReadAttempt(null); };
 
   /* O plano do dia (F3): os treinos pendentes do tipo, nos planos aceites.
      Vindo do botão "Registar sessão" já está ligado, sem banner. */

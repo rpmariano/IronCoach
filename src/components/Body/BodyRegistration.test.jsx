@@ -757,3 +757,19 @@ describe('BodyRegistration — #106: as perguntas da leitura seguem com a avalia
     expect(body).not.toHaveProperty('fasting');
   });
 });
+
+describe('BodyRegistration — #106: trocar um print volta a pedir a leitura', () => {
+  beforeEach(() => {
+    mocks.invoke.mockReset();
+    useAppStore.setState({ profile: PROFILE, bodyAssessments: [] });
+  });
+
+  it('tirar o print lido e juntar outro volta ao «Ler os prints e preencher»', async () => {
+    render(<BodyRegistration onClose={vi.fn()} />);
+    await selectPhoto();
+    expect(screen.getByRole('button', { name: /Analisar avaliação/ })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Remover print 1' }));
+    await selectPhoto({ ler: false });
+    expect(screen.getByRole('button', { name: 'Ler os prints e preencher' })).toBeInTheDocument();
+  });
+});
