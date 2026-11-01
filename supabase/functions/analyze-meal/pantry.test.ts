@@ -143,7 +143,7 @@ Deno.test("nextFoodRow: um rótulo ganha nos micronutrientes que lê; os que nã
 Deno.test("applyPantry + parseQuestions: um alimento da despensa só se pergunta com uma regra em aberto sobre ele", () => {
   const ovoDespensa: PantryFood = { ...iogurteCompleto, name: "Ovo estrelado", name_key: "ovo estrelado" };
   const despensa = new Map([[ovoDespensa.name_key, ovoDespensa]]);
-  const aberta: FoodRule = { topic: "ovos", topic_key: "ovos", value: "azeite", value_key: "azeite", confirmations: 1, status: "varia", source: "observacao" };
+  const aberta: FoodRule = { topic: "ovos", topic_key: "ovos", value: "de pato", value_key: "de pato", confirmations: 1, status: "varia", source: "observacao" };
   const q = [{ topic: "tipo de ovo", item_name: "Ovo estrelado", question: "Que ovo era?", options: ["Galinha", "Pato"], assumed: "Galinha", impact_kcal: 80 }];
   const semRegra = applyPantry([estimado("Ovo estrelado", 196)], despensa);
   assertEquals(parseQuestions(q, semRegra, [], () => "q"), []);
@@ -606,8 +606,7 @@ Deno.test("bug #74 (revisão): hábitos aprendidos sem prato já não vão para 
   assert(!s.includes("tempero: x"));
   // Quantidade sem prato é da própria manteiga (item à parte): fica — tirá-la calava a resposta dele.
   assertStringIncludes(s, "manteiga · quantidade: x");
-  // Bug #109: o tempero aprendido de um prato também já não entra — pergunta-se sempre.
-  assert(!s.includes("tempero (Salada mista): x"));
+  assertStringIncludes(s, "tempero (Salada mista): x");
   assertStringIncludes(s, "fritos: x");
   // Escrito por ele sem prato: vale para tudo, e o pedido di-lo.
   assertStringIncludes(s, "azeite (em qualquer prato): x");

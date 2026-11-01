@@ -242,7 +242,7 @@ const QUESTIONS_RULE =
   "que usaste em estimated_quantity_grams. Nunca sobre um alimento com gramas indicadas pelo utilizador.\n" +
   "Nunca sobre o que as observações já dizem, sobre um tema de \"Como cozinha, tempera e quanto costuma pôr\", nem sobre um alimento da " +
   "lista que ele tem guardada. EXCEÇÃO — os ingredientes de confeção opcionais (manteiga, margarina, azeite, óleo, " +
-  "molhos, maionese, natas): se um alimento desta refeição os pode levar e as observações não dizem, pergunta SEMPRE, " +
+  "molhos, maionese): se um alimento desta refeição os pode levar e as observações não dizem, pergunta SEMPRE, " +
   "mesmo num alimento guardado e mesmo que ele já tenha respondido noutra refeição — nunca os assumas do que foi " +
   "antes. Uma só pergunta por ingrediente e alimento (nunca \"levou manteiga?\" e \"quanta manteiga?\" na mesma " +
   "refeição). Na estimativa, usa o mais provável e diz qual foi em assumed. Cada pergunta: kind, " +
