@@ -7,6 +7,7 @@ import { useAppStore, sliceReady } from '../../store';
 import { fmtNumber } from '../../utils/dashboardVerdicts';
 import { LOW_CONFIDENCE } from '@formulas/racePrediction.ts';
 import { formatDuration } from '../../utils/run';
+import { axisDate } from './crossPeriod';
 
 /* Ponto 6 do redesenho:
    - O `predictionPlugin` desenhava uma caixa com texto DENTRO da tela
@@ -113,7 +114,12 @@ export default function RacePredictionChart({ vdotTrend = [], prediction, compar
     },
     scales: {
       x: { grid: { display: false }, ticks: { display: false }, border: { display: false } },
-      y: { grid: { color: 'rgba(255, 255, 255, 0.05)' }, ticks: { display: false }, border: { display: false } }
+      // Pedido do Rui (2026-11-01): o VDOT na vertical, com escala; as datas vão nos cantos (axis).
+      y: {
+        grid: { color: 'rgba(255, 255, 255, 0.05)' },
+        ticks: { display: true, color: RUN, maxTicksLimit: 4, font: { size: 10 }, padding: 4, callback: (v) => fmtNumber(v, Number.isInteger(v) ? 0 : 1) },
+        border: { display: false },
+      }
     }
   }), [deduped]);
 
@@ -130,8 +136,17 @@ export default function RacePredictionChart({ vdotTrend = [], prediction, compar
   const base = prediction ? descreverBase(prediction.basedOn) : null;
   const lowConfidence = !!prediction && (Number(prediction.confidence) || 0) < LOW_CONFIDENCE;
 
-  const legend = [{ label: `VDOT ${lastVdot !== null ? fmtNumber(lastVdot, 1) : '—'}`, color: RUN, shape: 'line' }];
-  if (prediction) legend.push({ label: 'Previsão da prova', color: 'var(--race)' });
+  /* Pedido do Rui (2026-11-01): a legenda tinha «Previsão da prova» a âmbar sem nenhuma série
+     âmbar no gráfico — a previsão é o número grande, não uma linha. Sai da legenda; a linha é só o
+     VDOT, e diz-se que o valor é o do último treino de qualidade. O eixo x passa a ter as datas do
+     primeiro e do último ponto (antes os cantos eram o mínimo e o máximo do VDOT). */
+  const legend = [{ label: `VDOT${lastVdot !== null ? ` · último ${fmtNumber(lastVdot, 1)}` : ''}`, color: RUN, shape: 'line' }];
+  const dateAxis = hasTrend ? (() => {
+    const first = deduped[0].date;
+    const last = deduped[deduped.length - 1].date;
+    const withYear = String(first).slice(0, 4) !== String(last).slice(0, 4);
+    return { min: axisDate(first, withYear), max: axisDate(last, withYear) };
+  })() : undefined;
 
   return (
     <ChartFrame
@@ -147,11 +162,18 @@ export default function RacePredictionChart({ vdotTrend = [], prediction, compar
         : undefined}
       hint="de sempre"
       legend={hasTrend ? legend : []}
-      axis={hasTrend ? { min: fmtNumber(Math.min(...vdots), 1), max: fmtNumber(Math.max(...vdots), 1) } : undefined}
+      axis={dateAxis}
       height={hasTrend ? 200 : 0}
       footer={(base || lowConfidence || !hasTrend || compareNote) ? (
         <>
           {base && <p data-testid="race-prediction-base" style={{ margin: 0 }}>{base.charAt(0).toUpperCase() + base.slice(1)}.</p>}
+          {/* A previsão (Riegel) sai da corrida com melhor ritmo de sempre; a linha é o VDOT dos
+              treinos de qualidade. Sem isto, «VDOT 28» ao lado de «1:49:48» parecia incoerente. */}
+          {prediction && hasTrend && (
+            <p data-testid="race-prediction-fonte" style={{ margin: base ? '4px 0 0' : 0 }}>
+              A previsão vem do teu melhor ritmo, não da linha do VDOT — essa mostra os treinos de qualidade.
+            </p>
+          )}
           {lowConfidence && (
             <p data-testid="race-prediction-confianca" style={{ margin: base ? '4px 0 0' : 0 }}>
               Confiança baixa: a corrida de base é bem mais curta do que a prova, por isso é uma extrapolação. Regista uma mais longa e o número aperta.
