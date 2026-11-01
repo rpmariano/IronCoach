@@ -26,7 +26,7 @@ import {
 import { geminiHeaders, geminiUrl, geminiWithFallback, thinkingConfig } from "../_shared/geminiModel.ts";
 import { addUsage, emptyUsage, type GeminiUsage, usageFromGemini } from "../_shared/geminiUsage.ts";
 import { withUsageRecording } from "../_shared/usageRecorder.ts";
-import { findByClientRequestId, insertOnce, parseClientRequestId } from "../_shared/idempotency.ts";
+import { findByClientRequestId, insertOnce, parseClientRequestId, settleReplay, STILL_SAVING_MESSAGE } from "../_shared/idempotency.ts";
 import {
   applyPantry, type CarolQuestion, type CookingFact, EMPTY_PANTRY, fetchPantry, knowledgeSection, learnFromMeal, learnRules,
   isMicroColumn, microFromModel, optionGrams, parseCookingFacts, portionFacts, quantityAnswerGrams, parseQuestions, pickMealItem, remapQuestionItems, splitKnownWritten,
@@ -1421,6 +1421,13 @@ async function attachMealCoachNotes(
 
 // O consumo do Gemini que a resposta traz fica gravado em ai_usage pelo
 // servidor (_shared/usageRecorder.ts), não pela app.
+/** A resposta de uma tentativa repetida: a mesma forma das duas respostas
+ *  de registo — `meal.meal_items` (manual) e `items` (fotos). */
+// deno-lint-ignore no-explicit-any
+export function mealReplayBody(meal: any, items: any[] | null | undefined) {
+  return { meal: { ...meal, meal_items: items ?? [] }, items: items ?? [], replayed: true };
+}
+
 Deno.serve(withUsageRecording("analyze-meal", async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -1668,13 +1675,23 @@ Deno.serve(withUsageRecording("analyze-meal", async (req) => {
     // tentativa reenviada devolve a refeição já gravada, sem gravar outra.
     // Daqui para baixo só há registo novo, edição e reanálise (meal_id).
     const clientRequestId = parseClientRequestId(body.client_request_id);
+    // A refeição de outra tentativa, já com os alimentos (settleReplay espera
+    // por eles se acabou de ser gravada); null se essa tentativa a desfez. A
+    // resposta serve os dois caminhos: o manual lê meal.meal_items e o das
+    // fotos lê items (MealRegistration.jsx) — sem `items` a refeição entrava
+    // com 0 kcal (revisão de 2026-11-01).
     // deno-lint-ignore no-explicit-any
-    const replay = async (meal: any) => {
-      const { data: mealItems } = await sb.from("meal_items").select("*").eq("meal_id", meal.id);
-      return jsonResponse({ meal: { ...meal, meal_items: mealItems ?? [] }, replayed: true });
+    const settled = async (meal: any) => {
+      const s = await settleReplay(sb, "meals", meal.id, "meal_items", "meal_id");
+      return "gone" in s ? null : jsonResponse(mealReplayBody(s.row, s.children));
     };
+    // deno-lint-ignore no-explicit-any
+    const replay = async (meal: any) =>
+      (await settled(meal)) ?? jsonResponse({ error: STILL_SAVING_MESSAGE, retry: true }, 409);
     const alreadySaved = !body.meal_id ? await findByClientRequestId(sb, "meals", userId, clientRequestId) : null;
-    if (alreadySaved) return await replay(alreadySaved);
+    // Desfeita entretanto: este pedido grava-a de novo, como se fosse o primeiro.
+    const alreadyReply = alreadySaved ? await settled(alreadySaved) : null;
+    if (alreadyReply) return alreadyReply;
 
     // ── Modo manual: registo sem fotos, todos os alimentos duma vez ────
     // O cliente só acumula {name, grams} localmente ao "Adicionar alimento"

@@ -67,8 +67,12 @@ const EPS_KM = 0.005;
 /**
  * O tempo acumulado até ao km `d`, pelas voltas, ou null se não chegam lá.
  * Cada volta conta pela distância que tem; a marca a meio de uma volta
- * interpola-se no ritmo dessa volta. Uma linha incompleta antes da marca
- * (sem distância ou sem tempo) deixa o acumulado por saber: null.
+ * interpola-se no ritmo dessa volta. Uma volta de 0 km ou sem tempo (o
+ * «Rest» a 0,00 km de um treino de intervalos, ou uma linha meio lida) não
+ * entra: nem soma distância nem tempo — antes anulava a corrida inteira
+ * (revisão de 2026-11-01). A volta de aquecimento entra: as voltas gravadas
+ * não dizem qual é (o analyze-run guarda só distância e tempo), e com ela o
+ * pace dos primeiros D km só pode sair mais lento, nunca um recorde inventado.
  */
 export function timeToDistance(splits: SplitEntry[] | null | undefined, d: number): number | null {
   if (!Array.isArray(splits) || !(d > 0)) return null;
@@ -77,7 +81,7 @@ export function timeToDistance(splits: SplitEntry[] | null | undefined, d: numbe
   for (const s of splits) {
     const sd = Number(s?.distance_km);
     const st = Number(s?.time_seconds);
-    if (!(sd > 0) || !(st > 0)) return null;
+    if (!(sd > 0) || !(st > 0)) continue;
     if (dist + sd >= d - EPS_KM) return time + st * Math.min(1, Math.max(0, d - dist) / sd);
     dist += sd;
     time += st;

@@ -15,7 +15,9 @@ Deno.test("timeToDistance: o acumulado até ao km D pelas voltas; o parcial curt
   assertEquals(timeToDistance([lap(1, 300), lap(1, 300), lap(0.3, 60)], 2), 600);
   assertEquals(timeToDistance([lap(1, 300), lap(0.3, 60)], 2), null);
   assertEquals(timeToDistance([lap(2, 600), lap(2, 500)], 3), 850);
-  assertEquals(timeToDistance([lap(1, 300), { distance_km: 1, time_seconds: null }, lap(1, 300)], 3), null);
+  // Uma volta sem tempo ou de 0 km (o «Rest» dos intervalos) não conta nem anula (revisão de 2026-11-01).
+  assertEquals(timeToDistance([lap(1, 300), { distance_km: 1, time_seconds: null }, lap(0, 90), lap(1, 300), lap(1, 300)], 3), 900);
+  assertEquals(timeToDistance([lap(1, 300), { distance_km: 1, time_seconds: null }, lap(1, 300)], 3), null); // só 2 km contam
   assertEquals(timeToDistance(null, 5), null);
 });
 

@@ -95,14 +95,24 @@
     "expect": {"pace": 300, "date": "2026-09-01", "count": 1, "runCount": 0, "source": "split"}
   },
   {
-    "name": "uma volta incompleta antes da marca deixa o acumulado por saber",
+    "name": "uma volta sem distância ou sem tempo não conta e não anula a corrida: as outras chegam aos 5 km",
     "input": {
       "targetKm": 5,
       "runs": [
-        {"date": "2026-09-02", "distance_km": 8, "duration_seconds": 2400, "details": {"splits": [{"distance_km": 1, "time_seconds": 300}, {"distance_km": null, "time_seconds": 300}, {"distance_km": 1, "time_seconds": 300}, {"distance_km": 1, "time_seconds": 300}, {"distance_km": 1, "time_seconds": 300}, {"distance_km": 1, "time_seconds": 300}, {"distance_km": 1, "time_seconds": 300}, {"distance_km": 1, "time_seconds": 300}]}}
+        {"date": "2026-09-02", "distance_km": 8, "duration_seconds": 2400, "details": {"splits": [{"distance_km": 1, "time_seconds": 300}, {"distance_km": null, "time_seconds": 300}, {"distance_km": 1, "time_seconds": null}, {"distance_km": 1, "time_seconds": 290}, {"distance_km": 1, "time_seconds": 290}, {"distance_km": 1, "time_seconds": 290}, {"distance_km": 1, "time_seconds": 290}, {"distance_km": 1, "time_seconds": 290}, {"distance_km": 1, "time_seconds": 290}]}}
       ]
     },
-    "expect": null
+    "expect": {"pace": 292, "date": "2026-09-02", "count": 1, "runCount": 0, "source": "split"}
+  },
+  {
+    "name": "intervalos: as voltas «Rest» a 0,00 km (paragem) não anulam a corrida nem contam tempo",
+    "input": {
+      "targetKm": 5,
+      "runs": [
+        {"date": "2026-09-06", "distance_km": 7, "duration_seconds": 2400, "details": {"splits": [{"distance_km": 1.5, "time_seconds": 540}, {"distance_km": 1, "time_seconds": 240}, {"distance_km": 0, "time_seconds": 90}, {"distance_km": 1, "time_seconds": 240}, {"distance_km": 0, "time_seconds": 90}, {"distance_km": 1, "time_seconds": 240}, {"distance_km": 0, "time_seconds": 90}, {"distance_km": 1, "time_seconds": 240}, {"distance_km": 1.5, "time_seconds": 540}]}}
+      ]
+    },
+    "expect": {"pace": 276, "date": "2026-09-06", "count": 1, "runCount": 0, "source": "split"}
   },
   {
     "name": "sem distância gravada, as voltas dizem se chega a D",
