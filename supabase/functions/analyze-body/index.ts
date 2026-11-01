@@ -358,24 +358,41 @@ const BODY_ANALYSIS_RULES = carolRecordAnalysisRules({
    não sabe. Relatado a 2026-10-01: ela fechou com "pesa-te na mesma rotina
    matinal e em jejum" a quem já o fazia — assumiu que não, sem ter como
    saber. A hora é obrigatória no formulário; o jejum só se sabe se o atleta
-   o escreveu nas observações, por isso, não o sabendo, pergunta. */
-function weighingConditions(time: string | null, notes: string | null): string {
+   o escreveu nas observações, por isso, não o sabendo, pergunta.
+   Bug #103 (30-10): a pergunta do jejum ficava no «Para a próxima», depois de
+   a análise estar feita. O formulário passa a perguntá-lo antes de enviar
+   (`fasting`): sabido, é um facto da pesagem e não se volta a perguntar. Sem
+   ele (cliente antigo), fica como antes. */
+export function weighingConditions(time: string | null, notes: string | null, fasting: boolean | null = null): string {
   const quando = time
     ? `A pesagem foi feita às ${time} (hora local do atleta).`
     : "A hora da pesagem não foi indicada.";
-  const jejum = /jejum/i.test(notes ?? "")
-    ? "O atleta falou do jejum nas observações — usa o que ele disse."
-    : "Não sabes se o atleta estava em jejum.";
+  const jejum = fasting === true
+    ? "O atleta pesou-se em jejum (respondeu no formulário)."
+    : fasting === false
+      ? "O atleta NÃO estava em jejum (respondeu no formulário): a comida e a água do dia pesam na balança e mexem na " +
+        "água e na gordura da bioimpedância — lê a variação com isso em conta, sem o repreender."
+      : /jejum/i.test(notes ?? "")
+        ? "O atleta falou do jejum nas observações — usa o que ele disse."
+        : "Não sabes se o atleta estava em jejum.";
+  const ask = fasting === null
+    ? "- Se as condições importam para ler a evolução (ex.: a hora é tardia, ou varia, ou não sabes se estava " +
+      "em jejum), usa o bloco \"Para a próxima\" para PERGUNTAR — por exemplo se estava em jejum — em vez de " +
+      "dares uma instrução.\n"
+    : "- O jejum já o sabes (respondeu antes da análise): NÃO o perguntes, nem no \"Para a próxima\".\n";
   return `CONDIÇÕES DA PESAGEM: ${quando} ${jejum}\n` +
     "- NUNCA presumas as condições em que o atleta se pesa (hora, jejum, rotina, balança). Não lhe digas " +
     "para se pesar \"de manhã\" ou \"em jejum\" como se não o fizesse: não sabes se faz.\n" +
-    "- Se as condições importam para ler a evolução (ex.: a hora é tardia, ou varia, ou não sabes se estava " +
-    "em jejum), usa o bloco \"Para a próxima\" para PERGUNTAR — por exemplo se estava em jejum — em vez de " +
-    "dares uma instrução.\n" +
+    ask +
     "- Se a pesagem foi de manhã cedo e o atleta já disse que estava em jejum, não voltes a perguntar nem a recomendar.\n\n";
 }
 
-function buildPrompt(notes: string | null, history: unknown[], memoryBlock: string | null = null, goalsCtx: GoalsContext | null = null, assessmentTime: string | null = null, typed: Metrics | null = null): string {
+/** O jejum respondido no formulário (bug #103): true/false, ou null se o cliente não o mandou. */
+export function parseFasting(v: unknown): boolean | null {
+  return v === true || v === false ? v : null;
+}
+
+function buildPrompt(notes: string | null, history: unknown[], memoryBlock: string | null = null, goalsCtx: GoalsContext | null = null, assessmentTime: string | null = null, typed: Metrics | null = null, fasting: boolean | null = null): string {
 
   let prompt =
     extractionRules() + typedMetricsSection(typed) + "\n\n" +
@@ -392,7 +409,7 @@ function buildPrompt(notes: string | null, history: unknown[], memoryBlock: stri
     "evolução (o que melhorou, o que piorou, ex.: peso, gordura corporal, massa muscular). " +
     "Sê direta e prática, sem alarmismos e sem dar diagnósticos médicos.\n" +
     CAROL_TONE_RULES_SHORT + "\n" +
-    weighingConditions(assessmentTime, notes) +
+    weighingConditions(assessmentTime, notes, fasting) +
     BODY_ANALYSIS_RULES + "\n" +
     carolLanguageRule(goalsCtx?.level ?? null) + "\n\n" +
     goalsReviewSection(goalsCtx?.goals ?? null, goalsCtx ?? {});
@@ -420,6 +437,8 @@ async function analyzeWithGemini(
   assessmentTime: string | null = null,
   // O que o atleta escreveu no formulário: ganha à leitura (registo unificado).
   typed: Metrics | null = null,
+  // O jejum respondido no formulário (bug #103).
+  fasting: boolean | null = null,
 ): Promise<
   {
     metrics: Record<string, number | null>;
@@ -430,7 +449,7 @@ async function analyzeWithGemini(
     goalsReview: GoalsReview;
   }
 > {
-  const parts: unknown[] = [{ text: buildPrompt(notes, history, memoryBlock, goalsCtx, assessmentTime, typed) }];
+  const parts: unknown[] = [{ text: buildPrompt(notes, history, memoryBlock, goalsCtx, assessmentTime, typed, fasting) }];
   for (const b64 of images) {
     parts.push({ inline_data: { mime_type: mime, data: b64 } });
   }
@@ -558,6 +577,8 @@ async function generateBodySummaryFromMetrics(
   assessmentTime: string | null = null,
   // Os valores vieram de prints que o atleta leu e reviu (registo unificado, `reviewed`).
   fromPrints = false,
+  // O jejum respondido no formulário (bug #103).
+  fasting: boolean | null = null,
   // `usage`: tokens desta chamada (null se não houve resposta do Gemini) —
   // antes não era devolvido, e o registo manual não contava para os custos.
 ): Promise<{ text: string | null; goalsReview: GoalsReview; usage: GeminiUsage | null }> {
@@ -576,7 +597,7 @@ async function generateBodySummaryFromMetrics(
     "És a Carol, a treinadora deste atleta amador, a comentar em primeira pessoa a avaliação corporal que ele acabou de registar.\n" +
     `${CAROL_TONE_RULES_SHORT}\n\n` +
     memoryPromptSection(memoryBlock) +
-    weighingConditions(assessmentTime, notes) +
+    weighingConditions(assessmentTime, notes, fasting) +
     (fromPrints
       ? "O atleta registou os seguintes valores de uma avaliação de composição corporal, lidos dos prints da " +
         `balança e revistos por ele:\n${metricLines}\n\n`
@@ -678,6 +699,8 @@ Deno.serve(withUsageRecording("analyze-body", async (req) => {
     const rawTime = typeof body.assessment_time === "string" && /^([01]\d|2[0-3]):[0-5]\d/.test(body.assessment_time)
       ? body.assessment_time.slice(0, 5)
       : null;
+    // O jejum respondido no formulário (bug #103); null num cliente antigo.
+    const rawFasting = parseFasting(body.fasting);
 
     const metricSelect =
       "id, date, " + METRIC_FIELDS.map((f) => f.key).join(", ");
@@ -754,7 +777,7 @@ Deno.serve(withUsageRecording("analyze-body", async (req) => {
       if (editingId) historyQuery = historyQuery.neq("id", editingId);
       const { data: history } = await historyQuery;
 
-      const summaryResult = await generateBodySummaryFromMetrics(metrics, rawNotes, history || [], geminiKey, await memoryPromise, await goalsCtxPromise, coachDeadline, rawTime);
+      const summaryResult = await generateBodySummaryFromMetrics(metrics, rawNotes, history || [], geminiKey, await memoryPromise, await goalsCtxPromise, coachDeadline, rawTime, false, rawFasting);
 
       if (editingId) {
         const { data: updated, error: updateError } = await sb
@@ -836,7 +859,7 @@ Deno.serve(withUsageRecording("analyze-body", async (req) => {
 
       let result;
       try {
-        result = await analyzeWithGemini(images, "image/jpeg", rawNotes, history || [], geminiKey, await memoryPromise, await goalsCtxPromise, extractionDeadline, rawTime);
+        result = await analyzeWithGemini(images, "image/jpeg", rawNotes, history || [], geminiKey, await memoryPromise, await goalsCtxPromise, extractionDeadline, rawTime, null, rawFasting);
       } catch (e) {
         return jsonResponse({ error: e instanceof Error ? e.message : "Falha na reanálise." }, 502);
       }
@@ -909,7 +932,7 @@ Deno.serve(withUsageRecording("analyze-body", async (req) => {
 
     // 2a. Já revisto: o resumo faz-se dos valores do formulário, sem nova leitura.
     if (reviewed) {
-      const summaryResult = await generateBodySummaryFromMetrics(typed!, rawNotes, history || [], geminiKey, await memoryPromise, await goalsCtxPromise, coachDeadline, rawTime, true);
+      const summaryResult = await generateBodySummaryFromMetrics(typed!, rawNotes, history || [], geminiKey, await memoryPromise, await goalsCtxPromise, coachDeadline, rawTime, true, rawFasting);
       const classifications = sanitizeClassifications(body.classifications, typed!);
       if (typeof body.classifications?.source_app === "string") {
         classifications.source_app = normalizarFonteCorpo(body.classifications.source_app);
@@ -939,7 +962,7 @@ Deno.serve(withUsageRecording("analyze-body", async (req) => {
     // 2b. Análise Gemini — todas as imagens numa só chamada (partes múltiplas)
     let result;
     try {
-      result = await analyzeWithGemini(images, mime, rawNotes, history || [], geminiKey, await memoryPromise, await goalsCtxPromise, extractionDeadline, rawTime, typed);
+      result = await analyzeWithGemini(images, mime, rawNotes, history || [], geminiKey, await memoryPromise, await goalsCtxPromise, extractionDeadline, rawTime, typed, rawFasting);
     } catch (e) {
       await sb.storage.from("body-photos").remove(photoPaths);
       return jsonResponse({ error: e instanceof Error ? e.message : "Falha na análise." }, 502);

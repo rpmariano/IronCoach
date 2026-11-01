@@ -120,6 +120,8 @@ const RESPONSE_SCHEMA = {
         properties: {
           distance_km: { type: "NUMBER", nullable: true },
           time_seconds: { type: "NUMBER", nullable: true },
+          // Bug #101: a subida de cada parcial, se a tabela a mostrar.
+          elevation_gain_m: { type: "NUMBER", nullable: true },
         },
         required: ["distance_km", "time_seconds"],
       },
@@ -211,7 +213,8 @@ function buildPrompt(
     "lado. Os números podem usar vírgula como separador decimal (ex.: '0,88' = 0.88) — converte sempre para ponto. " +
     "O tempo de cada linha está em mm:ss (ex.: '05:58' = 358 segundos) — converte sempre para segundos totais. " +
     "Isto é um campo importante e frequentemente esquecido: procura ativamente por esta tabela em TODAS as imagens " +
-    "antes de decidires devolver null.\n" +
+    "antes de decidires devolver null. Se a tabela (ou um gráfico por parcial) mostrar a subida/desnível de cada " +
+    "troço (ex.: 'Subida', 'Elev. gain', '↑ 18 m'), põe-na em elevation_gain_m dessa linha, em metros; senão null.\n" +
     "- official_time_seconds / position: só em competição, se o ecrã mostrar o tempo oficial de prova e/ou a " +
     "posição de chegada (classificação).\n" +
     "- elevation_gain_m / cadence_spm / max_cadence_spm / calories_kcal: se o ecrã principal (o mesmo onde aparece " +
@@ -356,7 +359,7 @@ async function checkAndLogAppImage(
 }
 
 
-type RunSplit = { distance_km: number | null; time_seconds: number | null };
+type RunSplit = { distance_km: number | null; time_seconds: number | null; elevation_gain_m?: number | null };
 type HrZone = { zone: number | null; minutes: number | null };
 type RunExtraction = {
   distance_km: number | null;
@@ -543,6 +546,17 @@ export function buildYesterdaySection(yesterdayISO: string, yesterdayRuns: any[]
     `NUNCA digas que ele fez apenas uma corrida de 20 km se ele registou duas corridas de 20 km (40 km)!`;
 }
 
+/* Bug #101 (corrida de 30-10): os km 4 e 5 foram mais lentos por serem a
+   subir, e a Carol atribuiu-os ao ginásio da véspera. Um parcial fora do ritmo
+   explica-se com o que os dados dizem; sem um dado que o explique, pergunta-se. */
+export const SPLIT_ANOMALY_RULE =
+  "PARCIAIS FORA DO RITMO: se um km for bem mais lento ou mais rápido do que os outros (15 s/km ou mais), explica-o " +
+  "só com o que os dados mostram — a subida desse parcial («+18 m» nos Parciais) ou o desnível da corrida. Com " +
+  "desnível acumulado relevante (10 m por km ou mais) e sem a subida de cada parcial, o percurso é a hipótese mais " +
+  "provável: diz-lo como hipótese e pergunta-lhe se esses km foram a subir. Sem nenhum dado que o explique, NUNCA lhe " +
+  "atribuas uma causa (cansaço, o treino da véspera, má gestão do ritmo): pergunta-lhe numa frase o que aconteceu " +
+  "nesse km (subida, um semáforo, abrandou de propósito?).";
+
 /** Os parciais em ritmo por volta — é daqui que ela lê a gestão do esforço
  *  (saída rápida demais, quebra no fim, final mais forte). Um parcial sem
  *  distância ou sem tempo fica de fora, mas os outros mantêm o número da volta. */
@@ -563,11 +577,12 @@ export function formatSplitsLine(splits: unknown): string | null {
     // «o último quilómetro a 4'52"».
     const full = d >= FULL_KM_MIN && d <= FULL_KM_MAX;
     const dist = d < 1 ? `${Math.round(d * 1000)} m` : `${String(Math.round(d * 100) / 100).replace(".", ",")} km`;
-    return { n: i + 1, sec: Math.round(t / d), full, dist };
-  }).filter((p): p is { n: number; sec: number; full: boolean; dist: string } => p !== null);
+    const g = Number(s?.elevation_gain_m);
+    return { n: i + 1, sec: Math.round(t / d), full, dist, gain: Number.isFinite(g) && s?.elevation_gain_m != null ? Math.round(g) : null };
+  }).filter((p): p is { n: number; sec: number; full: boolean; dist: string; gain: number | null } => p !== null);
   if (laps.length < 2) return null;
   let line = `Parciais (ritmo de cada volta, por km): ` +
-    laps.map((l) => `${l.n}${l.full ? "" : ` (${l.dist})`}: ${fmt(l.sec)}`).join(" · ");
+    laps.map((l) => `${l.n}${l.full ? "" : ` (${l.dist})`}: ${fmt(l.sec)}${l.gain !== null ? ` (+${l.gain} m)` : ""}`).join(" · ");
   const fullKm = laps.filter((l) => l.full);
   if (fullKm.length >= 2) {
     const fastest = fullKm.reduce((a, b) => (b.sec < a.sec ? b : a));
@@ -823,6 +838,7 @@ async function generateCoachNotes(
     `- Se o contexto abaixo diz que esta corrida é um novo recorde pessoal (ritmo ou distância), é a frase de abertura — com o número e a diferença para o recorde anterior, usando os "melhores por escalão" dados. É o momento de celebrar; noutro dia qualquer, o que reconheces é concreto e sem entusiasmo de claque.\n` +
     `- Usa o volume semanal e a tendência de médio prazo para comentar sobre consistência ou risco de sobrecarga/undertraining, não só sobre a corrida isolada. O "Volume semanal" abaixo é sempre a semana de CALENDÁRIO (segunda a domingo) em curso, nunca uma janela rolante — se disser "ainda a decorrer", NUNCA a trates como cumprida, terminada ou fechada.\n` +
     `- CARGA ACUMULADA DOS DIAS RECENTES: Se o atleta fez múltiplas corridas ou ginásio no dia anterior, menciona SEMPRE o volume total somado de ontem e todas as atividades feitas.\n` +
+    `- ${SPLIT_ANOMALY_RULE}\n` +
     `- Se o esforço percebido (RPE) não bater certo com o pace/distância, assinala-o no bloco "O esforço".\n` +
     `- Se marcares intervention_needed=true, o bloco "${RECORD_ANALYSIS_LABELS.next}" é só ${INTERVENTION_INVITE}\n\n` +
     `${RUN_ANALYSIS_RULES}\n\n` +
@@ -1201,10 +1217,15 @@ async function analyzeWithGemini(
 
   const rawSplits = Array.isArray(parsed.splits) ? parsed.splits : [];
   const splits: RunSplit[] = rawSplits
-    .map((s) => ({
-      distance_km: num((s as Record<string, unknown>)?.distance_km),
-      time_seconds: num((s as Record<string, unknown>)?.time_seconds),
-    }))
+    .map((s) => {
+      const gain = num((s as Record<string, unknown>)?.elevation_gain_m);
+      return {
+        distance_km: num((s as Record<string, unknown>)?.distance_km),
+        time_seconds: num((s as Record<string, unknown>)?.time_seconds),
+        // Só quando o print o mostra (bug #101); a chave não aparece sem ele.
+        ...(gain !== null && gain >= 0 && gain <= 2000 ? { elevation_gain_m: gain } : {}),
+      };
+    })
     /* OU, ao contrário das zonas logo abaixo, que exigem os dois campos.
        A assimetria é deliberada (justificada a 2026-09-22, depois de ter
        ficado por explicar): um split meio lido continua a ser informação —
@@ -1433,7 +1454,14 @@ export function cleanTypedArrays(t: RunExtraction): RunExtraction {
   if (typeof t.position === "number" && !(t.position > 0)) scalars.position = null;
   t = { ...t, ...scalars } as RunExtraction;
   const splits = Array.isArray(t.splits)
-    ? t.splits.map((x) => ({ distance_km: n((x as RunSplit)?.distance_km), time_seconds: n((x as RunSplit)?.time_seconds) }))
+    ? t.splits.map((x) => {
+      const gain = n((x as RunSplit)?.elevation_gain_m);
+      return {
+        distance_km: n((x as RunSplit)?.distance_km),
+        time_seconds: n((x as RunSplit)?.time_seconds),
+        ...(gain !== null && gain >= 0 && gain <= 2000 ? { elevation_gain_m: gain } : {}),
+      };
+    })
       .filter((x) => x.distance_km !== null || x.time_seconds !== null)
     : [];
   const zones = Array.isArray(t.hr_zones)

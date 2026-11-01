@@ -85,7 +85,7 @@ Deno.test("handler: preview não grava, o revisto não volta a ler e o escrito c
   const src = await Deno.readTextFile(new URL("./index.ts", import.meta.url));
   assertStringIncludes(src, 'if (body.mode === "preview") {');
   assertStringIncludes(src, "const reviewed = body.reviewed === true && typed !== null;");
-  assertStringIncludes(src, "await analyzeWithGemini(images, mime, rawNotes, history || [], geminiKey, await memoryPromise, await goalsCtxPromise, extractionDeadline, rawTime, typed);");
+  assertStringIncludes(src, "await analyzeWithGemini(images, mime, rawNotes, history || [], geminiKey, await memoryPromise, await goalsCtxPromise, extractionDeadline, rawTime, typed, rawFasting);");
   assertStringIncludes(src, "extractionRules() + typedMetricsSection(typed)");
   // A pré-leitura não toca no Storage nem na tabela.
   const preview = src.slice(src.indexOf('if (body.mode === "preview") {'), src.indexOf('if (body.mode === "manual") {'));

@@ -1017,6 +1017,26 @@ export function assumedValuesSection(questions: CarolQuestion[] | null | undefin
     `O comentário definitivo vem depois de ele responder.\n`;
 }
 
+/** O que ele já respondeu às perguntas dela (bug #102, almoço de 30-10:
+ *  respondeu «Vaca» e o comentário dizia «Assumi que os hambúrgueres são de
+ *  vaca»). É dele, não uma suposição. "" sem respostas. */
+export function answeredValuesSection(questions: CarolQuestion[] | null | undefined): string {
+  const answered = (questions || []).filter((q) => q && q.answer && q.item_name);
+  if (!answered.length) return "";
+  return `CONFIRMADO POR ELE — respondeu às tuas perguntas: ` +
+    answered.map((q) => `${q.item_name}: ${q.answer}`).join("; ") + ".\n" +
+    `Isto é o que ele disse, não uma suposição tua: usa-o como facto e nunca escrevas que assumiste, supuseste ou ` +
+    `estimaste estes pontos.\n`;
+}
+
+/** Depois das respostas, o comentário refaz-se se algum alimento mudou — ou se
+ *  o comentário de antes falava de uma suposição que ele entretanto confirmou
+ *  (bug #102: uma resposta igual à assumida não refazia nada, e o «assumi»
+ *  ficava). */
+export function shouldRefreshMealComment(changes: number, coachNotes: string | null | undefined): boolean {
+  return changes > 0 || /\bassum\w*/i.test(coachNotes ?? "");
+}
+
 export function formatMealItemsLine(items: Array<{ name?: string | null; quantity_grams?: number | null }> | null | undefined): string | null {
   const parts = (items || [])
     .filter((it) => typeof it?.name === "string" && it.name.trim())
@@ -1056,7 +1076,8 @@ async function generateMealCoachNotes(
   deadline = Number.POSITIVE_INFINITY,
   // O dia até agora face ao que ela sugeriu (5.5, push 3) — dayProgressSection.
   dayProgress: string | null = null,
-  // As perguntas em aberto: o que assumiu não se critica (assumedValuesSection).
+  // As perguntas: o que assumiu e está em aberto não se critica
+  // (assumedValuesSection); o que ele já respondeu é facto (answeredValuesSection).
   openQuestions: CarolQuestion[] = [],
   // A prova agendada mais próxima nos RACE_PROXIMITY_DAYS seguintes (raceProximitySection).
   nearRace: NearRace | null = null,
@@ -1130,6 +1151,7 @@ async function generateMealCoachNotes(
     `${avgLine}\n` +
     (dayProgress ?? "") +
     assumedValuesSection(openQuestions) +
+    answeredValuesSection(openQuestions) +
     (meal.notes ? `Nota do utilizador: "${meal.notes}"\n` : "") +
     restricoes +
     workoutsText +
@@ -1612,11 +1634,13 @@ Deno.serve(withUsageRecording("analyze-meal", async (req) => {
 
       const { data: freshItems } = await sb.from("meal_items").select("*").eq("meal_id", meal.id);
       const [coachUsage, learned] = await Promise.all([
-        changes.size
+        // Também quando a resposta só confirma mas o comentário falava de uma
+        // suposição (bug #102). As perguntas vão todas: as respondidas são factos.
+        shouldRefreshMealComment(changes.size, meal.coach_notes)
           ? attachMealCoachNotes(sb, userId, meal, {
             date: meal.date, meal_type: meal.meal_type, meal_time: meal.meal_time ?? null, notes: meal.notes ?? null,
             totals: totalsFromItems(freshItems || []), items: freshItems || [],
-            questions: updatedQuestions.filter((q) => !q.answer),
+            questions: updatedQuestions,
           }, geminiKey, coachDeadline)
           : Promise.resolve(null),
         // A variante pergunta-se sempre: a resposta não vira regra (uma regra por

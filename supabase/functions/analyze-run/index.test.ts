@@ -314,3 +314,24 @@ Deno.test("buildYesterdaySection / gymFacts: zeros e ausentes não entram", () =
   assertEquals(gymFacts({ name: "Treino", categories: [], duration_seconds: 0, exertion: null }), "Ginásio Treino");
   assertEquals(gymFacts({ name: "Força", categories: ["Peito"], duration_seconds: 2700, exertion: 6 }), "Ginásio Força (Peito; 45 min; esforço 6/10)");
 });
+
+// ── Bug #101 (corrida de 30-10): os km 4 e 5 foram a subir ────────────────
+import { SPLIT_ANOMALY_RULE } from "./index.ts";
+
+Deno.test("formatSplitsLine (bug #101): a subida de cada parcial, quando a leitura a trouxe", () => {
+  const line = formatSplitsLine([
+    { distance_km: 1, time_seconds: 312 }, { distance_km: 1, time_seconds: 356, elevation_gain_m: 24 },
+    { distance_km: 1, time_seconds: 359, elevation_gain_m: 21.6 }, { distance_km: 1, time_seconds: 317, elevation_gain_m: 0 },
+  ])!;
+  assert(line.includes("1: 5'12\" · 2: 5'56\" (+24 m) · 3: 5'59\" (+22 m) · 4: 5'17\" (+0 m)"), line);
+  // Sem subida por parcial, nada muda.
+  assert(!formatSplitsLine([{ distance_km: 1, time_seconds: 312 }, { distance_km: 1, time_seconds: 356 }])!.includes(" m)"));
+});
+
+Deno.test("SPLIT_ANOMALY_RULE (bug #101): explicar com os dados, ou perguntar — nunca atribuir a causa às cegas", async () => {
+  assert(SPLIT_ANOMALY_RULE.includes("a subida desse parcial") && SPLIT_ANOMALY_RULE.includes("pergunta-lhe"));
+  assert(SPLIT_ANOMALY_RULE.includes("NUNCA lhe atribuas uma causa"));
+  const src = await Deno.readTextFile(new URL("./index.ts", import.meta.url));
+  assert(src.includes(String.raw`` + "`- ${SPLIT_ANOMALY_RULE}\\n` +"), "a regra vai no prompt da análise");
+  assert(src.includes("elevation_gain_m: { type: \"NUMBER\", nullable: true },"), "e a leitura pede a subida por parcial");
+});

@@ -1,7 +1,7 @@
 // Testa dietaryRestrictionsPromptBlock — a correção que faz o comentário
 // automático de cada refeição (meals.coach_notes) respeitar as restrições
 // alimentares do atleta. Ver specs/coach-investigacao.md, Bloco 7 #5.
-import { assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
+import { assert, assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
 import { assumedValuesSection, buildManualItemsPrompt, mealTypeBaselineLine, buildPantryFoodPrompt, buildPhotosAndItemsPrompt, dietaryRestrictionsPromptBlock, formatMealItemsLine, mergePhotoAndWrittenItems, MICROS_RULE, parseWrittenItems, planningFrameSection, raceProximitySection, RESPONSE_SCHEMA } from "./index.ts";
 import type { CarolQuestion } from "./pantry.ts";
 
@@ -191,6 +191,36 @@ Deno.test("assumedValuesSection: o que ela assumiu e ainda vai perguntar não se
   assertEquals(assumedValuesSection([q({ answer: "Camada fina (~5 g)" })]), "");
   assertEquals(assumedValuesSection([]), "");
   assertEquals(assumedValuesSection(null), "");
+});
+
+// ─── Bug #102 (almoço de 30-10): «assumi» depois de ele responder ─────────
+// A Carol perguntou de que carne eram os hambúrgueres, ele respondeu «Vaca» (o
+// que ela tinha assumido) e o comentário, escrito antes, ficou a dizer «Assumi
+// que os 150 g de hambúrguer são de vaca». Uma resposta que só confirma não
+// refazia o comentário.
+import { answeredValuesSection, shouldRefreshMealComment } from "./index.ts";
+
+Deno.test("answeredValuesSection: o que ele respondeu é dele — nunca «assumi» (bug #102)", () => {
+  const q = (over: Partial<CarolQuestion>): CarolQuestion => ({
+    id: "q", kind: "preparacao", topic: "carne dos hambúrgueres", item_name: "Hambúrgueres de carne grelhados",
+    question: "De que carne eram feitos os hambúrgueres?", options: ["Vaca", "Mistura de vaca e porco", "Frango ou peru"],
+    assumed: "Vaca", impact_kcal: 45, impact_protein_g: 3, answer: null, answered_at: null, ...over,
+  });
+  const s = answeredValuesSection([q({ answer: "Vaca", answered_at: "2026-10-30T15:01:32.185Z" }), q({ id: "aberta" })]);
+  assertStringIncludes(s, "Hambúrgueres de carne grelhados: Vaca");
+  assertStringIncludes(s, "nunca escrevas que assumiste");
+  assert(!s.includes("aberta"));
+  assertEquals(answeredValuesSection([q({})]), "");
+  assertEquals(answeredValuesSection(null), "");
+});
+
+Deno.test("shouldRefreshMealComment: uma resposta que só confirma refaz o comentário que falava de uma suposição (bug #102)", () => {
+  const stale = "A proteína ficou abaixo. Assumi que os 150 g de hambúrguer são de vaca; o peito de frango seria mais eficiente.";
+  assert(shouldRefreshMealComment(0, stale));
+  assert(shouldRefreshMealComment(0, "Estou a assumir ~10 g de manteiga."));
+  assert(shouldRefreshMealComment(2, "Bom almoço."));
+  assertEquals(shouldRefreshMealComment(0, "Bom almoço, com 42 g de proteína."), false);
+  assertEquals(shouldRefreshMealComment(0, null), false);
 });
 
 // ─── Bug #48, fase C: confirmar um alimento para a despensa ────────────────
