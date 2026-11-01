@@ -110,6 +110,17 @@ export default function EatingForTraining({ view, onViewDay }) {
     <NutritionChartCard
       testId="eating-for-training"
       label="Comer para treinar"
+      explain={{
+        title: 'Comer para treinar',
+        period: hint,
+        series: [],
+        note: [
+          withT.avgKcal != null ? `Dias de treino: ${fmtInt(withT.avgKcal)} kcal/dia em média (${withT.nDays} dias).` : null,
+          withoutT.avgKcal != null ? `Dias sem treino: ${fmtInt(withoutT.avgKcal)} kcal/dia (${withoutT.nDays} dias).` : null,
+          ea.average != null ? `Disponibilidade energética média: ${fmtEa(ea.average)} kcal/kg de massa magra em ${ea.nDays} dias.` : null,
+          low.length ? `${low.length} ${low.length === 1 ? 'dia de treino' : 'dias de treino'} abaixo de 30 kcal/kg.` : null,
+        ].filter(Boolean).join(' '),
+      }}
       info={<MetricInfo text={INFO} />}
       hint={hint}
       value={withT.avgKcal != null ? fmtInt(withT.avgKcal) : '—'}

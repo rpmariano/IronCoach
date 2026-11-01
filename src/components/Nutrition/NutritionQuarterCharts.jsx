@@ -223,6 +223,12 @@ export default function NutritionQuarterCharts({ view, metric, onViewWeek, onVie
         testId="nutrition-quarter-weeks"
         label={`${meta.label} por semana`}
         hint={view.label.title}
+        explain={{
+          title: `${meta.label} por semana`,
+          period: view.label.title,
+          series: [{ label: `Média por dia de cada semana`, unit: meta.unit, values: stats.map((st) => st.avg), decimals: 0 }],
+          note: goal > 0 ? `O objetivo é ${fmtInt(goal)} ${meta.unit} por dia.` : null,
+        }}
         value={sum.avg != null ? fmtInt(sum.avg) : '—'}
         unit={sum.avg != null ? `${meta.unit}/dia · média de ${nDays(sum.nDays)}` : `${meta.unit}/dia · sem dias fechados com registo`}
         valueColor={sum.avg != null ? meta.color : 'var(--text-4)'}
@@ -324,6 +330,12 @@ export default function NutritionQuarterCharts({ view, metric, onViewWeek, onVie
       <NutritionChartCard
         testId="nutrition-quarter-days"
         label="Dias no objetivo por semana"
+        explain={{
+          title: `Dias no objetivo por semana (${meta.label.toLowerCase()})`,
+          period: view.label.title,
+          series: [{ label: 'Dias no objetivo', values: stats.map((st) => (st.nDays > 0 ? st.ok : null)), decimals: 0 }],
+          note: sum.nDays > 0 ? `No período: ${sum.daysInGoal} de ${sum.nDays} dias no objetivo.` : null,
+        }}
         hint={`${meta.label} · ${view.label.title}`}
         value={sum.nDays > 0 ? String(sum.daysInGoal) : '—'}
         unit={sum.nDays > 0 ? `de ${sum.nDays} ${sum.nDays === 1 ? 'dia' : 'dias'} no objetivo` : 'sem dias fechados com registo'}
@@ -427,6 +439,12 @@ export default function NutritionQuarterCharts({ view, metric, onViewWeek, onVie
           testId="nutrition-quarter-weekdays"
           label={`${meta.label} por dia da semana`}
           hint={view.label.title}
+          explain={{
+            title: `${meta.label} por dia da semana`,
+            period: view.label.title,
+            series: [],
+            note: `Média por dia da semana: ${wdDays.map((d, i) => (d ? `${WD_SHORT[i]} ${fmtInt(d.avg)} ${meta.unit}` : null)).filter(Boolean).join(', ')}.`,
+          }}
           value={fmtInt(wdDays[lowest].avg)}
           unit={`${meta.unit} ${WD_ON[lowest]}, o dia mais baixo`}
           valueColor={meta.color}

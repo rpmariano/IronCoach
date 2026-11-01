@@ -2774,3 +2774,30 @@ describe('Coach — retomar um plano partido (plan_resume)', () => {
     expect(bodies().filter((b) => b.message === 'Agora não')).toHaveLength(0);
   });
 });
+
+/* 2026-11-01: o efeito dos pedidos (coachIntent) corria duas vezes com o mesmo intent no
+   StrictMode — o «Pedir à Carol que explique» (um `say`) ia duas vezes para o chat. */
+describe('Coach — um pedido (coachIntent) trata-se uma vez', () => {
+  it('em StrictMode, um `say` vai uma só vez para o chat', async () => {
+    useAppStore.setState({ coachIntent: { kind: 'say', text: 'Explica-me a leitura do gráfico «Volume-carga semanal».' } });
+    invokeEdgeFunctionWithTimeout.mockResolvedValue({
+      data: { model_message: { id: 's1', content: 'Claro.' }, suggestions: [] },
+      error: null,
+    });
+    render(
+      <React.StrictMode>
+        <ToastProvider>
+          <Coach />
+        </ToastProvider>
+      </React.StrictMode>,
+    );
+    await waitFor(() => expect(invokeEdgeFunctionWithTimeout).toHaveBeenCalled());
+    await new Promise((r) => setTimeout(r, 50));
+    const sends = invokeEdgeFunctionWithTimeout.mock.calls
+      .map((c) => { try { return JSON.parse(c[1].body); } catch { return null; } })
+      .filter((b) => b?.message === 'Explica-me a leitura do gráfico «Volume-carga semanal».');
+    expect(sends).toHaveLength(1);
+    expect(useAppStore.getState().coachMessages.filter((m) => m.role === 'user' && m.content.startsWith('Explica-me'))).toHaveLength(1);
+    expect(useAppStore.getState().coachIntent).toBeNull();
+  });
+});
