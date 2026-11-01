@@ -163,6 +163,14 @@ export default function RacePredictionChart({ vdotTrend = [], prediction, compar
       hint="de sempre"
       legend={hasTrend ? legend : []}
       axis={dateAxis}
+      explain={hasTrend ? {
+        title: prediction ? 'Previsão de prova' : 'Evolução do VDOT',
+        period: dateAxis ? `de sempre, ${dateAxis.min} – ${dateAxis.max}` : 'de sempre',
+        series: [{ label: 'VDOT', values: vdots, decimals: 1 }],
+        note: prediction
+          ? `A previsão para ${prediction.raceName || 'a prova'} é ${formatTime(prediction.predictedSeconds)}${base ? ` (${base})` : ''} — vem do melhor ritmo, não da linha do VDOT.`
+          : null,
+      } : undefined}
       height={hasTrend ? 200 : 0}
       footer={(base || lowConfidence || !hasTrend || compareNote) ? (
         <>

@@ -121,6 +121,12 @@ export default function NutritionWeekChart({ view, metric, onViewDay, todayISO }
       testId="nutrition-week-chart"
       label={`${meta.label} por dia`}
       hint={view.label.range}
+      explain={{
+        title: `${meta.label} por dia`,
+        period: view.label.range,
+        series: [{ label: meta.label, unit: meta.unit, values: cols.filter((c) => c.state === 'closed').map((c) => c.value), decimals: 0 }],
+        note: goal > 0 ? `O objetivo é ${Math.round(goal)} ${meta.unit} por dia; os dias com registo parcial e hoje ficam de fora.` : null,
+      }}
       value={valueTxt}
       unit={unitTxt}
       valueColor={sum.avg != null ? meta.color : 'var(--text-4)'}

@@ -543,6 +543,12 @@ export default function RunDashboard() {
               axis={{ min: '0 km', max: `${fmtNumber(bars.max, 1)} km` }}
               legend={[{ label: bars.unit === 'day' ? 'Distância diária' : 'Distância semanal', color: 'var(--run)' }]}
               height={176}
+              explain={{
+                title: bars.unit === 'day' ? 'Distância por dia' : 'Distância por semana',
+                period: cal.label?.title || null,
+                series: [{ label: bars.unit === 'day' ? 'Distância diária' : 'Distância semanal', unit: 'km', values: bars.values, decimals: 1 }],
+                note: `Total do período: ${fmtNumber(bars.total, 1)} km em ${corridas(cur.count)}.`,
+              }}
               footer={bars.unit === 'week' && bars.counts.some((c) => c < 7)
                 ? <p data-testid="semanas-parciais" style={{ margin: 0 }}>As semanas com menos de 7 dias estão só parcialmente dentro do período — o total é a soma das barras.</p>
                 : undefined}

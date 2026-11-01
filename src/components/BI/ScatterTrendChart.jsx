@@ -153,6 +153,15 @@ export default function ScatterTrendChart({ data: recebidos = [], scope, classNa
         ]
         : []}
       height={200}
+      explain={data.length ? {
+        title: 'Eficiência aeróbica',
+        period: `${data.length} ${data.length === 1 ? 'sessão' : 'sessões'}${scope ? ` ${scope}` : ''}, de ${axisDate(data[0].date)} a ${axisDate(latest.date)}`,
+        series: [
+          { label: 'Ritmo', values: data.map((d) => d.paceSecondsPerKm), format: (v) => `${formatPace(v)}/km` },
+          { label: 'FC média', unit: 'bpm', values: data.map((d) => d.avgHR), decimals: 0 },
+        ],
+        note: 'Cada ponto é uma sessão: ritmo na horizontal (mais rápido à direita), FC na vertical.',
+      } : undefined}
       footer={(
         <>
           <span className="block" data-testid="scatter-better" style={{ color: 'var(--text-3)' }}>Melhor ↘: mais rápido (para a direita) com a FC mais baixa (para baixo).</span>

@@ -7,6 +7,7 @@ import {
   DUR_BARS, DUR_COUNT, DUR_COUNT_REVEAL, STAGGER_BARS, STAGGER_BARS_MAX_SPAN,
 } from '../../utils/introAnimations';
 import { DAY_STATUS_STYLE } from '../../utils/nutrition';
+import ExplainChartButton from '../BI/ExplainChartButton';
 
 /**
  * Moldura dos gráficos da Nutrição por período (fase 4 da Evolução,
@@ -297,6 +298,8 @@ export default function NutritionChartCard({
   testId = 'nutrition-chart',
   className = '',
   style,
+  // «Pedir à Carol que explique» (2026-11-01): { title, period?, series, note? } — ExplainChartButton.
+  explain,
 }) {
   const r = useRevealAnimation({ ready });
   const page = useTabPage();
@@ -386,6 +389,7 @@ export default function NutritionChartCard({
           {legend}
         </div>
       )}
+      {explain && <ExplainChartButton explain={explain} />}
     </section>
   );
 }
