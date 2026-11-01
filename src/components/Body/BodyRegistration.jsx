@@ -567,7 +567,7 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
           maxPhotos={MAX_PHOTOS}
           onSelect={handlePhotoSelect}
           onRemove={removePhoto}
-          // #106: por ler, o botão é o principal (na barra); depois, este deixa reler.
+          // #110: a leitura faz-se sempre aqui, junto das fotos (por ler, o «Analisar» da barra fica desativado); depois de lidos, este deixa reler.
           onRead={handleRead}
           reading={reading}
           note={readNote}
