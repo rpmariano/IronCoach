@@ -25,6 +25,7 @@ import { usePersistedDraftMedia } from '../../utils/draftMediaPersistence';
 import { normalizeStartTime, startTimeInputValue } from '../../utils/startTime';
 import CarolInterventionActions from '../shared/CarolInterventionActions';
 import { FieldInput, FieldTextarea } from '../shared/registration/Field';
+import { printsNeedRead, ReadPrintsAction } from '../shared/registration/printsGate';
 
 const GYM_KINDS = [
   { key: 'forca', label: 'Força', icon: Dumbbell },
@@ -103,6 +104,8 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
   const [reading, setReading] = useState(false);
   const [readNote, setReadNote] = useState(null);
   const [reviewedPhotos, setReviewedPhotos] = useState(null);
+  // #106: quantos prints havia na última tentativa de leitura (correu bem ou não).
+  const [readAttempt, setReadAttempt] = useState(null);
 
   // Métricas do relógio — opcionais, com ou sem prints.
   const [durationStr, setDurationStr] = useState(planItem?.target_duration_min ? String(planItem.target_duration_min) : '');
@@ -449,9 +452,12 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
       console.error(err);
       setReadNote({ tone: 'warn', text: err.message || 'Não consegui ler agora. Tenta outra vez, ou escreve o treino abaixo.' });
     } finally {
+      setReadAttempt(photos.length);
       setReading(false);
     }
   };
+  // #106: com prints por ler, o primeiro passo é lê-los; o «Analisar» vem depois.
+  const needsRead = !isEditing && printsNeedRead({ photosCount: photos.length, readCount: reviewedPhotos, attemptedCount: readAttempt });
 
   /* Bug #70: um treino do plano só com texto ("cadeira extensora, cadeira
      flexora e gémeos, 3-4 séries de 10-12 reps") traz o texto para as notas,
@@ -684,6 +690,7 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
   const [confirmUnfinished, setConfirmUnfinished] = useState(false);
   const unfinishedExercises = exercises.filter(ex => (ex.name || '').trim() && ex.sets.some(st => !st.done));
   const handleAnalyze = () => {
+    if (needsRead) { handleRead(); return; }
     // Com prints, as séries do plano por confirmar caem e a leitura dos prints
     // preenche o que ele fez — "marcar todas" ali poria os alvos por cima do
     // que o print mostra (revisão pré-deploy, B1). O aviso é só sem prints.
@@ -737,10 +744,12 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
       busy={isSaving}
       label={needsReanalysis ? "Guardar e reanalisar" : "Guardar alterações"}
     />
+  ) : needsRead ? (
+    <ReadPrintsAction onRead={handleRead} reading={reading} disabled={isSaving || isAnalyzing} />
   ) : (
     <CoachAnalyzeButton
       onClick={handleAnalyze}
-      disabled={isSaving || isAnalyzing}
+      disabled={isSaving || isAnalyzing || reading}
       busy={isSaving || isAnalyzing}
       label="Analisar treino"
     />
@@ -1060,8 +1069,8 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
 
       {/* #98: os prints da app de treino vêm no fim — tiram-se depois de registar os exercícios,
           antes de gravar. Escondido a editar: editar é sempre pelos campos, sem foto nova (mesmo
-          padrão da Corrida/Refeição). Bug #72: sem botão "Ler os prints e preencher" — a Carol lê-os
-          ao "Analisar treino" e o que escreveste ganha sempre ao que ela ler. */}
+          padrão da Corrida/Refeição). #106: com prints, o primeiro passo é «Ler os prints e
+          preencher» (desfaz o bug #72); o «Analisar treino» só vem depois da leitura. */}
       {!isEditing && (
         <RegistrationSection step={4} title="Prints da sessão" optional done={photos.length > 0} className="[&>*]:mb-0!">
           <PhotoReadSection
@@ -1069,7 +1078,8 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
             maxPhotos={MAX_PHOTOS}
             onSelect={handlePhotoSelect}
             onRemove={removePhoto}
-            autoReadNote="Ao analisar, leio os prints sozinha. O que escreveres aqui ganha sempre ao que eu ler — não apago nada."
+            // #106: por ler, o botão é o principal (na barra); depois, este deixa reler.
+            onRead={needsRead ? undefined : handleRead}
             reading={reading}
             note={readNote}
           />

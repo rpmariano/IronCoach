@@ -46,6 +46,7 @@ import RegistrationSection from '../shared/registration/RegistrationSection';
 import { findPendingPlanItems } from '../../utils/planPrefill';
 import CarolInterventionActions from '../shared/CarolInterventionActions';
 import { FieldInput, FieldSelect, FieldTextarea } from '../shared/registration/Field';
+import { printsNeedRead, ReadPrintsAction } from '../shared/registration/printsGate';
 
 // -------------------------------------
 // ICONS & UTILS
@@ -402,6 +403,8 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
   const [reading, setReading] = useState(false);
   const [readNote, setReadNote] = useState(null);
   const [readState, setReadState] = useState(null); // { count, details } | null
+  // #106: quantos prints havia na última tentativa de leitura (correu bem ou não).
+  const [readAttempt, setReadAttempt] = useState(null);
   /* "Do plano": o treino de corrida que a Carol marcou para o dia, escolhido
      no banner — { id, mode: 'plano' | 'livre' } | null. O "Registar sessão"
      do Início já vem com ele (planItem) e não mostra o banner. */
@@ -2218,9 +2221,13 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
     } catch (err) {
       setReadNote({ text: err.message || 'Não consegui ler os prints. Tenta outra vez.', tone: 'warn' });
     } finally {
+      setReadAttempt(runPhotos.length);
       setReading(false);
     }
   };
+  // #106: com prints novos por ler, o primeiro passo é lê-los; o «Analisar» vem depois.
+  const needsRead = !runIdToEdit && !createdRunRef.current
+    && printsNeedRead({ photosCount: runPhotos.length, readCount: readState?.count ?? null, attemptedCount: readAttempt });
 
   /** O que o atleta escreveu, na forma do modo manual — sem os alvos do plano por mexer. */
   const typedFormFields = () => {
@@ -2290,6 +2297,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
        data, notas, tipo mudados) reanalisam; sem mudanças fecha como estava. */
   const handleAnalyze = () => {
     if (isSubmitting || analyzingRun || reading) return;
+    if (needsRead) { handleReadRunPrints(); return; }
     const fresh = runPhotos.some((p) => p.base64);
     const created = createdRunRef.current;
     // Sem prints à vista (removidos, ou não carregaram) não há o que reler: pelos campos.
@@ -2355,6 +2363,8 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
       busy={isSubmitting}
       label={needsReanalysis ? "Guardar e reanalisar" : "Guardar alterações"}
     />
+  ) : needsRead ? (
+    <ReadPrintsAction onRead={handleReadRunPrints} reading={reading} disabled={isSubmitting || analyzingRun} />
   ) : (
     // Uma só ação: com prints a Carol lê-os; sem eles, conta pelos campos.
     // No modo prova o botão nomeia o que está mesmo a acontecer.
@@ -2949,7 +2959,8 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
         maxPhotos={MAX_PHOTOS}
         onSelect={handlePhotoSelected}
         onRemove={removePhoto}
-        onRead={handleReadRunPrints}
+        // #106: por ler, o botão é o principal (na barra); depois, este deixa reler.
+        onRead={needsRead ? undefined : handleReadRunPrints}
         reading={reading}
         note={readNote}
         inputRef={addPhotoInputRef}

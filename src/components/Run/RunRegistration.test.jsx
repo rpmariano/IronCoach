@@ -66,7 +66,11 @@ vi.mock('../../lib/supabase', () => ({
       }),
     },
   },
-  invokeEdgeFunctionWithTimeout: (...args) => mocks.invoke(...args),
+  // #106: nos testes que não são sobre a leitura, selectPhoto passa o passo «Ler os prints»
+  // com uma leitura falhada (mocks.skipRead) — fora de mocks.invoke, para não mexer nas contagens.
+  invokeEdgeFunctionWithTimeout: (...args) => (mocks.skipRead && args[1]?.body?.mode === 'preview'
+    ? Promise.resolve({ data: null, error: 'leitura saltada no teste' })
+    : mocks.invoke(...args)),
 }));
 
 // Evita FileReader/Image/canvas do jsdom — a compressão em si já está fora
@@ -77,12 +81,25 @@ vi.mock('../../lib/image', () => ({
 
 const PROFILE = { id: 'user-1' };
 
-const selectPhoto = async () => {
+/* #106: com prints, o primeiro passo é «Ler os prints e preencher». selectPhoto() passa-o (uma
+   leitura falhada abre o «Analisar» sem mudar o pedido); selectPhoto({ ler: false }) deixa-o por fazer,
+   para os testes da leitura. */
+const passarLeitura = async () => {
+  mocks.skipRead = true;
+  try {
+    fireEvent.click(screen.getByRole('button', { name: 'Ler os prints e preencher' }));
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Ler os prints e preencher' })).not.toBeInTheDocument());
+  } finally {
+    mocks.skipRead = false;
+  }
+};
+const selectPhoto = async ({ ler = true } = {}) => {
   const input = document.querySelector('input[type="file"]');
   const file = new File(['conteudo'], 'print.jpg', { type: 'image/jpeg' });
   await fireEvent.change(input, { target: { files: [file] } });
   // handlePhotoSelected é assíncrono (compressImage) — espera o print aparecer.
   await screen.findByAltText('Print 1');
+  if (ler) await passarLeitura();
 };
 
 describe('RunRegistration — Analisar corrida (analyze-run)', () => {
@@ -2380,5 +2397,23 @@ describe('RunRegistration — Caminhada', () => {
     render(<RunRegistration onClose={onClose} />);
     expect(screen.getByTestId('nota-caminhada')).toBeTruthy();
     expect(screen.getByDisplayValue('Caminhada de Hoje')).toBeTruthy();
+  });
+});
+
+describe('RunRegistration — #106: com prints, primeiro ler e preencher', () => {
+  beforeEach(() => {
+    mocks.invoke.mockReset();
+    useAppStore.setState({ profile: PROFILE, runs: [], raceEvents: [] });
+  });
+
+  it('o botão principal é «Ler os prints e preencher»; depois da leitura passa a «Analisar corrida»', async () => {
+    render(<RunRegistration onClose={vi.fn()} />);
+    expect(screen.getByRole('button', { name: /Analisar corrida/ })).toBeInTheDocument();
+    await selectPhoto({ ler: false });
+    expect(screen.queryByRole('button', { name: /Analisar corrida/ })).not.toBeInTheDocument();
+    mocks.invoke.mockResolvedValueOnce({ data: { preview: { distance_km: 8.2 } }, error: null });
+    fireEvent.click(screen.getByRole('button', { name: 'Ler os prints e preencher' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: /Analisar corrida/ })).toBeInTheDocument());
+    expect(mocks.invoke.mock.calls[0][1].body.mode).toBe('preview');
   });
 });
