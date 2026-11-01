@@ -22,6 +22,7 @@ import PhotoReadSection from '../shared/registration/PhotoReadSection';
 import RegistrationSection from '../shared/registration/RegistrationSection';
 import { FieldInput, FieldTextarea } from '../shared/registration/Field';
 import { printsNeedRead, ReadPrintsAction } from '../shared/registration/printsGate';
+import { PrintQuestions, questionsPayload, readQuestions } from '../shared/CarolQuestionsForm';
 
 const BODY_METRICS = [
   { key:'weight_kg',            label:'Peso',              unit:'kg',   dec:1, color:'#dd3c71' },
@@ -159,6 +160,10 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
   const [readState, setReadState] = useState(null); // { count, classifications } | null
   // #106: quantos prints havia na última tentativa de leitura (correu bem ou não).
   const [readAttempt, setReadAttempt] = useState(null);
+  /* #106: as perguntas da Carol sobre o que leu nos prints (no máximo 3) e as respostas; seguem
+     com o registo em carol_questions ao gravar. Uma leitura nova substitui-as. */
+  const [printQuestions, setPrintQuestions] = useState([]);
+  const [printAnswers, setPrintAnswers] = useState({});
 
   const [metrics, setMetrics] = useState({});
   // As métricas de agora, para a leitura (que demora) se juntar ao que ele
@@ -365,7 +370,9 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
       try {
         const { dataUrl, base64 } = await compressImage(file);
         setPhotos(prev => [...prev, { dataUrl, base64 }]);
+        // Prints novos: a leitura anterior (bem ou mal sucedida) deixa de valer (#106).
         setReadState(null);
+        setReadAttempt(null);
         setIsFormDirty(true);
       } catch (err) {
         console.warn('Falha a processar imagem', err);
@@ -373,7 +380,7 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
     }
   };
 
-  const removePhoto = (idx) => { setPhotos(prev => prev.filter((_, i) => i !== idx)); setReadState(null); setIsFormDirty(true); };
+  const removePhoto = (idx) => { setPhotos(prev => prev.filter((_, i) => i !== idx)); setReadState(null); setReadAttempt(null); setIsFormDirty(true); };
 
   // ── Ler os prints para o formulário (sem gravar) ─────────────────────
   const handleRead = async () => {
@@ -391,6 +398,8 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
       const merged = mergeBodyPreview(metricsRef.current, preview.metrics);
       setMetrics(merged.metrics);
       setReadState({ count: photos.length, read: preview.metrics || null, classifications: preview.classifications || null });
+      setPrintQuestions(readQuestions(data));
+      setPrintAnswers({});
       setReadNote(bodyReadNote(merged));
       setIsFormDirty(true);
     } catch (err) {
@@ -418,6 +427,7 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
         ...(hasTyped ? { metrics: typed } : {}),
         ...(reviewed ? { reviewed: true, classifications: labelsStillValid(readState, typed) } : {}),
         ...fastingField(notes),
+        ...questionsPayload(printQuestions, printAnswers),
       },
     }, ANALYZE_TIMEOUT_MS);
     if (error) throw new Error(error);
@@ -569,6 +579,7 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
             <>O ecrã <span className="font-bold">{ecraPrincipal('renpho').nome}</span> é o que traz todas as métricas de uma vez</>
           ) : null}
         />
+        <PrintQuestions questions={printQuestions} answers={printAnswers} onChange={setPrintAnswers} />
         </RegistrationSection>
       )}
 

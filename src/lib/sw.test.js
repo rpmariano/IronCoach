@@ -26,9 +26,8 @@ function fakeCaches() {
   return { open, stores };
 }
 
-function loadSw() {
+function loadSw({ caches = fakeCaches() } = {}) {
   const listeners = {};
-  const caches = fakeCaches();
   const fetch = vi.fn(async (req) => {
     const url = typeof req === 'string' ? req : req.url;
     const r = new Response(`conteúdo de ${url}`, { status: 200 });
@@ -44,16 +43,25 @@ function loadSw() {
   vm.runInNewContext(SRC, { self, caches, fetch, Response, Headers, URL, atob, Uint8Array, console });
   const doFetch = async (url) => {
     let p = null;
-    listeners.fetch({ request: { url, method: 'GET' }, respondWith: (x) => { p = x; } });
+    const later = [];
+    listeners.fetch({ request: { url, method: 'GET' }, respondWith: (x) => { p = x; }, waitUntil: (x) => { later.push(x); } });
     if (!p) return { fromSw: false, res: await fetch(url) };
-    return { fromSw: true, res: await p };
+    const res = await p;
+    await Promise.all(later); // a cópia para a cache faz-se depois da resposta
+    return { fromSw: true, res };
   };
   const message = async (data) => {
     let p = Promise.resolve();
     listeners.message({ data, waitUntil: (x) => { p = x; } });
     await p;
   };
-  return { doFetch, message, fetch, caches };
+  // A resposta sem esperar pelos waitUntil.
+  const respond = async (url) => {
+    let p = null;
+    listeners.fetch({ request: { url, method: 'GET' }, respondWith: (x) => { p = x; }, waitUntil: () => {} });
+    return p;
+  };
+  return { doFetch, message, fetch, caches, respond };
 }
 
 describe('service worker — cache dos ficheiros com hash (bug #97)', () => {
@@ -96,5 +104,33 @@ describe('service worker — cache dos ficheiros com hash (bug #97)', () => {
     expect(sw.fetch).not.toHaveBeenCalled();
     await sw.doFetch(SCOPE + 'assets/a-11111111.js'); // v1 foi limpa: volta à rede
     expect(sw.fetch).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('service worker — a cache nunca impede a app de arrancar', () => {
+  it('se o CacheStorage rebentar, o ficheiro vem da rede na mesma', async () => {
+    const broken = { open: async () => { throw new Error('QuotaExceededError'); } };
+    const sw = loadSw({ caches: broken });
+    const { fromSw, res } = await sw.doFetch(SCOPE + 'assets/index-BIGtwyoQ.js');
+    expect(fromSw).toBe(true);
+    expect(res.status).toBe(200);
+    expect(sw.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('se o match rebentar (cache estragada), também vai à rede', async () => {
+    const bad = { open: async () => ({ match: async () => { throw new Error('corrupt'); }, put: async () => {}, keys: async () => [], delete: async () => false }) };
+    const sw = loadSw({ caches: bad });
+    expect((await sw.doFetch(SCOPE + 'assets/index-BIGtwyoQ.js')).res.status).toBe(200);
+  });
+
+  it('a resposta da rede devolve-se sem esperar pela cópia para a cache (que vai em waitUntil)', async () => {
+    const base = fakeCaches();
+    const slow = { open: async (n) => { const c = await base.open(n); return { ...c, put: () => new Promise(() => {}) }; } };
+    const sw = loadSw({ caches: slow });
+    // Chama o handler à mão: a resposta tem de chegar com o put ainda por acabar.
+    const reqUrl = SCOPE + 'assets/index-BIGtwyoQ.js';
+    const res = await sw.respond(reqUrl);
+    expect(res.status).toBe(200);
+    // Se a resposta esperasse pela cópia, este pedido nunca acabava (o put fica pendurado).
   });
 });

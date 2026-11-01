@@ -41,3 +41,42 @@ describe('CarolQuestionsForm', () => {
     expect(screen.queryByTestId('carol-questions-later')).not.toBeInTheDocument();
   });
 });
+
+describe('as perguntas de uma leitura de prints (#106)', () => {
+  const PQ = [
+    { id: 'p1', kind: 'contexto', topic: 'local', item_name: null, question: 'Foi em passadeira?', options: ['Sim', 'Não'], assumed: 'Não', impact_kcal: 0, impact_protein_g: 0, answer: null, answered_at: null },
+    { id: 'p2', kind: 'contexto', topic: 'jejum', item_name: null, question: 'Em jejum?', options: ['Sim', 'Não'], assumed: 'Não', impact_kcal: 0, impact_protein_g: 0, answer: null, answered_at: null },
+  ];
+
+  it('readQuestions: só arrays válidos, no máximo 3', async () => {
+    const { readQuestions } = await import('./CarolQuestionsForm');
+    expect(readQuestions({ questions: PQ })).toHaveLength(2);
+    expect(readQuestions({ questions: [...PQ, { ...PQ[0], id: 'p3' }, { ...PQ[0], id: 'p4' }] })).toHaveLength(3);
+    expect(readQuestions({})).toEqual([]);
+    expect(readQuestions({ questions: [null, { id: 'x' }] })).toEqual([]);
+  });
+
+  it('questionsPayload: answer preenchido ou null, answered_at só com resposta, texto livre até 60', async () => {
+    const { questionsPayload, OUTRO } = await import('./CarolQuestionsForm');
+    const out = questionsPayload(PQ, { p1: { picked: 'Sim' }, p2: { picked: OUTRO, other: '  x'.padEnd(80, 'y') } }, () => 'AGORA');
+    expect(out.carol_questions[0]).toMatchObject({ id: 'p1', answer: 'Sim', answered_at: 'AGORA' });
+    expect(out.carol_questions[1].answer).toHaveLength(60);
+    expect(questionsPayload(PQ, {}).carol_questions.map(q => q.answer)).toEqual([null, null]);
+    expect(questionsPayload([], {})).toEqual({});
+  });
+
+  it('PrintQuestions: sem impacto nem placeholder de quantidade; tocar de novo desmarca', async () => {
+    const { PrintQuestions } = await import('./CarolQuestionsForm');
+    const onChange = vi.fn();
+    const { rerender } = render(<PrintQuestions questions={PQ} answers={{}} onChange={onChange} />);
+    expect(screen.queryByText(/kcal/)).toBeNull();
+    fireEvent.click(screen.getAllByRole('button', { name: 'Sim' })[0]);
+    expect(onChange).toHaveBeenLastCalledWith({ p1: { picked: 'Sim' } });
+    rerender(<PrintQuestions questions={PQ} answers={{ p1: { picked: 'Sim' } }} onChange={onChange} />);
+    fireEvent.click(screen.getAllByRole('button', { name: 'Sim' })[0]);
+    expect(onChange).toHaveBeenLastCalledWith({ p1: { picked: undefined } });
+    fireEvent.click(screen.getAllByRole('button', { name: 'Outro…' })[1]);
+    rerender(<PrintQuestions questions={PQ} answers={{ p2: { picked: '__outro__' } }} onChange={onChange} />);
+    expect(screen.getByLabelText('Outra resposta: Em jejum?')).not.toHaveAttribute('placeholder');
+  });
+});

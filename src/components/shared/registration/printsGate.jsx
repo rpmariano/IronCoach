@@ -10,7 +10,9 @@ import { CoachAnalyzeButton } from '../CoachButton';
    - `attemptedCount`: quantos havia na última tentativa (correu mal ou não leu nada). Uma
      tentativa falhada também abre o «Analisar»: a Carol volta a ler os prints ao gravar, e o
      atleta não fica preso por uma leitura que não resulta.
-   Juntar ou tirar um print muda a contagem e volta a pedir a leitura. */
+   Juntar ou tirar um print volta a pedir a leitura: quem usa isto limpa readCount e
+   attemptedCount (null) nesse momento — só a contagem não chegava (tirar um e juntar outro
+   deixava o mesmo número). */
 export function printsNeedRead({ photosCount, readCount, attemptedCount }) {
   if (!photosCount) return false;
   return readCount !== photosCount && attemptedCount !== photosCount;

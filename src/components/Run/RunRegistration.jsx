@@ -47,6 +47,7 @@ import { findPendingPlanItems } from '../../utils/planPrefill';
 import CarolInterventionActions from '../shared/CarolInterventionActions';
 import { FieldInput, FieldSelect, FieldTextarea } from '../shared/registration/Field';
 import { printsNeedRead, ReadPrintsAction } from '../shared/registration/printsGate';
+import { PrintQuestions, questionsPayload, readQuestions } from '../shared/CarolQuestionsForm';
 
 // -------------------------------------
 // ICONS & UTILS
@@ -405,6 +406,10 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
   const [readState, setReadState] = useState(null); // { count, details } | null
   // #106: quantos prints havia na última tentativa de leitura (correu bem ou não).
   const [readAttempt, setReadAttempt] = useState(null);
+  /* #106: as perguntas da Carol sobre o que leu nos prints (no máximo 3) e as respostas; seguem
+     com o registo em carol_questions ao gravar. Uma leitura nova substitui-as. */
+  const [printQuestions, setPrintQuestions] = useState([]);
+  const [printAnswers, setPrintAnswers] = useState({});
   /* "Do plano": o treino de corrida que a Carol marcou para o dia, escolhido
      no banner — { id, mode: 'plano' | 'livre' } | null. O "Registar sessão"
      do Início já vem com ele (planItem) e não mostra o banner. */
@@ -1011,7 +1016,9 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
       try {
         const { dataUrl, base64 } = await compressImage(file);
         setRunPhotos(prev => [...prev, { dataUrl, base64 }]);
+        // Prints novos: a leitura anterior (bem ou mal sucedida) deixa de valer (#106).
         setReadState(null);
+        setReadAttempt(null);
         setIsFormDirty(true);
       } catch (err) {
         console.warn('Falha a processar imagem', err);
@@ -1023,6 +1030,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
   const removePhoto = (index) => {
     setRunPhotos(prev => prev.filter((_, i) => i !== index));
     setReadState(null);
+    setReadAttempt(null);
     setIsFormDirty(true);
     clearStaleMissingMetrics();
   };
@@ -1758,6 +1766,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
           shoe_id: shoeId,
           ...(hasTyped ? { typed } : {}),
           ...(reviewed ? { reviewed: true, read_details: readState.details || null } : {}),
+          ...questionsPayload(printQuestions, printAnswers),
         },
       }, ANALYZE_TIMEOUT_MS);
       if (error) throw new Error(error);
@@ -2208,6 +2217,8 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
       // O que só os prints sabem segue com o registo revisto.
       const details = Object.fromEntries(READ_ONLY_KEYS.filter((k) => read[k] !== null && read[k] !== undefined).map((k) => [k, read[k]]));
       setReadState({ count: runPhotos.length, details });
+      setPrintQuestions(readQuestions(data));
+      setPrintAnswers({});
       // Lidos e revistos: o que fica nos campos é dele (um alvo confirmado pela
       // leitura, ou que os prints não trouxeram, grava-se como está).
       planValuesRef.current = {};
@@ -2954,6 +2965,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
      Não confundir com as memórias da prova, que não passam pela IA. */
   function renderPhotoBlock() {
     return (
+      <>
       <PhotoReadSection
         photos={runPhotos}
         maxPhotos={MAX_PHOTOS}
@@ -2979,6 +2991,8 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
           </>
         ) : null}
       />
+      <PrintQuestions questions={printQuestions} answers={printAnswers} onChange={setPrintAnswers} />
+      </>
     );
   }
 

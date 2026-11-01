@@ -26,6 +26,7 @@ import { normalizeStartTime, startTimeInputValue } from '../../utils/startTime';
 import CarolInterventionActions from '../shared/CarolInterventionActions';
 import { FieldInput, FieldTextarea } from '../shared/registration/Field';
 import { printsNeedRead, ReadPrintsAction } from '../shared/registration/printsGate';
+import { PrintQuestions, questionsPayload, readQuestions } from '../shared/CarolQuestionsForm';
 
 const GYM_KINDS = [
   { key: 'forca', label: 'Força', icon: Dumbbell },
@@ -106,6 +107,10 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
   const [reviewedPhotos, setReviewedPhotos] = useState(null);
   // #106: quantos prints havia na última tentativa de leitura (correu bem ou não).
   const [readAttempt, setReadAttempt] = useState(null);
+  /* #106: as perguntas da Carol sobre o que leu nos prints (no máximo 3) e as respostas; seguem
+     com o registo em carol_questions ao gravar. Uma leitura nova substitui-as. */
+  const [printQuestions, setPrintQuestions] = useState([]);
+  const [printAnswers, setPrintAnswers] = useState({});
 
   // Métricas do relógio — opcionais, com ou sem prints.
   const [durationStr, setDurationStr] = useState(planItem?.target_duration_min ? String(planItem.target_duration_min) : '');
@@ -353,14 +358,16 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
       try {
         const { dataUrl, base64 } = await compressImage(file);
         setPhotos(prev => [...prev, { dataUrl, base64 }]);
+        // Prints novos: a leitura anterior (bem ou mal sucedida) deixa de valer (#106).
         setReviewedPhotos(null);
+        setReadAttempt(null);
       } catch (err) {
         console.warn('Falha a processar imagem', err);
       }
     }
   };
 
-  const removePhoto = (idx) => { setPhotos(prev => prev.filter((_, i) => i !== idx)); setReviewedPhotos(null); };
+  const removePhoto = (idx) => { setPhotos(prev => prev.filter((_, i) => i !== idx)); setReviewedPhotos(null); setReadAttempt(null); };
 
   /* O plano do dia (F3): os treinos pendentes do tipo, nos planos aceites.
      Vindo do botão "Registar sessão" já está ligado, sem banner. */
@@ -447,6 +454,8 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
       if (Object.keys(patch).length) setIsFormDirty(true);
       const readable = !!data.readable;
       setReviewedPhotos(fromPhotos && readable ? photos.length : null);
+      setPrintQuestions(readQuestions(data));
+      setPrintAnswers({});
       setReadNote({ tone: readable ? 'ok' : 'warn', text: readSummary(result, fromPhotos ? 'foto' : 'notas') });
     } catch (err) {
       console.error(err);
@@ -543,6 +552,7 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
           // Os prints já foram lidos e revistos: o servidor só os guarda.
           reviewed: reviewedPhotos !== null && reviewedPhotos === photos.length,
           ...metricsAndSetsBody(),
+          ...questionsPayload(printQuestions, printAnswers),
         },
       }, ANALYZE_TIMEOUT_MS);
       if (error) throw new Error(error);
@@ -1083,6 +1093,7 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
             reading={reading}
             note={readNote}
           />
+          <PrintQuestions questions={printQuestions} answers={printAnswers} onChange={setPrintAnswers} />
         </RegistrationSection>
       )}
 
