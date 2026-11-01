@@ -2406,14 +2406,17 @@ describe('RunRegistration — #106: com prints, primeiro ler e preencher', () =>
     useAppStore.setState({ profile: PROFILE, runs: [], raceEvents: [] });
   });
 
-  it('o botão principal é «Ler os prints e preencher»; depois da leitura passa a «Analisar corrida»', async () => {
+  it('#110: «Ler os prints e preencher» junto das fotos; o «Analisar corrida» só se ativa depois da leitura', async () => {
     render(<RunRegistration onClose={vi.fn()} />);
     expect(screen.getByRole('button', { name: /Analisar corrida/ })).toBeInTheDocument();
     await selectPhoto({ ler: false });
-    expect(screen.queryByRole('button', { name: /Analisar corrida/ })).not.toBeInTheDocument();
+    // #110: a leitura está junto das fotos desde o início; o «Analisar corrida» fica desativado até lá.
+    expect(screen.getAllByRole('button', { name: 'Ler os prints e preencher' })).toHaveLength(1);
+    expect(screen.getByRole('button', { name: /Analisar corrida/ })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /Analisar corrida/ })).toHaveAccessibleDescription(/Primeiro lê os prints/);
     mocks.invoke.mockResolvedValueOnce({ data: { preview: { distance_km: 8.2 } }, error: null });
     fireEvent.click(screen.getByRole('button', { name: 'Ler os prints e preencher' }));
-    await waitFor(() => expect(screen.getByRole('button', { name: /Analisar corrida/ })).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole('button', { name: /Analisar corrida/ })).toBeEnabled());
     expect(mocks.invoke.mock.calls[0][1].body.mode).toBe('preview');
   });
 });

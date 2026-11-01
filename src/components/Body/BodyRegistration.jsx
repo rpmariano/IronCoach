@@ -21,7 +21,7 @@ import useRegistrationExit from '../shared/registration/useRegistrationExit';
 import PhotoReadSection from '../shared/registration/PhotoReadSection';
 import RegistrationSection from '../shared/registration/RegistrationSection';
 import { FieldInput, FieldTextarea } from '../shared/registration/Field';
-import { printsNeedRead, ReadPrintsAction } from '../shared/registration/printsGate';
+import { printsNeedRead, AwaitingReadAction } from '../shared/registration/printsGate';
 import { PrintQuestions, questionsPayload, readQuestions } from '../shared/CarolQuestionsForm';
 
 const BODY_METRICS = [
@@ -486,7 +486,7 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
       label={needsReanalysis ? 'Guardar e reanalisar' : 'Guardar alterações'}
     />
   ) : needsRead ? (
-    <ReadPrintsAction onRead={handleRead} reading={reading} disabled={isSaving || isAnalyzing} />
+    <AwaitingReadAction label="Analisar avaliação" />
   ) : (
     <CoachAnalyzeButton
       onClick={handleAnalyze}
@@ -568,7 +568,7 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
           onSelect={handlePhotoSelect}
           onRemove={removePhoto}
           // #106: por ler, o botão é o principal (na barra); depois, este deixa reler.
-          onRead={needsRead ? undefined : handleRead}
+          onRead={handleRead}
           reading={reading}
           note={readNote}
           accent={ACCENT}

@@ -18,17 +18,17 @@ export function printsNeedRead({ photosCount, readCount, attemptedCount }) {
   return readCount !== photosCount && attemptedCount !== photosCount;
 }
 
-export const READ_PRINTS_LABEL = 'Ler os prints e preencher';
+export const AWAITING_READ_HINT = 'Primeiro lê os prints, no botão junto das fotos.';
 
-/** O botão principal enquanto os prints estão por ler. */
-export function ReadPrintsAction({ onRead, reading, disabled = false }) {
+/** O botão principal enquanto os prints estão por ler (bug #110): o «Analisar» fica à vista mas
+    desativado, e a leitura faz-se no botão junto das fotos (PhotoReadSection) — nunca aqui. */
+export function AwaitingReadAction({ label }) {
   return (
-    <CoachAnalyzeButton
-      onClick={onRead}
-      disabled={disabled || reading}
-      busy={reading}
-      label={READ_PRINTS_LABEL}
-      busyLabel="A ler os prints…"
-    />
+    <div className="w-full flex flex-col gap-1.5">
+      <p id="awaiting-read-hint" className="text-[11.5px] leading-snug text-center text-[var(--text-2)]">
+        {AWAITING_READ_HINT}
+      </p>
+      <CoachAnalyzeButton label={label} disabled aria-describedby="awaiting-read-hint" />
+    </div>
   );
 }

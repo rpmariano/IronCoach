@@ -904,7 +904,10 @@ describe('GymRegistration — ler os prints e as notas para o formulário (F2, O
   it('#106: com prints, primeiro lê e preenche; só depois analisa, com os prints já revistos (reviewed: true)', async () => {
     render(<GymRegistration onClose={onClose} />);
     await selectPhoto({ ler: false });
-    expect(screen.queryByRole('button', { name: /Analisar treino/i })).not.toBeInTheDocument();
+    // #110: a leitura está junto das fotos desde o início; o «Analisar treino» fica desativado até lá.
+    expect(screen.getAllByRole('button', { name: 'Ler os prints e preencher' })).toHaveLength(1);
+    expect(screen.getByRole('button', { name: /Analisar treino/ })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /Analisar treino/ })).toHaveAccessibleDescription(/Primeiro lê os prints/);
     mocks.invoke.mockResolvedValueOnce({ data: { preview: PREVIEW, readable: true }, error: null });
     fireEvent.click(screen.getByRole('button', { name: 'Ler os prints e preencher' }));
     await waitFor(() => expect(screen.getByDisplayValue('Extensões de pernas')).toBeInTheDocument());
@@ -1422,14 +1425,14 @@ describe('GymRegistration — #106: trocar um print volta a pedir a leitura', ()
     useAppStore.setState({ profile: PROFILE, gymSessions: [], exerciseLocker: [], planItemPrefill: null });
   });
 
-  it('tirar o print lido e juntar outro (mesma contagem) volta ao «Ler os prints e preencher»', async () => {
+  it('tirar o print lido e juntar outro (mesma contagem) volta a pedir «Ler os prints e preencher»', async () => {
     render(<GymRegistration onClose={vi.fn()} />);
     await selectPhoto(); // lido (leitura falhada simulada): o Analisar abre-se
     expect(screen.getByRole('button', { name: /Analisar treino/i })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Remover print 1' }));
     await selectPhoto({ ler: false });
     expect(screen.getByRole('button', { name: 'Ler os prints e preencher' })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /Analisar treino/i })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Analisar treino/i })).toBeDisabled();
   });
 });
 

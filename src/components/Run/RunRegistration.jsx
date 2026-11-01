@@ -46,7 +46,7 @@ import RegistrationSection from '../shared/registration/RegistrationSection';
 import { findPendingPlanItems } from '../../utils/planPrefill';
 import CarolInterventionActions from '../shared/CarolInterventionActions';
 import { FieldInput, FieldSelect, FieldTextarea } from '../shared/registration/Field';
-import { printsNeedRead, ReadPrintsAction } from '../shared/registration/printsGate';
+import { printsNeedRead, AwaitingReadAction } from '../shared/registration/printsGate';
 import { PrintQuestions, questionsPayload, readQuestions } from '../shared/CarolQuestionsForm';
 
 // -------------------------------------
@@ -2376,7 +2376,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
       label={needsReanalysis ? "Guardar e reanalisar" : "Guardar alterações"}
     />
   ) : needsRead ? (
-    <ReadPrintsAction onRead={handleReadRunPrints} reading={reading} disabled={isSubmitting || analyzingRun} />
+    <AwaitingReadAction label={isRaceMode ? 'Registar a prova' : 'Analisar corrida'} />
   ) : (
     // Uma só ação: com prints a Carol lê-os; sem eles, conta pelos campos.
     // No modo prova o botão nomeia o que está mesmo a acontecer.
@@ -2973,7 +2973,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
         onSelect={handlePhotoSelected}
         onRemove={removePhoto}
         // #106: por ler, o botão é o principal (na barra); depois, este deixa reler.
-        onRead={needsRead ? undefined : handleReadRunPrints}
+        onRead={handleReadRunPrints}
         reading={reading}
         note={readNote}
         inputRef={addPhotoInputRef}

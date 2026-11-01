@@ -25,7 +25,7 @@ import { usePersistedDraftMedia } from '../../utils/draftMediaPersistence';
 import { normalizeStartTime, startTimeInputValue } from '../../utils/startTime';
 import CarolInterventionActions from '../shared/CarolInterventionActions';
 import { FieldInput, FieldTextarea } from '../shared/registration/Field';
-import { printsNeedRead, ReadPrintsAction } from '../shared/registration/printsGate';
+import { printsNeedRead, AwaitingReadAction } from '../shared/registration/printsGate';
 import { PrintQuestions, questionsPayload, readQuestions } from '../shared/CarolQuestionsForm';
 
 const GYM_KINDS = [
@@ -756,7 +756,7 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
       label={needsReanalysis ? "Guardar e reanalisar" : "Guardar alterações"}
     />
   ) : needsRead ? (
-    <ReadPrintsAction onRead={handleRead} reading={reading} disabled={isSaving || isAnalyzing} />
+    <AwaitingReadAction label="Analisar treino" />
   ) : (
     <CoachAnalyzeButton
       onClick={handleAnalyze}
@@ -1090,7 +1090,7 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
             onSelect={handlePhotoSelect}
             onRemove={removePhoto}
             // #106: por ler, o botão é o principal (na barra); depois, este deixa reler.
-            onRead={needsRead ? undefined : handleRead}
+            onRead={handleRead}
             reading={reading}
             note={readNote}
           />

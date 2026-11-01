@@ -723,13 +723,16 @@ describe('BodyRegistration — #106: com prints, primeiro ler e preencher', () =
     useAppStore.setState({ profile: PROFILE, bodyAssessments: [] });
   });
 
-  it('o botão principal é «Ler os prints e preencher»; depois da leitura passa a «Analisar avaliação»', async () => {
+  it('#110: «Ler os prints e preencher» junto das fotos; o «Analisar avaliação» só se ativa depois da leitura', async () => {
     render(<BodyRegistration onClose={vi.fn()} />);
     await selectPhoto({ ler: false });
-    expect(screen.queryByRole('button', { name: /Analisar avaliação/ })).not.toBeInTheDocument();
+    // #110: a leitura está junto das fotos desde o início; o «Analisar avaliação» fica desativado até lá.
+    expect(screen.getAllByRole('button', { name: 'Ler os prints e preencher' })).toHaveLength(1);
+    expect(screen.getByRole('button', { name: /Analisar avaliação/ })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /Analisar avaliação/ })).toHaveAccessibleDescription(/Primeiro lê os prints/);
     mocks.invoke.mockResolvedValueOnce({ data: { preview: { metrics: { weight_kg: 72.4 } } }, error: null });
     fireEvent.click(screen.getByRole('button', { name: 'Ler os prints e preencher' }));
-    await waitFor(() => expect(screen.getByRole('button', { name: /Analisar avaliação/ })).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole('button', { name: /Analisar avaliação/ })).toBeEnabled());
     expect(mocks.invoke.mock.calls[0][1].body.mode).toBe('preview');
   });
 });
