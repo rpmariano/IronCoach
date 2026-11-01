@@ -246,3 +246,16 @@ describe('ExerciseEditor — um aberto de cada vez e séries feitas (#95, #108)'
     expect(screen.getByTestId('serie-feita')).toHaveTextContent('Série 1 · 10 reps × 50 kg');
   });
 });
+
+describe('ExerciseEditor — o foco depois do ✓', () => {
+  it('marcar o ✓ fecha a série e o foco fica no ✓ da linha verde; desmarcar volta ao ✓ dos campos', () => {
+    render(<Harness initial={[newExercise({ name: 'Prensa', type: 'forca', sets: [{ ...newSet(), reps: '10', weight: '50' }] })]} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Abrir Prensa' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Série 1 de Prensa feita' }));
+    expect(screen.getByTestId('serie-feita')).toBeInTheDocument();
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Série 1 de Prensa feita' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Série 1 de Prensa feita' }));
+    expect(screen.queryByTestId('serie-feita')).toBeNull();
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Série 1 de Prensa feita' }));
+  });
+});

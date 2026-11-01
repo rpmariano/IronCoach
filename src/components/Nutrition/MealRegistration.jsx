@@ -67,6 +67,14 @@ function getDefaultMealType() {
   return 'ceia';                                         // 22:30 - 05:00
 }
 
+/** As gramas escritas ou coladas (bug #100): só dígitos e UM separador decimal, com a vírgula
+ *  a passar a ponto — «12,5» e «12.5» dão «12.5», nunca «125» (os dígitos não se juntam). */
+export function cleanGrams(v) {
+  const s = String(v ?? '').replace(/,/g, '.').replace(/[^0-9.]/g, '');
+  const i = s.indexOf('.');
+  return i < 0 ? s : s.slice(0, i + 1) + s.slice(i + 1).replace(/\./g, '');
+}
+
 export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit = null }) {
   const { profile, meals, setMeals, loadInitialData, setNavGuard, coachPlans, coachPlanItems, session, pantryFoods: storedPantry, mealTemplates: storedTemplates, foodRules: storedRules, pantryLoaded, pantryUserId, loadPantry } = useAppStore();
   // A despensa (bugs #48/#52, fase C): sugestões ao escrever e os habituais
@@ -1048,11 +1056,11 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
                         className="flex-1 font-bold"
                       />
                       <FieldInput
-                        type="text" inputMode="numeric" pattern="[0-9]*"
+                        type="text" inputMode="decimal"
                         aria-label={`Gramas de ${item.name}`}
                         value={item.grams}
                         onFocus={(e) => { keepFieldVisible(e); caretToEnd(e.currentTarget); }}
-                        onChange={e => { updateManualItem(item.key, { grams: e.target.value.replace(/[^0-9]/g, '') }); setIsFormDirty(true); }}
+                        onChange={e => { updateManualItem(item.key, { grams: cleanGrams(e.target.value) }); setIsFormDirty(true); }}
                         className="w-16! px-2! text-right"
                       />
                       <span className="text-[11px] text-[var(--text-3)]">g</span>
@@ -1073,12 +1081,12 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
                        (90 g) e não havia forma de pôr os 150 g antes de gravar. */
                     <label className="flex items-center gap-1 shrink-0">
                       <FieldInput
-                        type="text" inputMode="numeric" pattern="[0-9]*"
+                        type="text" inputMode="decimal"
                         aria-label={`Gramas de ${item.name}`}
                         value={item.grams ?? ''}
                         placeholder="g"
                         onFocus={(e) => { keepFieldVisible(e); caretToEnd(e.currentTarget); }}
-                        onChange={e => { const v = e.target.value.replace(/[^0-9]/g, ''); updateManualItem(item.key, { grams: v === '' ? null : Number(v) }); setIsFormDirty(true); }}
+                        onChange={e => { const v = cleanGrams(e.target.value); updateManualItem(item.key, { grams: v === '' || v === '.' ? null : (v.endsWith('.') ? v : Number(v)) }); setIsFormDirty(true); }}
                         className="w-[72px]! px-2! text-right"
                       />
                       <span className="text-[11px] text-[var(--text-3)]">g</span>

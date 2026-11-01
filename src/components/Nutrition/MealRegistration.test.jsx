@@ -1360,3 +1360,29 @@ describe('MealRegistration — bug #100 (o mais recente primeiro; cursor no fim 
     }
   });
 });
+
+describe('MealRegistration — as gramas com decimais não se juntam (revisão do #100)', () => {
+  it('cleanGrams: vírgula e ponto dão decimal; o lixo sai; um só separador', async () => {
+    const { cleanGrams } = await import('./MealRegistration');
+    expect(cleanGrams('12,5')).toBe('12.5');
+    expect(cleanGrams('12.5')).toBe('12.5');
+    expect(cleanGrams(' 12,5 g')).toBe('12.5');
+    expect(cleanGrams('1.2.3')).toBe('1.23');
+    expect(cleanGrams('150')).toBe('150');
+    expect(cleanGrams('')).toBe('');
+  });
+
+  it('escrever ou colar «12,5» no campo das gramas fica 12,5 g, não 125', () => {
+    render(<MealRegistration onClose={vi.fn()} />);
+    fireEvent.change(screen.getByPlaceholderText(/peito de frango grelhado/), { target: { value: 'Azeite' } });
+    fireEvent.click(screen.getByRole('button', { name: /Adicionar alimento/i }));
+    const gramas = screen.getByLabelText('Gramas de Azeite');
+    fireEvent.change(gramas, { target: { value: '12,5' } });
+    expect(gramas).toHaveValue('12.5');
+    fireEvent.change(gramas, { target: { value: '12.5' } });
+    expect(gramas).toHaveValue('12.5');
+    // Colado com texto à volta.
+    fireEvent.change(gramas, { target: { value: '12,5 g' } });
+    expect(gramas).toHaveValue('12.5');
+  });
+});

@@ -65,9 +65,9 @@ export function exerciseSummary(ex) {
    só o contorno. A diferença é de forma e de cor, não só de tinta (WCAG
    1.4.11). O rótulo é fixo e o estado vai em aria-pressed — um rótulo que
    mudasse com o estado era lido duas vezes, ao contrário. */
-function DoneToggle({ done, onToggle, ariaLabel }) {
+function DoneToggle({ done, onToggle, ariaLabel, buttonRef }) {
   return (
-    <button type="button" onClick={onToggle} aria-pressed={!!done} aria-label={ariaLabel} className="tap-44 shrink-0">
+    <button ref={buttonRef} type="button" onClick={onToggle} aria-pressed={!!done} aria-label={ariaLabel} className="tap-44 shrink-0">
       <span
         className="w-8 h-8 rounded-full flex items-center justify-center border-2 transition-colors"
         style={done
@@ -110,6 +110,18 @@ function Stepper({ text, inputLabel, value, placeholder, step, inputMode, onType
 function StrengthSets({ ex, last, onExercise }) {
   const patchSet = (key, patch) => onExercise({ ...ex, sets: ex.sets.map(s => (s.key === key ? { ...s, ...patch } : s)) });
   const name = label(ex);
+  /* Ao marcar ou desmarcar o ✓ a série troca de forma (linha verde ↔ campos) e o botão onde
+     estava o foco desaparece: o foco segue para o ✓ da mesma série na forma nova, em vez de cair
+     no body (leitores de ecrã e teclado perdiam o sítio). */
+  const toggleRefs = useRef(new Map());
+  const [focusSet, setFocusSet] = useState(null);
+  useEffect(() => {
+    if (!focusSet) return;
+    toggleRefs.current.get(focusSet)?.focus();
+    setFocusSet(null);
+  }, [focusSet, ex]);
+  const toggleRef = (key) => (el) => { if (el) toggleRefs.current.set(key, el); };
+  const toggle = (key) => { onExercise(toggleSetDone(ex, key, last)); setFocusSet(key); };
   return (
     <div className="space-y-2">
       {ex.sets.map((s, idx) => {
@@ -133,7 +145,8 @@ function StrengthSets({ ex, last, onExercise }) {
               </span>
               <DoneToggle
                 done
-                onToggle={() => onExercise(toggleSetDone(ex, s.key, last))}
+                onToggle={() => toggle(s.key)}
+                buttonRef={toggleRef(s.key)}
                 ariaLabel={`Série ${idx + 1} de ${name} feita`}
               />
             </div>
@@ -146,7 +159,8 @@ function StrengthSets({ ex, last, onExercise }) {
               <div className="flex items-center">
                 <DoneToggle
                   done={s.done}
-                  onToggle={() => onExercise(toggleSetDone(ex, s.key, last))}
+                  onToggle={() => toggle(s.key)}
+                  buttonRef={toggleRef(s.key)}
                   ariaLabel={`Série ${idx + 1} de ${name} feita`}
                 />
                 <button
