@@ -203,17 +203,28 @@ export function promptSizeReport(parts: Record<string, unknown>): Record<string,
 }
 
 /** A parte fixa do system instruction (a doutrina, igual para todos os
- *  atletas): o buildSystemInstruction sem dados nenhuns. Mede-se uma vez. */
-let staticDoctrineCache: number | null = null;
-export function staticDoctrineChars(): number {
-  if (staticDoctrineCache === null) {
+ *  atletas): o buildSystemInstruction sem dados nenhuns, com ou sem a doutrina
+ *  de plano — a do turno (revisão de 2bfe80c2: medida sempre com ela, o log
+ *  sobrestimava a doutrina nos turnos sem plano). Mede-se uma vez de cada. */
+const staticDoctrineCache = new Map<boolean, number>();
+const PLAN_DOCTRINE_ARG = 36;
+export function staticDoctrineChars(planDoctrine = true): number {
+  let n = staticDoctrineCache.get(planDoctrine);
+  if (n === undefined) {
     const noBio = {
       height_cm: null, weight_kg: null, gender: null, birth_date: null, experience_level: null, resting_hr_bpm: null,
       dietary_restrictions: null, dietary_notes: null,
     };
-    staticDoctrineCache = buildSystemInstruction(null, noBio, null, null, "", "", null, null, null, null, null, null).length;
+    // O planDoctrine é o último parâmetro (o índice PLAN_DOCTRINE_ARG): os do
+    // meio vão todos sem dados. Se a posição mudar, o teste de
+    // staticDoctrineChars(false) < (true) falha.
+    const args: unknown[] = [null, noBio, null, null, "", ""];
+    while (args.length < PLAN_DOCTRINE_ARG) args.push(undefined);
+    // deno-lint-ignore no-explicit-any
+    n = (buildSystemInstruction as any)(...args, planDoctrine).length as number;
+    staticDoctrineCache.set(planDoctrine, n);
   }
-  return staticDoctrineCache;
+  return n;
 }
 
 /* Quanto se espera pela resposta do modelo numa ronda. Um turno de plano é
@@ -1027,6 +1038,13 @@ export function chatToolsFor(
   const tools = buildTools(allowed, o.seriesOn && !o.planDoctrine, o.photos);
   const lean = o.planDoctrine ? tools : withoutTool(tools, "propose_training_plan");
   return enforceToolCap(lean, JSON.stringify({ allowed: allowed ? [...allowed] : "todas", ...o }));
+}
+
+/** O que uma ferramenta não enviada neste pedido devolve ao modelo — como se
+ *  não existisse (o Troféu fora da inscrição, o propose_training_plan fora
+ *  dos turnos de plano; revisão de 2bfe80c2). */
+export function unknownFunctionResult(name: string): string {
+  return `Erro: função desconhecida "${name}".`;
 }
 
 /** As ferramentas sem uma delas (o propose_training_plan fora dos turnos de plano). */
@@ -8535,7 +8553,7 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
     // O tamanho do system instruction por secção (31-10-2026: 147 KB, e o 3.6
     // recusa-o com 400) — só números, para decidir o que cortar.
     {
-      const doctrine = staticDoctrineChars();
+      const doctrine = staticDoctrineChars(planDoctrine);
       const memoryChars = Object.values(memoryNamed).reduce((t: number, v) => t + (typeof v === "string" ? v.length : 0), 0);
       console.log("coach-chat prompt", JSON.stringify({
         total: finalSystemInstruction.length,
@@ -8915,15 +8933,22 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
         } else if (name === "get_running_history") {
           result = await runGetRunningHistory(sb, userId, args || {});
         } else if (name === "propose_training_plan") {
-          if (planSeriesIntentsStale) {
-            const fresh = await fetchSeriesBlock(sb, userId, todayISO, { channel: "chat" });
-            if (fresh?.active) planSeriesIntents = fresh.intentByRaceId;
-            planSeriesIntentsStale = false;
+          // Só se tiver sido enviada neste pedido: fora dos turnos de plano sai
+          // das ferramentas (chatToolsFor), e uma chamada a ela não pode deixar
+          // uma proposta pendente (revisão de 2bfe80c2).
+          if (!toolNamesSent.includes("propose_training_plan")) {
+            result = unknownFunctionResult("propose_training_plan");
+          } else {
+            if (planSeriesIntentsStale) {
+              const fresh = await fetchSeriesBlock(sb, userId, todayISO, { channel: "chat" });
+              if (fresh?.active) planSeriesIntents = fresh.intentByRaceId;
+              planSeriesIntentsStale = false;
+            }
+            result = await runProposeTrainingPlan(sb, userId, args || {}, planSeriesIntents, planContinuationIn, planGymRules);
+            planWasProposed = planWasProposed || result.startsWith("Plano criado");
+            // A parte que falta (se falta): vai na resposta como plan_continuation.
+            if (result.startsWith("Plano criado")) planContinuationOut = nextPlanContinuation(args || {}, planContinuationIn);
           }
-          result = await runProposeTrainingPlan(sb, userId, args || {}, planSeriesIntents, planContinuationIn, planGymRules);
-          planWasProposed = planWasProposed || result.startsWith("Plano criado");
-          // A parte que falta (se falta): vai na resposta como plan_continuation.
-          if (result.startsWith("Plano criado")) planContinuationOut = nextPlanContinuation(args || {}, planContinuationIn);
         } else if (name === "update_goals" || name === "update_nutrition_goals") {
           // "update_nutrition_goals" mantido por retrocompatibilidade com histórico de conversa.
           result = await runUpdateGoals(sb, userId, args || {});
@@ -8938,7 +8963,7 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
           // Só com fotos no pedido, e no máximo uma por foto.
           result = chatImages.length > 0 && pantryFoodsSaved < chatImages.length
             ? await runSavePantryFood(sb, userId, args || {})
-            : `Erro: função desconhecida "${name}".`;
+            : unknownFunctionResult(name);
           if (result.startsWith("Produto ")) pantryFoodsSaved++;
         } else if (name === "save_meal_suggestions") {
           result = await runSaveMealSuggestions(sb, userId, args || {});
@@ -8950,14 +8975,14 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
           // como se não existissem.
           const cupToolOn = seriesToolsOn && toolNamesSent.includes(name);
           result = !cupToolOn
-            ? `Erro: função desconhecida "${name}".`
+            ? unknownFunctionResult(name)
             : name === "set_cup_participation"
               ? await runSetCupParticipation(sb, userId, args || {})
               : await runSetCupSeasonGoal(sb, userId, args || {});
           cupWasUpdated = cupWasUpdated || (cupToolOn && !result.startsWith("Erro"));
           planSeriesIntentsStale = planSeriesIntentsStale || (cupToolOn && !result.startsWith("Erro"));
         } else {
-          result = `Erro: função desconhecida "${name}".`;
+          result = unknownFunctionResult(name);
         }
         responseParts.push({ functionResponse: { name, response: { result } } });
       }

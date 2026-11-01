@@ -6477,3 +6477,27 @@ Deno.test("chat: o Flash de recurso só na ronda 0 — as seguintes ficam no mod
   assertStringIncludes(src, "if (!chatRouter.onFallback) recommendationsSchemaRejected = true;");
   assertStringIncludes(src, 'error: upstreamErrorText(geminiRes.status, "chat"),');
 });
+
+// ── Ferramentas não enviadas não se executam (revisão de 2bfe80c2) ─────────
+// Fora dos turnos de plano o propose_training_plan sai das ferramentas
+// (chatToolsFor); uma chamada a ele mesmo assim (o modelo a inventá-la, ou um
+// histórico antigo) não pode criar uma proposta pendente.
+import { staticDoctrineChars as doctrineChars, unknownFunctionResult } from "./index.ts";
+
+Deno.test("handler: o propose_training_plan só corre se tiver sido enviado neste pedido (ligações no código)", async () => {
+  const src = await Deno.readTextFile(new URL("./index.ts", import.meta.url));
+  const branch = src.indexOf('} else if (name === "propose_training_plan") {');
+  const guard = src.indexOf('if (!toolNamesSent.includes("propose_training_plan")) {', branch);
+  const run = src.indexOf("result = await runProposeTrainingPlan(", branch);
+  assert(branch > 0 && guard > branch && guard < run, "a guarda vem antes de runProposeTrainingPlan");
+  assert(src.slice(guard, run).includes('result = unknownFunctionResult("propose_training_plan");'));
+  assertEquals(unknownFunctionResult("propose_training_plan"), 'Erro: função desconhecida "propose_training_plan".');
+  // O Troféu usa a mesma resposta.
+  assert(src.includes("? unknownFunctionResult(name)"));
+});
+
+Deno.test("staticDoctrineChars: mede a doutrina do turno — sem a de plano é mais pequena (revisão de 2bfe80c2)", () => {
+  const full = doctrineChars(true), lean = doctrineChars(false);
+  assertEquals(doctrineChars(), full);
+  assert(lean < full - 10000, `${lean} vs ${full}`);
+});

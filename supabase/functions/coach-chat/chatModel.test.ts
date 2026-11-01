@@ -201,7 +201,7 @@ Deno.test("buildSystemInstruction: sem a doutrina de plano vai o stub; por omiss
   // deno-lint-ignore no-explicit-any
   const full = (buildSystemInstruction as any)(...base);
   const pad: unknown[] = [...base];
-  while (pad.length < 46) pad.push(null);
+  while (pad.length < 36) pad.push(undefined);
   // deno-lint-ignore no-explicit-any
   const lean = (buildSystemInstruction as any)(...pad, false);
   assert(full.includes("PLANOS COM MAIS DE 7 DIAS") && full.includes("DIAGNÓSTICO ANTES DE PROPOR OU EDITAR"));
