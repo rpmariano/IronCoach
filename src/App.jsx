@@ -1,5 +1,6 @@
 import React, { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { supabase } from './lib/supabase';
+import { announceBuildToServiceWorker } from './lib/assetCache';
 import { registerServiceWorker, maybeSyncPushSubscription, pushWantedFor, forgetPushSubscriptionOnThisDevice } from './lib/push';
 import { cenasPreviewAtiva } from './utils/cenasPreview';
 import { reloadFresh, isBusy, resumeParams, entryTabFromSearch, stripResumeParam, markEntryApplied, markEntryWelcomeHandled } from './lib/appUpdate';
@@ -912,6 +913,10 @@ export default function App() {
 
   useEffect(() => {
     registerServiceWorker();
+    // Bug #97: a cache dos ficheiros com hash fica a saber a versão que corre (public/sw.js).
+    const announce = () => { announceBuildToServiceWorker(); };
+    if (document.readyState === 'complete') setTimeout(announce, 3000);
+    else window.addEventListener('load', () => setTimeout(announce, 3000), { once: true });
 
     const params = new URLSearchParams(window.location.search);
     const tabParam = params.get('tab');
