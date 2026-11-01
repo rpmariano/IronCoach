@@ -143,11 +143,11 @@ export default function CrossMetricsChart({ title, helpText, leftData, rightData
       className={className}
       label={title}
       info={helpText ? <MetricInfo text={helpText} /> : undefined}
-      value={lastLeft !== null ? fmtNumber(lastLeft, 1) : '—'}
+      value={lastLeft !== null ? fmtNumber(lastLeft, leftData.decimals ?? 1) : '—'}
       unit={leftData.unit || leftData.label}
       valueColor={leftData.color}
       delta={lastRight !== null
-        ? { text: `${rightData.label} ${fmtNumber(lastRight, 1)}`, tone: 'neutral' }
+        ? { text: `${rightData.label} ${fmtNumber(lastRight, rightData.decimals ?? 1)}`, tone: 'neutral' }
         : undefined}
       legend={[
         { label: leftData.label, color: leftData.color, shape: 'line' },

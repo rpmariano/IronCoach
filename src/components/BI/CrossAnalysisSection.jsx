@@ -171,9 +171,13 @@ export default function CrossAnalysisSection({ runs, gymSessions, meals, bodyAss
   }), [vdotVsWeightData]);
   const gymVolumeSeries = useMemo(() => ({
     label: 'Volume Ginásio (kg)',
-    data: gymRunSeries.map(d => ({ x: d.date, y: d.gymVolume })),
+    // Uma semana com RPE mas sem ginásio é um buraco, não um 0: a curva caía a pique até ao chão
+    // e voltava (2026-11-01).
+    data: gymRunSeries.map(d => ({ x: d.date, y: d.gymVolume > 0 ? d.gymVolume : null })),
     color: '#9ec3d2', // --gym (era #facc15, amarelo reservado ao âmbar da prova)
-    unit: 'kg'
+    unit: 'kg',
+    // Quilos levantados por semana: sem casas decimais («6 000 kg», não «6 000,0 kg»).
+    decimals: 0,
   }), [gymRunSeries]);
   const runRpeSeries = useMemo(() => ({
     label: 'Esforço Corrida (RPE)',
