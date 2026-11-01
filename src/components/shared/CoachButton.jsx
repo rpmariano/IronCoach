@@ -35,13 +35,14 @@ export function CoachIcon({ busy }) {
 // busyLabel: "A analisar…" com reticências tipográficas, como o mock
 // "Refeição · a analisar" (ponto 7). O rótulo acessível continua a ser o
 // texto visível — quem usa leitor de ecrã ouve o estado, não só o vê.
-export function CoachAnalyzeButton({ onClick, disabled, busy, label = 'Analisar', busyLabel = 'A analisar…' }) {
+export function CoachAnalyzeButton({ onClick, disabled, busy, label = 'Analisar', busyLabel = 'A analisar…', 'aria-describedby': describedBy }) {
   return (
     <Button
       variant="module"
       moduleColor={COACH_GRADIENT}
       onClick={onClick}
       disabled={disabled}
+      aria-describedby={describedBy}
       aria-busy={busy || undefined}
       // disabled:opacity-30 era um caso à parte: a 30% o botão principal do
       // ecrã desaparecia na barra de ação (o gradiente ficava quase igual ao
