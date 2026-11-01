@@ -4,6 +4,7 @@ import ChartJS from '../../lib/chartSetup';
 import MetricInfo from './MetricInfo';
 import ChartFrame from './ChartFrame';
 import { fmtNumber } from '../../utils/dashboardVerdicts';
+import { axisDate } from './crossPeriod';
 
 /* 2026-10-04 (F5, animação ao ficar visível): a revelação é do ChartFrame.
    `data` e `options` passam a useMemo — quem chama (CrossAnalysisSection) já
@@ -26,7 +27,20 @@ const isolatedPointRadius = (points) => (ctx) => {
   return has(i) && !has(i - 1) && !has(i + 1) ? 3 : 0;
 };
 
-export default function CrossMetricsChart({ title, helpText, leftData, rightData, ready = true, className = '' }) {
+/* Pedido do Rui (2026-11-01): «devia ficar visível que período afeta estas análises», e o gráfico
+   não tinha datas nem escala. As datas do primeiro e do último ponto vão nos cantos por baixo
+   (`axis` do ChartFrame), cada eixo y mostra a sua escala na cor da série, e `period` diz por
+   baixo que janela de tempo a análise usa — a Análise Cruzada não segue a semana escolhida. */
+const yTicks = (color) => ({
+  display: true,
+  color,
+  maxTicksLimit: 4,
+  font: { size: 10 },
+  padding: 4,
+  callback: (v) => fmtNumber(v, Number.isInteger(v) ? 0 : 1),
+});
+
+export default function CrossMetricsChart({ title, helpText, leftData, rightData, ready = true, className = '', period = null }) {
   const leftPoints = useMemo(() => leftData?.data || [], [leftData]);
   const rightPoints = useMemo(() => rightData?.data || [], [rightData]);
   // O6 (2026-10-04): uma série pode ter buracos (y = null, p. ex. semanas sem
@@ -42,6 +56,13 @@ export default function CrossMetricsChart({ title, helpText, leftData, rightData
   const lastLeft = lastValue(leftPoints);
   const lastRight = lastValue(rightPoints);
   const labels = useMemo(() => leftPoints.map(d => d.x), [leftPoints]);
+  const axis = useMemo(() => {
+    if (!labels.length) return null;
+    const first = labels[0];
+    const last = labels[labels.length - 1];
+    const withYear = String(first).slice(0, 4) !== String(last).slice(0, 4);
+    return { min: axisDate(first, withYear), max: axisDate(last, withYear) };
+  }, [labels]);
   const data = useMemo(() => ({
     labels: leftPoints.map((_, i) => i),
     datasets: [
@@ -100,19 +121,21 @@ export default function CrossMetricsChart({ title, helpText, leftData, rightData
         type: 'linear',
         position: 'left',
         grid: { color: 'rgba(255, 255, 255, 0.05)' },
-        ticks: { display: false },
+        ticks: yTicks(leftData.color),
         border: { display: false },
       },
       yRight: {
         type: 'linear',
         position: 'right',
         grid: { display: false },
-        ticks: { display: false },
+        ticks: yTicks(rightData.color),
         border: { display: false },
       }
     },
     interaction: { mode: 'nearest', axis: 'x', intersect: false }
   }), [labels, leftData, rightData]);
+  // As duas séries têm escalas próprias: dizê-lo, para as curvas não se lerem como a mesma régua.
+  const scalesNote = `Escalas independentes: ${leftData.label} à esquerda, ${rightData.label} à direita.`;
 
   return (
     <ChartFrame
@@ -131,6 +154,13 @@ export default function CrossMetricsChart({ title, helpText, leftData, rightData
         { label: rightData.label, color: rightData.color, shape: 'line' },
       ]}
       height={200}
+      axis={axis}
+      footer={(
+        <>
+          {period && <span className="block" data-testid="cross-chart-period" style={{ color: 'var(--text-3)' }}>{period}</span>}
+          <span className="block">{scalesNote}</span>
+        </>
+      )}
     >
       <Line data={data} options={options} updateMode="period" />
     </ChartFrame>
