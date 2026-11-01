@@ -14,9 +14,12 @@ import CreatedRecordModal from './CreatedRecordModal';
    refeição por foto (finishCreateAndGoToCalendar → newlyCreatedRecord →
    este modal), tendo de fechar e reabrir a aplicação. */
 
-vi.mock('../../store', () => ({
-  useAppStore: vi.fn(),
-}));
+vi.mock('../../store', () => {
+  const useAppStore = vi.fn();
+  // O «Dispensar» lê o store no clique (CarolInterventionActions, #111): o mesmo valor do hook.
+  useAppStore.getState = () => useAppStore();
+  return { useAppStore };
+});
 
 vi.mock('../../lib/supabase', () => ({
   supabase: {

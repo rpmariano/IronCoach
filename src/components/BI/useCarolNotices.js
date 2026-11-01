@@ -362,7 +362,13 @@ export default function useCarolNotices() {
     setDismissing(true);
     try {
       // O mesmo que o «Dispensar» do registo que a abriu (utils/profileIntervention.js).
-      await dismissProfileIntervention(profile);
+      // Com a guarda do motivo: chegou outro assunto entretanto → não se fecha, relê-se o perfil.
+      if (!(await dismissProfileIntervention(profile))) {
+        setShowDismiss(false);
+        useAppStore.getState().refreshProfile?.();
+        showToast('Entretanto chegou outro assunto da Carol — não o dispensei.', 'info');
+        return;
+      }
       setProfile(resolvedProfile(profile));
       logImpressionDismissed({ kind: 'alert', key: 'assuntos', title: 'A Carol precisa de falar contigo' });
       setShowDismiss(false);
