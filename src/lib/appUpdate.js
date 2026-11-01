@@ -8,8 +8,11 @@
    refresh nos primeiros 10 minutos depois do deploy ainda trazia a antiga.
 
    A solução:
-   - Cada build tem um id (__APP_BUILD__, definido no vite.config.mjs) e
-     escreve-o também em version.json, ao lado do index.html.
+   - Cada build tem um id — o hash do conteúdo do bundle (o do chunk de
+     entrada, vite.config.mjs) — escrito em version.json, ao lado do
+     index.html; a app lê o seu do <script> de entrada. Um push que não muda o
+     frontend (uma Edge Function, um heartbeat) não muda o id: a app não se
+     recarrega à toa ao voltar a ela (bug #97).
    - A app pergunta pelo version.json (sem cache) ao abrir, quando volta ao
      primeiro plano e de 10 em 10 minutos enquanto está visível.
    - Se o id mudou, recarrega — mas só num momento seguro: nenhuma folha ou
@@ -27,10 +30,23 @@ const CHECK_EVERY_MS = 10 * 60 * 1000;
 const MIN_GAP_MS = 60 * 1000;
 const IDLE_MS = 60 * 1000;
 
-/** O id deste build; '' em desenvolvimento e nos testes (sem verificação). */
-export function currentBuild() {
+/** O id deste build — o hash do <script> de entrada (/assets/index-<hash>.js),
+    o mesmo que o build escreve em version.json; '' em desenvolvimento e nos
+    testes (sem verificação). */
+export function currentBuild(doc = globalThis.document) {
   // eslint-disable-next-line no-undef
-  return typeof __APP_BUILD__ === 'string' ? __APP_BUILD__ : '';
+  if (typeof __APP_BUILD__ !== 'string' || !__APP_BUILD__) return '';
+  return entryScriptBuild(doc);
+}
+
+/** O hash do chunk de entrada, lido do <script type="module"> do index.html. */
+export function entryScriptBuild(doc = globalThis.document) {
+  const scripts = doc?.querySelectorAll?.('script[type="module"][src]') || [];
+  for (const s of scripts) {
+    const m = String(s.getAttribute('src') || '').match(/\/assets\/index-([\w-]+)\.js(?:\?|$)/);
+    if (m) return m[1];
+  }
+  return '';
 }
 
 /** O id publicado agora, ou null se não se conseguiu saber (sem rede, 404…). */
