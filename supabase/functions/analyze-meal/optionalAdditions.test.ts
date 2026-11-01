@@ -46,6 +46,26 @@ Deno.test("isLearnedAdditionRule: o que se aprendeu de manteiga, azeite ou molho
   assert(!isLearnedAdditionRule(r("pão · barrado", "manteiga de amendoim")));
 });
 
+Deno.test("isLearnedAdditionRule: o ingrediente tem de ser o tema, nunca o nome de um alimento composto (revisão do #109)", () => {
+  const r = (topic: string, value: string) => ({ topic, value, source: "resposta" });
+  // Quantidade: só a do ingrediente num prato.
+  assert(isLearnedAdditionRule(r("manteiga no pão · quantidade", "camada fina (~5 g)")));
+  assert(isLearnedAdditionRule(r("quantidade de azeite na salada", "um fio")));
+  assert(isLearnedAdditionRule(r("maionese na sandes · quantidade", "1 colher (~15 g)")));
+  assert(!isLearnedAdditionRule(r("atum em azeite · quantidade", "1 lata (~80 g)")));
+  assert(!isLearnedAdditionRule(r("frango com molho de caril · quantidade", "1 prato (~350 g)")));
+  assert(!isLearnedAdditionRule(r("molhos · quantidade", "2 colheres")));
+  assert(!isLearnedAdditionRule(r("quantidade de manteiga", "10 g")));
+  assert(!isLearnedAdditionRule(r("molho de tomate · quantidade", "100 g")));
+  assert(!isLearnedAdditionRule(r("manteiga de amendoim · quantidade", "1 colher")));
+  // Preparação: o tema começa pelo ingrediente, ou a resposta é ele.
+  assert(isLearnedAdditionRule(r("manteiga em 2 fatias pão branco", "Sem manteiga")));
+  assert(isLearnedAdditionRule(r("molho (Salada mista)", "Sem molho")));
+  assert(isLearnedAdditionRule(r("gordura no frango e legumes", "Pouco azeite (~1 colher de chá)")));
+  assert(!isLearnedAdditionRule(r("atum em azeite", "escorrido")));
+  assert(!isLearnedAdditionRule(r("frango com molho de caril", "peito")));
+});
+
 Deno.test("pendingRulesFor: uma regra de ingrediente opcional já não manda o pão da despensa ao modelo (revisão do #109)", () => {
   const rule = (topic: string, value: string): FoodRule =>
     ({ topic, topic_key: topic, value, value_key: value, confirmations: 1, status: "por_confirmar", source: "resposta" });
