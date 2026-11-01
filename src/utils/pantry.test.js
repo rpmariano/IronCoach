@@ -159,12 +159,23 @@ describe('isLearnedAdditionRule (#109, o mesmo do servidor)', () => {
     for (const v of ['com manteiga', 'margarina', 'creme vegetal', 'em azeite', 'óleo de girassol', 'molho de tomate', 'maionese', 'ketchup']) {
       expect(isLearnedAdditionRule(r('sandes', v))).toBe(true);
     }
-    expect(isLearnedAdditionRule(r('Ovos · azeite', 'um fio', 'observacao'))).toBe(true);
+    // O tema começa pelo ingrediente (dfad1095): conta mesmo que o valor não o diga.
+    expect(isLearnedAdditionRule(r('Azeite na salada', 'um fio', 'observacao'))).toBe(true);
+    expect(isLearnedAdditionRule(r('manteiga no pão · quantidade', 'camada fina'))).toBe(true);
+    // A meio do tema, sem o valor o dizer, não: «ovos · azeite» não começa pelo ingrediente.
+    expect(isLearnedAdditionRule(r('Ovos · azeite', 'um fio', 'observacao'))).toBe(false);
+  });
+  it('alimentos compostos com o ingrediente no nome não contam (dfad1095)', () => {
+    expect(isLearnedAdditionRule(r('atum em azeite', 'escorrido'))).toBe(false);
+    expect(isLearnedAdditionRule(r('frango com molho de caril', 'pouco'))).toBe(false);
+    expect(isLearnedAdditionRule(r('atum em azeite · quantidade', '1 lata (~80 g)'))).toBe(false);
   });
   it('não contam: manuais, a quantidade do próprio ingrediente, manteigas vegetais, nem tempero/gordura', () => {
     expect(isLearnedAdditionRule(r('salada', 'azeite e vinagre', 'manual'))).toBe(false);
     expect(isLearnedAdditionRule(r('manteiga · quantidade', 'camada fina'))).toBe(false);
     expect(isLearnedAdditionRule(r('quantidade de azeite', '1 colher'))).toBe(false);
+    expect(isLearnedAdditionRule(r('molhos · quantidade', '1 colher de sopa'))).toBe(false);
+    expect(isLearnedAdditionRule(r('manteiga de amendoim · quantidade', '1 colher'))).toBe(false);
     expect(isLearnedAdditionRule(r('tosta', 'com manteiga de amendoim'))).toBe(false);
     expect(isLearnedAdditionRule(r('frango · tempero', 'sal e limão'))).toBe(false);
     expect(isLearnedAdditionRule(r('carne picada · gordura', '5%'))).toBe(false);
