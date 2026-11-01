@@ -51,6 +51,7 @@ import {
 } from "../_shared/geminiFetch.ts";
 import { type GeminiUsage, usageFromGemini } from "../_shared/geminiUsage.ts";
 import { withUsageRecording } from "../_shared/usageRecorder.ts";
+import { findByClientRequestId, insertOnce, parseClientRequestId } from "../_shared/idempotency.ts";
 import { fastingFromAnswers, parseAnsweredQuestions, parseRecordQuestions, RECORD_QUESTIONS_SCHEMA, recordAnswersSection, recordQuestionsRule, type RecordQuestion } from "../_shared/recordQuestions.ts";
 
 const MAX_PHOTOS = 6;
@@ -746,6 +747,15 @@ Deno.serve(withUsageRecording("analyze-body", async (req) => {
     // (generateBodySummaryFromMetrics). Sem isto, uma avaliação registada
     // manualmente nunca tinha análise nenhuma; agora as duas formas de
     // registo passam pelo Coach.
+    // Idempotência (incidente de 2026-10-31, _shared/idempotency.ts): a mesma
+    // tentativa reenviada devolve a avaliação já gravada, sem gravar outra.
+    const clientRequestId = parseClientRequestId(body.client_request_id);
+    // deno-lint-ignore no-explicit-any
+    const replay = (assessment: any) =>
+      jsonResponse({ assessment, source_app: assessment?.classifications?.source_app ?? null, replayed: true });
+    const alreadySaved = !body.assessment_id ? await findByClientRequestId(sb, "body_assessments", userId, clientRequestId) : null;
+    if (alreadySaved) return replay(alreadySaved);
+
     if (body.mode === "manual") {
       if (!/^\d{4}-\d{2}-\d{2}$/.test(body.date ?? "")) {
         return jsonResponse({ error: "Data inválida (esperado YYYY-MM-DD)" }, 400);
@@ -812,22 +822,20 @@ Deno.serve(withUsageRecording("analyze-body", async (req) => {
         return jsonResponse({ assessment: updated, usage: summaryResult.usage });
       }
 
-      const { data: assessment, error: insertError } = await sb
-        .from("body_assessments")
-        .insert({
-          user_id: userId,
-          date: body.date,
-          // A coluna é NOT NULL com default '{}' — null aqui rebentava o
-          // insert (violação de not-null) e voltava como 500 genérico (ver
-          // o mesmo footgun já corrigido em analyze-run/analyze-meal).
-          photo_paths: [],
-          status: "ready",
-          notes: rawNotes,
-          ai_summary: summaryResult.text,
-          ...metrics,
-        })
-        .select()
-        .single();
+      const { data: assessment, existing: savedMeanwhile, error: insertError } = await insertOnce(sb, "body_assessments", userId, {
+        user_id: userId,
+        date: body.date,
+        // A coluna é NOT NULL com default '{}' — null aqui rebentava o
+        // insert (violação de not-null) e voltava como 500 genérico (ver
+        // o mesmo footgun já corrigido em analyze-run/analyze-meal).
+        photo_paths: [],
+        status: "ready",
+        notes: rawNotes,
+        ai_summary: summaryResult.text,
+        ...metrics,
+      }, clientRequestId);
+      // Outra tentativa do mesmo formulário gravou entretanto: é essa.
+      if (savedMeanwhile) return replay(savedMeanwhile);
       if (insertError) return jsonResponse({ error: `Falha a gravar avaliação: ${insertError.message}` }, 500);
 
       await syncProfileAfterAssessment(sb, userId, assessment, summaryResult.goalsReview);
@@ -950,20 +958,20 @@ Deno.serve(withUsageRecording("analyze-body", async (req) => {
       if (typeof body.classifications?.source_app === "string") {
         classifications.source_app = normalizarFonteCorpo(body.classifications.source_app);
       }
-      const { data: assessment, error: insertError } = await sb
-        .from("body_assessments")
-        .insert({
-          user_id: userId,
-          date,
-          photo_paths: photoPaths,
-          status: "ready",
-          notes: rawNotes,
-          ai_summary: summaryResult.text,
-          classifications,
-          ...typed!,
-        })
-        .select()
-        .single();
+      const { data: assessment, existing: savedMeanwhile, error: insertError } = await insertOnce(sb, "body_assessments", userId, {
+        user_id: userId,
+        date,
+        photo_paths: photoPaths,
+        status: "ready",
+        notes: rawNotes,
+        ai_summary: summaryResult.text,
+        classifications,
+        ...typed!,
+      }, clientRequestId);
+      if (savedMeanwhile) {
+        await sb.storage.from("body-photos").remove(photoPaths);
+        return replay(savedMeanwhile);
+      }
       if (insertError) {
         await sb.storage.from("body-photos").remove(photoPaths);
         return jsonResponse({ error: `Falha a gravar avaliação: ${insertError.message}` }, 500);
@@ -982,20 +990,20 @@ Deno.serve(withUsageRecording("analyze-body", async (req) => {
     }
 
     // 3. Gravar avaliação
-    const { data: assessment, error: insertError } = await sb
-      .from("body_assessments")
-      .insert({
-        user_id: userId,
-        date,
-        photo_paths: photoPaths,
-        status: "ready",
-        notes: rawNotes,
-        ai_summary: result.summary,
-        classifications: result.classifications,
-        ...result.metrics,
-      })
-      .select()
-      .single();
+    const { data: assessment, existing: savedMeanwhile, error: insertError } = await insertOnce(sb, "body_assessments", userId, {
+      user_id: userId,
+      date,
+      photo_paths: photoPaths,
+      status: "ready",
+      notes: rawNotes,
+      ai_summary: result.summary,
+      classifications: result.classifications,
+      ...result.metrics,
+    }, clientRequestId);
+    if (savedMeanwhile) {
+      await sb.storage.from("body-photos").remove(photoPaths);
+      return replay(savedMeanwhile);
+    }
     if (insertError) {
       await sb.storage.from("body-photos").remove(photoPaths);
       return jsonResponse({ error: `Falha a gravar avaliação: ${insertError.message}` }, 500);
