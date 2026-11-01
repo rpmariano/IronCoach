@@ -35,7 +35,7 @@ import {
 import { fetchSharedMemoryBlock, lisbonTodayISO, memoryPromptSection } from "../_shared/carolMemory.ts";
 import { fetchSeriesBlock, seriesPromptSection } from "../_shared/seriesBlock.ts";
 import { addUsage, type GeminiUsage, usageFromGemini } from "../_shared/geminiUsage.ts";
-import { computeBestPace, type BestPaceBucket } from "../_shared/formulas/bestPace.ts";
+import { computeBestPace, type BestPaceBucket, withProjectedSplits } from "../_shared/formulas/bestPace.ts";
 import { runRecordMoment } from "../_shared/formulas/runRecord.ts";
 import { formatPaceMinKm } from "../_shared/formulas/paceFormat.ts";
 import { resolveMaxHR, resolveHrZones, zoneOf } from "../_shared/formulas/heartRateZones.ts";
@@ -1079,7 +1079,7 @@ async function attachCoachNotes(
     // serve). Projeção details->splits, nunca details inteiro.
     const { data: recordCandidates } = await sb
       .from("runs")
-      .select("date, kind, training_type, distance_km, duration_seconds, details:details->splits")
+      .select("date, kind, training_type, distance_km, duration_seconds, splits:details->splits")
       .eq("user_id", userId)
       .neq("id", run.id)
       .limit(1000);
@@ -1088,7 +1088,8 @@ async function attachCoachNotes(
     }
     const { bestPacesLine, personalRecordKind } = computeRunRecordContext(
       { id: run.id, date: ctx.date, kind: ctx.kind, training_type: ctx.training_type, distance_km: ctx.distance_km, duration_seconds: ctx.duration_seconds, details: ctx.details },
-      recordCandidates || [],
+      // deno-lint-ignore no-explicit-any
+      (recordCandidates || []).map((r: any) => withProjectedSplits(r)),
     );
 
     // Em que zona foi a FC média desta corrida (ação 5.4) — para o plano

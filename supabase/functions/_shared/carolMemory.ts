@@ -26,7 +26,7 @@ import { normalizeGender } from "./formulas/vocabulary.ts";
 import { buildPrescriptionAdherenceContext, evaluatePrescriptions, mealTotalsByDate, trainingSummaryLine, ADHERENCE_WINDOW_DAYS, type TrainingOutcome } from "./formulas/prescriptionAdherence.ts";
 import { interventionOutcomesLine, INTERVENTION_WINDOW_DAYS } from "./formulas/interventionOutcomes.ts";
 import { buildRecommendationsContext, evaluateRecommendations } from "./formulas/recommendations.ts";
-import { computeBestPace, type BestPaceBucket } from "./formulas/bestPace.ts";
+import { computeBestPace, type BestPaceBucket, withProjectedSplits } from "./formulas/bestPace.ts";
 import { computeVdotTrend } from "./formulas/vdotTrend.ts";
 import { formatPaceMinKm } from "./formulas/paceFormat.ts";
 import {
@@ -1246,8 +1246,8 @@ export async function fetchPortraitBlock(sb: any, userId: string, todayISO: stri
     const yearFrom = addDaysISO(todayISO, -364);
     const [runsR, gymR, bodyR, racesR] = await Promise.all([
       // Projeção details->splits, nunca details inteiro — computeBestPace só
-      // lê os splits.
-      sb.from("runs").select("date, distance_km, duration_seconds, kind, training_type, effort_rpe, details:details->splits")
+      // lê os splits (withProjectedSplits põe-nos em details.splits).
+      sb.from("runs").select("date, distance_km, duration_seconds, kind, training_type, effort_rpe, splits:details->splits")
         .eq("user_id", userId).gte("date", yearFrom).lte("date", todayISO)
         .order("date", { ascending: false }).limit(PORTRAIT_ROW_LIMIT),
       sb.from("workout_sessions").select("date")
@@ -1269,7 +1269,8 @@ export async function fetchPortraitBlock(sb: any, userId: string, todayISO: stri
     if ((gymR.data || []).length >= PORTRAIT_ROW_LIMIT) console.warn("carolMemory: workout_sessions(retrato) atingiu o limite de linhas");
     if ((bodyR.data || []).length >= PORTRAIT_ROW_LIMIT) console.warn("carolMemory: body_assessments(retrato) atingiu o limite de linhas");
     return buildAthletePortrait({
-      runs: runsR.data || [],
+      // deno-lint-ignore no-explicit-any
+      runs: (runsR.data || []).map((r: any) => withProjectedSplits(r)),
       gymDates: (gymR.data || []).map((g: any) => g.date),
       body: bodyR.data || [],
       racesCompleted: Number(racesR.count) || 0,
@@ -1344,7 +1345,7 @@ export interface ChatMemoryBlocks {
 /* As chaves de `details` que `buildCaptureCoverageContext` lê: a fonte, a FC
    (para saber se o relógio a mediu) e os campos de todos os ecrãs das apps
    de corrida do catálogo. Projetadas uma a uma (`chave:details->chave`, o
-   precedente é o `details:details->splits` do retrato) em vez de `details`
+   precedente é o `splits:details->splits` do retrato) em vez de `details`
    inteiro. Derivadas do catálogo: uma app ou um campo novo entra sozinho. */
 function chavesDaCaptura(): string[] {
   const chaves = new Set<string>(["source_app", ...CAMPOS_DE_FC]);
