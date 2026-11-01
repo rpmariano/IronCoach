@@ -54,19 +54,28 @@ export function questionAdditions(q: { topic?: unknown; question?: unknown; opti
 export const isOptionalAdditionQuestion = (q: Parameters<typeof questionAdditions>[0]): boolean =>
   questionAdditions(q).size > 0;
 
+// O tema COMEÇA pelo ingrediente opcional («manteiga na sandes», «azeite na
+// salada · quantidade»); no meio é o nome de um alimento composto («atum em
+// azeite», «frango com molho de caril») e não conta (revisão do #109).
+const HEAD_RE = new RegExp(`^(${Object.keys(FAMILY).join("|")})s?\\b(.*)$`);
+// Numa quantidade, o ingrediente tem de estar num prato: «manteiga no pão ·
+// quantidade». Sozinho («manteiga · quantidade», «molhos · quantidade») ou com
+// «de» («molho de tomate») é o próprio alimento à parte.
+const IN_DISH_RE = /^ (no|na|nos|nas|em|sobre|para) \S/;
+
 /** Uma regra aprendida (de observações ou respostas) sobre um ingrediente
  *  opcional: não se usa nem se aprende. Fica a que ele escreveu à mão
- *  (manual) e a quantidade do próprio ingrediente à parte («manteiga ·
- *  quantidade» — é da manteiga quando vem como alimento, não de um prato). */
+ *  (manual), a quantidade do próprio ingrediente à parte e a de um alimento
+ *  composto que tem o ingrediente no nome. */
 export function isLearnedAdditionRule(rule: { topic?: unknown; value?: unknown; source?: unknown }): boolean {
   if (rule.source === "manual") return false;
   const topic = String(rule.topic ?? "");
-  // «manteiga · quantidade», «manteiga · quantidades», «quantidade de manteiga».
-  if (/\bquantidades?\b/i.test(topic)) {
-    const food = foodKey(topic.replace(/\bquantidades?\b/gi, " ")).replace(/^(de|do|da|dos|das) /, "");
-    if (food in FAMILY) return false;
-  }
-  return additionFamilies(`${topic} ${rule.value ?? ""}`).size > 0;
+  const isQuantity = /\bquantidades?\b/i.test(topic);
+  // «manteiga · quantidade», «quantidade de manteiga», «quantidade de azeite na salada».
+  const food = keyOf(topic.replace(/\bquantidades?\b/gi, " ")).trim().replace(/^(de|do|da|dos|das) /, "");
+  const head = food.match(HEAD_RE);
+  if (isQuantity) return !!head && IN_DISH_RE.test(head[2]);
+  return !!head || additionFamilies(rule.value).size > 0;
 }
 
 /** Uma só pergunta por ingrediente opcional e alimento: «levou manteiga?» e
