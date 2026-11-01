@@ -41,7 +41,11 @@ vi.mock('../../lib/supabase', () => ({
       return {};
     },
   },
-  invokeEdgeFunctionWithTimeout: (...args) => mocks.invoke(...args),
+  // #106: nos testes que não são sobre a leitura, selectPhoto passa o passo «Ler os prints»
+  // com uma leitura falhada (mocks.skipRead) — fora de mocks.invoke, para não mexer nas contagens.
+  invokeEdgeFunctionWithTimeout: (...args) => (mocks.skipRead && args[1]?.body?.mode === 'preview'
+    ? Promise.resolve({ data: null, error: 'leitura saltada no teste' })
+    : mocks.invoke(...args)),
 }));
 
 // Evita FileReader/Image/canvas do jsdom — a compressão em si já está fora
@@ -52,11 +56,24 @@ vi.mock('../../lib/image', () => ({
 
 const PROFILE = { id: 'user-1' };
 
-const selectPhoto = async () => {
+/* #106: com prints, o primeiro passo é «Ler os prints e preencher». selectPhoto() passa-o (uma
+   leitura falhada abre o «Analisar» sem mudar o pedido); selectPhoto({ ler: false }) deixa-o por fazer,
+   para os testes da leitura. */
+const passarLeitura = async () => {
+  mocks.skipRead = true;
+  try {
+    fireEvent.click(screen.getByRole('button', { name: 'Ler os prints e preencher' }));
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Ler os prints e preencher' })).not.toBeInTheDocument());
+  } finally {
+    mocks.skipRead = false;
+  }
+};
+const selectPhoto = async ({ ler = true } = {}) => {
   const input = document.querySelector('input[type="file"]');
   const file = new File(['conteudo'], 'treino.jpg', { type: 'image/jpeg' });
   await fireEvent.change(input, { target: { files: [file] } });
   await screen.findByAltText('Print 1');
+  if (ler) await passarLeitura();
 };
 
 // Ao gravar com séries do plano por confirmar aparece um aviso (revisão
@@ -882,25 +899,33 @@ describe('GymRegistration — ler os prints e as notas para o formulário (F2, O
     useAppStore.setState({ profile: PROFILE, gymSessions: [] });
   });
 
-  // Bug #72 (2026-10-19): já não há botão "Ler os prints e preencher" — a
-  // Carol lê os prints ao "Analisar treino" e o que ele escreveu ganha
-  // (servidor: mergeMetrics, mergeTypedWithRead).
-  it('com prints: sem botão de ler, uma nota diz que a leitura é automática, e gravar lê os prints (reviewed: false)', async () => {
+  // #106 (2026-10-31, desfaz o bug #72): com prints, o primeiro passo é «Ler os prints e
+  // preencher»; o «Analisar treino» só aparece depois da leitura, e gravar já não volta a ler.
+  it('#106: com prints, primeiro lê e preenche; só depois analisa, com os prints já revistos (reviewed: true)', async () => {
     render(<GymRegistration onClose={onClose} />);
-    await selectPhoto();
-    expect(screen.queryByRole('button', { name: /Ler os prints e preencher/ })).not.toBeInTheDocument();
-    expect(screen.getByTestId('photo-auto-read-note')).toHaveTextContent('Ao analisar, leio os prints sozinha');
-    expect(screen.getByTestId('photo-auto-read-note')).toHaveTextContent('não apago nada');
-
+    await selectPhoto({ ler: false });
+    expect(screen.queryByRole('button', { name: /Analisar treino/i })).not.toBeInTheDocument();
+    mocks.invoke.mockResolvedValueOnce({ data: { preview: PREVIEW, readable: true }, error: null });
+    fireEvent.click(screen.getByRole('button', { name: 'Ler os prints e preencher' }));
+    await waitFor(() => expect(screen.getByDisplayValue('Extensões de pernas')).toBeInTheDocument());
+    expect(mocks.invoke.mock.calls[0][1].body).toMatchObject({ mode: 'preview', images: ['AAA'] });
+    // Lidos: o botão principal passa a «Analisar treino».
     mocks.invoke.mockResolvedValueOnce({ data: { session: { id: 'sess-1' }, sets: [] }, error: null });
     fireEvent.click(screen.getByRole('button', { name: /Analisar treino/i }));
     gravarAssimSeHouver();
-    await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(1));
-    const { body } = mocks.invoke.mock.calls[0][1];
-    expect(body.mode).toBeUndefined();
-    expect(body.reviewed).toBe(false);
-    expect(body.images).toEqual(['AAA']);
+    await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(2));
+    expect(mocks.invoke.mock.calls[1][1].body).toMatchObject({ reviewed: true, images: ['AAA'] });
   });
+
+  it('#106: uma leitura que falha não prende — o «Analisar» abre-se e a Carol lê ao gravar', async () => {
+    render(<GymRegistration onClose={onClose} />);
+    await selectPhoto({ ler: false });
+    mocks.invoke.mockResolvedValueOnce({ data: null, error: 'O Coach está ocupado.' });
+    fireEvent.click(screen.getByRole('button', { name: 'Ler os prints e preencher' }));
+    expect(await screen.findByText('O Coach está ocupado.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Analisar treino/i })).toBeEnabled();
+  });
+
 
   it('#99: sem o botão «Preencher o formulário com isto», mesmo só com observações', () => {
     render(<GymRegistration onClose={onClose} />);

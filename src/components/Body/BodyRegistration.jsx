@@ -21,6 +21,7 @@ import useRegistrationExit from '../shared/registration/useRegistrationExit';
 import PhotoReadSection from '../shared/registration/PhotoReadSection';
 import RegistrationSection from '../shared/registration/RegistrationSection';
 import { FieldInput, FieldTextarea } from '../shared/registration/Field';
+import { printsNeedRead, ReadPrintsAction } from '../shared/registration/printsGate';
 
 const BODY_METRICS = [
   { key:'weight_kg',            label:'Peso',              unit:'kg',   dec:1, color:'#dd3c71' },
@@ -156,6 +157,8 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
   const [reading, setReading] = useState(false);
   const [readNote, setReadNote] = useState(null);
   const [readState, setReadState] = useState(null); // { count, classifications } | null
+  // #106: quantos prints havia na última tentativa de leitura (correu bem ou não).
+  const [readAttempt, setReadAttempt] = useState(null);
 
   const [metrics, setMetrics] = useState({});
   // As métricas de agora, para a leitura (que demora) se juntar ao que ele
@@ -393,6 +396,7 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
     } catch (err) {
       setReadNote({ text: err.message || 'Não consegui ler os prints. Tenta outra vez.', tone: 'warn' });
     } finally {
+      setReadAttempt(photos.length);
       setReading(false);
     }
   };
@@ -447,8 +451,11 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
     }
   };
 
+  // #106: com prints por ler, o primeiro passo é lê-los; o «Analisar» vem depois.
+  const needsRead = !isEditing && printsNeedRead({ photosCount: photos.length, readCount: readState?.count ?? null, attemptedCount: readAttempt });
   const handleAnalyze = () => {
     if (isAnalyzing || isSaving || reading) return;
+    if (needsRead) { handleRead(); return; }
     if (requireAssessmentTime()) return;
     if (!photos.length && !hasAnyMetric) {
       setErrorMsg('Junta um print da balança ou escreve pelo menos um valor.');
@@ -467,6 +474,8 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
       busy={isSaving}
       label={needsReanalysis ? 'Guardar e reanalisar' : 'Guardar alterações'}
     />
+  ) : needsRead ? (
+    <ReadPrintsAction onRead={handleRead} reading={reading} disabled={isSaving || isAnalyzing} />
   ) : (
     <CoachAnalyzeButton
       onClick={handleAnalyze}
@@ -547,7 +556,8 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
           maxPhotos={MAX_PHOTOS}
           onSelect={handlePhotoSelect}
           onRemove={removePhoto}
-          onRead={handleRead}
+          // #106: por ler, o botão é o principal (na barra); depois, este deixa reler.
+          onRead={needsRead ? undefined : handleRead}
           reading={reading}
           note={readNote}
           accent={ACCENT}

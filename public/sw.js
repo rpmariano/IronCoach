@@ -2,8 +2,9 @@
 // Só existe para receber notificações Web Push (lembretes de água e, desde a
 // ação P.3, a Carol a chamar pelo atleta) mesmo com a app fechada, e para as
 // tornar clicáveis (abrir/focar a app, no separador certo).
-// Não faz cache nem funciona offline — isso é propositadamente fora de
-// âmbito aqui, para não complicar a invalidação de cache do index.html.
+// Desde o bug #97 (2026-11-01) guarda em cache os ficheiros com hash de /assets/ (ver abaixo).
+// Não guarda o index.html nem o version.json, nem funciona offline: é por eles que as versões
+// novas chegam.
 
 self.addEventListener('install', () => {
   self.skipWaiting();
@@ -11,6 +12,111 @@ self.addEventListener('install', () => {
 
 self.addEventListener('activate', (event) => {
   event.waitUntil(self.clients.claim());
+});
+
+/* ── Cache dos ficheiros com hash (bug #97, causa secundária, 2026-11-01) ──────────────────────
+   O Android descarta a página da app em segundo plano; ao voltar, arranca a frio e voltava a
+   descarregar todos os chunks. Os ficheiros de /assets/ têm o hash do conteúdo no nome
+   (index-BIGtwyoQ.js): um nome é sempre o mesmo conteúdo, por isso servem-se da cache primeiro
+   (cache-first) e só vão à rede na primeira vez.
+
+   O index.html e o version.json NUNCA entram aqui: é por eles que uma versão nova chega
+   (src/lib/appUpdate.js) — um index novo aponta para nomes novos, que a cache não tem, e vêm da
+   rede. Nada mais do que /assets/<nome>-<hash>.<ext> é tocado.
+
+   Limpeza: cada entrada leva a versão (build) que estava em uso quando entrou. A app diz ao
+   service worker a versão que está a correr (mensagem 'app-build', src/lib/assetCache.js) e os
+   ficheiros que já usou nesta sessão. Quando a versão muda, ficam só as entradas da versão nova
+   e da anterior (mais as que a página diz estar a usar); o resto apaga-se. */
+const ASSET_CACHE = 'ironcoach-assets-v1';
+const META_URL = '__ironcoach-asset-meta__';
+const BUILD_HEADER = 'x-ironcoach-build';
+const HASHED_ASSET = /\/assets\/[^/?#]+-[A-Za-z0-9_-]{8,}\.(?:js|mjs|css|woff2?|ttf|png|jpe?g|svg|webp|avif|gif)$/;
+
+/** É um ficheiro com hash da app (mesma origem, debaixo de <scope>assets/)? */
+function isCacheableAsset(url, scope) {
+  try {
+    const u = new URL(url);
+    const s = new URL(scope);
+    if (u.origin !== s.origin) return false;
+    if (!u.pathname.startsWith(s.pathname + 'assets/')) return false;
+    if (u.search) return false;
+    return HASHED_ASSET.test(u.pathname);
+  } catch (e) {
+    return false;
+  }
+}
+
+async function readMeta(cache) {
+  try {
+    const res = await cache.match(META_URL);
+    if (res) return await res.json();
+  } catch (e) { /* meta estragada: começa de novo */ }
+  return { current: null, previous: null };
+}
+
+async function writeMeta(cache, meta) {
+  await cache.put(META_URL, new Response(JSON.stringify(meta), { headers: { 'content-type': 'application/json' } }));
+}
+
+/** A resposta com a versão em que entrou na cache (num cabeçalho). */
+async function tagged(response, build) {
+  const headers = new Headers(response.headers);
+  headers.set(BUILD_HEADER, build || '');
+  const body = await response.arrayBuffer();
+  return new Response(body, { status: response.status, statusText: response.statusText, headers });
+}
+
+async function cacheFirst(request) {
+  const cache = await caches.open(ASSET_CACHE);
+  const hit = await cache.match(request);
+  if (hit) return hit;
+  const response = await fetch(request);
+  // Só respostas boas e da própria origem (sem opaque, sem erros, sem parciais).
+  if (response && response.ok && response.status === 200 && response.type === 'basic') {
+    try {
+      const meta = await readMeta(cache);
+      await cache.put(request, await tagged(response.clone(), meta.current));
+    } catch (e) { /* quota ou outro erro: serve-se na mesma */ }
+  }
+  return response;
+}
+
+/** A app diz que versão corre e que ficheiros já usou. Muda de versão → limpa as antigas. */
+async function onAppBuild(build, inUse) {
+  if (typeof build !== 'string' || !build) return;
+  const cache = await caches.open(ASSET_CACHE);
+  const meta = await readMeta(cache);
+  const keepUrls = new Set((Array.isArray(inUse) ? inUse : []).filter((u) => typeof u === 'string'));
+  if (meta.current !== build) {
+    const next = { current: build, previous: meta.current };
+    await writeMeta(cache, next);
+    const keep = new Set([next.current, next.previous].filter(Boolean));
+    for (const req of await cache.keys()) {
+      if (req.url.endsWith(META_URL)) continue;
+      if (keepUrls.has(req.url)) continue;
+      const res = await cache.match(req);
+      const tag = res ? res.headers.get(BUILD_HEADER) : null;
+      if (!tag || !keep.has(tag)) await cache.delete(req);
+    }
+  }
+  // O que a página está a usar passa a contar como da versão atual.
+  for (const url of keepUrls) {
+    const res = await cache.match(url);
+    if (res && res.headers.get(BUILD_HEADER) !== build) await cache.put(url, await tagged(res, build));
+  }
+}
+
+self.addEventListener('fetch', (event) => {
+  const req = event.request;
+  if (req.method !== 'GET') return;
+  if (!isCacheableAsset(req.url, self.registration.scope)) return;
+  event.respondWith(cacheFirst(req));
+});
+
+self.addEventListener('message', (event) => {
+  const data = event.data || {};
+  if (data.type === 'app-build') event.waitUntil(onAppBuild(data.build, data.inUse));
 });
 
 self.addEventListener('push', (event) => {
