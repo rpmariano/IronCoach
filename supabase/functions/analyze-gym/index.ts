@@ -56,6 +56,7 @@ import {
 } from "../_shared/geminiFetch.ts";
 import { addUsage, emptyUsage, type GeminiUsage, usageFromGemini } from "../_shared/geminiUsage.ts";
 import { withUsageRecording } from "../_shared/usageRecorder.ts";
+import { findByClientRequestId, insertOnce, parseClientRequestId } from "../_shared/idempotency.ts";
 import { parseAnsweredQuestions, parseRecordQuestions, RECORD_QUESTIONS_SCHEMA, recordAnswersSection, recordQuestionsRule } from "../_shared/recordQuestions.ts";
 import { ACTIVITY_PERIODS_PROMPT, ACTIVITY_PERIODS_SCHEMA, durationBreakdown, sessionDurationSeconds } from "../_shared/formulas/sessionDuration.ts";
 
@@ -1303,6 +1304,17 @@ Deno.serve(withUsageRecording("analyze-gym", async (req) => {
     // nunca tinha análise nenhuma; agora as duas formas de registo passam
     // pelo Coach. As séries e o objetivo por exercício vêm já no pedido
     // (body.sets, body.exercises_meta) — registo unificado, F1.
+    // Idempotência (incidente de 2026-10-31, _shared/idempotency.ts): a mesma
+    // tentativa reenviada devolve a sessão já gravada, sem gravar outra.
+    const clientRequestId = parseClientRequestId(body.client_request_id);
+    // deno-lint-ignore no-explicit-any
+    const replay = async (session: any) => {
+      const { data: sets } = await sb.from("workout_session_sets").select("*").eq("session_id", session.id);
+      return jsonResponse({ session, sets: sets ?? [], replayed: true });
+    };
+    const alreadySaved = !body.session_id ? await findByClientRequestId(sb, "workout_sessions", userId, clientRequestId) : null;
+    if (alreadySaved) return await replay(alreadySaved);
+
     if (body.mode === "manual") {
       if (!/^\d{4}-\d{2}-\d{2}$/.test(body.date ?? "")) {
         return jsonResponse({ error: "Data inválida (esperado YYYY-MM-DD)" }, 400);
@@ -1419,26 +1431,24 @@ Deno.serve(withUsageRecording("analyze-gym", async (req) => {
 
       const { categories, usage: inferUsage } = await resolveCategories();
       const finalName = nameFor(categories);
-      const { data: session, error: sessionError } = await sb
-        .from("workout_sessions")
-        .insert({
-          user_id: userId,
-          date: body.date,
-          name: finalName,
-          kind,
-          categories,
-          class_types: classTypes,
-          ...userMetrics,
-          // A coluna é NOT NULL com default '{}' — null aqui rebentava o
-          // insert (violação de not-null), como já visto em analyze-run/
-          // analyze-meal/analyze-body.
-          photo_paths: [],
-          status: "concluido",
-          notes: rawNotes,
-          exercises_meta: newMeta,
-        })
-        .select()
-        .single();
+      const { data: session, existing: savedMeanwhile, error: sessionError } = await insertOnce(sb, "workout_sessions", userId, {
+        user_id: userId,
+        date: body.date,
+        name: finalName,
+        kind,
+        categories,
+        class_types: classTypes,
+        ...userMetrics,
+        // A coluna é NOT NULL com default '{}' — null aqui rebentava o
+        // insert (violação de not-null), como já visto em analyze-run/
+        // analyze-meal/analyze-body.
+        photo_paths: [],
+        status: "concluido",
+        notes: rawNotes,
+        exercises_meta: newMeta,
+      }, clientRequestId);
+      // Outra tentativa do mesmo formulário gravou entretanto: é essa.
+      if (savedMeanwhile) return await replay(savedMeanwhile);
       if (sessionError) return jsonResponse({ error: `Falha a gravar sessão: ${sessionError.message}` }, 500);
 
       // Séries falhadas desfazem a sessão — uma sessão sem as séries que o
@@ -1643,23 +1653,25 @@ Deno.serve(withUsageRecording("analyze-gym", async (req) => {
     const finalName = userName ?? (analysis.sessionName || null) ??
       ((kind === "aula" ? mergedClassTypes : mergedCategories).join(" e ") || null) ??
       (kind === "aula" ? "Aula" : "Treino");
-    const { data: session, error: sessionError } = await sb
-      .from("workout_sessions")
-      .insert({
-        user_id: userId,
-        date,
-        name: finalName,
-        kind,
-        categories: mergedCategories,
-        class_types: mergedClassTypes,
-        ...mergeMetrics(analysis.metrics),
-        photo_paths: photoPaths,
-        status: "concluido",
-        notes: rawNotes,
-        exercises_meta: parseExercisesMeta(body.exercises_meta),
-      })
-      .select()
-      .single();
+    const { data: session, existing: savedMeanwhile, error: sessionError } = await insertOnce(sb, "workout_sessions", userId, {
+      user_id: userId,
+      date,
+      name: finalName,
+      kind,
+      categories: mergedCategories,
+      class_types: mergedClassTypes,
+      ...mergeMetrics(analysis.metrics),
+      photo_paths: photoPaths,
+      status: "concluido",
+      notes: rawNotes,
+      exercises_meta: parseExercisesMeta(body.exercises_meta),
+    }, clientRequestId);
+    // Outra tentativa do mesmo formulário gravou entretanto: é essa, e os
+    // prints desta tentativa saem (seriam órfãos).
+    if (savedMeanwhile) {
+      await sb.storage.from("gym-photos").remove(photoPaths);
+      return await replay(savedMeanwhile);
+    }
     if (sessionError) {
       await sb.storage.from("gym-photos").remove(photoPaths);
       return jsonResponse({ error: `Falha a gravar sessão: ${sessionError.message}` }, 500);
