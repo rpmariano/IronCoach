@@ -133,6 +133,10 @@ export function pendingRulesFor(name: unknown, rules: FoodRule[]): FoodRule[] {
   if (!words.size) return [];
   return (rules || []).filter((r) =>
     (r.status === "por_confirmar" || r.status === "varia") &&
+    // Bug #109 (revisão): uma regra de ingrediente opcional já não muda de
+    // estado (não se aprende) — contá-la mandava o pão ao modelo para sempre.
+    // A pergunta da manteiga no pão vem do servidor (optionalAdditions.ts).
+    !isLearnedAdditionRule(r) &&
     // Um hábito de quantidade com gramas (o peso que ele escreveu, bug #75)
     // não é uma pergunta em aberto: o alimento continua sem ir ao modelo.
     !(/quantidades?\s*$/i.test(r.topic) && optionGrams(r.value) != null) &&

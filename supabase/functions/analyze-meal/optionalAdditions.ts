@@ -18,18 +18,24 @@ import { foodKey } from "../_shared/formulas/foodKey.ts";
 import type { CarolQuestion } from "./pantry.ts";
 
 // Cada palavra conta para uma família: «levou manteiga ou creme vegetal?» e
-// «quanta margarina?» são a mesma coisa; o tempero da salada é azeite.
+// «quanta margarina?» são a mesma coisa. Só manteiga, azeite, óleo e molhos
+// (revisão do #109): «tempero» e «gordura» apanhavam o que não é ingrediente
+// opcional — «frango · tempero: sal e limão», «carne picada · gordura: 5%».
 const FAMILY: Record<string, string> = {
   manteiga: "manteiga", margarina: "manteiga", "creme vegetal": "manteiga",
-  azeite: "gordura", oleo: "gordura", gordura: "gordura", banha: "gordura", tempero: "gordura",
-  molho: "molho", maionese: "molho", ketchup: "molho", natas: "molho",
+  azeite: "azeite", oleo: "azeite",
+  molho: "molho", maionese: "molho", ketchup: "molho",
 };
 const WORD_RE = new RegExp(`\\b(${Object.keys(FAMILY).join("|")})s?\\b`, "g");
+// A manteiga de amendoim e as outras manteigas vegetais são um alimento, não
+// a manteiga do pão.
+const NUT_BUTTER_RE = /\bmanteigas? de (amendoim|caju|amendoa|amendoas|avela|avelas|noz|nozes|pistacio|cacau|coco|karite|sementes|girassol|sesamo|frutos secos)\b/g;
+const keyOf = (text: unknown): string => foodKey(text).replace(NUT_BUTTER_RE, " ");
 
 /** As famílias de ingredientes opcionais que um texto nomeia. */
 export function additionFamilies(text: unknown): Set<string> {
   const out = new Set<string>();
-  for (const m of foodKey(text).matchAll(WORD_RE)) out.add(FAMILY[m[1]]);
+  for (const m of keyOf(text).matchAll(WORD_RE)) out.add(FAMILY[m[1]]);
   return out;
 }
 
@@ -76,10 +82,35 @@ export function dedupeAdditionQuestions(questions: CarolQuestion[]): CarolQuesti
   });
 }
 
-// O pão de uma sandes, tosta ou torrada pode levar manteiga; pão de ló e pão
-// de queijo não são disso.
+// O pão de uma sandes, tosta ou torrada pode levar manteiga; pão de ló, pão
+// de queijo, pão de Deus, pão ralado e pudim de pão não são disso.
 const BREAD_RE = /\b(pao|paes|sandes|sanduiche|sanduiches|tosta|tostas|torrada|torradas|baguete|carcaca|bagel|broa|regueifa)\b/;
-const NOT_BREAD_RE = /\bpao de (lo|queijo)\b/;
+const NOT_BREAD_RE = /\bpao de (lo|queijo|deus)\b|\bpao ralado\b|\bpudim de pao\b/;
+// Palavras que não nomeiam um alimento: «sem manteiga», «com pouca manteiga»,
+// «levou uma camada fina de manteiga» falam da manteiga do pão; «ovos mexidos
+// com manteiga» fala dos ovos (revisão do #109).
+const FILLER = new Set(
+  ("a o as os um uma uns umas de do da dos das no na nos nas em com sem e ou so pouca pouco muita muito bocado " +
+    "bocadinho pouquinha pouquinho camada fina grossa fio levou leva levava tinha tem nao sim pus pos coloquei barrei " +
+    "barrado barrada lado lados dois duas ambos").split(" "),
+);
+const CLAUSE_RE = /[,.;:!?\n]|\s(?:e|mas)\s/;
+
+/** As observações falam da manteiga do pão: uma frase com manteiga e pão, ou
+ *  com manteiga e nenhum outro alimento («sem manteiga»). */
+function notesSayBreadButter(notes: string | null | undefined): boolean {
+  for (const clause of String(notes ?? "").split(CLAUSE_RE)) {
+    if (!additionFamilies(clause).has("manteiga")) continue;
+    const k = keyOf(clause);
+    if (BREAD_RE.test(k) && !NOT_BREAD_RE.test(k)) return true;
+    const rest = k.replace(WORD_RE, " ").split(" ").filter(Boolean);
+    if (rest.every((w) => FILLER.has(w))) return true;
+  }
+  return false;
+}
+
+/** Um alimento que É manteiga («Manteiga», «Margarina Becel»), à parte. */
+const isButterItem = (name: unknown): boolean => /^(manteigas?|margarinas?|creme vegetal)\b/.test(keyOf(name).trim());
 /** 10 g de manteiga: o que muda entre «sem» e «com». */
 export const BUTTER_QUESTION_KCAL = 72;
 const MAX_BUTTER_QUESTIONS = 2;
@@ -96,15 +127,17 @@ export function butterQuestions(
   existing: CarolQuestion[],
   newId: () => string = () => crypto.randomUUID(),
 ): CarolQuestion[] {
-  if (additionFamilies(notes).has("manteiga")) return [];
-  if ((items || []).some((it) => additionFamilies(it?.name).has("manteiga"))) return [];
+  // Ele já o disse: nas observações, sobre o pão; ou registou a manteiga à parte.
+  if (notesSayBreadButter(notes)) return [];
+  if ((items || []).some((it) => isButterItem(it?.name))) return [];
   const asked = new Set(existing.filter((q) => questionAdditions(q).has("manteiga")).map((q) => foodKey(q.item_name)));
   const out: CarolQuestion[] = [];
   for (const it of items || []) {
     if (out.length >= MAX_BUTTER_QUESTIONS) break;
     const name = String(it?.name ?? "").trim();
     const k = foodKey(name);
-    if (!k || !BREAD_RE.test(k) || NOT_BREAD_RE.test(k) || asked.has(k)) continue;
+    // O nome do próprio pão já o diz («pão com pouca manteiga»).
+    if (!k || !BREAD_RE.test(k) || NOT_BREAD_RE.test(k) || asked.has(k) || additionFamilies(name).has("manteiga")) continue;
     asked.add(k);
     out.push({
       id: newId(), kind: "preparacao", topic: `manteiga em ${name}`.slice(0, 40), item_name: name,
@@ -125,7 +158,7 @@ export function withButterQuestions(
   return [...questions, ...butterQuestions(items, notes, questions, newId)];
 }
 
-const FAMILY_LABEL: Record<string, string> = { manteiga: "manteiga", gordura: "azeite ou outra gordura", molho: "molho" };
+const FAMILY_LABEL: Record<string, string> = { manteiga: "manteiga", azeite: "azeite ou óleo", molho: "molho" };
 
 /** Para o comentário: pode pedir-lhe que da próxima vez diga logo se pôs ou
  *  não — é a alternativa a assumir (bug #109). "" sem perguntas destas. */
