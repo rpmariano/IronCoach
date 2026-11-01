@@ -2654,6 +2654,31 @@ export function loggingProfileText(p: Pick<MealLoggingProfile, "kind">): string 
   return p.kind === "completo" ? "regista tudo" : "regista as refeições de vez em quando (ocasional)";
 }
 
+/** «Pedir à Carol que explique» um gráfico (2026-11-01, regra aprovada pelo
+ *  Rui): o botão de cada gráfico (BI/ExplainChartButton) manda «Explica-me a
+ *  leitura do gráfico «X» (período). Série: de… para…, mín…, máx… — a subir
+ *  (n pontos); …», às vezes com uma nota. Primeiro como se lê, depois o que os
+ *  números dele dizem, só com os números que vêm. Voz da Carol. */
+export const CHART_EXPLAIN_RULE =
+  `EXPLICAR UM GRÁFICO:\n` +
+  `Quando ele te pede «Explica-me a leitura do gráfico «…»», a mensagem traz o nome do gráfico, o período e, por ` +
+  `série, os números (início, fim, mínimo, máximo, a tendência e quantos pontos), às vezes com uma nota. Responde em ` +
+  `duas partes, em texto corrido:\n` +
+  `1. Como se lê: o que está em cada eixo (em regra o tempo em baixo e o valor de cada série ao lado, com a unidade), ` +
+  `se as séries têm escalas próprias, e para que lado é bom — o ritmo é melhor a descer, o VDOT a subir; o peso ` +
+  `depende do objetivo dele, que tens no contexto. Se o nome e as séries não deixarem claro o que está num eixo, não o ` +
+  `inventes.\n` +
+  `2. O que os números dele mostram: a leitura, com dois ou três valores do pedido, ligada ao que sabes dele (plano, ` +
+  `prova, objetivo).\n` +
+  `- Usa só os números do pedido ou do contexto: não inventes pontos, datas nem valores intermédios. Com um só ponto ` +
+  `não há tendência. Se precisares de mais, chama a função de histórico ou pergunta-lhe.\n` +
+  `- Curto: quatro a seis frases, sem títulos e sem repetir a lista de números.\n` +
+  `Exemplo — pedido: «Peso (kg): de 80,0 para 76,5 kg … a descer (4 pontos); VDOT: de 37,2 para 39,4 … a subir (3 ` +
+  `pontos). As duas curvas têm escalas independentes.» Resposta: «Em baixo está o tempo; o peso e o VDOT têm cada ` +
+  `um a sua escala, por isso compara as inclinações e não as alturas. O VDOT mede a tua forma aeróbica: quanto mais ` +
+  `alto, melhor. Neste período perdeste 3,5 kg e o VDOT subiu de 37,2 para 39,4. Estás mais leve e com mais motor ao ` +
+  `mesmo tempo, e as duas coisas puxam para o mesmo lado.»\n`;
+
 /** Dias com registo parcial e o atleta ocasional (2026-11-01, opção B do
  *  Rui): o botão «dia incompleto» saiu e o servidor infere-o
  *  (dayCompleteness.ts). Voz da Carol — aprovada pelo Coordenador. */
@@ -6731,6 +6756,7 @@ export function buildSystemInstruction(
     `adivinhes, e não inventes uma justificação (ex.: dizer que o atleta apagou um registo) para ` +
     `explicar uma resposta errada.\n\n` +
     PARTIAL_LOGGING_RULE + `\n` +
+    CHART_EXPLAIN_RULE + `\n` +
     // ── Doutrina Bloco 4.1 — Nutrição base diária ───────────────────────────
     `NUTRIÇÃO — BASE DIÁRIA (Bloco 4.1 — ACSM/AND 2016, ISSN, Burke 2021):\n` +
     `PROTEÍNA (g/kg/dia) por nível e objetivo:\n` +
