@@ -16,6 +16,7 @@ import {
   energyAvailabilityForDays,
 } from '@formulas/nutritionPeriod.ts';
 import { goalsResolver } from '../../../utils/goalHistory';
+import { partialMealDays } from '../../../utils/partialMealDays';
 import { acwrStatusLabel, acwrMissingWeeks } from '../../../utils/biEngine';
 import { GYM_TARGET_PER_WEEK } from '../../../utils/verdicts/gym';
 import { runAcwrCore, weightTrendCore, splitWalksCore } from '../core';
@@ -243,11 +244,12 @@ function gymPillar({ sessions, period, previous, from, to, closedN, todayISO }) 
   };
 }
 
-function nutritionPillar({ meals, runs, gymSessions, bodyAssessments, profile, goalHistory, incompleteDays, period, previous, closed: closedAll, from, to, closedN, todayISO }) {
+function nutritionPillar({ meals, runs, gymSessions, bodyAssessments, profile, goalHistory, period, previous, closed: closedAll, from, to, closedN, todayISO }) {
   /* Os dias que o atleta marcou como incompletos (no Dia) saem das contas da
      nutrição, como no separador Nutrição (2026-10-06). */
-  const marked = new Set(Array.isArray(incompleteDays) ? incompleteDays : EMPTY);
-  const closed = closedAll.filter((d) => !marked.has(d));
+  // Os dias com registo parcial (opção B, 2026-11-01, utils/partialMealDays.js) não contam.
+  const { isPartial } = partialMealDays(meals, goalsResolver(goalHistory || EMPTY, profile, todayISO), todayISO);
+  const closed = closedAll.filter((d) => !isPartial(d));
   const goalsFor = goalsResolver(goalHistory || EMPTY, profile, todayISO);
   const hasGoalOn = calorieGoalSetResolver(goalHistory, profile, todayISO);
   const rows = dailyNutritionRows({ meals, waterLogs: null, days: closed, goalsFor });
@@ -285,7 +287,7 @@ function nutritionPillar({ meals, runs, gymSessions, bodyAssessments, profile, g
   const mealStart = firstDate(meals);
   if (hasGoal && win && mealStart && mealStart <= win.from && goalDays >= HUB_DELTA_MIN_MEAL_DAYS) {
     const prevDays = [];
-    for (let d = win.from; d <= win.to; d = addDaysISO(d, 1)) if (hasGoalOn(d) && !marked.has(d)) prevDays.push(d);
+    for (let d = win.from; d <= win.to; d = addDaysISO(d, 1)) if (hasGoalOn(d) && !isPartial(d)) prevDays.push(d);
     const prevSummary = summarizeNutritionPeriod(dailyNutritionRows({ meals, waterLogs: null, days: prevDays, goalsFor }));
     const pc = prevSummary.byKey.calories;
     if (prevSummary.nDays >= HUB_DELTA_MIN_MEAL_DAYS) {
@@ -395,12 +397,12 @@ function previousWeekSummary({ runs, sessions, meals, previous, todayISO }) {
 // ── A vista ───────────────────────────────────────────────────────────────
 
 /**
- * build([runs, gymSessions, meals, bodyAssessments, profile, goalHistory, nutritionIncompleteDays], { offset }, hoje)
+ * build([runs, gymSessions, meals, bodyAssessments, profile, goalHistory], { offset }, hoje)
  *
  * O Geral só tem "Semana" (D2): qualquer outro `kind` no store lê-se como semana.
  */
 export function buildHubView(deps, periodSel, todayISO) {
-  const [runsIn, sessionsIn, mealsIn, bodyIn, profile, goalHistory, incompleteDays] = deps || EMPTY;
+  const [runsIn, sessionsIn, mealsIn, bodyIn, profile, goalHistory] = deps || EMPTY;
   /* Caminhadas (2026-10-05, runKinds.ts): o pilar Corrida é só de corridas e
      diz as caminhadas da semana à parte. Os registos "de qualquer tipo"
      (1.º registo, EA da nutrição) usam a lista inteira; o resumo da semana
@@ -451,7 +453,7 @@ export function buildHubView(deps, periodSel, todayISO) {
     },
     gym: gymPillar({ sessions, ...ctx }),
     nutrition: nutritionPillar({
-      meals, runs: allRuns, gymSessions: sessions, bodyAssessments, profile, goalHistory, incompleteDays, closed, ...ctx,
+      meals, runs: allRuns, gymSessions: sessions, bodyAssessments, profile, goalHistory, closed, ...ctx,
     }),
     body: bodyPillar({ bodyAssessments, period, todayISO }),
     previousWeek: earlyState === 'a_comecar' ? previousWeekSummary({ runs, sessions, meals, previous, todayISO }) : null,
@@ -459,11 +461,11 @@ export function buildHubView(deps, periodSel, todayISO) {
 }
 
 registerEvolutionView('hub', {
-  deps: (s) => [s.runs, s.gymSessions, s.meals, s.bodyAssessments, s.profile, s.goalHistory, s.nutritionIncompleteDays],
+  deps: (s) => [s.runs, s.gymSessions, s.meals, s.bodyAssessments, s.profile, s.goalHistory],
   build: buildHubView,
   // O histórico de objetivos entra na espera (EVOLUTION_TAB_SLICES.hub não o tem):
   // sem ele a vista seria preparada com os objetivos de hoje em todos os dias.
-  slices: ['profile', 'runs', 'gym', 'meals', 'body', 'goalHistory', 'nutritionIncompleteDays'],
+  slices: ['profile', 'runs', 'gym', 'meals', 'body', 'goalHistory'],
 });
 
 export default buildHubView;

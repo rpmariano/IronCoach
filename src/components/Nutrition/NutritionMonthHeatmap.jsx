@@ -41,7 +41,7 @@ export default function NutritionMonthHeatmap({ view, metric, onViewDay, todayIS
     return { ...d, value: v, status };
   }), [view.days, metric]);
 
-  // Os que se escolhem: os fechados e os marcados como incompletos.
+  // Os que se escolhem: os fechados e os de registo parcial.
   const closedIds = useMemo(() => cells.filter((c) => c.state === 'closed' || c.state === 'incomplete').map((c) => c.date), [cells]);
   const hasIncomplete = closedIds.length > 0 && cells.some((c) => c.state === 'incomplete');
   const fallback = useMemo(() => {
@@ -112,7 +112,7 @@ export default function NutritionMonthHeatmap({ view, metric, onViewDay, todayIS
           <LegendItem swatch={<StatusIcon status="below" />}>Abaixo</LegendItem>
           <LegendItem swatch={<StatusIcon status="above" />}>Acima</LegendItem>
           <LegendItem swatch={<StatusIcon status="none" />}>Sem registo</LegendItem>
-          {hasIncomplete && <LegendItem swatch={swatch.incomplete()}>Incompleto (fora das contas)</LegendItem>}
+          {hasIncomplete && <LegendItem swatch={swatch.incomplete()}>Registo parcial (fora das médias)</LegendItem>}
           <LegendItem swatch={swatch.dot()}>dia de treino</LegendItem>
         </>
       )}
@@ -152,7 +152,7 @@ export default function NutritionMonthHeatmap({ view, metric, onViewDay, todayIS
                 );
               }
               if (c.state === 'incomplete') {
-                // Marcado como incompleto: escolhe-se, mas não tem estado.
+                // Registo parcial: escolhe-se, mas não tem estado.
                 const checked = c.date === sel;
                 return (
                   <button
@@ -164,7 +164,7 @@ export default function NutritionMonthHeatmap({ view, metric, onViewDay, todayIS
                     tabIndex={checked ? 0 : -1}
                     data-testid="month-cell"
                     data-state="incomplete"
-                    aria-label={`${dayLong(c.date, todayISO)}: marcado como incompleto, fora das contas`}
+                    aria-label={`${dayLong(c.date, todayISO)}: registo parcial, fora das médias`}
                     onClick={() => setPicked(c.date)}
                     style={{
                       ...cellBase,

@@ -141,7 +141,7 @@ export const swatch = {
   ),
   stub: () => <span aria-hidden="true" style={{ width: 14, height: 4, borderRadius: 2, background: 'rgba(255,255,255,.12)', flexShrink: 0 }} />,
   dot: () => <span aria-hidden="true" style={{ width: 4, height: 4, borderRadius: 99, background: 'var(--text-3)', flexShrink: 0 }} />,
-  // Dia marcado como incompleto (2026-10-06): neutro, tracejado — não é um estado.
+  // Dia com registo parcial (opção B, 2026-11-01; antes «marcado como incompleto»): neutro, tracejado — não é um estado.
   incomplete: () => <IncompleteMark />,
 };
 
@@ -159,7 +159,7 @@ export function IncompleteMark({ size = 9 }) {
 
 /** "ter, 29 set · marcado como incompleto — fica fora das contas" (o texto
  *  depois do dia, na leitura dos gráficos). */
-export const INCOMPLETE_READOUT = 'marcado como incompleto — fica fora das contas';
+export const INCOMPLETE_READOUT = 'registo parcial — fica fora das médias';
 
 /** "Ver dia ›" / "Ver semana ›" — 44 px, tinta do módulo. */
 export function ViewButton({ children, onClick }) {

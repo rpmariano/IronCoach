@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { buildHubView, resetHubViewMemo, HUB_MIN_MEAL_DAYS, HUB_DELTA_MIN_MEAL_DAYS } from './hub';
 import { getEvolutionViewDef } from '../registry';
 
@@ -12,13 +12,21 @@ let n = 0;
 const run = (date, km = 5, over = {}) => ({ id: `r${n++}`, date, distance_km: km, duration_seconds: km * 330, ...over });
 const forca = (date, kg = 1000) => ({ id: `f${n++}`, date, kind: 'forca', categories: ['Costas'], workout_session_sets: [{ reps: 10, weight: kg / 10 }] });
 const aula = (date) => ({ id: `a${n++}`, date, kind: 'aula', name: 'Pilates', workout_session_sets: [] });
+/* Opção B (2026-11-01): os dias com registo parcial inferem-se (utils/partialMealDays.js, com testes
+   próprios). Aqui mocka-se: `build({ incomplete })` diz quais são parciais. */
+const partial = vi.hoisted(() => ({ days: new Set() }));
+vi.mock('../../../utils/partialMealDays', () => ({
+  partialMealDays: () => ({ profile: { kind: 'completo' }, isPartial: (d) => partial.days.has(d) }),
+}));
+
 const meal = (date, kcal = 2000) => ({ id: `m${n++}`, date, meal_items: [{ quantity_grams: kcal / 2, calories_per_100g: 200 }] });
 const peso = (date, kg) => ({ id: `p${n++}`, date, weight_kg: kg });
 const goal = (validFrom, kcal) => ({ valid_from: validFrom, source: 'manual', calorie_goal: kcal, protein_goal: 150, carbs_goal: 200, fat_goal: 70, water_goal_ml: 2000 });
 
 const build = (over = {}, period = { offset: 0 }, today = HOJE) => {
   const d = { runs: [], sessions: [], meals: [], body: [], profile: {}, goalHistory: [], incomplete: [], ...over };
-  return buildHubView([d.runs, d.sessions, d.meals, d.body, d.profile, d.goalHistory, d.incomplete], period, today);
+  partial.days = new Set(d.incomplete);
+  return buildHubView([d.runs, d.sessions, d.meals, d.body, d.profile, d.goalHistory], period, today);
 };
 
 beforeEach(() => resetHubViewMemo());
@@ -28,9 +36,9 @@ describe('registo', () => {
     const def = getEvolutionViewDef('hub');
     expect(def).toBeTruthy();
     const deps = def.deps({ runs: [1], gymSessions: [2], meals: [3], bodyAssessments: [4], profile: { a: 1 }, goalHistory: [5], waterLogs: [6], nutritionIncompleteDays: ['2026-10-05'] });
-    expect(deps).toEqual([[1], [2], [3], [4], { a: 1 }, [5], ['2026-10-05']]);
+    expect(deps).toEqual([[1], [2], [3], [4], { a: 1 }, [5]]);
     expect(def.slices).toContain('goalHistory');
-    expect(def.slices).toContain('nutritionIncompleteDays');
+    expect(def.slices).not.toContain('nutritionIncompleteDays'); // opção B: os parciais inferem-se das refeições
   });
 });
 
@@ -167,8 +175,8 @@ describe('Nutrição (O1)', () => {
     expect(v.nutrition.nDays).toBe(4);
   });
 
-  // 2026-10-06: um dia marcado como incompleto (no Dia) sai das contas, como na Nutrição.
-  it('um dia marcado como incompleto não conta', () => {
+  // Opção B (2026-11-01): um dia com registo parcial sai das contas, como na Nutrição.
+  it('um dia com registo parcial não conta', () => {
     const meio = [...quatro, meal('2026-10-09', 400)];
     const v = build({ meals: meio, profile: { calorie_goal: 2000 }, incomplete: ['2026-10-09'] });
     expect(v.nutrition.nDays).toBe(4);

@@ -50,23 +50,17 @@ describe('loadInitialData com prazo', () => {
     expect(s.dataPending).toBe(false);
   });
 
-  it('os dias marcados como incompletos entram como datas; sem a tabela, ficam vazios e o resto carrega', async () => {
-    net.plan.nutrition_incomplete_days = { data: [{ date: '2026-10-02' }, { date: '2026-09-30' }] };
-    let p = useAppStore.getState().loadInitialData('u-inc1');
+  // Opção B (2026-11-01): os dias com registo parcial inferem-se das refeições — a tabela
+  // nutrition_incomplete_days deixou de se carregar.
+  it('não carrega nutrition_incomplete_days', async () => {
+    const p = useAppStore.getState().loadInitialData('u-inc1');
     await vi.runAllTimersAsync();
     await p;
-    expect(useAppStore.getState().nutritionIncompleteDays).toEqual(['2026-09-30', '2026-10-02']);
-    // Outra conta, e a tabela ainda não existe (migração por aplicar).
-    net.plan.nutrition_incomplete_days = { error: { code: '42P01', message: 'relation does not exist' } };
-    net.plan.runs = { data: [run('a')] };
-    p = useAppStore.getState().loadInitialData('u-inc2');
-    await vi.runAllTimersAsync();
-    await p;
-    const s = useAppStore.getState();
-    expect(s.nutritionIncompleteDays).toEqual([]);
-    expect(s.runs).toHaveLength(1);
-    expect(s.dataPending).toBe(false);
+    expect(net.calls).toContain('meals');
+    expect(net.calls).not.toContain('nutrition_incomplete_days');
+    expect(useAppStore.getState()).not.toHaveProperty('nutritionIncompleteDays');
   });
+
 
   it('um pedido preso na rede não segura o arranque: entra depois, em segundo plano', async () => {
     // O caso real: coach_plan_items 37 s preso, o resto em milissegundos.
