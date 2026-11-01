@@ -71,7 +71,7 @@ function DoneToggle({ done, onToggle, ariaLabel }) {
       <span
         className="w-8 h-8 rounded-full flex items-center justify-center border-2 transition-colors"
         style={done
-          ? { background: 'var(--mod-ginasio-to)', borderColor: 'var(--mod-ginasio-to)', color: 'var(--bg-app)' }
+          ? { background: 'var(--ok)', borderColor: 'var(--ok)', color: 'var(--ok-ink)' }
           : { background: 'transparent', borderColor: 'var(--border-glass-strong)', color: 'var(--text-3)' }}
       >
         <Check size={15} strokeWidth={3} />
@@ -115,6 +115,30 @@ function StrengthSets({ ex, last, onExercise }) {
       {ex.sets.map((s, idx) => {
         const sug = setSuggestion(ex, idx, last);
         const ph = (v, fallback) => (v !== '' && v != null ? String(v) : fallback);
+        /* #95: a série feita fecha-se numa linha verde («Série 1 · 12 × 40 kg ✓»). Desmarcar o ✓
+           reabre-a para corrigir. */
+        if (s.done) {
+          const reps = s.reps !== '' && s.reps != null ? s.reps : sug?.reps;
+          const kg = s.weight !== '' && s.weight != null ? s.weight : sug?.weight;
+          const txt = [reps ? `${reps} reps` : null, kg ? `${String(kg).replace('.', ',')} kg` : null].filter(Boolean).join(' × ');
+          return (
+            <div
+              key={s.key}
+              data-testid="serie-feita"
+              className="flex items-center gap-2 rounded-xl border pl-3"
+              style={{ background: 'var(--tint-ok-bg)', borderColor: 'var(--tint-ok-bd)' }}
+            >
+              <span className="flex-1 min-w-0 text-[13px] font-bold text-[var(--text-1)]">
+                Série {idx + 1}{txt ? <span className="font-semibold text-[var(--text-2)]"> · {txt}</span> : null}
+              </span>
+              <DoneToggle
+                done
+                onToggle={() => onExercise(toggleSetDone(ex, s.key, last))}
+                ariaLabel={`Série ${idx + 1} de ${name} feita`}
+              />
+            </div>
+          );
+        }
         return (
           <FieldBlock key={s.key} className="p-2.5!">
             <div className="flex items-center justify-between mb-1.5">
@@ -228,14 +252,15 @@ function CardioRow({ ex, onExercise }) {
 
 export default function ExerciseEditor({ exercises, onChange, locker = null, lockerRows = [], onOpenLocker }) {
   const [pickerOpen, setPickerOpen] = useState(false);
-  // Os exercícios abertos (por key). Por omissão tudo colapsado; um exercício novo abre-se.
-  const [openKeys, setOpenKeys] = useState(() => new Set());
+  /* O exercício aberto (key) — só UM de cada vez (#95): abrir outro fecha o anterior. Por omissão
+     tudo colapsado; um exercício novo abre-se. */
+  const [openKey, setOpenKey] = useState(null);
   const [focusKey, setFocusKey] = useState(null);
   const nameRefs = useRef(new Map());
   const replace = (key, next) => onChange(exercises.map(e => (e.key === key ? next : e)));
   const remove = (key) => onChange(exercises.filter(e => e.key !== key));
   const anyUnconfirmed = exercises.some(hasUnconfirmedPlanSets);
-  const toggleOpen = (key) => setOpenKeys((prev) => { const next = new Set(prev); if (next.has(key)) next.delete(key); else next.add(key); return next; });
+  const toggleOpen = (key) => setOpenKey((cur) => (cur === key ? null : key));
 
   /* #92: o exercício acabado de adicionar abre-se e o foco vai para o NOME dele (não para o do
      topo da lista, nem para nenhum outro), com o campo à vista por cima do teclado. */
@@ -247,11 +272,11 @@ export default function ExerciseEditor({ exercises, onChange, locker = null, loc
       keepVisible(el, { delay: 0 });
     }
     setFocusKey(null);
-  }, [focusKey, openKeys]);
+  }, [focusKey, openKey]);
 
   const addNew = () => {
     const ex = newExercise({ type: 'forca' });
-    setOpenKeys((prev) => new Set(prev).add(ex.key));
+    setOpenKey(ex.key);
     setFocusKey(ex.key);
     onChange([ex, ...exercises]);
   };
@@ -307,12 +332,23 @@ export default function ExerciseEditor({ exercises, onChange, locker = null, loc
             const type = exerciseType(ex);
             const last = lockerEntryFor(locker, ex.name);
             const lastText = describeLast(last);
-            const isOpen = openKeys.has(ex.key);
+            const isOpen = openKey === ex.key;
             const panelId = `ex-detalhe-${ex.key}`;
             const resumo = exerciseSummary(ex);
             const feitas = ex.sets.filter((s) => s.done).length;
+            const concluido = ex.sets.length > 0 && feitas === ex.sets.length;
             return (
-              <FieldBlock key={ex.key} className="p-0! overflow-hidden" data-testid="exercicio-bloco" data-open={isOpen ? 'true' : 'false'}>
+              <FieldBlock
+                key={ex.key}
+                className="p-0! overflow-hidden transition-colors"
+                data-testid="exercicio-bloco"
+                data-open={isOpen ? 'true' : 'false'}
+                data-concluido={concluido ? 'true' : 'false'}
+                /* #108: o aberto vê-se — contorno de 2 px e fundo na cor do módulo; o concluído, a verde. */
+                style={isOpen
+                  ? { borderColor: 'var(--mod-ginasio-to)', boxShadow: 'inset 0 0 0 1px var(--mod-ginasio-to)', background: 'color-mix(in srgb, var(--mod-ginasio-to) 9%, var(--surface-glass))' }
+                  : concluido ? { borderColor: 'var(--tint-ok-bd)' } : undefined}
+              >
                 {/* A linha colapsada: o nome em destaque e o resumo; tocar abre/fecha. */}
                 <div className="flex items-center">
                   <button
@@ -321,10 +357,17 @@ export default function ExerciseEditor({ exercises, onChange, locker = null, loc
                     aria-controls={panelId}
                     aria-label={`${isOpen ? 'Fechar' : 'Abrir'} ${label(ex)}`}
                     onClick={() => toggleOpen(ex.key)}
-                    className="flex-1 min-w-0 min-h-[56px] flex items-center gap-2 pl-3 pr-1 text-left"
+                    className="flex-1 min-w-0 min-h-[52px] flex items-center gap-2 pl-3 pr-1 py-1.5 text-left"
                   >
                     <span className="flex-1 min-w-0">
-                      <span className="block text-[15px] font-extrabold text-[var(--text-1)] break-words">{(ex.name || '').trim() || 'Novo exercício'}</span>
+                      <span className="flex items-center gap-1.5 text-[15px] font-extrabold text-[var(--text-1)] break-words">
+                        {concluido && (
+                          <span className="w-5 h-5 shrink-0 rounded-full flex items-center justify-center" style={{ background: 'var(--ok)', color: 'var(--ok-ink)' }} role="img" aria-label="Concluído">
+                            <Check size={12} strokeWidth={3} aria-hidden="true" />
+                          </span>
+                        )}
+                        {(ex.name || '').trim() || 'Novo exercício'}
+                      </span>
                       {(resumo || feitas > 0) && (
                         <span data-testid="exercicio-resumo" className="block text-[12px] text-[var(--text-3)] break-words">
                           {resumo}{feitas > 0 ? `${resumo ? ' · ' : ''}${feitas}/${ex.sets.length} feitas` : ''}
@@ -339,7 +382,7 @@ export default function ExerciseEditor({ exercises, onChange, locker = null, loc
                 </div>
 
                 {/* O detalhe fica no DOM (escondido quando fechado): o que se escreveu não se perde. */}
-                <div id={panelId} hidden={!isOpen} className="px-3 pb-3 pt-1 space-y-3">
+                <div id={panelId} hidden={!isOpen} className="px-3 pb-3 pt-0.5 space-y-2.5">
                   <Field label="Nome do exercício">
                     {(id) => (
                       <FieldInput

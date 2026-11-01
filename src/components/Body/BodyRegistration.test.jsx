@@ -230,8 +230,8 @@ describe('BodyRegistration — Analisar avaliação por foto (analyze-body)', ()
   it('os segmentos "Em jejum" / "Não em jejum" escrevem-se nas observações e alternam (bug #60)', async () => {
     mocks.invoke.mockResolvedValue({ data: { assessment: { id: 'assess-1' } }, error: null });
     render(<BodyRegistration onClose={onClose} />);
-    const emJejum = screen.getByRole('button', { name: 'Em jejum' });
-    const naoJejum = screen.getByRole('button', { name: 'Não em jejum' });
+    const emJejum = screen.getByRole('button', { name: 'Em jejum: sim' });
+    const naoJejum = screen.getByRole('button', { name: 'Em jejum: não' });
     const notas = screen.getByPlaceholderText('Contexto da pesagem...');
 
     fireEvent.change(notas, { target: { value: 'depois do treino' } });
@@ -253,6 +253,8 @@ describe('BodyRegistration — Analisar avaliação por foto (analyze-body)', ()
     fireEvent.click(screen.getByRole('button', { name: /Analisar avaliação/ }));
     await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(1));
     expect(mocks.invoke.mock.calls[0][1].body.notes).toBe('Em jejum. depois do treino');
+    // Bug #103: o jejum vai também como campo próprio.
+    expect(mocks.invoke.mock.calls[0][1].body.fasting).toBe(true);
   });
 
   it('acrescenta a avaliação devolvida (já com ai_summary) ao store e fecha o formulário', async () => {
@@ -685,5 +687,15 @@ describe('BodyRegistration — hora da avaliação', () => {
     useAppStore.setState({ profile: PROFILE, bodyAssessments: [existing], loadInitialData: vi.fn().mockResolvedValue() });
     render(<BodyRegistration onClose={() => {}} assessmentIdToEdit="assess-3" />);
     expect(screen.getByLabelText('Hora da avaliação')).toHaveValue('07:30');
+  });
+});
+
+describe('bug #103 — o jejum vai como campo próprio', () => {
+  it('fastingField: Sim → true, Não → false, sem resposta → nada', async () => {
+    const { fastingField } = await import('./BodyRegistration');
+    expect(fastingField('Em jejum. depois do treino')).toEqual({ fasting: true });
+    expect(fastingField('Não estava em jejum.')).toEqual({ fasting: false });
+    expect(fastingField('depois do treino')).toEqual({});
+    expect(fastingField('')).toEqual({});
   });
 });

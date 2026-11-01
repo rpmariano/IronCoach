@@ -22,7 +22,7 @@ import RegistrationSection from '../shared/registration/RegistrationSection';
 import useRegistrationExit from '../shared/registration/useRegistrationExit';
 import PlanPrefillBanner from '../shared/registration/PlanPrefillBanner';
 import { mealSuggestionsFor } from '../../utils/planPrefill';
-import { FieldInput, FieldTextarea } from '../shared/registration/Field';
+import { FieldInput, FieldTextarea, caretToEnd } from '../shared/registration/Field';
 
 /* Espelha MEAL_TYPES em supabase/functions/analyze-meal e mealTypeLabel()
    em src/utils/nutrition.js — as duas usam hífen (ex.: "pequeno-almoco"). A
@@ -1035,7 +1035,8 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
               {!isEditing && (
                 <p className="text-[11px] font-bold text-[var(--text-3)] px-1">Nesta refeição · {manualItems.length}</p>
               )}
-              {manualItems.map(item => (
+              {/* #100: o mais recente primeiro — cada alimento novo empurra os anteriores para baixo. */}
+              {[...manualItems].reverse().map(item => (
                 <div key={item.key} className="flex items-center gap-2 bg-[var(--surface-faint)] border border-[var(--border-glass)] rounded-xl px-3 py-2">
                   {isEditing ? (
                     <>
@@ -1047,11 +1048,11 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
                         className="flex-1 font-bold"
                       />
                       <FieldInput
-                        type="number" min="1"
+                        type="text" inputMode="numeric" pattern="[0-9]*"
                         aria-label={`Gramas de ${item.name}`}
                         value={item.grams}
-                        onFocus={keepFieldVisible}
-                        onChange={e => { updateManualItem(item.key, { grams: e.target.value }); setIsFormDirty(true); }}
+                        onFocus={(e) => { keepFieldVisible(e); caretToEnd(e.currentTarget); }}
+                        onChange={e => { updateManualItem(item.key, { grams: e.target.value.replace(/[^0-9]/g, '') }); setIsFormDirty(true); }}
                         className="w-16! px-2! text-right"
                       />
                       <span className="text-[11px] text-[var(--text-3)]">g</span>
@@ -1072,12 +1073,12 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
                        (90 g) e não havia forma de pôr os 150 g antes de gravar. */
                     <label className="flex items-center gap-1 shrink-0">
                       <FieldInput
-                        type="number" min="1" step="1" inputMode="numeric"
+                        type="text" inputMode="numeric" pattern="[0-9]*"
                         aria-label={`Gramas de ${item.name}`}
                         value={item.grams ?? ''}
                         placeholder="g"
-                        onFocus={keepFieldVisible}
-                        onChange={e => { updateManualItem(item.key, { grams: e.target.value === '' ? null : Number(e.target.value) }); setIsFormDirty(true); }}
+                        onFocus={(e) => { keepFieldVisible(e); caretToEnd(e.currentTarget); }}
+                        onChange={e => { const v = e.target.value.replace(/[^0-9]/g, ''); updateManualItem(item.key, { grams: v === '' ? null : Number(v) }); setIsFormDirty(true); }}
                         className="w-[72px]! px-2! text-right"
                       />
                       <span className="text-[11px] text-[var(--text-3)]">g</span>

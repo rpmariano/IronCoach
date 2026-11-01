@@ -56,6 +56,13 @@ function fastingFromNotes(notes) {
   return null;
 }
 
+/** Bug #103: o jejum vai à Carol como campo próprio (`fasting`), em todos os pedidos de análise.
+ *  Sem resposta, não se manda nada — o servidor fica como antes. Não se guarda na base de dados. */
+export function fastingField(notes) {
+  const v = fastingFromNotes(notes);
+  return v === 'yes' ? { fasting: true } : v === 'no' ? { fasting: false } : {};
+}
+
 function withFasting(notes, choice) {
   const rest = (notes || '').trimStart().replace(NOT_FASTED_NOTE, '').replace(FASTED_NOTE, '').trimStart();
   const phrase = choice === 'yes' ? FASTED_NOTE : choice === 'no' ? NOT_FASTED_NOTE : '';
@@ -313,6 +320,7 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
             assessment_time: normalizeStartTime(assessmentTime),
             notes: notes.trim() || null,
             metrics: payloadMetricsOf(metrics),
+            ...fastingField(notes),
           },
         }, ANALYZE_TIMEOUT_MS);
         if (error) throw new Error(error);
@@ -405,6 +413,7 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
         notes: notes.trim() || null,
         ...(hasTyped ? { metrics: typed } : {}),
         ...(reviewed ? { reviewed: true, classifications: labelsStillValid(readState, typed) } : {}),
+        ...fastingField(notes),
       },
     }, ANALYZE_TIMEOUT_MS);
     if (error) throw new Error(error);
@@ -422,7 +431,7 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
     setErrorMsg('');
     try {
       const { data, error } = await invokeEdgeFunctionWithTimeout('analyze-body', {
-        body: { mode: 'manual', date, assessment_time: normalizeStartTime(assessmentTime), notes: notes.trim() || null, metrics: payloadMetricsOf(metrics) },
+        body: { mode: 'manual', date, assessment_time: normalizeStartTime(assessmentTime), notes: notes.trim() || null, metrics: payloadMetricsOf(metrics), ...fastingField(notes) },
       }, ANALYZE_TIMEOUT_MS);
       if (error) throw new Error(error);
       if (data?.error) throw new Error(data.error);
@@ -573,9 +582,9 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
 
       <RegistrationSection step={stepMeasures + 1} title="Condições e observações" optional>
       <div>
-        <span id="br-jejum-label" className="text-[11px] text-[var(--text-3)] mb-1.5 block">Condições da pesagem</span>
+        <span id="br-jejum-label" className="text-[12px] font-bold text-[var(--text-2)] mb-1.5 block">Em jejum?</span>
         <div role="group" aria-labelledby="br-jejum-label" className="flex gap-2 mb-3">
-          {[['yes', 'Em jejum'], ['no', 'Não em jejum']].map(([value, label]) => {
+          {[['yes', 'Sim'], ['no', 'Não']].map(([value, label]) => {
             const active = fastingFromNotes(notes) === value;
             return (
               <Chip
@@ -584,6 +593,7 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
                 variant="body"
                 active={active}
                 aria-pressed={active}
+                aria-label={`Em jejum: ${label.toLowerCase()}`}
                 onClick={() => { setNotes(withFasting(notes, active ? null : value)); setIsFormDirty(true); }}
               >
                 {label}

@@ -203,3 +203,23 @@ describe('recarga técnica — volta ao separador onde se estava', () => {
     expect(replaceState).toHaveBeenCalledWith(null, '', '/IronCoach/?demo=true');
   });
 });
+
+describe('o id do build é o do conteúdo, não o do commit (bug #97)', () => {
+  it('entryScriptBuild lê o hash do <script> de entrada (com ou sem base)', async () => {
+    const { entryScriptBuild } = await import('./appUpdate');
+    const doc = (src) => ({ querySelectorAll: () => [{ getAttribute: () => src }] });
+    expect(entryScriptBuild(doc('/assets/index-BIGtwyoQ.js'))).toBe('BIGtwyoQ');
+    expect(entryScriptBuild(doc('/ironcoach/assets/index-a_b-C1.js'))).toBe('a_b-C1');
+    expect(entryScriptBuild(doc('/assets/vendor-x.js'))).toBe('');
+    expect(entryScriptBuild(null)).toBe('');
+  });
+
+  it('o vite.config escreve em version.json o hash do chunk de entrada', async () => {
+    const { entryBuildId } = await import('./buildId');
+    expect(entryBuildId({
+      'assets/vendor-Zz.js': { type: 'chunk', isEntry: false, fileName: 'assets/vendor-Zz.js' },
+      'assets/index-BIGtwyoQ.js': { type: 'chunk', isEntry: true, fileName: 'assets/index-BIGtwyoQ.js' },
+    })).toBe('BIGtwyoQ');
+    expect(entryBuildId({})).toBe('');
+  });
+});

@@ -1,4 +1,5 @@
 import { defineConfig } from 'vite';
+import { entryBuildId } from './src/lib/buildId.js';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import { fileURLToPath, URL } from 'node:url';
@@ -12,21 +13,26 @@ import { fileURLToPath, URL } from 'node:url';
 const base = process.env.VITE_BASE || '/';
 
 /* Id de cada build, para a app saber que saiu uma versão nova e se
-   recarregar sozinha (src/lib/appUpdate.js). Vai para o código como
-   __APP_BUILD__ e para dist/version.json; em desenvolvimento fica vazio e a
-   verificação não corre. No GitHub Actions é o commit; noutro lado, a hora. */
+   recarregar sozinha (src/lib/appUpdate.js).
+
+   É o hash do CONTEÚDO do bundle (o do chunk de entrada, que muda com
+   qualquer chunk que ele importe) e não o commit: bug #97 (2026-10-29) — com
+   o commit, cada push a master (um heartbeat, uma Edge Function) publicava um
+   id novo com o mesmo frontend, e a app recarregava-se inteira sempre que o
+   atleta voltava a ela. Vai para dist/version.json; a app lê o seu do
+   <script> de entrada (currentBuild). __APP_BUILD__ só diz se é um build (em
+   desenvolvimento e nos testes fica vazio e a verificação não corre). */
 function appBuildId() {
-  let id = '';
+  let isBuild = false;
   return {
     name: 'ironcoach-build-id',
     config(_, { command }) {
-      id = command === 'build'
-        ? (process.env.GITHUB_SHA || '').slice(0, 12) || Date.now().toString(36)
-        : '';
-      return { define: { __APP_BUILD__: JSON.stringify(id) } };
+      isBuild = command === 'build';
+      return { define: { __APP_BUILD__: JSON.stringify(isBuild ? 'build' : '') } };
     },
-    generateBundle() {
-      if (!id) return;
+    generateBundle(_, bundle) {
+      if (!isBuild) return;
+      const id = entryBuildId(bundle) || Date.now().toString(36);
       this.emitFile({ type: 'asset', fileName: 'version.json', source: JSON.stringify({ build: id }) });
     },
   };
