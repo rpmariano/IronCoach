@@ -782,7 +782,7 @@ export interface PortraitInput {
     effort_rpe?: number | string | null;
     // Projeção details->splits (nunca details inteiro) — computeBestPace só
     // lê splits; computeVdotTrend nem isso.
-    details?: { splits?: Array<{ distance_km?: number | null; time_seconds?: number | null }> | null } | null;
+    details?: { splits?: Array<{ distance_km?: number | null; time_seconds?: number | null }> | null; elevation_gain_m?: unknown; race_type?: unknown } | null;
   }>;
   gymDates: string[];
   body: Array<{ date: string; weight_kg: number | string | null; body_fat_pct: number | string | null }>;
@@ -1247,7 +1247,11 @@ export async function fetchPortraitBlock(sb: any, userId: string, todayISO: stri
     const [runsR, gymR, bodyR, racesR] = await Promise.all([
       // Projeção details->splits, nunca details inteiro — computeBestPace só
       // lê os splits (withProjectedSplits põe-nos em details.splits).
-      sb.from("runs").select("date, distance_km, duration_seconds, kind, training_type, effort_rpe, splits:details->splits")
+      sb.from("runs").select(
+        "date, distance_km, duration_seconds, kind, training_type, effort_rpe, splits:details->splits, " +
+          // O VDOT deixa de fora o trail e o desnível (vdotTrend.ts, isTerrainPacedRun).
+          "elevation_gain_m:details->elevation_gain_m, race_type:details->>race_type",
+      )
         .eq("user_id", userId).gte("date", yearFrom).lte("date", todayISO)
         .order("date", { ascending: false }).limit(PORTRAIT_ROW_LIMIT),
       sb.from("workout_sessions").select("date")

@@ -96,9 +96,22 @@ export function timeToDistance(splits: SplitEntry[] | null | undefined, d: numbe
  * `details.splits` ficava undefined e as voltas nunca contavam (não fazia
  * diferença enquanto as voltas não chegavam às faixas; agora faz).
  */
-export function withProjectedSplits<T extends { splits?: unknown }>(row: T): Omit<T, "splits"> & { details: { splits: SplitEntry[] | null } } {
-  const { splits, ...rest } = row;
-  return { ...rest, details: { splits: Array.isArray(splits) ? splits as SplitEntry[] : null } };
+export function withProjectedSplits<T extends { splits?: unknown; elevation_gain_m?: unknown; race_type?: unknown }>(
+  row: T,
+): Omit<T, "splits" | "elevation_gain_m" | "race_type"> & {
+  details: { splits: SplitEntry[] | null; elevation_gain_m?: unknown; race_type?: unknown };
+} {
+  // O D+ e a disciplina, se a consulta os projetou (`elevation_gain_m:details->
+  // elevation_gain_m`), também voltam para details — o VDOT lê-os (2026-11-01).
+  const { splits, elevation_gain_m, race_type, ...rest } = row;
+  return {
+    ...rest,
+    details: {
+      splits: Array.isArray(splits) ? splits as SplitEntry[] : null,
+      ...(elevation_gain_m !== undefined ? { elevation_gain_m } : {}),
+      ...(race_type !== undefined ? { race_type } : {}),
+    },
+  };
 }
 
 interface PaceEntry {
