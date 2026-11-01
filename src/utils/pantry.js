@@ -260,9 +260,35 @@ export function isDishlessRule(rule) {
   return GENERIC_TOPICS.has(foodKey(core));
 }
 
-/** As regras que aparecem no Armário: as que ela já usa, ou que variam. */
+/* Bug #109 (2026-11-01): os ingredientes opcionais — manteiga, azeite, óleo, molhos — a Carol
+   pergunta sempre; as regras aprendidas sobre eles já não se usam nem se aprendem. A mesma
+   regra de isLearnedAdditionRule em supabase/functions/analyze-meal/optionalAdditions.ts —
+   mudar uma é mudar a outra. Valem as escritas à mão (manual) e a quantidade do próprio
+   ingrediente («manteiga · quantidade»); a manteiga de amendoim (e as outras vegetais) é um
+   alimento, não conta. */
+const ADDITION_FAMILY = {
+  manteiga: 'manteiga', margarina: 'manteiga', 'creme vegetal': 'manteiga',
+  azeite: 'azeite', oleo: 'azeite',
+  molho: 'molho', maionese: 'molho', ketchup: 'molho',
+};
+const ADDITION_RE = new RegExp(`\\b(${Object.keys(ADDITION_FAMILY).join('|')})s?\\b`);
+const NUT_BUTTER_RE = /\bmanteigas? de (amendoim|caju|amendoa|amendoas|avela|avelas|noz|nozes|pistacio|cacau|coco|karite|sementes|girassol|sesamo|frutos secos)\b/g;
+
+export function isLearnedAdditionRule(rule) {
+  if (!rule || rule.source === 'manual') return false;
+  const topic = String(rule.topic ?? '');
+  if (/\bquantidades?\b/i.test(topic)) {
+    const food = foodKey(topic.replace(/\bquantidades?\b/gi, ' ')).replace(/^(de|do|da|dos|das) /, '');
+    if (food in ADDITION_FAMILY) return false;
+  }
+  return ADDITION_RE.test(foodKey(`${topic} ${rule.value ?? ''}`).replace(NUT_BUTTER_RE, ' '));
+}
+
+/** As regras que aparecem no Armário: as que ela já usa, ou que variam — sem as dos
+ *  ingredientes opcionais, que ela já não usa (#109). */
 export function visibleRules(rules) {
-  return (rules || []).filter((r) => r.status === 'confirmado' || r.status === 'varia' || r.source === 'manual');
+  return (rules || []).filter((r) => (r.status === 'confirmado' || r.status === 'varia' || r.source === 'manual')
+    && !isLearnedAdditionRule(r));
 }
 
 // ── Pedidos ───────────────────────────────────────────────────────────────

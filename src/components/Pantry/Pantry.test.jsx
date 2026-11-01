@@ -35,7 +35,7 @@ const FOODS = [
   { id: 'i', name: 'Iogurte grego 0%', name_key: 'iogurte grego 0%', times_seen: 6, portion_grams: 170, calories_per_100g: 59, protein_per_100g: 10, carbs_per_100g: 3.6, fat_per_100g: 0.4 },
 ];
 const RULES = [
-  { id: 'r1', topic: 'fritos', value: 'azeite', status: 'confirmado', source: 'resposta', confirmations: 3 },
+  { id: 'r1', topic: 'fritos', value: 'na air fryer', status: 'confirmado', source: 'resposta', confirmations: 3 },
   { id: 'r2', topic: 'batata', value: 'cozida', status: 'varia', source: 'observacao', confirmations: 1 },
   { id: 'r3', topic: 'leite', value: 'magro', status: 'por_confirmar', source: 'observacao', confirmations: 1 },
 ];
@@ -130,10 +130,32 @@ describe('PantrySection', () => {
     render(<PantrySection />);
     fireEvent.click(screen.getByRole('tab', { name: /Como cozinhas · 2/ }));
     const lista = screen.getByRole('list', { name: 'Como cozinhas' });
-    expect(lista).toHaveTextContent('azeite');
+    expect(lista).toHaveTextContent('na air fryer');
     expect(lista).toHaveTextContent('Respondeste 3 vezes igual');
     expect(lista).toHaveTextContent('Varia');
     expect(lista).not.toHaveTextContent('magro');
+  });
+
+  it('#109: as regras aprendidas de manteiga, azeite, óleo e molhos não aparecem; as manuais, a quantidade da manteiga e a manteiga de amendoim sim', () => {
+    useAppStore.setState({ foodRules: [
+      ...RULES,
+      { id: 'a1', topic: 'sandes de fiambre', value: 'com manteiga', status: 'confirmado', source: 'resposta', confirmations: 2 },
+      { id: 'a2', topic: 'ovos estrelados', value: 'em azeite', status: 'varia', source: 'resposta', confirmations: 1 },
+      { id: 'a3', topic: 'hambúrguer', value: 'com ketchup', status: 'confirmado', source: 'observacao', confirmations: 2 },
+      { id: 'a4', topic: 'salada', value: 'azeite e vinagre', status: 'confirmado', source: 'manual', confirmations: 2 },
+      { id: 'a5', topic: 'manteiga · quantidade', value: 'camada fina (~5 g)', status: 'confirmado', source: 'resposta', confirmations: 2 },
+      { id: 'a6', topic: 'tosta', value: 'com manteiga de amendoim', status: 'confirmado', source: 'resposta', confirmations: 2 },
+    ] });
+    render(<PantrySection />);
+    fireEvent.click(screen.getByRole('tab', { name: /Como cozinhas · 5/ }));
+    const cozinha = screen.getByRole('list', { name: 'Como cozinhas' });
+    expect(cozinha).not.toHaveTextContent('sandes de fiambre');
+    expect(cozinha).not.toHaveTextContent('em azeite');
+    expect(cozinha).not.toHaveTextContent('ketchup');
+    expect(cozinha).toHaveTextContent('azeite e vinagre');
+    expect(cozinha).toHaveTextContent('com manteiga de amendoim');
+    expect(screen.getByRole('list', { name: 'Quanto costumas pôr' })).toHaveTextContent('camada fina (~5 g)');
+    expect(screen.getByTestId('pantry-additions-note')).toHaveTextContent('Manteiga, azeite, óleo e molhos pergunto sempre');
   });
 
   it('os hábitos de quantidade aparecem à parte, só com o nome do alimento (fase C dos #58/#66)', () => {

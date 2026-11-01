@@ -26,7 +26,7 @@ vi.mock('../lib/supabase', () => ({
 }));
 
 const {
-  pantrySuggestions, habitualsForMealType, portionText, foodSubline, ruleInfo, visibleRules, isKnownFood, savePantryFood, saveFoodRule,
+  pantrySuggestions, habitualsForMealType, portionText, foodSubline, ruleInfo, visibleRules, isLearnedAdditionRule, isKnownFood, savePantryFood, saveFoodRule,
   microOrNull, foodKey, microsTrusted, pantryMicro, missingMicroWords, isPantryComplete, listWords, MICRO_COLUMNS,
   isDishlessRule, isQuantityRule, ruleLabel, templateItems, templateTotals, templatesForMealType, templateForMeal, saveMealTemplate, variantsOf, topLevelFoods, saveFoodVariant, suggestedTemplateName, markMealTemplateUsed, foodDefaultGrams,
 } = await import('./pantry');
@@ -150,6 +150,28 @@ describe('textos', () => {
     expect(visibleRules([{ status: 'por_confirmar' }, { status: 'confirmado' }, { status: 'varia' }]).length).toBe(2);
     expect(isKnownFood('IOGURTE grego 0 %', FOODS)).toBe(true);
     expect(isKnownFood('Banana', FOODS)).toBe(false);
+  });
+});
+
+describe('isLearnedAdditionRule (#109, o mesmo do servidor)', () => {
+  const r = (topic, value, source = 'resposta') => ({ topic, value, source, status: 'confirmado' });
+  it('manteiga, margarina, creme vegetal, azeite, óleo, molho, maionese e ketchup aprendidos', () => {
+    for (const v of ['com manteiga', 'margarina', 'creme vegetal', 'em azeite', 'óleo de girassol', 'molho de tomate', 'maionese', 'ketchup']) {
+      expect(isLearnedAdditionRule(r('sandes', v))).toBe(true);
+    }
+    expect(isLearnedAdditionRule(r('Ovos · azeite', 'um fio', 'observacao'))).toBe(true);
+  });
+  it('não contam: manuais, a quantidade do próprio ingrediente, manteigas vegetais, nem tempero/gordura', () => {
+    expect(isLearnedAdditionRule(r('salada', 'azeite e vinagre', 'manual'))).toBe(false);
+    expect(isLearnedAdditionRule(r('manteiga · quantidade', 'camada fina'))).toBe(false);
+    expect(isLearnedAdditionRule(r('quantidade de azeite', '1 colher'))).toBe(false);
+    expect(isLearnedAdditionRule(r('tosta', 'com manteiga de amendoim'))).toBe(false);
+    expect(isLearnedAdditionRule(r('frango · tempero', 'sal e limão'))).toBe(false);
+    expect(isLearnedAdditionRule(r('carne picada · gordura', '5%'))).toBe(false);
+    expect(isLearnedAdditionRule(null)).toBe(false);
+  });
+  it('visibleRules deixa-as de fora', () => {
+    expect(visibleRules([r('sandes', 'com manteiga'), r('salada', 'azeite', 'manual'), { ...r('ovos', 'em azeite'), status: 'varia' }])).toHaveLength(1);
   });
 });
 
