@@ -393,7 +393,7 @@ export function parseFasting(v: unknown): boolean | null {
   return v === true || v === false ? v : null;
 }
 
-function buildPrompt(notes: string | null, history: unknown[], memoryBlock: string | null = null, goalsCtx: GoalsContext | null = null, assessmentTime: string | null = null, typed: Metrics | null = null, fasting: boolean | null = null): string {
+function buildPrompt(notes: string | null, history: unknown[], memoryBlock: string | null = null, goalsCtx: GoalsContext | null = null, assessmentTime: string | null = null, typed: Metrics | null = null, fasting: boolean | null = null, answers = ""): string {
 
   let prompt =
     extractionRules() + typedMetricsSection(typed) + "\n\n" +
@@ -411,6 +411,7 @@ function buildPrompt(notes: string | null, history: unknown[], memoryBlock: stri
     "Sê direta e prática, sem alarmismos e sem dar diagnósticos médicos.\n" +
     CAROL_TONE_RULES_SHORT + "\n" +
     weighingConditions(assessmentTime, notes, fasting) +
+    answers +
     BODY_ANALYSIS_RULES + "\n" +
     carolLanguageRule(goalsCtx?.level ?? null) + "\n\n" +
     goalsReviewSection(goalsCtx?.goals ?? null, goalsCtx ?? {});
@@ -440,6 +441,8 @@ async function analyzeWithGemini(
   typed: Metrics | null = null,
   // O jejum respondido no formulário (bug #103).
   fasting: boolean | null = null,
+  // As perguntas da leitura e as respostas dele (bug #106, recordAnswersSection).
+  answers = "",
 ): Promise<
   {
     metrics: Record<string, number | null>;
@@ -450,7 +453,7 @@ async function analyzeWithGemini(
     goalsReview: GoalsReview;
   }
 > {
-  const parts: unknown[] = [{ text: buildPrompt(notes, history, memoryBlock, goalsCtx, assessmentTime, typed, fasting) }];
+  const parts: unknown[] = [{ text: buildPrompt(notes, history, memoryBlock, goalsCtx, assessmentTime, typed, fasting, answers) }];
   for (const b64 of images) {
     parts.push({ inline_data: { mime_type: mime, data: b64 } });
   }
@@ -869,7 +872,7 @@ Deno.serve(withUsageRecording("analyze-body", async (req) => {
 
       let result;
       try {
-        result = await analyzeWithGemini(images, "image/jpeg", rawNotes, history || [], geminiKey, await memoryPromise, await goalsCtxPromise, extractionDeadline, rawTime, null, rawFasting);
+        result = await analyzeWithGemini(images, "image/jpeg", rawNotes, history || [], geminiKey, await memoryPromise, await goalsCtxPromise, extractionDeadline, rawTime, null, rawFasting, answersBlock);
       } catch (e) {
         return jsonResponse({ error: e instanceof Error ? e.message : "Falha na reanálise." }, 502);
       }
@@ -972,7 +975,7 @@ Deno.serve(withUsageRecording("analyze-body", async (req) => {
     // 2b. Análise Gemini — todas as imagens numa só chamada (partes múltiplas)
     let result;
     try {
-      result = await analyzeWithGemini(images, mime, rawNotes, history || [], geminiKey, await memoryPromise, await goalsCtxPromise, extractionDeadline, rawTime, typed, rawFasting);
+      result = await analyzeWithGemini(images, mime, rawNotes, history || [], geminiKey, await memoryPromise, await goalsCtxPromise, extractionDeadline, rawTime, typed, rawFasting, answersBlock);
     } catch (e) {
       await sb.storage.from("body-photos").remove(photoPaths);
       return jsonResponse({ error: e instanceof Error ? e.message : "Falha na análise." }, 502);
