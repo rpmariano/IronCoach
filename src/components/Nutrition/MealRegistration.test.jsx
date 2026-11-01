@@ -241,12 +241,20 @@ describe('MealRegistration — registo manual: adicionar é local, análise só 
     fireEvent.click(screen.getByRole('button', { name: /Adicionar alimento/i }));
   };
 
+  it('#100: o alimento mais recente aparece primeiro na lista', () => {
+    render(<MealRegistration onClose={onClose} />);
+    addItem('Arroz', 100);
+    addItem('Peito de frango', 150);
+    const gramas = screen.getAllByLabelText(/^Gramas de /);
+    expect(gramas.map(g => g.getAttribute('aria-label'))).toEqual(['Gramas de Peito de frango', 'Gramas de Arroz']);
+  });
+
   it('"Adicionar alimento" só junta à lista local, sem chamar o Gemini/Coach', () => {
     render(<MealRegistration onClose={onClose} />);
     addItem('Peito de frango', 150);
 
     expect(screen.getByText('Peito de frango')).toBeInTheDocument();
-    expect(screen.getByLabelText('Gramas de Peito de frango')).toHaveValue(150);
+    expect(screen.getByLabelText('Gramas de Peito de frango')).toHaveValue('150');
     expect(mocks.invoke).not.toHaveBeenCalled();
   });
 
@@ -929,7 +937,7 @@ describe('MealRegistration — a despensa ao escrever', () => {
     expect(lista).toHaveTextContent('Iogurte grego 0%');
     expect(lista).toHaveTextContent('170 g · 100 kcal');
     fireEvent.click(screen.getByRole('option', { name: /Iogurte grego 0%/ }));
-    expect(screen.getByLabelText('Gramas de Iogurte grego 0%')).toHaveValue(170);
+    expect(screen.getByLabelText('Gramas de Iogurte grego 0%')).toHaveValue('170');
     expect(screen.getByText('já conhecido, não é analisado')).toBeInTheDocument();
     expect(screen.queryByTestId('pantry-suggestions')).not.toBeInTheDocument();
   });
@@ -950,7 +958,7 @@ describe('MealRegistration — a despensa ao escrever', () => {
     expect(screen.queryByTestId('meal-items')).not.toBeInTheDocument();
     fireEvent.click(within(pergunta).getByRole('button', { name: /sem pele/ }));
     expect(screen.queryByTestId('meal-variant-pick')).not.toBeInTheDocument();
-    expect(screen.getByLabelText('Gramas de Coxa de frango sem pele')).toHaveValue(100);
+    expect(screen.getByLabelText('Gramas de Coxa de frango sem pele')).toHaveValue('100');
     expect(mocks.invoke).not.toHaveBeenCalled();
   });
 
@@ -968,7 +976,7 @@ describe('MealRegistration — a despensa ao escrever', () => {
     fireEvent.change(screen.getByPlaceholderText(/peito de frango grelhado/), { target: { value: 'coxa' } });
     fireEvent.click(screen.getByRole('option', { name: /Coxa de frango/ }));
     fireEvent.click(within(screen.getByTestId('meal-variant-pick')).getByRole('button', { name: /com pele/ }));
-    expect(screen.getByLabelText('Gramas de Coxa de frango com pele')).toHaveValue(200);
+    expect(screen.getByLabelText('Gramas de Coxa de frango com pele')).toHaveValue('200');
   });
 
   describe('bug #87: pergunta sempre, também nas predefinidas e nos hábitos', () => {
@@ -982,12 +990,12 @@ describe('MealRegistration — a despensa ao escrever', () => {
       render(<MealRegistration onClose={onClose} />);
       fireEvent.click(screen.getByRole('button', { name: /Juntar a refeição Frango e iogurte/ }));
       // O iogurte entra logo; a coxa pergunta.
-      expect(screen.getByLabelText('Gramas de Iogurte grego 0%')).toHaveValue(170);
+      expect(screen.getByLabelText('Gramas de Iogurte grego 0%')).toHaveValue('170');
       const pergunta = screen.getByTestId('meal-variant-pick');
       expect(pergunta).toHaveTextContent('Coxa de frango');
       fireEvent.click(within(pergunta).getByRole('button', { name: /sem pele/ }));
       // As gramas da predefinida valem para a variante escolhida.
-      expect(screen.getByLabelText('Gramas de Coxa de frango sem pele')).toHaveValue(150);
+      expect(screen.getByLabelText('Gramas de Coxa de frango sem pele')).toHaveValue('150');
       expect(screen.queryByTestId('meal-variant-pick')).not.toBeInTheDocument();
       // Já tem a coxa (outra variante): não volta a perguntar nem a juntar.
       fireEvent.blur(screen.getByLabelText('Nome do alimento a adicionar')); // o foco fica no campo e esconde os atalhos
@@ -1015,7 +1023,7 @@ describe('MealRegistration — a despensa ao escrever', () => {
     render(<MealRegistration onClose={onClose} />);
     fireEvent.change(screen.getByPlaceholderText(/peito de frango grelhado/), { target: { value: 'iog nat' } });
     fireEvent.click(screen.getByRole('option', { name: /Iogurte natural/ }));
-    expect(screen.getByLabelText('Gramas de Iogurte natural')).toHaveValue(125);
+    expect(screen.getByLabelText('Gramas de Iogurte natural')).toHaveValue('125');
     expect(screen.getByText('já conhecido · a Carol completa os micronutrientes')).toBeInTheDocument();
   });
 
@@ -1024,7 +1032,7 @@ describe('MealRegistration — a despensa ao escrever', () => {
     fireEvent.change(screen.getByLabelText('Gramas do alimento a adicionar (opcional)'), { target: { value: '200' } });
     fireEvent.change(screen.getByPlaceholderText(/peito de frango grelhado/), { target: { value: 'iog gr' } });
     fireEvent.click(screen.getByRole('option', { name: /Iogurte grego 0%/ }));
-    expect(screen.getByLabelText('Gramas de Iogurte grego 0%')).toHaveValue(200);
+    expect(screen.getByLabelText('Gramas de Iogurte grego 0%')).toHaveValue('200');
   });
 
   it('as tuas refeições: um toque junta os alimentos com as gramas, sem repetir os que já lá estão (bug #63)', async () => {
@@ -1041,7 +1049,7 @@ describe('MealRegistration — a despensa ao escrever', () => {
     // A escrever, os atalhos escondem-se (bug #64); voltam ao sair do campo.
     fireEvent.blur(screen.getByLabelText('Nome do alimento a adicionar'));
     fireEvent.click(screen.getByRole('button', { name: 'Juntar a refeição Pequeno-almoço de treino (2 alimentos)' }));
-    expect(screen.getByLabelText('Gramas de Iogurte grego 0%')).toHaveValue(170);
+    expect(screen.getByLabelText('Gramas de Iogurte grego 0%')).toHaveValue('170');
 
     mocks.invoke.mockResolvedValue({ data: { meal: { id: 'm9', meal_items: [] } }, error: null });
     fireEvent.click(screen.getByRole('button', { name: /Analisar refeição/i }));
@@ -1165,7 +1173,7 @@ describe('MealRegistration — a despensa ao escrever', () => {
     fireEvent.change(screen.getByPlaceholderText(/peito de frango grelhado/), { target: { value: 'arroz' } });
     fireEvent.click(screen.getByRole('option', { name: /Arroz branco cozido/ }));
     const gramas = screen.getByLabelText('Gramas de Arroz branco cozido');
-    expect(gramas).toHaveValue(90);
+    expect(gramas).toHaveValue('90');
     fireEvent.change(gramas, { target: { value: '150' } });
     mocks.invoke.mockResolvedValue({ data: { meal: { id: 'm9', meal_items: [] } }, error: null });
     fireEvent.click(screen.getByRole('button', { name: /Analisar refeição/i }));
@@ -1196,7 +1204,7 @@ describe('MealRegistration — a despensa ao escrever', () => {
     fireEvent.change(screen.getByPlaceholderText(/peito de frango grelhado/), { target: { value: 'arroz' } });
     expect(screen.getByTestId('pantry-suggestions')).toHaveTextContent('150 g · o teu habitual');
     fireEvent.click(screen.getByRole('option', { name: /Arroz branco cozido/ }));
-    expect(screen.getByLabelText('Gramas de Arroz branco cozido')).toHaveValue(150);
+    expect(screen.getByLabelText('Gramas de Arroz branco cozido')).toHaveValue('150');
   });
 
   it('o que costuma comer nesta refeição aparece por cima, com um toque', async () => {
@@ -1209,7 +1217,7 @@ describe('MealRegistration — a despensa ao escrever', () => {
     const chips = screen.getByTestId('meal-habituals');
     expect(chips).toHaveTextContent('O que costumas comer ao almoço');
     fireEvent.click(screen.getByRole('button', { name: /\+ Aveia em flocos · 40 g/ }));
-    expect(screen.getByLabelText('Gramas de Aveia em flocos')).toHaveValue(40);
+    expect(screen.getByLabelText('Gramas de Aveia em flocos')).toHaveValue('40');
 
     mocks.invoke.mockResolvedValue({ data: { meal: { id: 'm9', meal_items: [] } }, error: null });
     fireEvent.click(screen.getByRole('button', { name: /Analisar refeição/i }));
@@ -1328,5 +1336,27 @@ describe('MealRegistration — a refeição sugerida no plano', () => {
     useAppStore.setState({ meals: ['pequeno-almoco', 'lanche-manha', 'almoco', 'lanche', 'jantar', 'ceia'].map((t, i) => ({ id: `m${i}`, date: DAY, meal_type: t, meal_items: [] })) });
     render(<MealRegistration onClose={onClose} />);
     expect(screen.queryByRole('region', { name: 'Refeição do plano' })).toBeNull();
+  });
+});
+
+describe('MealRegistration — bug #100 (o mais recente primeiro; cursor no fim das gramas)', () => {
+  it('caretToEnd põe o cursor no fim do campo das gramas', async () => {
+    const { caretToEnd } = await import('../shared/registration/Field');
+    const el = document.createElement('input');
+    el.type = 'text';
+    el.value = '150';
+    document.body.appendChild(el);
+    el.focus();
+    const pos = [];
+    el.setSelectionRange = function (a, b) { pos.push([this.type, a, b]); };
+    vi.useFakeTimers();
+    try {
+      caretToEnd(el);
+      vi.advanceTimersByTime(1);
+      expect(pos).toEqual([['text', 3, 3]]);
+    } finally {
+      vi.useRealTimers();
+      el.remove();
+    }
   });
 });

@@ -58,3 +58,18 @@ export function FieldBlock({ className = '', children, ...rest }) {
 export const FieldSelect = forwardRef(function FieldSelect({ className = '', ...props }, ref) {
   return <select ref={ref} className={`${FIELD_CLS} ${className}`.trim()} {...props} />;
 });
+
+/** Põe o cursor no fim do campo ao focar (bug #100: nas gramas, para apagar os números com o
+ *  backspace sem ter de ir ao fim). Só num campo de texto: um <input type="number"> não aceita
+ *  setSelectionRange — por isso as gramas são texto com inputMode numérico. Corre depois do toque
+ *  (o toque põe o cursor onde se tocou) e de novo no fim do toque. */
+export function caretToEnd(el) {
+  if (!el) return;
+  const run = () => {
+    if (document.activeElement !== el) return;
+    const n = String(el.value ?? '').length;
+    try { el.setSelectionRange(n, n); } catch { /* tipo sem seleção: fica onde está */ }
+  };
+  setTimeout(run, 0);
+  el.addEventListener('pointerup', () => setTimeout(run, 0), { once: true });
+}
