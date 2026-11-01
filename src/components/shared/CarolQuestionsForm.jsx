@@ -45,6 +45,59 @@ export function learnedLine({ topic, value, status }) {
   return `Anotado: ${topic} — ${value}. Se da próxima vez também for, deixo de perguntar.`;
 }
 
+/** Uma pergunta: as opções em pílulas, «Outro…» com texto livre (até 60) e o que ela assumiu.
+ *  Controlado: `picked` (a opção, ou OUTRO) e `other` (o texto) vêm de quem a usa. */
+export function QuestionCard({ q, picked, other, onPick, onOther, impact = '' }) {
+  // Numa quantidade (fase B dos #58/#66), com gramas a resposta aplica-se logo; sem gramas a
+  // Carol volta a estimar a porção. As perguntas de contexto (leituras dos prints, #106) não.
+  const placeholder = q.kind === 'quantidade' ? 'ex.: 20 g, ou "duas fatias grossas"' : undefined;
+  return (
+    <fieldset data-testid={`carol-question-${q.id}`} className="rounded-2xl p-3.5 m-0" style={{ background: 'var(--tint-coach-bg)', border: '1px solid var(--tint-coach-bd)' }}>
+      <legend className="sr-only">{q.question}</legend>
+      <div className="flex items-baseline justify-between gap-2">
+        <p className="text-[14px] font-extrabold" style={{ color: 'var(--text-1)' }} aria-hidden="true">{q.question}</p>
+        {impact && <span className="text-[11px] shrink-0" style={{ color: 'var(--text-4)' }}>{impact}</span>}
+      </div>
+      <div className="flex flex-wrap gap-2 mt-2.5">
+        {[...(q.options || []), OUTRO].map((opt) => {
+          const on = picked === opt;
+          return (
+            <button
+              key={opt}
+              type="button"
+              aria-pressed={on}
+              onClick={() => onPick(opt)}
+              className="min-h-[44px] px-[15px] rounded-full text-[13px] font-bold"
+              style={on
+                ? { background: 'rgba(34,211,238,.16)', border: '1px solid rgba(34,211,238,.6)', color: 'var(--coach)' }
+                : { background: 'rgba(255,255,255,.04)', border: '1px solid rgba(255,255,255,.16)', color: 'var(--text-2)' }}
+            >
+              {opt === OUTRO ? 'Outro…' : opt}
+            </button>
+          );
+        })}
+      </div>
+      {picked === OUTRO && (
+        <FieldInput
+          aria-label={`Outra resposta: ${q.question}`}
+          value={other || ''}
+          maxLength={60}
+          autoFocus
+          placeholder={placeholder}
+          onChange={(e) => onOther(e.target.value)}
+          className="mt-2.5"
+          style={{ background: 'var(--surface-soft)', border: '1px solid var(--border-glass)', color: 'var(--text-1)' }}
+        />
+      )}
+      {q.assumed && <p className="text-[11.5px] mt-2" style={{ color: 'var(--text-muted)' }}>Assumi {String(q.assumed).toLowerCase()}.</p>}
+    </fieldset>
+  );
+}
+
+/** A resposta de uma pergunta a partir do estado { picked, other }: a opção, ou o texto de
+ *  «Outro…» (sem espaços à volta); '' sem resposta. */
+export const answerOf = (st) => (st?.picked === OUTRO ? (st.other || '').trim() : (st?.picked || ''));
+
 /**
  * @param questions    as perguntas por responder
  * @param intro        o que a Carol diz antes das perguntas (nó)
@@ -105,52 +158,17 @@ export default function CarolQuestionsForm({
         </div>
       )}
 
-      {questions.map((q) => {
-        const impact = impactText ? impactText(q) : '';
-        return (
-          <fieldset key={q.id} data-testid={`carol-question-${q.id}`} className="rounded-2xl p-3.5 m-0" style={{ background: 'var(--tint-coach-bg)', border: '1px solid var(--tint-coach-bd)' }}>
-            <legend className="sr-only">{q.question}</legend>
-            <div className="flex items-baseline justify-between gap-2">
-              <p className="text-[14px] font-extrabold" style={{ color: 'var(--text-1)' }} aria-hidden="true">{q.question}</p>
-              {impact && <span className="text-[11px] shrink-0" style={{ color: 'var(--text-4)' }}>{impact}</span>}
-            </div>
-            <div className="flex flex-wrap gap-2 mt-2.5">
-              {[...(q.options || []), OUTRO].map((opt) => {
-                const on = picked[q.id] === opt;
-                return (
-                  <button
-                    key={opt}
-                    type="button"
-                    aria-pressed={on}
-                    onClick={() => setPicked((p) => ({ ...p, [q.id]: opt }))}
-                    className="min-h-[44px] px-[15px] rounded-full text-[13px] font-bold"
-                    style={on
-                      ? { background: 'rgba(34,211,238,.16)', border: '1px solid rgba(34,211,238,.6)', color: 'var(--coach)' }
-                      : { background: 'rgba(255,255,255,.04)', border: '1px solid rgba(255,255,255,.16)', color: 'var(--text-2)' }}
-                  >
-                    {opt === OUTRO ? 'Outro…' : opt}
-                  </button>
-                );
-              })}
-            </div>
-            {picked[q.id] === OUTRO && (
-              <FieldInput
-                aria-label={`Outra resposta: ${q.question}`}
-                value={other[q.id] || ''}
-                maxLength={60}
-                autoFocus
-                // Numa quantidade (fase B dos #58/#66), com gramas a resposta
-                // aplica-se logo; sem gramas a Carol volta a estimar a porção.
-                placeholder={q.kind === 'quantidade' ? 'ex.: 20 g, ou "duas fatias grossas"' : undefined}
-                onChange={(e) => setOther((o) => ({ ...o, [q.id]: e.target.value }))}
-                className="mt-2.5"
-                style={{ background: 'var(--surface-soft)', border: '1px solid var(--border-glass)', color: 'var(--text-1)' }}
-              />
-            )}
-            {q.assumed && <p className="text-[11.5px] mt-2" style={{ color: 'var(--text-muted)' }}>Assumi {String(q.assumed).toLowerCase()}.</p>}
-          </fieldset>
-        );
-      })}
+      {questions.map((q) => (
+        <QuestionCard
+          key={q.id}
+          q={q}
+          picked={picked[q.id]}
+          other={other[q.id]}
+          onPick={(opt) => setPicked((p) => ({ ...p, [q.id]: opt }))}
+          onOther={(text) => setOther((o) => ({ ...o, [q.id]: text }))}
+          impact={impactText ? impactText(q) : ''}
+        />
+      ))}
 
       {error && <p role="alert" className="text-[12.5px]" style={{ color: 'var(--danger)' }}>{error}</p>}
 
@@ -186,3 +204,46 @@ export default function CarolQuestionsForm({
     </div>
   );
 }
+
+/* As perguntas de uma leitura de prints (bug #106, contrato do Backend 6597c0ec): a Carol pergunta
+   o contexto do que leu (no máximo 3). Não há «Responder» — as respostas seguem com o registo, em
+   `carol_questions`, quando se carrega em Analisar. Sem impacto em kcal (é sempre 0). */
+export function PrintQuestions({ questions, answers, onChange, testid = 'print-questions' }) {
+  if (!questions?.length) return null;
+  const set = (id, patch) => onChange({ ...answers, [id]: { ...(answers?.[id] || {}), ...patch } });
+  return (
+    <div data-testid={testid} className="space-y-3">
+      <div className="flex gap-2.5 items-start">
+        <CoachAvatar size={36} mood="thinking" />
+        <p className="text-[13px] leading-[1.5] mt-0.5" style={{ color: 'var(--text-2)' }}>
+          {questions.length === 1 ? 'Li os prints. Uma pergunta' : 'Li os prints. Umas perguntas'} para acertar a análise — se não souberes, deixa: fico com o que assumi.
+        </p>
+      </div>
+      {questions.map((q) => (
+        <QuestionCard
+          key={q.id}
+          q={q}
+          picked={answers?.[q.id]?.picked}
+          other={answers?.[q.id]?.other}
+          onPick={(opt) => set(q.id, { picked: answers?.[q.id]?.picked === opt ? undefined : opt })}
+          onOther={(text) => set(q.id, { other: text })}
+        />
+      ))}
+    </div>
+  );
+}
+
+/** O `carol_questions` do pedido de gravar: as perguntas lidas, com `answer` preenchido (ou null)
+ *  e `answered_at` quando há resposta. No máximo 3 (o servidor também corta). */
+export function questionsPayload(questions, answers, now = () => new Date().toISOString()) {
+  if (!Array.isArray(questions) || !questions.length) return {};
+  return {
+    carol_questions: questions.slice(0, 3).map((q) => {
+      const answer = answerOf(answers?.[q.id]).slice(0, 60) || null;
+      return { ...q, answer, answered_at: answer ? now() : null };
+    }),
+  };
+}
+
+/** As perguntas que vieram numa resposta de leitura (array válido, no máximo 3). */
+export const readQuestions = (data) => (Array.isArray(data?.questions) ? data.questions.filter((q) => q && q.id && q.question).slice(0, 3) : []);

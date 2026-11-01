@@ -2417,3 +2417,24 @@ describe('RunRegistration — #106: com prints, primeiro ler e preencher', () =>
     expect(mocks.invoke.mock.calls[0][1].body.mode).toBe('preview');
   });
 });
+
+describe('RunRegistration — #106: as perguntas da leitura seguem com a corrida', () => {
+  beforeEach(() => {
+    mocks.invoke.mockReset();
+    useAppStore.setState({ profile: PROFILE, runs: [], raceEvents: [] });
+  });
+
+  it('a pergunta respondida vai em carol_questions no pedido de analisar', async () => {
+    const Q = { id: 'r1', kind: 'contexto', topic: 'local', item_name: null, question: 'Foi em passadeira?', options: ['Sim', 'Não'], assumed: 'Não', impact_kcal: 0, impact_protein_g: 0, answer: null, answered_at: null };
+    render(<RunRegistration onClose={vi.fn()} />);
+    await selectPhoto({ ler: false });
+    mocks.invoke.mockResolvedValueOnce({ data: { preview: {}, questions: [Q] }, error: null });
+    fireEvent.click(screen.getByRole('button', { name: 'Ler os prints e preencher' }));
+    const card = await screen.findByTestId('carol-question-r1');
+    fireEvent.click(within(card).getByRole('button', { name: 'Sim' }));
+    mocks.invoke.mockResolvedValueOnce({ data: { run: { id: 'run-1', name: 'Corrida de Hoje' } }, error: null });
+    fireEvent.click(screen.getByRole('button', { name: /Analisar corrida/ }));
+    await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(2));
+    expect(mocks.invoke.mock.calls[1][1].body.carol_questions).toEqual([expect.objectContaining({ id: 'r1', answer: 'Sim' })]);
+  });
+});

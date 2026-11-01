@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act, within } from '@testing-library/react';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { useAppStore } from '../../store';
 import BodyRegistration from './BodyRegistration';
@@ -731,5 +731,29 @@ describe('BodyRegistration — #106: com prints, primeiro ler e preencher', () =
     fireEvent.click(screen.getByRole('button', { name: 'Ler os prints e preencher' }));
     await waitFor(() => expect(screen.getByRole('button', { name: /Analisar avaliação/ })).toBeInTheDocument());
     expect(mocks.invoke.mock.calls[0][1].body.mode).toBe('preview');
+  });
+});
+
+describe('BodyRegistration — #106: as perguntas da leitura seguem com a avaliação', () => {
+  beforeEach(() => {
+    mocks.invoke.mockReset();
+    useAppStore.setState({ profile: PROFILE, bodyAssessments: [] });
+  });
+
+  it('a pergunta do jejum respondida vai em carol_questions; o fasting do formulário vai à parte', async () => {
+    const Q = { id: 'b1', kind: 'contexto', topic: 'jejum', item_name: null, question: 'Pesaste-te em jejum?', options: ['Sim', 'Não'], assumed: 'Sim', impact_kcal: 0, impact_protein_g: 0, answer: null, answered_at: null };
+    render(<BodyRegistration onClose={vi.fn()} />);
+    await selectPhoto({ ler: false });
+    mocks.invoke.mockResolvedValueOnce({ data: { preview: { metrics: { weight_kg: 72.4 } }, questions: [Q] }, error: null });
+    fireEvent.click(screen.getByRole('button', { name: 'Ler os prints e preencher' }));
+    const card = await screen.findByTestId('carol-question-b1');
+    fireEvent.click(within(card).getByRole('button', { name: 'Não' }));
+    setHora();
+    mocks.invoke.mockResolvedValueOnce({ data: { assessment: { id: 'a-1', date: '2026-11-01' } }, error: null });
+    fireEvent.click(screen.getByRole('button', { name: /Analisar avaliação/ }));
+    await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(2));
+    const body = mocks.invoke.mock.calls[1][1].body;
+    expect(body.carol_questions).toEqual([expect.objectContaining({ id: 'b1', answer: 'Não' })]);
+    expect(body).not.toHaveProperty('fasting');
   });
 });
