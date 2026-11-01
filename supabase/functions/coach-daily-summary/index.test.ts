@@ -608,3 +608,27 @@ Deno.test("caminhada: o plano de hoje diz caminhada com a intensidade", () => {
 Deno.test("treinoFalado: a ativação pré-prova diz-se pelo nome, não como «corrida» (bug #84)", () => {
   assertEquals(treinoFalado({ kind: "corrida", training_type: "ativacao", target_duration_min: 20 }), "uma ativação pré-prova de 20 minutos");
 });
+
+import { yesterdayIntakeEvidence } from "./index.ts";
+
+Deno.test("yesterdayIntakeEvidence: «comeu abaixo do gasto» só com o dia de ontem completo (2026-11-01)", () => {
+  const item = (kcal: number) => [{ quantity_grams: 100, calories_per_100g: kcal }];
+  const m = (date: string, meal_type: string, kcal: number) => ({ date, meal_type, meal_items: item(kcal) });
+  const cheio = (date: string, kcal: number) => [m(date, "pequeno-almoco", kcal / 3), m(date, "almoco", kcal / 3), m(date, "jantar", kcal / 3)];
+  const today = "2026-11-01";
+  // Ontem completo a 1800 kcal, gasto 2600: abaixo.
+  assertEquals(yesterdayIntakeEvidence(cheio("2026-10-31", 1800), today, 2600, 2400).ateBelowGasto, true);
+  // Ontem só com o pequeno-almoço: parcial — não é prova de nada.
+  const soPA = yesterdayIntakeEvidence([m("2026-10-31", "pequeno-almoco", 400)], today, 2600, 2400);
+  assertEquals([soPA.complete, soPA.ateBelowGasto], [false, false]);
+  // Com histórico (3 dias cheios a 2400): ontem só com almoço e jantar, a 1000 kcal
+  // (< 50% da mediana), é parcial; com as 3 principais, os mesmos 1000 kcal contam.
+  const hist = ["2026-10-20", "2026-10-21", "2026-10-22"].flatMap((d) => cheio(d, 2400));
+  const almocoJantar = [m("2026-10-31", "almoco", 600), m("2026-10-31", "jantar", 400)];
+  assertEquals(yesterdayIntakeEvidence([...hist, ...almocoJantar], today, 2600, 1500).ateBelowGasto, false);
+  assertEquals(yesterdayIntakeEvidence([...hist, ...cheio("2026-10-31", 1000)], today, 2600, 1500).ateBelowGasto, true);
+  // As refeições de hoje não contam.
+  assertEquals(yesterdayIntakeEvidence(cheio(today, 1000), today, 2600, 2400).ateBelowGasto, false);
+  // Sem TDEE, nunca.
+  assertEquals(yesterdayIntakeEvidence(cheio("2026-10-31", 1800), today, null, 2400).ateBelowGasto, false);
+});

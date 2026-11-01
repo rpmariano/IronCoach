@@ -37,6 +37,7 @@ import { type GeminiUsage, usageFromGemini } from "../_shared/geminiUsage.ts";
 import { withUsageRecording } from "../_shared/usageRecorder.ts";
 import { attemptTimeoutMs, geminiHeaders, geminiUrl, geminiWithFallback, thinkingConfig } from "../_shared/geminiModel.ts";
 import { isWalkPlanItem, runMatchesPlanItem, runsOnly, walkIntensity, walksOnly } from "../_shared/formulas/runKinds.ts";
+import { dayCompleteness, mealLoggingProfile, mealProfileStartISO } from "../_shared/formulas/dayCompleteness.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -128,6 +129,23 @@ const MEAL_TYPE_LABELS: Record<string, string> = {
 type MealTotals = { calories: number; protein: number; carbs: number; fat: number };
 
 // deno-lint-ignore no-explicit-any
+/** A segunda prova da causa do peso: ontem comeu abaixo do gasto estimado —
+ *  só num dia com o registo COMPLETO (dayCompleteness.ts, 2026-11-01). Um
+ *  ontem só com o pequeno-almoço ficava "abaixo do gasto" e dizia ao atleta
+ *  que perdia peso por comer pouco. `meals` são os 28 dias fechados (o
+ *  perfil de registo) com o meal_type; os de hoje, se vierem, não contam. */
+// deno-lint-ignore no-explicit-any
+export function yesterdayIntakeEvidence(meals: any[], todayISO: string, tdee: number | null, calorieGoal: number | null) {
+  const yesterday = addDaysISO(todayISO, -1);
+  // deno-lint-ignore no-explicit-any
+  const ofYesterday = (meals || []).filter((m: any) => m?.date === yesterday);
+  // deno-lint-ignore no-explicit-any
+  const calories = ofYesterday.reduce((s: number, m: any) => s + totalsFromMeal(m).calories, 0);
+  const profile = mealLoggingProfile(meals, todayISO, calorieGoal);
+  const complete = dayCompleteness(ofYesterday, calorieGoal, profile, { dayISO: yesterday, todayISO }) === "completo";
+  return { calories, complete, ateBelowGasto: tdee != null && complete && calories > 0 && calories < tdee };
+}
+
 function totalsFromMeal(meal: any): MealTotals {
   return (meal.meal_items || []).reduce(
     // deno-lint-ignore no-explicit-any
@@ -1227,20 +1245,21 @@ Deno.serve(withUsageRecording("coach-daily-summary", async (req) => {
     // registo é opcional e o aviso era ruído (pedido 2026-09-13).
     // As duas provas da causa do peso: treinou nos últimos 7 dias (o mesmo
     // km da carga, load.acuteKm) e comeu abaixo do gasto estimado num dia
-    // COMPLETO — o de ontem. As refeições de hoje, a meio do dia, ficavam
-    // quase sempre abaixo (revisão pré-deploy de 2026-09-26). Só se lê
+    // fechado — o de ontem. As refeições de hoje, a meio do dia, ficavam
+    // quase sempre abaixo (revisão pré-deploy de 2026-09-26). E ontem tem de
+    // ter o registo COMPLETO (2026-11-01): por isso lêem-se os 28 dias
+    // fechados, o perfil de registo dele (dayCompleteness.ts). Só se lê
     // quando o alerta de perda de peso vai mesmo sair.
-    let yesterdayCalories = 0;
+    let ateBelowGasto = false;
     if (bodyMetrics.weightLossTooFast && tdee != null) {
-      const { data: yesterdayMeals } = await sb.from("meals")
-        .select("meal_items(quantity_grams, calories_per_100g)")
-        .eq("user_id", userId).eq("date", addDaysISO(today, -1));
-      // deno-lint-ignore no-explicit-any
-      yesterdayCalories = (yesterdayMeals || []).reduce((s: number, m: any) => s + totalsFromMeal(m).calories, 0);
+      const { data: profileMeals } = await sb.from("meals")
+        .select("date, meal_type, meal_items(quantity_grams, calories_per_100g)")
+        .eq("user_id", userId).gte("date", mealProfileStartISO(today)).lte("date", addDaysISO(today, -1));
+      ateBelowGasto = yesterdayIntakeEvidence(profileMeals || [], today, tdee, profile?.calorie_goal ?? null).ateBelowGasto;
     }
     const weightLossEvidence = {
       trainedRecently: (load.acuteKm || 0) > 0,
-      ateBelowGasto: tdee != null && yesterdayCalories > 0 && yesterdayCalories < tdee,
+      ateBelowGasto,
     };
     const warningsMsg = buildWarningsMessage(
       raceEveDays === 0 ? [] : todayPlanItems,

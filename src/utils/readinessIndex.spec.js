@@ -23,6 +23,12 @@ describe('computeReadinessIndex — vetor dourado', () => {
   }
 });
 
+/* Desde 2026-11-01 (opção B do Rui, dayCompleteness.ts) só contam os dias
+   com o registo COMPLETO: um dia «cheio» são as 3 refeições principais. */
+const diaCheio = (date, kcal = 2400) => ['pequeno-almoco', 'almoco', 'jantar'].map((meal_type) => ({
+  date, meal_type, calories: kcal / 3, protein_g: 40, carbs_g: 100, fat_g: 23,
+}));
+
 // Pilar "Como acordaste" (2026-09-23): o check-in de hoje entra no índice.
 describe('computeReadinessIndex — check-in de hoje', () => {
   const base = (checkin) => computeReadinessIndex([], [], [], [], {}, '2026-09-23', null, checkin);
@@ -163,7 +169,7 @@ describe('computeReadinessIndex — pilares sem dados não contam (2026-10-04)',
   });
 
   it('só corridas: as refeições em falta não puxam o índice para baixo', () => {
-    const meals = [{ date: '2026-08-24', calories: 2400, protein_g: 150, carbs_g: 300, fat_g: 70 }];
+    const meals = diaCheio('2026-08-24');
     const r = computeReadinessIndex(runs, meals, [{ date: '2026-08-01', weight_kg: 70, body_fat_pct: 15 }], [], { calorie_goal: 2400 }, '2026-08-25', null, null);
     const byKey = Object.fromEntries(r.pillars.map((p) => [p.key, p]));
     expect(byKey.vdot.hasData).toBe(true);
@@ -204,10 +210,12 @@ describe('computeReadinessIndex — pilares sem dados não contam (2026-10-04)',
 
 /* Revisão pré-deploy de 2026-10-04: com refeições registadas, uma EA média
    ≤ 0 é o pior caso de RED-S — crítico (score 0) e dentro da média, nunca
-   "sem dados" (antes subia o índice). Espelha readinessIndex.test.ts. */
+   "sem dados" (antes subia o índice). Desde 2026-11-01 vale num dia COMPLETO;
+   o dia só com o pequeno-almoço é parcial e fica de fora. Espelha
+   readinessIndex.test.ts. */
 describe('computeReadinessIndex — EA negativa com refeições (2026-10-04)', () => {
   const runs = [{ date: '2026-08-24', distance_km: 30, duration_seconds: 10800, kind: 'treino', training_type: null, effort_rpe: 6 }];
-  const meals = [{ date: '2026-08-24', calories: 300, protein_g: 15, carbs_g: 50, fat_g: 5 }];
+  const meals = diaCheio('2026-08-24', 1200);
   const body = [{ date: '2026-08-01', weight_kg: 70, body_fat_pct: 15 }];
   const profile = { calorie_goal: 2400 };
 
@@ -228,6 +236,13 @@ describe('computeReadinessIndex — EA negativa com refeições (2026-10-04)', (
     expect(ea.hasData).toBe(false);
     expect(ea.desc).toBe('Sem dados nutricionais suficientes.');
   });
+
+  it('só o pequeno-almoço nesse dia: parcial — fora, sem penalização', () => {
+    const r = computeReadinessIndex(runs, [{ date: '2026-08-24', meal_type: 'pequeno-almoco', calories: 300, protein_g: 15, carbs_g: 50, fat_g: 5 }], body, [], profile, '2026-08-25', null, null);
+    const ea = r.pillars.find((p) => p.key === 'ea');
+    expect(ea.hasData).toBe(false);
+    expect(ea.desc).toBe('0 de 7 dias com o registo completo: poucos para avaliar.');
+  });
 });
 
 /* 2026-10-05: EA e Nutrição só olham para dias FECHADOS (os 7 dias até
@@ -236,20 +251,20 @@ describe('computeReadinessIndex — EA negativa com refeições (2026-10-04)', (
 describe('computeReadinessIndex — pilares de nutrição só com dias fechados (2026-10-05)', () => {
   const body = [{ date: '2026-08-01', weight_kg: 70, body_fat_pct: 15 }];
   const profile = { calorie_goal: 2400 };
-  const mealOntem = { date: '2026-08-24', calories: 2400, protein_g: 120, carbs_g: 300, fat_g: 70 };
-  const manha = { date: '2026-08-25', calories: 300, protein_g: 15, carbs_g: 50, fat_g: 5 };
+  const mealOntem = diaCheio('2026-08-24');
+  const manha = { date: '2026-08-25', meal_type: 'pequeno-almoco', calories: 300, protein_g: 15, carbs_g: 50, fat_g: 5 };
   const corridaHoje = { date: '2026-08-25', distance_km: 15, duration_seconds: 5400, kind: 'treino', training_type: null, effort_rpe: 6 };
   const pil = (r, k) => r.pillars.find((p) => p.key === k);
   const calc = (runs, meals) => computeReadinessIndex(runs, meals, body, [], profile, '2026-08-25', null, null);
 
   it('hoje parcial (pequeno-almoço + corrida de manhã) não mexe em EA nem Nutrição', () => {
-    const semHoje = calc([], [mealOntem]);
-    const comHoje = calc([corridaHoje], [mealOntem, manha]);
+    const semHoje = calc([], mealOntem);
+    const comHoje = calc([corridaHoje], [...mealOntem, manha]);
     expect(pil(comHoje, 'ea')).toEqual(pil(semHoje, 'ea'));
     expect(pil(comHoje, 'calories')).toEqual(pil(semHoje, 'calories'));
     expect(pil(comHoje, 'ea').desc).not.toMatch(/Crítico/);
-    expect(pil(comHoje, 'ea').desc).toMatch(/nos últimos 7 dias fechados/);
-    expect(pil(comHoje, 'calories').desc).toMatch(/nos últimos 7 dias fechados/);
+    expect(pil(comHoje, 'ea').desc).toMatch(/no único dia com registo completo dos últimos 7/);
+    expect(pil(comHoje, 'calories').desc).toMatch(/no único dia com registo completo dos últimos 7/);
   });
 
   it('só hoje registado: os dois pilares ficam sem dados', () => {
@@ -265,29 +280,47 @@ describe('computeReadinessIndex — pilares de nutrição só com dias fechados 
     expect(pil(nada, 'calories').desc).toBe('Sem dados de nutrição suficientes.');
   });
 
-  it('ontem conta: tirada longa só com o pequeno-almoço é crítica', () => {
-    const r = calc([{ ...corridaHoje, date: '2026-08-24' }], [{ ...manha, date: '2026-08-24' }]);
+  it('ontem conta: tirada longa num dia completo de pouca comida é crítica', () => {
+    const r = calc([{ ...corridaHoje, date: '2026-08-24' }], diaCheio('2026-08-24', 1200));
     expect(pil(r, 'ea').hasData).toBe(true);
-    expect(pil(r, 'ea').score).toBe(0);
     expect(pil(r, 'ea').desc).toMatch(/Crítico/);
     expect(pil(r, 'calories').hasData).toBe(true);
   });
 
   it('a janela são 7 dias fechados: o dia 17 já saiu, o 18 ainda entra', () => {
-    const dia = (date) => ({ date, calories: 2400, protein_g: 120, carbs_g: 300, fat_g: 70 });
-    expect(pil(calc([], [dia('2026-08-18')]), 'ea').hasData).toBe(true);
-    expect(pil(calc([], [dia('2026-08-17')]), 'ea').hasData).toBe(false);
+    const dias = (de, ate) => Array.from({ length: ate - de + 1 }, (_, i) => diaCheio(`2026-08-${de + i}`)).flat();
+    expect(pil(calc([], dias(18, 24)), 'ea').desc).toMatch(/nos 7 dias com registo completo/);
+    expect(pil(calc([], dias(17, 23)), 'ea').desc).toMatch(/nos 6 dias com registo completo/);
   });
 
   it('a EA escreve sempre uma casa decimal, com vírgula', () => {
-    const r = calc([], [mealOntem]);
+    const r = calc([], mealOntem);
     expect(pil(r, 'ea').desc).toMatch(/EA de \d+,\d kcal\/kg/);
   });
 
-  it('readinessMealsStartISO: as refeições a carregar começam em hoje-7', () => {
-    expect(readinessMealsStartISO('2026-10-05')).toBe('2026-09-28');
-    expect(readinessMealsStartISO('2026-03-03')).toBe('2026-02-24');
-    const dia = (date) => ({ date, calories: 2400, protein_g: 120, carbs_g: 300, fat_g: 70 });
-    expect(pil(calc([], [dia(readinessMealsStartISO('2026-08-25'))]), 'ea').hasData).toBe(true);
+  it('readinessMealsStartISO: hoje-28 — o perfil de registo precisa dos 28 dias fechados (2026-11-01)', () => {
+    expect(readinessMealsStartISO('2026-10-05')).toBe('2026-09-07');
+    expect(readinessMealsStartISO('2026-03-03')).toBe('2026-02-03');
+    // Com dias cheios a 2400 kcal (desde 15), ontem só com almoço e jantar a
+    // 1000 kcal é parcial (< 50% da mediana); sem eles, a regra fixa (objetivo 1500) dá-o como completo.
+    const historia = Array.from({ length: 9 }, (_, i) => diaCheio(`2026-08-${15 + i}`, 2400)).flat();
+    const ontem = [{ date: '2026-08-24', meal_type: 'almoco', calories: 600 }, { date: '2026-08-24', meal_type: 'jantar', calories: 400 }];
+    const ea = (meals) => computeReadinessIndex([], meals, body, [], { calorie_goal: 1500 }, '2026-08-25', null, null).pillars.find((p) => p.key === 'ea');
+    expect(ea(ontem).desc).toMatch(/no único dia com registo completo/);
+    expect(ea([...historia, ...ontem]).desc).toMatch(/nos 6 dias com registo completo/);
+  });
+
+  // Decisão do Rui (2026-11-01, RED-S): as 3 principais registadas é sempre completo.
+  it('tirada longa num dia com as 3 principais a 40% da mediana — EA crítica (RED-S)', () => {
+    const historia = Array.from({ length: 17 }, (_, i) => diaCheio(`2026-08-${String(1 + i).padStart(2, '0')}`, 2400)).flat();
+    const corrida = [{ date: '2026-08-24', distance_km: 25, duration_seconds: 9000, kind: 'treino', training_type: null, effort_rpe: 6 }];
+    const r = computeReadinessIndex(corrida, [...historia, ...diaCheio('2026-08-24', 960)], body, [], { calorie_goal: 2400 }, '2026-08-25', null, null);
+    const ea = pil(r, 'ea');
+    expect(ea.hasData).toBe(true);
+    expect(ea.score).toBe(0);
+    expect(ea.desc).toMatch(/no único dia com registo completo dos últimos 7\. Crítico/);
+    // O mesmo dia só com o pequeno-almoço: parcial, fora.
+    const soPA = computeReadinessIndex(corrida, [...historia, { date: '2026-08-24', meal_type: 'pequeno-almoco', calories: 400 }], body, [], { calorie_goal: 2400 }, '2026-08-25', null, null);
+    expect(pil(soPA, 'ea').hasData).toBe(false);
   });
 });

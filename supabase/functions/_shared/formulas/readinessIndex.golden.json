@@ -27,13 +27,40 @@
           "date": "2026-08-24",
           "meal_items": [
             {
-              "quantity_grams": 500,
+              "quantity_grams": 166.66666666666666,
               "calories_per_100g": 200,
               "protein_per_100g": 20,
               "carbs_per_100g": 20,
               "fat_per_100g": 5
             }
-          ]
+          ],
+          "meal_type": "pequeno-almoco"
+        },
+        {
+          "date": "2026-08-24",
+          "meal_items": [
+            {
+              "quantity_grams": 166.66666666666666,
+              "calories_per_100g": 200,
+              "protein_per_100g": 20,
+              "carbs_per_100g": 20,
+              "fat_per_100g": 5
+            }
+          ],
+          "meal_type": "almoco"
+        },
+        {
+          "date": "2026-08-24",
+          "meal_items": [
+            {
+              "quantity_grams": 166.66666666666666,
+              "calories_per_100g": 200,
+              "protein_per_100g": 20,
+              "carbs_per_100g": 20,
+              "fat_per_100g": 5
+            }
+          ],
+          "meal_type": "jantar"
         }
       ],
       "bodyAssessments": [
@@ -60,14 +87,14 @@
           "key": "ea",
           "label": "Disponibilidade Energética",
           "score": 10,
-          "desc": "EA de 7,7 kcal/kg nos últimos 7 dias fechados. Crítico — risco de RED-S. Aumenta a ingestão.",
+          "desc": "EA de 7,7 kcal/kg no único dia com registo completo dos últimos 7. Crítico — risco de RED-S. Aumenta a ingestão.",
           "hasData": true
         },
         {
           "key": "calories",
           "label": "Nutrição",
           "score": 20,
-          "desc": "50% do alvo calórico nos últimos 7 dias fechados. Ingestão muito baixa para o volume de treino.",
+          "desc": "50% do alvo calórico no único dia com registo completo dos últimos 7. Ingestão muito baixa para o volume de treino.",
           "hasData": true
         },
         {
@@ -116,13 +143,40 @@
           "date": "2026-08-24",
           "meal_items": [
             {
-              "quantity_grams": 500,
+              "quantity_grams": 166.66666666666666,
               "calories_per_100g": 200,
               "protein_per_100g": 20,
               "carbs_per_100g": 20,
               "fat_per_100g": 5
             }
-          ]
+          ],
+          "meal_type": "pequeno-almoco"
+        },
+        {
+          "date": "2026-08-24",
+          "meal_items": [
+            {
+              "quantity_grams": 166.66666666666666,
+              "calories_per_100g": 200,
+              "protein_per_100g": 20,
+              "carbs_per_100g": 20,
+              "fat_per_100g": 5
+            }
+          ],
+          "meal_type": "almoco"
+        },
+        {
+          "date": "2026-08-24",
+          "meal_items": [
+            {
+              "quantity_grams": 166.66666666666666,
+              "calories_per_100g": 200,
+              "protein_per_100g": 20,
+              "carbs_per_100g": 20,
+              "fat_per_100g": 5
+            }
+          ],
+          "meal_type": "jantar"
         }
       ],
       "bodyAssessments": [
@@ -149,14 +203,14 @@
           "key": "ea",
           "label": "Disponibilidade Energética",
           "score": 10,
-          "desc": "EA de 7,7 kcal/kg nos últimos 7 dias fechados. Crítico — risco de RED-S. Aumenta a ingestão.",
+          "desc": "EA de 7,7 kcal/kg no único dia com registo completo dos últimos 7. Crítico — risco de RED-S. Aumenta a ingestão.",
           "hasData": true
         },
         {
           "key": "calories",
           "label": "Nutrição",
           "score": 20,
-          "desc": "50% do alvo calórico nos últimos 7 dias fechados. Ingestão muito baixa para o volume de treino.",
+          "desc": "50% do alvo calórico no único dia com registo completo dos últimos 7. Ingestão muito baixa para o volume de treino.",
           "hasData": true
         },
         {
@@ -230,13 +284,40 @@
           "date": "2026-08-24",
           "meal_items": [
             {
-              "quantity_grams": 500,
+              "quantity_grams": 166.66666666666666,
               "calories_per_100g": 200,
               "protein_per_100g": 20,
               "carbs_per_100g": 20,
               "fat_per_100g": 5
             }
-          ]
+          ],
+          "meal_type": "pequeno-almoco"
+        },
+        {
+          "date": "2026-08-24",
+          "meal_items": [
+            {
+              "quantity_grams": 166.66666666666666,
+              "calories_per_100g": 200,
+              "protein_per_100g": 20,
+              "carbs_per_100g": 20,
+              "fat_per_100g": 5
+            }
+          ],
+          "meal_type": "almoco"
+        },
+        {
+          "date": "2026-08-24",
+          "meal_items": [
+            {
+              "quantity_grams": 166.66666666666666,
+              "calories_per_100g": 200,
+              "protein_per_100g": 20,
+              "carbs_per_100g": 20,
+              "fat_per_100g": 5
+            }
+          ],
+          "meal_type": "jantar"
         }
       ],
       "bodyAssessments": [
@@ -270,14 +351,14 @@
           "key": "ea",
           "label": "Disponibilidade Energética",
           "score": 10,
-          "desc": "EA de 7,7 kcal/kg nos últimos 7 dias fechados. Crítico — risco de RED-S. Aumenta a ingestão.",
+          "desc": "EA de 7,7 kcal/kg no único dia com registo completo dos últimos 7. Crítico — risco de RED-S. Aumenta a ingestão.",
           "hasData": true
         },
         {
           "key": "calories",
           "label": "Nutrição",
           "score": 20,
-          "desc": "50% do alvo calórico nos últimos 7 dias fechados. Ingestão muito baixa para o volume de treino.",
+          "desc": "50% do alvo calórico no único dia com registo completo dos últimos 7. Ingestão muito baixa para o volume de treino.",
           "hasData": true
         },
         {
@@ -375,85 +456,274 @@
           "date": "2026-08-25",
           "meal_items": [
             {
-              "quantity_grams": 1000,
+              "quantity_grams": 333.3333333333333,
               "calories_per_100g": 200,
               "protein_per_100g": 16,
               "carbs_per_100g": 25,
               "fat_per_100g": 7
             }
-          ]
+          ],
+          "meal_type": "pequeno-almoco"
+        },
+        {
+          "date": "2026-08-25",
+          "meal_items": [
+            {
+              "quantity_grams": 333.3333333333333,
+              "calories_per_100g": 200,
+              "protein_per_100g": 16,
+              "carbs_per_100g": 25,
+              "fat_per_100g": 7
+            }
+          ],
+          "meal_type": "almoco"
+        },
+        {
+          "date": "2026-08-25",
+          "meal_items": [
+            {
+              "quantity_grams": 333.3333333333333,
+              "calories_per_100g": 200,
+              "protein_per_100g": 16,
+              "carbs_per_100g": 25,
+              "fat_per_100g": 7
+            }
+          ],
+          "meal_type": "jantar"
         },
         {
           "date": "2026-08-24",
           "meal_items": [
             {
-              "quantity_grams": 1000,
+              "quantity_grams": 333.3333333333333,
               "calories_per_100g": 200,
               "protein_per_100g": 16,
               "carbs_per_100g": 25,
               "fat_per_100g": 7
             }
-          ]
+          ],
+          "meal_type": "pequeno-almoco"
+        },
+        {
+          "date": "2026-08-24",
+          "meal_items": [
+            {
+              "quantity_grams": 333.3333333333333,
+              "calories_per_100g": 200,
+              "protein_per_100g": 16,
+              "carbs_per_100g": 25,
+              "fat_per_100g": 7
+            }
+          ],
+          "meal_type": "almoco"
+        },
+        {
+          "date": "2026-08-24",
+          "meal_items": [
+            {
+              "quantity_grams": 333.3333333333333,
+              "calories_per_100g": 200,
+              "protein_per_100g": 16,
+              "carbs_per_100g": 25,
+              "fat_per_100g": 7
+            }
+          ],
+          "meal_type": "jantar"
         },
         {
           "date": "2026-08-23",
           "meal_items": [
             {
-              "quantity_grams": 1000,
+              "quantity_grams": 333.3333333333333,
               "calories_per_100g": 200,
               "protein_per_100g": 16,
               "carbs_per_100g": 25,
               "fat_per_100g": 7
             }
-          ]
+          ],
+          "meal_type": "pequeno-almoco"
+        },
+        {
+          "date": "2026-08-23",
+          "meal_items": [
+            {
+              "quantity_grams": 333.3333333333333,
+              "calories_per_100g": 200,
+              "protein_per_100g": 16,
+              "carbs_per_100g": 25,
+              "fat_per_100g": 7
+            }
+          ],
+          "meal_type": "almoco"
+        },
+        {
+          "date": "2026-08-23",
+          "meal_items": [
+            {
+              "quantity_grams": 333.3333333333333,
+              "calories_per_100g": 200,
+              "protein_per_100g": 16,
+              "carbs_per_100g": 25,
+              "fat_per_100g": 7
+            }
+          ],
+          "meal_type": "jantar"
         },
         {
           "date": "2026-08-22",
           "meal_items": [
             {
-              "quantity_grams": 1000,
+              "quantity_grams": 333.3333333333333,
               "calories_per_100g": 200,
               "protein_per_100g": 16,
               "carbs_per_100g": 25,
               "fat_per_100g": 7
             }
-          ]
+          ],
+          "meal_type": "pequeno-almoco"
+        },
+        {
+          "date": "2026-08-22",
+          "meal_items": [
+            {
+              "quantity_grams": 333.3333333333333,
+              "calories_per_100g": 200,
+              "protein_per_100g": 16,
+              "carbs_per_100g": 25,
+              "fat_per_100g": 7
+            }
+          ],
+          "meal_type": "almoco"
+        },
+        {
+          "date": "2026-08-22",
+          "meal_items": [
+            {
+              "quantity_grams": 333.3333333333333,
+              "calories_per_100g": 200,
+              "protein_per_100g": 16,
+              "carbs_per_100g": 25,
+              "fat_per_100g": 7
+            }
+          ],
+          "meal_type": "jantar"
         },
         {
           "date": "2026-08-21",
           "meal_items": [
             {
-              "quantity_grams": 1000,
+              "quantity_grams": 333.3333333333333,
               "calories_per_100g": 200,
               "protein_per_100g": 16,
               "carbs_per_100g": 25,
               "fat_per_100g": 7
             }
-          ]
+          ],
+          "meal_type": "pequeno-almoco"
+        },
+        {
+          "date": "2026-08-21",
+          "meal_items": [
+            {
+              "quantity_grams": 333.3333333333333,
+              "calories_per_100g": 200,
+              "protein_per_100g": 16,
+              "carbs_per_100g": 25,
+              "fat_per_100g": 7
+            }
+          ],
+          "meal_type": "almoco"
+        },
+        {
+          "date": "2026-08-21",
+          "meal_items": [
+            {
+              "quantity_grams": 333.3333333333333,
+              "calories_per_100g": 200,
+              "protein_per_100g": 16,
+              "carbs_per_100g": 25,
+              "fat_per_100g": 7
+            }
+          ],
+          "meal_type": "jantar"
         },
         {
           "date": "2026-08-20",
           "meal_items": [
             {
-              "quantity_grams": 1000,
+              "quantity_grams": 333.3333333333333,
               "calories_per_100g": 200,
               "protein_per_100g": 16,
               "carbs_per_100g": 25,
               "fat_per_100g": 7
             }
-          ]
+          ],
+          "meal_type": "pequeno-almoco"
+        },
+        {
+          "date": "2026-08-20",
+          "meal_items": [
+            {
+              "quantity_grams": 333.3333333333333,
+              "calories_per_100g": 200,
+              "protein_per_100g": 16,
+              "carbs_per_100g": 25,
+              "fat_per_100g": 7
+            }
+          ],
+          "meal_type": "almoco"
+        },
+        {
+          "date": "2026-08-20",
+          "meal_items": [
+            {
+              "quantity_grams": 333.3333333333333,
+              "calories_per_100g": 200,
+              "protein_per_100g": 16,
+              "carbs_per_100g": 25,
+              "fat_per_100g": 7
+            }
+          ],
+          "meal_type": "jantar"
         },
         {
           "date": "2026-08-19",
           "meal_items": [
             {
-              "quantity_grams": 1000,
+              "quantity_grams": 333.3333333333333,
               "calories_per_100g": 200,
               "protein_per_100g": 16,
               "carbs_per_100g": 25,
               "fat_per_100g": 7
             }
-          ]
+          ],
+          "meal_type": "pequeno-almoco"
+        },
+        {
+          "date": "2026-08-19",
+          "meal_items": [
+            {
+              "quantity_grams": 333.3333333333333,
+              "calories_per_100g": 200,
+              "protein_per_100g": 16,
+              "carbs_per_100g": 25,
+              "fat_per_100g": 7
+            }
+          ],
+          "meal_type": "almoco"
+        },
+        {
+          "date": "2026-08-19",
+          "meal_items": [
+            {
+              "quantity_grams": 333.3333333333333,
+              "calories_per_100g": 200,
+              "protein_per_100g": 16,
+              "carbs_per_100g": 25,
+              "fat_per_100g": 7
+            }
+          ],
+          "meal_type": "jantar"
         }
       ],
       "bodyAssessments": [
@@ -480,14 +750,14 @@
           "key": "ea",
           "label": "Disponibilidade Energética",
           "score": 60,
-          "desc": "EA de 31,0 kcal/kg nos últimos 7 dias fechados. Subótima — come mais para sustentar o volume.",
+          "desc": "EA de 31,0 kcal/kg nos 6 dias com registo completo dos últimos 7. Subótima — come mais para sustentar o volume.",
           "hasData": true
         },
         {
           "key": "calories",
           "label": "Nutrição",
           "score": 100,
-          "desc": "100% do alvo calórico nos últimos 7 dias fechados. Nutrição alinhada com o esforço.",
+          "desc": "100% do alvo calórico nos 6 dias com registo completo dos últimos 7. Nutrição alinhada com o esforço.",
           "hasData": true
         },
         {
@@ -610,85 +880,274 @@
           "date": "2026-08-25",
           "meal_items": [
             {
-              "quantity_grams": 1000,
+              "quantity_grams": 333.3333333333333,
               "calories_per_100g": 200,
               "protein_per_100g": 16,
               "carbs_per_100g": 25,
               "fat_per_100g": 7
             }
-          ]
+          ],
+          "meal_type": "pequeno-almoco"
+        },
+        {
+          "date": "2026-08-25",
+          "meal_items": [
+            {
+              "quantity_grams": 333.3333333333333,
+              "calories_per_100g": 200,
+              "protein_per_100g": 16,
+              "carbs_per_100g": 25,
+              "fat_per_100g": 7
+            }
+          ],
+          "meal_type": "almoco"
+        },
+        {
+          "date": "2026-08-25",
+          "meal_items": [
+            {
+              "quantity_grams": 333.3333333333333,
+              "calories_per_100g": 200,
+              "protein_per_100g": 16,
+              "carbs_per_100g": 25,
+              "fat_per_100g": 7
+            }
+          ],
+          "meal_type": "jantar"
         },
         {
           "date": "2026-08-24",
           "meal_items": [
             {
-              "quantity_grams": 1000,
+              "quantity_grams": 333.3333333333333,
               "calories_per_100g": 200,
               "protein_per_100g": 16,
               "carbs_per_100g": 25,
               "fat_per_100g": 7
             }
-          ]
+          ],
+          "meal_type": "pequeno-almoco"
+        },
+        {
+          "date": "2026-08-24",
+          "meal_items": [
+            {
+              "quantity_grams": 333.3333333333333,
+              "calories_per_100g": 200,
+              "protein_per_100g": 16,
+              "carbs_per_100g": 25,
+              "fat_per_100g": 7
+            }
+          ],
+          "meal_type": "almoco"
+        },
+        {
+          "date": "2026-08-24",
+          "meal_items": [
+            {
+              "quantity_grams": 333.3333333333333,
+              "calories_per_100g": 200,
+              "protein_per_100g": 16,
+              "carbs_per_100g": 25,
+              "fat_per_100g": 7
+            }
+          ],
+          "meal_type": "jantar"
         },
         {
           "date": "2026-08-23",
           "meal_items": [
             {
-              "quantity_grams": 1000,
+              "quantity_grams": 333.3333333333333,
               "calories_per_100g": 200,
               "protein_per_100g": 16,
               "carbs_per_100g": 25,
               "fat_per_100g": 7
             }
-          ]
+          ],
+          "meal_type": "pequeno-almoco"
+        },
+        {
+          "date": "2026-08-23",
+          "meal_items": [
+            {
+              "quantity_grams": 333.3333333333333,
+              "calories_per_100g": 200,
+              "protein_per_100g": 16,
+              "carbs_per_100g": 25,
+              "fat_per_100g": 7
+            }
+          ],
+          "meal_type": "almoco"
+        },
+        {
+          "date": "2026-08-23",
+          "meal_items": [
+            {
+              "quantity_grams": 333.3333333333333,
+              "calories_per_100g": 200,
+              "protein_per_100g": 16,
+              "carbs_per_100g": 25,
+              "fat_per_100g": 7
+            }
+          ],
+          "meal_type": "jantar"
         },
         {
           "date": "2026-08-22",
           "meal_items": [
             {
-              "quantity_grams": 1000,
+              "quantity_grams": 333.3333333333333,
               "calories_per_100g": 200,
               "protein_per_100g": 16,
               "carbs_per_100g": 25,
               "fat_per_100g": 7
             }
-          ]
+          ],
+          "meal_type": "pequeno-almoco"
+        },
+        {
+          "date": "2026-08-22",
+          "meal_items": [
+            {
+              "quantity_grams": 333.3333333333333,
+              "calories_per_100g": 200,
+              "protein_per_100g": 16,
+              "carbs_per_100g": 25,
+              "fat_per_100g": 7
+            }
+          ],
+          "meal_type": "almoco"
+        },
+        {
+          "date": "2026-08-22",
+          "meal_items": [
+            {
+              "quantity_grams": 333.3333333333333,
+              "calories_per_100g": 200,
+              "protein_per_100g": 16,
+              "carbs_per_100g": 25,
+              "fat_per_100g": 7
+            }
+          ],
+          "meal_type": "jantar"
         },
         {
           "date": "2026-08-21",
           "meal_items": [
             {
-              "quantity_grams": 1000,
+              "quantity_grams": 333.3333333333333,
               "calories_per_100g": 200,
               "protein_per_100g": 16,
               "carbs_per_100g": 25,
               "fat_per_100g": 7
             }
-          ]
+          ],
+          "meal_type": "pequeno-almoco"
+        },
+        {
+          "date": "2026-08-21",
+          "meal_items": [
+            {
+              "quantity_grams": 333.3333333333333,
+              "calories_per_100g": 200,
+              "protein_per_100g": 16,
+              "carbs_per_100g": 25,
+              "fat_per_100g": 7
+            }
+          ],
+          "meal_type": "almoco"
+        },
+        {
+          "date": "2026-08-21",
+          "meal_items": [
+            {
+              "quantity_grams": 333.3333333333333,
+              "calories_per_100g": 200,
+              "protein_per_100g": 16,
+              "carbs_per_100g": 25,
+              "fat_per_100g": 7
+            }
+          ],
+          "meal_type": "jantar"
         },
         {
           "date": "2026-08-20",
           "meal_items": [
             {
-              "quantity_grams": 1000,
+              "quantity_grams": 333.3333333333333,
               "calories_per_100g": 200,
               "protein_per_100g": 16,
               "carbs_per_100g": 25,
               "fat_per_100g": 7
             }
-          ]
+          ],
+          "meal_type": "pequeno-almoco"
+        },
+        {
+          "date": "2026-08-20",
+          "meal_items": [
+            {
+              "quantity_grams": 333.3333333333333,
+              "calories_per_100g": 200,
+              "protein_per_100g": 16,
+              "carbs_per_100g": 25,
+              "fat_per_100g": 7
+            }
+          ],
+          "meal_type": "almoco"
+        },
+        {
+          "date": "2026-08-20",
+          "meal_items": [
+            {
+              "quantity_grams": 333.3333333333333,
+              "calories_per_100g": 200,
+              "protein_per_100g": 16,
+              "carbs_per_100g": 25,
+              "fat_per_100g": 7
+            }
+          ],
+          "meal_type": "jantar"
         },
         {
           "date": "2026-08-19",
           "meal_items": [
             {
-              "quantity_grams": 1000,
+              "quantity_grams": 333.3333333333333,
               "calories_per_100g": 200,
               "protein_per_100g": 16,
               "carbs_per_100g": 25,
               "fat_per_100g": 7
             }
-          ]
+          ],
+          "meal_type": "pequeno-almoco"
+        },
+        {
+          "date": "2026-08-19",
+          "meal_items": [
+            {
+              "quantity_grams": 333.3333333333333,
+              "calories_per_100g": 200,
+              "protein_per_100g": 16,
+              "carbs_per_100g": 25,
+              "fat_per_100g": 7
+            }
+          ],
+          "meal_type": "almoco"
+        },
+        {
+          "date": "2026-08-19",
+          "meal_items": [
+            {
+              "quantity_grams": 333.3333333333333,
+              "calories_per_100g": 200,
+              "protein_per_100g": 16,
+              "carbs_per_100g": 25,
+              "fat_per_100g": 7
+            }
+          ],
+          "meal_type": "jantar"
         }
       ],
       "bodyAssessments": [
@@ -722,14 +1181,14 @@
           "key": "ea",
           "label": "Disponibilidade Energética",
           "score": 60,
-          "desc": "EA de 31,0 kcal/kg nos últimos 7 dias fechados. Subótima — come mais para sustentar o volume.",
+          "desc": "EA de 31,0 kcal/kg nos 6 dias com registo completo dos últimos 7. Subótima — come mais para sustentar o volume.",
           "hasData": true
         },
         {
           "key": "calories",
           "label": "Nutrição",
           "score": 100,
-          "desc": "100% do alvo calórico nos últimos 7 dias fechados. Nutrição alinhada com o esforço.",
+          "desc": "100% do alvo calórico nos 6 dias com registo completo dos últimos 7. Nutrição alinhada com o esforço.",
           "hasData": true
         },
         {
@@ -742,6 +1201,794 @@
       ],
       "level": "medium",
       "calibrating": false
+    }
+  },
+  {
+    "name": "atleta que regista tudo, com um dia só com o pequeno-almoço — esse dia não entra (antes: 89% e EA mais baixa)",
+    "input": {
+      "todayISO": "2026-08-25",
+      "nextRace": null,
+      "runs": [
+        {
+          "date": "2026-08-20",
+          "distance_km": 10,
+          "duration_seconds": 3600,
+          "kind": "treino",
+          "training_type": "rodagem",
+          "effort_rpe": 5
+        },
+        {
+          "date": "2026-08-10",
+          "distance_km": 10,
+          "duration_seconds": 3000,
+          "kind": "competicao",
+          "training_type": null,
+          "effort_rpe": 8
+        },
+        {
+          "date": "2026-08-24",
+          "distance_km": 10,
+          "duration_seconds": 3010,
+          "kind": "competicao",
+          "training_type": null,
+          "effort_rpe": 8
+        }
+      ],
+      "meals": [
+        {
+          "date": "2026-08-18",
+          "meal_type": "pequeno-almoco",
+          "meal_items": [
+            {
+              "quantity_grams": 333.3333333333333,
+              "calories_per_100g": 200,
+              "protein_per_100g": 16,
+              "carbs_per_100g": 25,
+              "fat_per_100g": 7
+            }
+          ]
+        },
+        {
+          "date": "2026-08-18",
+          "meal_type": "almoco",
+          "meal_items": [
+            {
+              "quantity_grams": 333.3333333333333,
+              "calories_per_100g": 200,
+              "protein_per_100g": 16,
+              "carbs_per_100g": 25,
+              "fat_per_100g": 7
+            }
+          ]
+        },
+        {
+          "date": "2026-08-18",
+          "meal_type": "jantar",
+          "meal_items": [
+            {
+              "quantity_grams": 333.3333333333333,
+              "calories_per_100g": 200,
+              "protein_per_100g": 16,
+              "carbs_per_100g": 25,
+              "fat_per_100g": 7
+            }
+          ]
+        },
+        {
+          "date": "2026-08-19",
+          "meal_type": "pequeno-almoco",
+          "meal_items": [
+            {
+              "quantity_grams": 333.3333333333333,
+              "calories_per_100g": 200,
+              "protein_per_100g": 16,
+              "carbs_per_100g": 25,
+              "fat_per_100g": 7
+            }
+          ]
+        },
+        {
+          "date": "2026-08-19",
+          "meal_type": "almoco",
+          "meal_items": [
+            {
+              "quantity_grams": 333.3333333333333,
+              "calories_per_100g": 200,
+              "protein_per_100g": 16,
+              "carbs_per_100g": 25,
+              "fat_per_100g": 7
+            }
+          ]
+        },
+        {
+          "date": "2026-08-19",
+          "meal_type": "jantar",
+          "meal_items": [
+            {
+              "quantity_grams": 333.3333333333333,
+              "calories_per_100g": 200,
+              "protein_per_100g": 16,
+              "carbs_per_100g": 25,
+              "fat_per_100g": 7
+            }
+          ]
+        },
+        {
+          "date": "2026-08-20",
+          "meal_type": "pequeno-almoco",
+          "meal_items": [
+            {
+              "quantity_grams": 333.3333333333333,
+              "calories_per_100g": 200,
+              "protein_per_100g": 16,
+              "carbs_per_100g": 25,
+              "fat_per_100g": 7
+            }
+          ]
+        },
+        {
+          "date": "2026-08-20",
+          "meal_type": "almoco",
+          "meal_items": [
+            {
+              "quantity_grams": 333.3333333333333,
+              "calories_per_100g": 200,
+              "protein_per_100g": 16,
+              "carbs_per_100g": 25,
+              "fat_per_100g": 7
+            }
+          ]
+        },
+        {
+          "date": "2026-08-20",
+          "meal_type": "jantar",
+          "meal_items": [
+            {
+              "quantity_grams": 333.3333333333333,
+              "calories_per_100g": 200,
+              "protein_per_100g": 16,
+              "carbs_per_100g": 25,
+              "fat_per_100g": 7
+            }
+          ]
+        },
+        {
+          "date": "2026-08-21",
+          "meal_type": "pequeno-almoco",
+          "meal_items": [
+            {
+              "quantity_grams": 333.3333333333333,
+              "calories_per_100g": 200,
+              "protein_per_100g": 16,
+              "carbs_per_100g": 25,
+              "fat_per_100g": 7
+            }
+          ]
+        },
+        {
+          "date": "2026-08-21",
+          "meal_type": "almoco",
+          "meal_items": [
+            {
+              "quantity_grams": 333.3333333333333,
+              "calories_per_100g": 200,
+              "protein_per_100g": 16,
+              "carbs_per_100g": 25,
+              "fat_per_100g": 7
+            }
+          ]
+        },
+        {
+          "date": "2026-08-21",
+          "meal_type": "jantar",
+          "meal_items": [
+            {
+              "quantity_grams": 333.3333333333333,
+              "calories_per_100g": 200,
+              "protein_per_100g": 16,
+              "carbs_per_100g": 25,
+              "fat_per_100g": 7
+            }
+          ]
+        },
+        {
+          "date": "2026-08-22",
+          "meal_type": "pequeno-almoco",
+          "meal_items": [
+            {
+              "quantity_grams": 333.3333333333333,
+              "calories_per_100g": 200,
+              "protein_per_100g": 16,
+              "carbs_per_100g": 25,
+              "fat_per_100g": 7
+            }
+          ]
+        },
+        {
+          "date": "2026-08-22",
+          "meal_type": "almoco",
+          "meal_items": [
+            {
+              "quantity_grams": 333.3333333333333,
+              "calories_per_100g": 200,
+              "protein_per_100g": 16,
+              "carbs_per_100g": 25,
+              "fat_per_100g": 7
+            }
+          ]
+        },
+        {
+          "date": "2026-08-22",
+          "meal_type": "jantar",
+          "meal_items": [
+            {
+              "quantity_grams": 333.3333333333333,
+              "calories_per_100g": 200,
+              "protein_per_100g": 16,
+              "carbs_per_100g": 25,
+              "fat_per_100g": 7
+            }
+          ]
+        },
+        {
+          "date": "2026-08-23",
+          "meal_type": "pequeno-almoco",
+          "meal_items": [
+            {
+              "quantity_grams": 333.3333333333333,
+              "calories_per_100g": 200,
+              "protein_per_100g": 16,
+              "carbs_per_100g": 25,
+              "fat_per_100g": 7
+            }
+          ]
+        },
+        {
+          "date": "2026-08-23",
+          "meal_type": "almoco",
+          "meal_items": [
+            {
+              "quantity_grams": 333.3333333333333,
+              "calories_per_100g": 200,
+              "protein_per_100g": 16,
+              "carbs_per_100g": 25,
+              "fat_per_100g": 7
+            }
+          ]
+        },
+        {
+          "date": "2026-08-23",
+          "meal_type": "jantar",
+          "meal_items": [
+            {
+              "quantity_grams": 333.3333333333333,
+              "calories_per_100g": 200,
+              "protein_per_100g": 16,
+              "carbs_per_100g": 25,
+              "fat_per_100g": 7
+            }
+          ]
+        },
+        {
+          "date": "2026-08-24",
+          "meal_type": "pequeno-almoco",
+          "meal_items": [
+            {
+              "quantity_grams": 200,
+              "calories_per_100g": 200,
+              "protein_per_100g": 16,
+              "carbs_per_100g": 25,
+              "fat_per_100g": 7
+            }
+          ]
+        }
+      ],
+      "bodyAssessments": [
+        {
+          "date": "2026-08-20",
+          "weight_kg": 70,
+          "body_fat_pct": 18,
+          "lean_body_mass_kg": 57
+        }
+      ],
+      "gymSessions": [],
+      "profile": {
+        "weight_kg": 70,
+        "calorie_goal": 2000,
+        "protein_goal": 160,
+        "carbs_goal": 250,
+        "fat_goal": 70
+      }
+    },
+    "expect": {
+      "score": 77,
+      "pillars": [
+        {
+          "key": "ea",
+          "label": "Disponibilidade Energética",
+          "score": 60,
+          "desc": "EA de 33,1 kcal/kg nos 6 dias com registo completo dos últimos 7. Subótima — come mais para sustentar o volume.",
+          "hasData": true
+        },
+        {
+          "key": "calories",
+          "label": "Nutrição",
+          "score": 100,
+          "desc": "100% do alvo calórico nos 6 dias com registo completo dos últimos 7. Nutrição alinhada com o esforço.",
+          "hasData": true
+        },
+        {
+          "key": "vdot",
+          "label": "Forma Aeróbica (VDOT)",
+          "score": 70,
+          "desc": "VDOT 39.9 (→ estável). A manter a forma — adiciona um treino de qualidade.",
+          "hasData": true
+        }
+      ],
+      "level": "high",
+      "calibrating": false
+    }
+  },
+  {
+    "name": "atleta ocasional, 2 dias completos em 7 (e um parcial) — nutrição e EA sem dados, sem penalização",
+    "input": {
+      "todayISO": "2026-08-25",
+      "nextRace": null,
+      "runs": [
+        {
+          "date": "2026-08-20",
+          "distance_km": 10,
+          "duration_seconds": 3600,
+          "kind": "treino",
+          "training_type": "rodagem",
+          "effort_rpe": 5
+        },
+        {
+          "date": "2026-08-10",
+          "distance_km": 10,
+          "duration_seconds": 3000,
+          "kind": "competicao",
+          "training_type": null,
+          "effort_rpe": 8
+        },
+        {
+          "date": "2026-08-24",
+          "distance_km": 10,
+          "duration_seconds": 3010,
+          "kind": "competicao",
+          "training_type": null,
+          "effort_rpe": 8
+        }
+      ],
+      "meals": [
+        {
+          "date": "2026-08-19",
+          "meal_type": "pequeno-almoco",
+          "meal_items": [
+            {
+              "quantity_grams": 233.33333333333334,
+              "calories_per_100g": 200,
+              "protein_per_100g": 16,
+              "carbs_per_100g": 25,
+              "fat_per_100g": 7
+            }
+          ]
+        },
+        {
+          "date": "2026-08-19",
+          "meal_type": "almoco",
+          "meal_items": [
+            {
+              "quantity_grams": 233.33333333333334,
+              "calories_per_100g": 200,
+              "protein_per_100g": 16,
+              "carbs_per_100g": 25,
+              "fat_per_100g": 7
+            }
+          ]
+        },
+        {
+          "date": "2026-08-19",
+          "meal_type": "jantar",
+          "meal_items": [
+            {
+              "quantity_grams": 233.33333333333334,
+              "calories_per_100g": 200,
+              "protein_per_100g": 16,
+              "carbs_per_100g": 25,
+              "fat_per_100g": 7
+            }
+          ]
+        },
+        {
+          "date": "2026-08-22",
+          "meal_type": "pequeno-almoco",
+          "meal_items": [
+            {
+              "quantity_grams": 233.33333333333334,
+              "calories_per_100g": 200,
+              "protein_per_100g": 16,
+              "carbs_per_100g": 25,
+              "fat_per_100g": 7
+            }
+          ]
+        },
+        {
+          "date": "2026-08-22",
+          "meal_type": "almoco",
+          "meal_items": [
+            {
+              "quantity_grams": 233.33333333333334,
+              "calories_per_100g": 200,
+              "protein_per_100g": 16,
+              "carbs_per_100g": 25,
+              "fat_per_100g": 7
+            }
+          ]
+        },
+        {
+          "date": "2026-08-22",
+          "meal_type": "jantar",
+          "meal_items": [
+            {
+              "quantity_grams": 233.33333333333334,
+              "calories_per_100g": 200,
+              "protein_per_100g": 16,
+              "carbs_per_100g": 25,
+              "fat_per_100g": 7
+            }
+          ]
+        },
+        {
+          "date": "2026-08-24",
+          "meal_type": "pequeno-almoco",
+          "meal_items": [
+            {
+              "quantity_grams": 200,
+              "calories_per_100g": 200,
+              "protein_per_100g": 16,
+              "carbs_per_100g": 25,
+              "fat_per_100g": 7
+            }
+          ]
+        }
+      ],
+      "bodyAssessments": [
+        {
+          "date": "2026-08-20",
+          "weight_kg": 70,
+          "body_fat_pct": 18,
+          "lean_body_mass_kg": 57
+        }
+      ],
+      "gymSessions": [],
+      "profile": {
+        "weight_kg": 70,
+        "calorie_goal": 2000,
+        "protein_goal": 160,
+        "carbs_goal": 250,
+        "fat_goal": 70
+      }
+    },
+    "expect": {
+      "score": 70,
+      "pillars": [
+        {
+          "key": "ea",
+          "label": "Disponibilidade Energética",
+          "score": 0,
+          "desc": "2 de 7 dias com o registo completo: poucos para avaliar.",
+          "hasData": false
+        },
+        {
+          "key": "calories",
+          "label": "Nutrição",
+          "score": 0,
+          "desc": "2 de 7 dias com o registo completo: poucos para avaliar.",
+          "hasData": false
+        },
+        {
+          "key": "vdot",
+          "label": "Forma Aeróbica (VDOT)",
+          "score": 70,
+          "desc": "VDOT 39.9 (→ estável). A manter a forma — adiciona um treino de qualidade.",
+          "hasData": true
+        }
+      ],
+      "level": "medium",
+      "calibrating": true
+    }
+  },
+  {
+    "name": "atleta ocasional, 3 dias completos em 7 — já conta, só com esses",
+    "input": {
+      "todayISO": "2026-08-25",
+      "nextRace": null,
+      "runs": [
+        {
+          "date": "2026-08-20",
+          "distance_km": 10,
+          "duration_seconds": 3600,
+          "kind": "treino",
+          "training_type": "rodagem",
+          "effort_rpe": 5
+        },
+        {
+          "date": "2026-08-10",
+          "distance_km": 10,
+          "duration_seconds": 3000,
+          "kind": "competicao",
+          "training_type": null,
+          "effort_rpe": 8
+        },
+        {
+          "date": "2026-08-24",
+          "distance_km": 10,
+          "duration_seconds": 3010,
+          "kind": "competicao",
+          "training_type": null,
+          "effort_rpe": 8
+        }
+      ],
+      "meals": [
+        {
+          "date": "2026-08-19",
+          "meal_type": "pequeno-almoco",
+          "meal_items": [
+            {
+              "quantity_grams": 233.33333333333334,
+              "calories_per_100g": 200,
+              "protein_per_100g": 16,
+              "carbs_per_100g": 25,
+              "fat_per_100g": 7
+            }
+          ]
+        },
+        {
+          "date": "2026-08-19",
+          "meal_type": "almoco",
+          "meal_items": [
+            {
+              "quantity_grams": 233.33333333333334,
+              "calories_per_100g": 200,
+              "protein_per_100g": 16,
+              "carbs_per_100g": 25,
+              "fat_per_100g": 7
+            }
+          ]
+        },
+        {
+          "date": "2026-08-19",
+          "meal_type": "jantar",
+          "meal_items": [
+            {
+              "quantity_grams": 233.33333333333334,
+              "calories_per_100g": 200,
+              "protein_per_100g": 16,
+              "carbs_per_100g": 25,
+              "fat_per_100g": 7
+            }
+          ]
+        },
+        {
+          "date": "2026-08-21",
+          "meal_type": "pequeno-almoco",
+          "meal_items": [
+            {
+              "quantity_grams": 233.33333333333334,
+              "calories_per_100g": 200,
+              "protein_per_100g": 16,
+              "carbs_per_100g": 25,
+              "fat_per_100g": 7
+            }
+          ]
+        },
+        {
+          "date": "2026-08-21",
+          "meal_type": "almoco",
+          "meal_items": [
+            {
+              "quantity_grams": 233.33333333333334,
+              "calories_per_100g": 200,
+              "protein_per_100g": 16,
+              "carbs_per_100g": 25,
+              "fat_per_100g": 7
+            }
+          ]
+        },
+        {
+          "date": "2026-08-21",
+          "meal_type": "jantar",
+          "meal_items": [
+            {
+              "quantity_grams": 233.33333333333334,
+              "calories_per_100g": 200,
+              "protein_per_100g": 16,
+              "carbs_per_100g": 25,
+              "fat_per_100g": 7
+            }
+          ]
+        },
+        {
+          "date": "2026-08-23",
+          "meal_type": "pequeno-almoco",
+          "meal_items": [
+            {
+              "quantity_grams": 233.33333333333334,
+              "calories_per_100g": 200,
+              "protein_per_100g": 16,
+              "carbs_per_100g": 25,
+              "fat_per_100g": 7
+            }
+          ]
+        },
+        {
+          "date": "2026-08-23",
+          "meal_type": "almoco",
+          "meal_items": [
+            {
+              "quantity_grams": 233.33333333333334,
+              "calories_per_100g": 200,
+              "protein_per_100g": 16,
+              "carbs_per_100g": 25,
+              "fat_per_100g": 7
+            }
+          ]
+        },
+        {
+          "date": "2026-08-23",
+          "meal_type": "jantar",
+          "meal_items": [
+            {
+              "quantity_grams": 233.33333333333334,
+              "calories_per_100g": 200,
+              "protein_per_100g": 16,
+              "carbs_per_100g": 25,
+              "fat_per_100g": 7
+            }
+          ]
+        },
+        {
+          "date": "2026-08-24",
+          "meal_type": "pequeno-almoco",
+          "meal_items": [
+            {
+              "quantity_grams": 200,
+              "calories_per_100g": 200,
+              "protein_per_100g": 16,
+              "carbs_per_100g": 25,
+              "fat_per_100g": 7
+            }
+          ]
+        }
+      ],
+      "bodyAssessments": [
+        {
+          "date": "2026-08-20",
+          "weight_kg": 70,
+          "body_fat_pct": 18,
+          "lean_body_mass_kg": 57
+        }
+      ],
+      "gymSessions": [],
+      "profile": {
+        "weight_kg": 70,
+        "calorie_goal": 2000,
+        "protein_goal": 160,
+        "carbs_goal": 250,
+        "fat_goal": 70
+      }
+    },
+    "expect": {
+      "score": 48,
+      "pillars": [
+        {
+          "key": "ea",
+          "label": "Disponibilidade Energética",
+          "score": 10,
+          "desc": "EA de 24,6 kcal/kg nos 3 dias com registo completo dos últimos 7. Crítico — risco de RED-S. Aumenta a ingestão.",
+          "hasData": true
+        },
+        {
+          "key": "calories",
+          "label": "Nutrição",
+          "score": 65,
+          "desc": "70% do alvo calórico nos 3 dias com registo completo dos últimos 7. Podes melhorar a consistência nutricional.",
+          "hasData": true
+        },
+        {
+          "key": "vdot",
+          "label": "Forma Aeróbica (VDOT)",
+          "score": 70,
+          "desc": "VDOT 39.9 (→ estável). A manter a forma — adiciona um treino de qualidade.",
+          "hasData": true
+        }
+      ],
+      "level": "low",
+      "calibrating": false
+    }
+  },
+  {
+    "name": "dia antigo sem tipo, com uma só refeição (regra fixa) — parcial: sem dados",
+    "input": {
+      "todayISO": "2026-08-25",
+      "nextRace": null,
+      "runs": [
+        {
+          "date": "2026-08-10",
+          "distance_km": 8,
+          "duration_seconds": 2400,
+          "kind": "competicao",
+          "training_type": null,
+          "effort_rpe": 8
+        },
+        {
+          "date": "2026-08-24",
+          "distance_km": 8,
+          "duration_seconds": 2280,
+          "kind": "competicao",
+          "training_type": null,
+          "effort_rpe": 8
+        }
+      ],
+      "meals": [
+        {
+          "date": "2026-08-24",
+          "meal_items": [
+            {
+              "quantity_grams": 500,
+              "calories_per_100g": 200,
+              "protein_per_100g": 20,
+              "carbs_per_100g": 20,
+              "fat_per_100g": 5
+            }
+          ]
+        }
+      ],
+      "bodyAssessments": [
+        {
+          "date": "2026-08-20",
+          "weight_kg": 70,
+          "body_fat_pct": 18,
+          "lean_body_mass_kg": 57
+        }
+      ],
+      "gymSessions": [],
+      "profile": {
+        "weight_kg": 70,
+        "calorie_goal": 2000,
+        "protein_goal": 140,
+        "carbs_goal": 250,
+        "fat_goal": 65
+      }
+    },
+    "expect": {
+      "score": 100,
+      "pillars": [
+        {
+          "key": "ea",
+          "label": "Disponibilidade Energética",
+          "score": 0,
+          "desc": "0 de 7 dias com o registo completo: poucos para avaliar.",
+          "hasData": false
+        },
+        {
+          "key": "calories",
+          "label": "Nutrição",
+          "score": 0,
+          "desc": "0 de 7 dias com o registo completo: poucos para avaliar.",
+          "hasData": false
+        },
+        {
+          "key": "vdot",
+          "label": "Forma Aeróbica (VDOT)",
+          "score": 100,
+          "desc": "VDOT 41.9 (↑ melhoria). A tua capacidade aeróbica está a crescer.",
+          "hasData": true
+        }
+      ],
+      "level": "high",
+      "calibrating": true
     }
   }
 ]
