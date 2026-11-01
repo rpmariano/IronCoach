@@ -262,9 +262,11 @@ export function isDishlessRule(rule) {
 
 /* Bug #109 (2026-11-01): os ingredientes opcionais — manteiga, azeite, óleo, molhos — a Carol
    pergunta sempre; as regras aprendidas sobre eles já não se usam nem se aprendem. A mesma
-   regra de isLearnedAdditionRule em supabase/functions/analyze-meal/optionalAdditions.ts —
-   mudar uma é mudar a outra. Valem as escritas à mão (manual) e a quantidade do próprio
-   ingrediente («manteiga · quantidade»); a manteiga de amendoim (e as outras vegetais) é um
+   regra de isLearnedAdditionRule em supabase/functions/analyze-meal/optionalAdditions.ts
+   (dev-back dfad1095) — mudar uma é mudar a outra. Valem as escritas à mão (manual), a
+   quantidade do próprio ingrediente à parte («manteiga · quantidade», «molhos · quantidade»,
+   «quantidade de azeite») e a de um alimento composto com o ingrediente no nome («atum em
+   azeite», «frango com molho de caril»). A manteiga de amendoim (e as outras vegetais) é um
    alimento, não conta. */
 const ADDITION_FAMILY = {
   manteiga: 'manteiga', margarina: 'manteiga', 'creme vegetal': 'manteiga',
@@ -273,15 +275,20 @@ const ADDITION_FAMILY = {
 };
 const ADDITION_RE = new RegExp(`\\b(${Object.keys(ADDITION_FAMILY).join('|')})s?\\b`);
 const NUT_BUTTER_RE = /\bmanteigas? de (amendoim|caju|amendoa|amendoas|avela|avelas|noz|nozes|pistacio|cacau|coco|karite|sementes|girassol|sesamo|frutos secos)\b/g;
+const additionKey = (text) => foodKey(text).replace(NUT_BUTTER_RE, ' ');
+// O tema COMEÇA pelo ingrediente opcional; no meio é o nome de um alimento composto.
+const ADDITION_HEAD_RE = new RegExp(`^(${Object.keys(ADDITION_FAMILY).join('|')})s?\\b(.*)$`);
+// Numa quantidade, o ingrediente tem de estar num prato: «manteiga no pão · quantidade».
+const IN_DISH_RE = /^ (no|na|nos|nas|em|sobre|para) \S/;
 
 export function isLearnedAdditionRule(rule) {
   if (!rule || rule.source === 'manual') return false;
   const topic = String(rule.topic ?? '');
-  if (/\bquantidades?\b/i.test(topic)) {
-    const food = foodKey(topic.replace(/\bquantidades?\b/gi, ' ')).replace(/^(de|do|da|dos|das) /, '');
-    if (food in ADDITION_FAMILY) return false;
-  }
-  return ADDITION_RE.test(foodKey(`${topic} ${rule.value ?? ''}`).replace(NUT_BUTTER_RE, ' '));
+  const isQuantity = /\bquantidades?\b/i.test(topic);
+  const food = additionKey(topic.replace(/\bquantidades?\b/gi, ' ')).trim().replace(/^(de|do|da|dos|das) /, '');
+  const head = food.match(ADDITION_HEAD_RE);
+  if (isQuantity) return !!head && IN_DISH_RE.test(head[2]);
+  return !!head || ADDITION_RE.test(additionKey(rule.value));
 }
 
 /** As regras que aparecem no Armário: as que ela já usa, ou que variam — sem as dos

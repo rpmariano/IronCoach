@@ -145,12 +145,17 @@ describe('PantrySection', () => {
       { id: 'a4', topic: 'salada', value: 'azeite e vinagre', status: 'confirmado', source: 'manual', confirmations: 2 },
       { id: 'a5', topic: 'manteiga · quantidade', value: 'camada fina (~5 g)', status: 'confirmado', source: 'resposta', confirmations: 2 },
       { id: 'a6', topic: 'tosta', value: 'com manteiga de amendoim', status: 'confirmado', source: 'resposta', confirmations: 2 },
+      // dfad1095: um alimento composto com o ingrediente no nome, e a quantidade dos molhos à parte.
+      { id: 'a7', topic: 'atum em azeite', value: 'escorrido', status: 'confirmado', source: 'resposta', confirmations: 2 },
+      { id: 'a8', topic: 'molhos · quantidade', value: '1 colher de sopa', status: 'confirmado', source: 'resposta', confirmations: 2 },
     ] });
     render(<PantrySection />);
-    fireEvent.click(screen.getByRole('tab', { name: /Como cozinhas · 5/ }));
+    fireEvent.click(screen.getByRole('tab', { name: /Como cozinhas · 7/ }));
+    expect(screen.getByRole('list', { name: 'Como cozinhas' })).toHaveTextContent('escorrido');
+    expect(screen.getByRole('list', { name: 'Quanto costumas pôr' })).toHaveTextContent('1 colher de sopa');
     const cozinha = screen.getByRole('list', { name: 'Como cozinhas' });
     expect(cozinha).not.toHaveTextContent('sandes de fiambre');
-    expect(cozinha).not.toHaveTextContent('em azeite');
+    expect(cozinha).not.toHaveTextContent('ovos estrelados');
     expect(cozinha).not.toHaveTextContent('ketchup');
     expect(cozinha).toHaveTextContent('azeite e vinagre');
     expect(cozinha).toHaveTextContent('com manteiga de amendoim');

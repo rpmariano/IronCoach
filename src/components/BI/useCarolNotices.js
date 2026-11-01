@@ -6,9 +6,8 @@ import { pendingRaceBalanceCandidate, pendingBlockEndAlert, pendingPlanResumeAle
 import { detectPlanDivergence, detectRaceConflict, raceLabel, wasDivergenceHandled } from '../../utils/planDivergence';
 import { todayISO } from '../../lib/utils';
 import { isInsightHidden } from '../../utils/insightState';
-import { goalsDeclinedMarker, isGoalsIntervention } from '@formulas/goalsIntervention.ts';
 import { interventionKey, raceConflictKey } from '@formulas/proactiveTriggers.ts';
-import { INTERVENTION_OUTCOME } from '@formulas/interventionOutcomes.ts';
+import { dismissProfileIntervention, resolvedProfile } from '../../utils/profileIntervention';
 import { pendingTopicLines, interventionTopicLine } from '../../utils/carolTopics';
 import { useCupForHome } from '../../utils/useCup';
 import { cupMapCandidate, markCupMapHandled, CUP_MAP_TITLE } from '../../utils/cupMap';
@@ -362,19 +361,9 @@ export default function useCarolNotices() {
     if (!profile?.id) return;
     setDismissing(true);
     try {
-      const { supabase } = await import('../../lib/supabase');
-      // Dispensar é um desfecho (5.5): fica em coach_interventions, e a Carol
-      // calibra por ele. Só no update — o trigger consome-o.
-      const { error } = await supabase.from('profiles').update({ coach_intervention_status: 'resolved', coach_intervention_reason: null, coach_intervention_outcome: INTERVENTION_OUTCOME.DISPENSADO }).eq('id', profile.id);
-      if (error) throw error;
-      // Dispensar um convite para objetivos é dizer "agora não": fica
-      // registado para a Carol não voltar a chamar na próxima pesagem
-      // (espera de 14 dias, ver goalsDeclinedMarker).
-      if (isGoalsIntervention(profile.coach_intervention_reason)) {
-        const { error: markErr } = await supabase.from('coach_goal_proposals').insert(goalsDeclinedMarker(profile.id));
-        if (markErr) console.warn('Falha a registar a recusa de objetivos:', markErr);
-      }
-      setProfile({ ...profile, coach_intervention_status: 'resolved', coach_intervention_reason: null });
+      // O mesmo que o «Dispensar» do registo que a abriu (utils/profileIntervention.js).
+      await dismissProfileIntervention(profile);
+      setProfile(resolvedProfile(profile));
       logImpressionDismissed({ kind: 'alert', key: 'assuntos', title: 'A Carol precisa de falar contigo' });
       setShowDismiss(false);
       showToast('Assunto dispensado.', 'success');
