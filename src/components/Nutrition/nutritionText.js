@@ -119,30 +119,37 @@ export function weekdayCount(idx, n) {
 }
 
 /**
- * A nota dos dias "provavelmente incompletos" (2026-10-05): continuam nas
- * contas até o atleta os marcar no Dia — a nota diz-lhe onde (2026-10-06).
- *   ({ n: 2 }) → "2 dias parecem incompletos — abre-os no Dia para os marcar."
- *   ({ n: 1 }) → "1 dia parece incompleto — abre-o no Dia para o marcar."
- * Sem nenhum, ou sem dias com refeições, não há nota.
- */
-export function incompleteDaysNote(incomplete) {
-  const n = incomplete?.n ?? 0;
-  const of = incomplete?.of ?? 0;
-  if (n <= 0 || of <= 0) return null;
-  if (n === 1) return '1 dia parece incompleto — abre-o no Dia para o marcar.';
-  return `${n} dias parecem incompletos — abre-os no Dia para os marcar.`;
-}
-
-/**
- * Os dias que o atleta marcou como incompletos (2026-10-06) e saíram das contas.
- *   ({ n: 1 }) → "1 dia marcado como incompleto ficou fora das contas."
- *   ({ n: 3 }) → "3 dias marcados como incompletos ficaram fora das contas."
+ * Os dias com registo parcial (opção B, 2026-11-01: inferidos, já não se marcam) que saíram das contas.
+ *   ({ n: 1 }) → "1 dia com registo parcial ficou fora das médias."
+ *   ({ n: 3 }) → "3 dias com registo parcial ficaram fora das médias."
  */
 export function markedDaysNote(marked) {
   const n = marked?.n ?? 0;
   if (n <= 0) return null;
-  if (n === 1) return '1 dia marcado como incompleto ficou fora das contas.';
-  return `${n} dias marcados como incompletos ficaram fora das contas.`;
+  if (n === 1) return '1 dia com registo parcial ficou fora das médias.';
+  return `${n} dias com registo parcial ficaram fora das médias.`;
+}
+
+/** «X de Y dias com registo completo» (opção B): os fechados com refeições que contam, de todos os fechados. */
+export function completenessText(completeness) {
+  const x = completeness?.complete ?? 0;
+  const y = completeness?.of ?? 0;
+  return `${x} de ${y} ${y === 1 ? 'dia' : 'dias'} com registo completo`;
+}
+
+/**
+ * O cabeçalho da coluna do resumo (opção B). Quem regista tudo vê médias:
+ *   "Média por dia · 5 de 6 dias com registo completo (1–6 out)"
+ * O atleta ocasional vê contagens, sem médias (e sem se lhe pedir mais registos):
+ *   "Dias no objetivo · 3 de 6 dias com registo completo"
+ */
+export function summaryHeaderText(view, todayISO) {
+  const done = completenessText(view?.completeness);
+  if (view?.loggingKind === 'ocasional') return `Dias no objetivo · ${done}`;
+  const range = view?.recordedRange;
+  if (!range || !(view?.completeness?.complete > 0)) return `Média por dia · ${done}`;
+  const span = rangeText(range.first, range.last, todayISO).replace(/^(\d+) – /, '$1–');
+  return `Média por dia · ${done} (${span})`;
 }
 
 /**

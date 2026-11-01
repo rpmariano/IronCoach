@@ -5,6 +5,7 @@ import { DUR_COUNT, DUR_COUNT_REVEAL } from '../../utils/introAnimations';
 import { fmtNumber } from '../../utils/dashboardVerdicts';
 import { scheduleWhenSettled, useTabNearSettled, useTabPage } from '../../utils/settledTab';
 import ChartJS from '../../lib/chartSetup';
+import ExplainChartButton from './ExplainChartButton';
 
 /**
  * ChartFrame — a moldura de qualquer gráfico dos dashboards (ponto 6 do
@@ -40,6 +41,7 @@ import ChartJS from '../../lib/chartSetup';
  *   axis      { min, max } — extremos do eixo em HTML, nos cantos
  *   height    number — altura da área do gráfico (default 176)
  *   footer    nó — nota livre por baixo
+ *   explain   { title, period?, series, note? } — o botão «Pedir à Carol que explique» (ExplainChartButton)
  *   reveal    o resultado de useRevealAnimation() de quem desenha o gráfico —
  *             passa-se quando o gráfico precisa de saber se anima (as opções
  *             do Chart.js vivem lá). Sem ele, a moldura observa-se sozinha.
@@ -263,6 +265,7 @@ export default function ChartFrame({
   axis,
   height = 176,
   footer,
+  explain,
   reveal,
   ready = true,
   children,
@@ -632,6 +635,8 @@ export default function ChartFrame({
           {footer}
         </div>
       )}
+      {/* «Pedir à Carol que explique» (2026-11-01): com `explain`, o botão no fundo do cartão. */}
+      {explain && <ExplainChartButton explain={explain} />}
     </div>
   );
 }

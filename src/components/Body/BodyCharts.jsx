@@ -110,6 +110,11 @@ export function BodyMetricChart({ metric, row, period, prevName, todayISO, end, 
   return (
     <ChartFrame
       label={metric.label}
+      explain={n ? {
+        title: metric.label,
+        period: hintParts.join(' · '),
+        series: [{ label: metric.label, unit: metric.unit, values: vals }],
+      } : undefined}
       hint={hintParts.join(' · ')}
       value={last ? fmtMetricValue(metric, last.value) : '—'}
       unit={metric.unit || undefined}
@@ -228,6 +233,11 @@ export function WeightTrendChart({ weight, period, todayISO, end, toToday = fals
   return (
     <ChartFrame
       label={ewma ? 'Tendência de peso' : 'Evolução de peso'}
+      explain={raw.length ? {
+        title: ewma ? 'Tendência de peso' : 'Evolução de peso',
+        period: `${raw.length} ${plural(raw.length, 'pesagem', 'pesagens')}`,
+        series: [{ label: 'Peso', unit: 'kg', values: raw, decimals: 1 }],
+      } : undefined}
       info={<MetricInfo text={info} />}
       hint={`${raw.length} ${plural(raw.length, 'pesagem', 'pesagens')}${latest ? ` · última a ${fmtDayShort(latest.date, todayISO)}` : ''}${toToday ? ' · até hoje' : ''}`}
       value={latest ? fmtNumber(latest.weight, 1) : '—'}

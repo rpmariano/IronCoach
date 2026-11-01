@@ -143,11 +143,11 @@ export default function CrossMetricsChart({ title, helpText, leftData, rightData
       className={className}
       label={title}
       info={helpText ? <MetricInfo text={helpText} /> : undefined}
-      value={lastLeft !== null ? fmtNumber(lastLeft, 1) : '—'}
+      value={lastLeft !== null ? fmtNumber(lastLeft, leftData.decimals ?? 1) : '—'}
       unit={leftData.unit || leftData.label}
       valueColor={leftData.color}
       delta={lastRight !== null
-        ? { text: `${rightData.label} ${fmtNumber(lastRight, 1)}`, tone: 'neutral' }
+        ? { text: `${rightData.label} ${fmtNumber(lastRight, rightData.decimals ?? 1)}`, tone: 'neutral' }
         : undefined}
       legend={[
         { label: leftData.label, color: leftData.color, shape: 'line' },
@@ -155,6 +155,15 @@ export default function CrossMetricsChart({ title, helpText, leftData, rightData
       ]}
       height={200}
       axis={axis}
+      explain={{
+        title,
+        period: period || (axis ? `${axis.min} – ${axis.max}` : null),
+        series: [
+          { label: leftData.label, values: leftPoints.map((p) => p.y), decimals: leftData.decimals },
+          { label: rightData.label, values: rightPoints.map((p) => p.y), decimals: rightData.decimals },
+        ],
+        note: 'As duas curvas têm escalas independentes.',
+      }}
       footer={(
         <>
           {period && <span className="block" data-testid="cross-chart-period" style={{ color: 'var(--text-3)' }}>{period}</span>}

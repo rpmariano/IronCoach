@@ -23,6 +23,7 @@ import {
   trainingByDay,
 } from '@formulas/nutritionPeriod.ts';
 import { goalsResolver } from '../../../utils/goalHistory';
+import { partialMealDays } from '../../../utils/partialMealDays';
 import { nutritionPeriodVerdict } from '../../../utils/verdicts/nutrition';
 import { nDays, whereOf } from '../../../components/BI/period/periodText';
 import { periodName, rangeText, wherePast } from '../../../components/Nutrition/nutritionText';
@@ -51,15 +52,15 @@ import { periodName, rangeText, wherePast } from '../../../components/Nutrition/
  *   o atleta registou, não o calendário — um mês com 14 dias fechados e 2 com
  *   refeições não chega a "Comer para treinar"; um domingo por registar não
  *   esconde o padrão semanal inteiro, nem no Ano.
- * - dias "provavelmente incompletos" (menos de 40% do objetivo de calorias, ou
- *   uma só refeição): continuam nas contas, mas o ecrã avisa que podem ter
- *   refeições por registar (`incomplete`) e manda-os ao Dia para os marcar.
- * - 2026-10-06: dias MARCADOS como incompletos pelo atleta (no Dia; tabela
- *   nutrition_incomplete_days) saem de TODAS as contas — linhas e resumo,
- *   sugestões de incompletos, comparação, período anterior, Comer para
- *   treinar, EA, micronutrientes, semanas e dias da semana. Continuam em
- *   `closedDays` (o calendário: estado "cedo", textos) e em `days`, com
- *   `state: 'incomplete'` e a linha calculada só para mostrar (`marked`).
+ * - 2026-11-01 (opção B do Rui): os dias com registo PARCIAL inferem-se
+ *   (utils/partialMealDays.js, a regra do servidor em dayCompleteness.ts) — o
+ *   atleta já não os marca. Um dia parcial sai de TODAS as contas — linhas e
+ *   resumo, comparação, período anterior, Comer para treinar, EA,
+ *   micronutrientes, semanas e dias da semana. Continua em `closedDays` (o
+ *   calendário: estado "cedo", textos) e em `days`, com `state: 'incomplete'`
+ *   («registo parcial») e a linha calculada só para mostrar (`marked`).
+ *   `completeness` é o «X de Y dias com registo completo» do cabeçalho;
+ *   `loggingKind` 'ocasional' é o atleta que regista de vez em quando.
  *
  * `build` é pura: só depende de (deps, período, hoje). Não congelar nada.
  */
@@ -77,8 +78,6 @@ export const WEEKDAY_MIN = 4;
 /** …e o padrão aparece quando pelo menos 5 dos 7 dias da semana contam (N4,
  *  2026-10-05): um só domingo por registar não esconde o gráfico todo. */
 export const WEEKDAY_MIN_DAYS = 5;
-/** Um dia com menos de 40% do objetivo de calorias provavelmente ficou por registar. */
-export const INCOMPLETE_KCAL_RATIO = 0.4;
 /** Água com média a partir de 3 dias com registo. */
 export const WATER_MIN_DAYS = 3;
 
@@ -145,24 +144,6 @@ function equivalentPrevious(p, todayISO) {
   return { period: prev, days: eachDayISO(prev.start, prev.end), label: periodName(prev.kind, prev.start, prev.end, todayISO) };
 }
 
-/**
- * Dias "provavelmente incompletos" (2026-10-05): dos dias com refeições, os que
- * têm menos de 40% do objetivo de calorias OU uma só refeição. Não saem das
- * contas — o ecrã só diz que alguns podem ter refeições por registar.
- * `mealCounts` é um Map data → número de refeições.
- */
-export function incompleteDaysOf(rows, mealCounts) {
-  const withMeals = rows.filter((r) => r.hasMeals && r.values.calories != null);
-  const days = withMeals
-    .filter((r) => {
-      const goal = Number(r.goals?.calorie_goal) || 0;
-      const lowKcal = goal > 0 && r.values.calories < goal * INCOMPLETE_KCAL_RATIO;
-      return lowKcal || (mealCounts.get(r.date) || 0) === 1;
-    })
-    .map((r) => r.date);
-  return { days, n: days.length, of: withMeals.length };
-}
-
 /** Os registos por dia da semana de uma chave, com o mínimo de cada dia (N4). */
 function weekdayStats(rows, key) {
   const recs = rows.filter((r) => hasRecord(r, key) && r.values[key] != null);
@@ -204,10 +185,10 @@ function byKey(fn) {
 }
 
 /**
- * build([meals, waterLogs, runs, gymSessions, bodyAssessments, profile, goalHistory, nutritionIncompleteDays], { kind, offset }, hoje)
+ * build([meals, waterLogs, runs, gymSessions, bodyAssessments, profile, goalHistory], { kind, offset }, hoje)
  */
 export function buildNutritionView(deps, period, todayISO) {
-  const [meals, waterLogs, runs, gymSessions, bodyAssessments, profile, goalHistory, markedDays] = deps || EMPTY;
+  const [meals, waterLogs, runs, gymSessions, bodyAssessments, profile, goalHistory] = deps || EMPTY;
   const kind = period?.kind || 'semana';
   const offset = period?.offset || 0;
   // A vista Dia é a de sempre (DayNutritionCard) e calcula-se no ecrã.
@@ -217,13 +198,13 @@ export function buildNutritionView(deps, period, todayISO) {
   const dataStartISO = firstMealDate(meals);
   const goalsFor = goalsResolver(goalHistory || EMPTY, profile, todayISO);
   const closed = dataStartISO ? closedDaysOf(p, todayISO, dataStartISO) : closedDaysOf(p, todayISO);
-  // Os dias marcados como incompletos (2026-10-06): saem de tudo o que conta.
+  // Os dias com registo parcial (opção B, 2026-11-01): saem de tudo o que conta.
   // `counted` são os dias fechados que contam; `closed` fica o calendário.
-  const marked = new Set(Array.isArray(markedDays) ? markedDays : EMPTY);
-  const unmarked = (ds) => (marked.size ? ds.filter((d) => !marked.has(d)) : ds);
+  const { profile: mealProfile, isPartial } = partialMealDays(meals, goalsFor, todayISO);
+  const unmarked = (ds) => ds.filter((d) => !isPartial(d));
   const counted = unmarked(closed);
   const countedSet = new Set(counted);
-  const markedClosed = closed.filter((d) => marked.has(d));
+  const markedClosed = closed.filter(isPartial);
 
   const rows = dailyNutritionRows({ meals, waterLogs, days: counted, goalsFor });
   const rowByDate = new Map(rows.map((r) => [r.date, r]));
@@ -232,13 +213,6 @@ export function buildNutritionView(deps, period, todayISO) {
   const markedRowByDate = markedClosed.length
     ? new Map(dailyNutritionRows({ meals, waterLogs, days: markedClosed, goalsFor }).map((r) => [r.date, r]))
     : new Map();
-  // Refeições por dia que conta (o "só uma refeição" dos dias provavelmente incompletos).
-  const mealCounts = new Map();
-  for (const m of meals || EMPTY) {
-    const d = typeof m?.date === 'string' ? m.date.slice(0, 10) : null;
-    if (d && countedSet.has(d)) mealCounts.set(d, (mealCounts.get(d) || 0) + 1);
-  }
-  const incomplete = incompleteDaysOf(rows, mealCounts);
   // Primeiro e último dia COM refeições dos fechados: o "(3 dias: 1–3 out)" do cabeçalho.
   const mealDates = rows.filter((r) => r.hasMeals && r.values.calories != null).map((r) => r.date);
   const recordedRange = mealDates.length ? { first: mealDates[0], last: mealDates[mealDates.length - 1] } : null;
@@ -264,7 +238,7 @@ export function buildNutritionView(deps, period, todayISO) {
     if (date > todayISO) state = 'future';
     else if (date === todayISO) state = 'today';
     else if (countedSet.has(date)) state = 'closed';
-    else if (markedClosed.includes(date)) state = 'incomplete'; // marcado: fora das contas
+    else if (markedClosed.includes(date)) state = 'incomplete'; // registo parcial: fora das contas
     else state = 'before'; // antes do 1.º registo
     let row = null;
     if (state === 'closed') row = rowByDate.get(date);
@@ -426,9 +400,11 @@ export function buildNutritionView(deps, period, todayISO) {
     previousFull,
     previousData,
     compareNote,
-    incomplete,
-    // Os dias fechados que o atleta marcou como incompletos (fora das contas).
+    // Os dias fechados com registo parcial (fora das contas).
     marked: { days: markedClosed, n: markedClosed.length },
+    // «X de Y dias com registo completo»: os fechados com refeições que contam, de todos os fechados.
+    completeness: { complete: summary.nDays, of: closed.length },
+    loggingKind: mealProfile.kind,
     recordedRange,
     eating,
     ea,
@@ -440,7 +416,7 @@ export function buildNutritionView(deps, period, todayISO) {
 }
 
 registerEvolutionView('nutricao', {
-  deps: (s) => [s.meals, s.waterLogs, s.runs, s.gymSessions, s.bodyAssessments, s.profile, s.goalHistory, s.nutritionIncompleteDays],
+  deps: (s) => [s.meals, s.waterLogs, s.runs, s.gymSessions, s.bodyAssessments, s.profile, s.goalHistory],
   build: buildNutritionView,
 });
 

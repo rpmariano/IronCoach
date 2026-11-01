@@ -33,3 +33,12 @@ describe('CrossMetricsChart — datas, escalas e período', () => {
     expect(screen.queryByTestId('cross-chart-period')).not.toBeInTheDocument();
   });
 });
+
+describe('CrossMetricsChart — casas decimais por série', () => {
+  it('«6 000 kg», não «6 000,0 kg», quando a série pede 0 casas', () => {
+    const kg = { label: 'Volume Ginásio (kg)', unit: 'kg', color: '#9ec3d2', decimals: 0, data: [{ x: '2026-10-12', y: 5000 }, { x: '2026-10-19', y: 6000 }] };
+    render(<CrossMetricsChart title="Impacto" leftData={kg} rightData={right} />);
+    expect(screen.getByText(/^6\s000$/)).toBeInTheDocument();
+    expect(screen.queryByText(/6\s000,0/)).toBeNull();
+  });
+});

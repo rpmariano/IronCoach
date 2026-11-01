@@ -1,6 +1,13 @@
 import React from 'react';
 import { render, screen, within, fireEvent, act } from '@testing-library/react';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+
+/* Opção B (2026-11-01): os dias com registo parcial inferem-se (utils/partialMealDays.js, com testes
+   próprios). Os dias destes testes são de uma refeição só, sem tipo — com a regra real seriam todos
+   parciais. Aqui a regra desliga-se: o que se testa é outra coisa. */
+vi.mock('../../utils/partialMealDays', () => ({
+  partialMealDays: () => ({ profile: { kind: 'completo' }, isPartial: () => false }),
+}));
 import { useAppStore } from '../../store';
 import { usePeriodStore } from '../../store/periodStore';
 import OverviewDashboard from './OverviewDashboard';

@@ -12,6 +12,13 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
    real da base de dados (meal_items por refeição). */
 const h = vi.hoisted(() => ({ today: '2026-10-04' }));
 vi.mock('../../utils/useTodayISO', () => ({ useTodayISO: () => h.today }));
+/* Opção B (2026-11-01): os dias com registo parcial inferem-se (utils/partialMealDays.js, com testes
+   próprios com a regra real). Aqui mocka-se: `setData({ partialDays, loggingKind })` diz quais são
+   parciais e o perfil — o que se testa é o ecrã. */
+const partial = vi.hoisted(() => ({ days: new Set(), kind: 'completo' }));
+vi.mock('../../utils/partialMealDays', () => ({
+  partialMealDays: () => ({ profile: { kind: partial.kind }, isPartial: (d) => partial.days.has(d) }),
+}));
 
 import { useAppStore } from '../../store';
 import { usePeriodStore } from '../../store/periodStore';
@@ -45,7 +52,9 @@ const WATER = [
 const RUNS = [{ date: '2026-09-29', distance_km: 12 }, { date: '2026-10-01', distance_km: 8 }, { date: '2026-10-03', distance_km: 20 }];
 const GYM = [{ date: '2026-09-30', kind: 'forca' }];
 
-function setData(patch = {}) {
+function setData({ partialDays = [], loggingKind = 'completo', nutritionIncompleteDays, ...rest } = {}) {
+  partial.days = new Set([...partialDays, ...(nutritionIncompleteDays || [])]);
+  partial.kind = loggingKind;
   useAppStore.setState({
     profile: PROFILE,
     meals: [...PREV_WEEK, ...WEEK],
@@ -57,8 +66,7 @@ function setData(patch = {}) {
     coachPlans: [],
     coachPlanItems: [],
     nutritionDayFocus: null,
-    nutritionIncompleteDays: [],
-    ...patch,
+    ...rest,
   });
 }
 
@@ -91,7 +99,7 @@ describe('NutritionDashboard — Semana (mock-up "Semana · esta semana")', () =
     expect(within(s).getByTestId('verdict-line')).toHaveTextContent(
       'Calorias no sítio (96%), mas a proteína está curta: 88% do objetivo — só 2 de 6 dias lá chegaram.',
     );
-    expect(within(s).getByTestId('summary-columns')).toHaveTextContent('Média por dia registado (6 dias: 28 set – 3 out)');
+    expect(within(s).getByTestId('summary-columns')).toHaveTextContent('Média por dia · 6 de 6 dias com registo completo (28 set – 3 out)');
     // Hoje (1 240 kcal até agora) não entra: a média é a dos 6 dias fechados.
     expect(nameOf(row('Calorias'))).toBe('Calorias: 2 310 de 2 400 kcal, Dentro · 96%, dias no objetivo: 4 de 6');
     expect(nameOf(row('Proteína'))).toBe('Proteína: 132 de 150 g, Abaixo · 88%, dias no objetivo: 2 de 6');
@@ -271,18 +279,18 @@ describe('NutritionDashboard — Mês (mock-ups "setembro, fechado" e "outubro, 
   /* 2026-10-05: o cabeçalho diz os dias ("3 dias: 1–3 out"); dias com menos de
      40% do objetivo ou uma só refeição continuam nas contas, mas há uma nota
      — desde 2026-10-06, a dizer que se marcam no Dia. */
-  it('o cabeçalho diz os dias e os dias provavelmente incompletos têm nota (continuam nas contas)', () => {
+  it('o cabeçalho diz «X de Y dias com registo completo»; o dia parcial sai da média e tem nota', () => {
     const m = (date, kcal) => ({ id: `x${seq++}`, date, meal_items: [{ calories: kcal, protein: 100, carbs: 200, fat: 60 }] });
-    setData({ meals: [m('2026-10-01', 1200), m('2026-10-01', 1200), m('2026-10-02', 1900), m('2026-10-03', 500), m('2026-10-03', 400)], waterLogs: [{ date: '2026-10-02', amount_ml: 1000 }, { date: '2026-10-03', amount_ml: 1500 }] });
+    setData({ meals: [m('2026-10-01', 1200), m('2026-10-01', 1200), m('2026-10-02', 1900), m('2026-10-03', 500), m('2026-10-03', 400)], waterLogs: [{ date: '2026-10-02', amount_ml: 1000 }, { date: '2026-10-03', amount_ml: 1500 }], partialDays: ['2026-10-02'] });
     usePeriodStore.getState().setPeriod('nutricao', 'mes', 0);
     render(<NutritionDashboard />);
-    expect(within(summary()).getByTestId('summary-columns')).toHaveTextContent('Média por dia registado (3 dias: 1–3 out)');
-    // 2 out (uma só refeição) e 3 out (900 < 40% de 2 400): 2 dos 3.
-    expect(within(summary()).getByTestId('summary-footer')).toHaveTextContent('2 dias parecem incompletos — abre-os no Dia para os marcar.');
-    // Entram na média dos 3 dias: (2 400 + 1 900 + 900) / 3.
-    expect(nameOf(row('Calorias'))).toMatch(/^Calorias: 1 733 /);
+    expect(within(summary()).getByTestId('summary-columns')).toHaveTextContent('Média por dia · 2 de 3 dias com registo completo (1–3 out)');
+    expect(within(summary()).getByTestId('summary-footer')).toHaveTextContent('1 dia com registo parcial ficou fora das médias.');
+    expect(within(summary()).getByTestId('summary-footer')).not.toHaveTextContent('marcar');
+    // Só os 2 completos na média: (2 400 + 900) / 2.
+    expect(nameOf(row('Calorias'))).toMatch(/^Calorias: 1 650 /);
     // Água: de que dias fala o mínimo.
-    expect(within(row('Água')).getByText('2 dias com água — poucos para média')).toBeInTheDocument();
+    expect(within(row('Água')).getByText('1 dia com água — pouco para média')).toBeInTheDocument();
     // E sem a calha cinzenta vazia: a linha sem média não desenha barra.
     expect(within(row('Água')).queryByTestId('row-bar')).toBeNull();
   });
@@ -672,28 +680,29 @@ describe('NutritionDashboard — dias marcados como incompletos', () => {
 
   it('Semana: o dia marcado sai das médias, fica escolhível e diz porquê', () => {
     render(<NutritionDashboard />);
-    expect(within(summary()).getByTestId('summary-columns')).toHaveTextContent('Média por dia registado (5 dias: 28 set – 3 out)');
-    expect(within(summary()).getByTestId('summary-footer')).toHaveTextContent('1 dia marcado como incompleto ficou fora das contas.');
+    expect(within(summary()).getByTestId('summary-columns')).toHaveTextContent('Média por dia · 5 de 6 dias com registo completo (28 set – 3 out)');
+    expect(within(summary()).getByTestId('summary-footer')).toHaveTextContent('1 dia com registo parcial ficou fora das médias.');
     const chart = screen.getByTestId('nutrition-week-chart');
     expect(chart).toHaveTextContent('kcal/dia · média de 5 dias');
-    expect(chart).toHaveTextContent('Incompleto (fora das contas)');
+    expect(chart).toHaveTextContent('Registo parcial (fora das médias)');
     const days = within(within(chart).getByRole('radiogroup', { name: 'Dias da semana' })).getAllByRole('radio');
-    expect(nameOf(days[2])).toBe('quarta, 30 de setembro: marcado como incompleto, fora das contas, ginásio');
+    expect(nameOf(days[2])).toBe('quarta, 30 de setembro: registo parcial, fora das médias, ginásio');
     expect(days[2]).not.toBeDisabled();
     const bar = within(chart).getAllByTestId('week-bar')[2];
     expect(bar).toHaveAttribute('data-state', 'incomplete');
     expect(bar.style.opacity).toBe('0.45');
     expect(bar.style.border).toMatch(/dashed/);
     fireEvent.click(days[2]);
-    expect(within(chart).getByTestId('chart-detail')).toHaveTextContent('qua, 30 set · marcado como incompleto — fica fora das contas · ginásio');
+    expect(within(chart).getByTestId('chart-detail')).toHaveTextContent('qua, 30 set · registo parcial — fica fora das médias · ginásio');
     fireEvent.click(within(chart).getByRole('button', { name: /Ver dia/ }));
-    expect(screen.getByTestId('day-incomplete-marked')).toHaveTextContent('Dia marcado como incompleto — não conta nas médias da Evolução.');
+    // O Dia já não tem o botão de marcar (opção B: os parciais inferem-se).
+    expect(screen.queryByTestId('day-incomplete')).toBeNull();
   });
 
   it('Semana sem dias marcados: sem legenda nem nota', () => {
     setData({ nutritionIncompleteDays: [] });
     render(<NutritionDashboard />);
-    expect(screen.getByTestId('nutrition-week-chart')).not.toHaveTextContent('Incompleto (fora das contas)');
+    expect(screen.getByTestId('nutrition-week-chart')).not.toHaveTextContent('Registo parcial (fora das médias)');
     expect(within(summary()).getByTestId('summary-footer')).not.toHaveTextContent('fora das contas');
   });
 
@@ -701,16 +710,16 @@ describe('NutritionDashboard — dias marcados como incompletos', () => {
     usePeriodStore.getState().setPeriod('nutricao', 'mes', -1);
     render(<NutritionDashboard />);
     const map = screen.getByTestId('nutrition-month-heatmap');
-    const cell = within(map).getByRole('radio', { name: 'quarta, 30 de setembro: marcado como incompleto, fora das contas' });
+    const cell = within(map).getByRole('radio', { name: 'quarta, 30 de setembro: registo parcial, fora das médias' });
     expect(cell).toHaveAttribute('data-state', 'incomplete');
     expect(cell).not.toHaveAttribute('data-status');
     // Por omissão, o último dia fechado que conta (29 set), não o marcado.
     expect(within(map).getByRole('radio', { name: /^terça, 29 de setembro/ })).toHaveAttribute('aria-checked', 'true');
-    expect(map).toHaveTextContent('Incompleto (fora das contas)');
+    expect(map).toHaveTextContent('Registo parcial (fora das médias)');
     fireEvent.click(cell);
-    expect(within(map).getByTestId('chart-detail')).toHaveTextContent('qua, 30 set · marcado como incompleto — fica fora das contas');
+    expect(within(map).getByTestId('chart-detail')).toHaveTextContent('qua, 30 set · registo parcial — fica fora das médias');
     // 10 dias com registo desde 21 set, 1 marcado: 9 no resumo.
-    expect(within(summary()).getByTestId('summary-columns')).toHaveTextContent('Média por dia registado (9 dias');
+    expect(within(summary()).getByTestId('summary-columns')).toHaveTextContent('Média por dia · 9 de');
   });
 
   it('um período passado só com dias marcados não diz "sem refeições" — mostra-os', () => {
@@ -719,75 +728,24 @@ describe('NutritionDashboard — dias marcados como incompletos', () => {
     usePeriodStore.getState().setPeriod('nutricao', 'semana', -1);
     render(<NutritionDashboard />);
     expect(screen.getByTestId('nutrition-week-chart')).toBeInTheDocument();
-    expect(within(summary()).getByTestId('summary-footer')).toHaveTextContent('7 dias marcados como incompletos ficaram fora das contas.');
+    expect(within(summary()).getByTestId('summary-footer')).toHaveTextContent('7 dias com registo parcial ficaram fora das médias.');
   });
 });
 
-describe('NutritionDashboard — Dia: marcar como incompleto', () => {
-  let toggle;
+/* Opção B (2026-11-01): o botão «Marcar dia como incompleto» saiu do Dia — os parciais inferem-se. */
+describe('NutritionDashboard — Dia: sem botão de dia incompleto', () => {
   beforeEach(() => {
     h.today = '2026-10-04';
     usePeriodStore.getState().reset();
     resetEvolutionCache();
-    toggle = vi.fn(async (date, incomplete) => {
-      const cur = useAppStore.getState().nutritionIncompleteDays;
-      useAppStore.setState({ nutritionIncompleteDays: incomplete ? [...cur, date] : cur.filter((d) => d !== date) });
-      return { error: null };
-    });
-    setData({
-      // Ontem: uma só refeição (parece incompleto). Anteontem: 3 refeições, 2 400 kcal.
-      meals: [
-        meal('2026-10-03', 600, 30, 80, 20),
-        meal('2026-10-02', 800, 50, 100, 25), meal('2026-10-02', 800, 50, 100, 25), meal('2026-10-02', 800, 50, 100, 30),
-        meal('2026-10-04', 500, 30, 50, 10),
-      ],
-      nutritionDayFocus: '2026-10-03',
-      setNutritionDayIncomplete: toggle,
-    });
+    setData({ meals: [meal('2026-10-03', 600, 30, 80, 20)], nutritionDayFocus: '2026-10-03', partialDays: ['2026-10-03'] });
   });
 
-  it('dia fechado com uma só refeição: sugere e marca; marcado, diz que não conta e anula', async () => {
+  it('num dia fechado com uma só refeição não há sugestão nem botão', () => {
     render(<NutritionDashboard />);
-    expect(screen.getByTestId('day-incomplete-suggestion')).toHaveTextContent('Parece incompleto — falta registar alguma refeição?');
-    const btn = screen.getByRole('button', { name: 'Marcar dia como incompleto' });
-    expect(btn.style.minHeight).toBe('var(--tap)');
-    await act(async () => { fireEvent.click(btn); });
-    expect(toggle).toHaveBeenCalledWith('2026-10-03', true);
-    expect(screen.getByTestId('day-incomplete-marked')).toHaveTextContent('Dia marcado como incompleto — não conta nas médias da Evolução.');
-    expect(screen.queryByTestId('day-incomplete-suggestion')).toBeNull();
-    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Anular' })); });
-    expect(toggle).toHaveBeenLastCalledWith('2026-10-03', false);
-    expect(screen.getByRole('button', { name: 'Marcar dia como incompleto' })).toBeInTheDocument();
-  });
-
-  it('dia completo: o botão sem a sugestão', () => {
-    render(<NutritionDashboard />);
-    fireEvent.click(screen.getByRole('button', { name: 'Dia anterior' }));
-    expect(screen.getByRole('button', { name: 'Marcar dia como incompleto' })).toBeInTheDocument();
-    expect(screen.queryByTestId('day-incomplete-suggestion')).toBeNull();
-  });
-
-  it('hoje e dias sem refeições: nada para marcar', () => {
-    render(<NutritionDashboard />);
-    fireEvent.click(screen.getByRole('button', { name: 'Dia seguinte' }));
-    expect(screen.getByTestId('day-nutrition-title')).toHaveTextContent('Hoje');
+    expect(screen.getByTestId('day-nutrition-title')).toBeInTheDocument();
     expect(screen.queryByTestId('day-incomplete')).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: 'Dia anterior' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Dia anterior' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Dia anterior' }));
-    expect(screen.getByTestId('day-row-calories')).toHaveAttribute('data-status', 'sem_registo');
-    expect(screen.queryByTestId('day-incomplete')).toBeNull();
-  });
-
-  it('a gravação falha: diz-se em linha, curto, e o dia continua por marcar', async () => {
-    useAppStore.setState({ setNutritionDayIncomplete: vi.fn(async () => ({ error: { message: 'rede' } })) });
-    render(<NutritionDashboard />);
-    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Marcar dia como incompleto' })); });
-    expect(screen.getByRole('alert')).toHaveTextContent('Não consegui guardar isto. Tenta outra vez daqui a pouco.');
-    expect(screen.getByRole('button', { name: 'Marcar dia como incompleto' })).toBeInTheDocument();
-    // Outro dia: o erro não fica.
-    fireEvent.click(screen.getByRole('button', { name: 'Dia anterior' }));
-    expect(screen.queryByRole('alert')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Marcar dia como incompleto' })).toBeNull();
   });
 });
 
@@ -801,5 +759,23 @@ describe('fmtEa — energia disponível sem contradizer os limites', () => {
     expect(fmtEa(30.2)).toBe('30');
     expect(fmtEa(38.6)).toBe('39');
     expect(fmtEa(null)).toBe('—');
+  });
+});
+
+/* Opção B (2026-11-01): ao atleta que regista de vez em quando mostram-se contagens, não médias. */
+describe('NutritionDashboard — atleta ocasional', () => {
+  beforeEach(() => {
+    h.today = '2026-10-04';
+    usePeriodStore.getState().reset();
+    resetEvolutionCache();
+    setData({ loggingKind: 'ocasional' });
+  });
+
+  it('o cabeçalho diz «Dias no objetivo · X de Y dias com registo completo» e as linhas são contagens', () => {
+    render(<NutritionDashboard />);
+    expect(within(summary()).getByTestId('summary-columns')).toHaveTextContent('Dias no objetivo · 6 de 6 dias com registo completo');
+    const values = within(summary()).getAllByTestId('row-value').map((el) => el.textContent);
+    expect(values[0]).toMatch(/^\d+ de \d+$/);
+    expect(within(summary()).getByTestId('summary-columns')).not.toHaveTextContent('Média');
   });
 });

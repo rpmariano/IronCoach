@@ -297,3 +297,23 @@ describe('CrossAnalysisSection — o período de cada análise', () => {
     expect(chart('Impacto do Ginásio na Corrida').period.endsWith(axisDate(todayISO()))).toBe(true);
   });
 });
+
+/* 2026-11-01: uma semana com RPE mas sem ginásio era desenhada a 0 (a curva caía ao chão); e o
+   volume aparecia «6 000,0 kg». */
+describe('CrossAnalysisSection — Impacto do Ginásio: buraco sem ginásio e kg sem casas', () => {
+  it('a semana sem ginásio é um buraco (null), não 0; o volume vai sem casas decimais', () => {
+    render(
+      <CrossAnalysisSection
+        runs={[rodagem(3, 5), rodagem(10, 6), rodagem(17, 5)]}
+        gymSessions={[forca(4, 6000), forca(18, 5000)]}
+        meals={[]}
+        bodyAssessments={[]}
+      />,
+    );
+    const c = chart('Impacto do Ginásio na Corrida');
+    const ys = c.leftData.data.map((d) => d.y);
+    expect(ys).toContain(null);
+    expect(ys).not.toContain(0);
+    expect(c.leftData.decimals).toBe(0);
+  });
+});

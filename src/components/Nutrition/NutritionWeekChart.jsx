@@ -121,6 +121,12 @@ export default function NutritionWeekChart({ view, metric, onViewDay, todayISO }
       testId="nutrition-week-chart"
       label={`${meta.label} por dia`}
       hint={view.label.range}
+      explain={{
+        title: `${meta.label} por dia`,
+        period: view.label.range,
+        series: [{ label: meta.label, unit: meta.unit, values: cols.filter((c) => c.state === 'closed').map((c) => c.value), decimals: 0 }],
+        note: goal > 0 ? `O objetivo é ${Math.round(goal)} ${meta.unit} por dia; os dias com registo parcial e hoje ficam de fora.` : null,
+      }}
       value={valueTxt}
       unit={unitTxt}
       valueColor={sum.avg != null ? meta.color : 'var(--text-4)'}
@@ -135,7 +141,7 @@ export default function NutritionWeekChart({ view, metric, onViewDay, todayISO }
             ? <LegendItem swatch={swatch.zone()}>Zona do objetivo (90–115%)</LegendItem>
             : <LegendItem swatch={swatch.dashLine()}>Objetivo: 90% ou mais</LegendItem>}
           {hasToday && <LegendItem swatch={swatch.today()}>Hoje, até agora</LegendItem>}
-          {hasIncomplete && <LegendItem swatch={swatch.incomplete()}>Incompleto (fora das contas)</LegendItem>}
+          {hasIncomplete && <LegendItem swatch={swatch.incomplete()}>Registo parcial (fora das médias)</LegendItem>}
           {anyRun && <LegendItem swatch={<TrainingIcons training={{ runs: 1 }} />}>corrida</LegendItem>}
           {anyGym && <LegendItem swatch={<TrainingIcons training={{ gym: 1 }} />}>ginásio</LegendItem>}
         </>
@@ -170,7 +176,7 @@ export default function NutritionWeekChart({ view, metric, onViewDay, todayISO }
               let aria = `${isToday ? `hoje, ${dayLong(c.date, todayISO)}` : dayLong(c.date, todayISO)}: `;
               if (c.state === 'future') aria += 'ainda não chegou';
               else if (c.state === 'before') aria += 'antes do primeiro registo';
-              else if (isIncomplete) aria += 'marcado como incompleto, fora das contas';
+              else if (isIncomplete) aria += 'registo parcial, fora das médias';
               else if (isToday) aria += c.value != null ? `até agora ${fmtInt(c.value)} ${meta.long}, em curso` : 'ainda sem registos, em curso';
               else if (c.value == null) aria += 'sem registo';
               else aria += `${fmtInt(c.value)} ${meta.long}, ${STATUS_LONG[c.status]}`;

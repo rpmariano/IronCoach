@@ -74,6 +74,12 @@ export default function IntensityDonut({ distribution = {}, targetLowPct, hint, 
       ready={ready}
       className={className}
       label="Distribuição de intensidade"
+      explain={{
+        title: 'Distribuição de intensidade',
+        period: hint || null,
+        series: [],
+        note: `Z1-Z2: ${lowIntensityPct}% · Z3+: ${highIntensityPct}% (o alvo é ${target}% em Z1-Z2).`,
+      }}
       hint={hint}
       info={<MetricInfo text="Regra 80/20. Cerca de 80% do tempo de treino deve ser feito em intensidades baixas (Zonas 1 e 2) para maximizar as adaptações aeróbicas sem acumular fadiga. Só 20% deve ser intenso." />}
       value={lowIntensityPct}

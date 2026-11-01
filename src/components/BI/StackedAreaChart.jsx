@@ -158,6 +158,14 @@ export default function StackedAreaChart({ data = EMPTY_DATA, className = '', st
       hint={hintProp ?? (n > 0 ? `${n} ${n === 1 ? 'avaliação' : 'avaliações'}` : undefined)}
       value={total > 0 ? fmtNumber(total, 1) : '—'}
       unit="kg"
+      explain={n ? {
+        title: 'Composição corporal',
+        period: `${n} ${n === 1 ? 'avaliação' : 'avaliações'}`,
+        series: [
+          { label: 'Massa magra', unit: 'kg', values: lean, decimals: 1 },
+          { label: 'Massa gorda', unit: 'kg', values: fat, decimals: 1 },
+        ],
+      } : undefined}
       delta={canDraw && leanDelta !== null && Math.abs(leanDelta) >= 0.1
         ? { text: `${leanDelta > 0 ? '+' : '−'}${fmtNumber(Math.abs(leanDelta), 1)} kg de massa magra`, tone: leanDelta >= 0 ? 'ok' : 'warn' }
         : undefined}
