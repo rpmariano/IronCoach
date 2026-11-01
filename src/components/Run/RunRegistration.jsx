@@ -1018,7 +1018,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
         setRunPhotos(prev => [...prev, { dataUrl, base64 }]);
         // Prints novos: a leitura anterior (bem ou mal sucedida) deixa de valer (#106).
         setReadState(null);
-        setReadAttempt(null);
+        setReadAttempt(null); setPrintQuestions([]); setPrintAnswers({});
         setIsFormDirty(true);
       } catch (err) {
         console.warn('Falha a processar imagem', err);
@@ -1030,7 +1030,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
   const removePhoto = (index) => {
     setRunPhotos(prev => prev.filter((_, i) => i !== index));
     setReadState(null);
-    setReadAttempt(null);
+    setReadAttempt(null); setPrintQuestions([]); setPrintAnswers({});
     setIsFormDirty(true);
     clearStaleMissingMetrics();
   };
@@ -1766,7 +1766,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
           shoe_id: shoeId,
           ...(hasTyped ? { typed } : {}),
           ...(reviewed ? { reviewed: true, read_details: readState.details || null } : {}),
-          ...questionsPayload(printQuestions, printAnswers),
+          ...(runPhotos.length ? questionsPayload(printQuestions, printAnswers) : {}),
         },
       }, ANALYZE_TIMEOUT_MS);
       if (error) throw new Error(error);
@@ -2230,6 +2230,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
           : { text: 'Não consegui ler valores nestes prints. Confirma que são do resumo da corrida e estão nítidos, ou escreve-os abaixo.', tone: 'warn' });
       setIsFormDirty(true);
     } catch (err) {
+      setPrintQuestions([]); setPrintAnswers({});
       setReadNote({ text: err.message || 'Não consegui ler os prints. Tenta outra vez.', tone: 'warn' });
     } finally {
       setReadAttempt(runPhotos.length);

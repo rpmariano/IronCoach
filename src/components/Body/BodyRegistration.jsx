@@ -372,7 +372,7 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
         setPhotos(prev => [...prev, { dataUrl, base64 }]);
         // Prints novos: a leitura anterior (bem ou mal sucedida) deixa de valer (#106).
         setReadState(null);
-        setReadAttempt(null);
+        setReadAttempt(null); setPrintQuestions([]); setPrintAnswers({});
         setIsFormDirty(true);
       } catch (err) {
         console.warn('Falha a processar imagem', err);
@@ -380,7 +380,7 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
     }
   };
 
-  const removePhoto = (idx) => { setPhotos(prev => prev.filter((_, i) => i !== idx)); setReadState(null); setReadAttempt(null); setIsFormDirty(true); };
+  const removePhoto = (idx) => { setPhotos(prev => prev.filter((_, i) => i !== idx)); setReadState(null); setReadAttempt(null); setPrintQuestions([]); setPrintAnswers({}); setIsFormDirty(true); };
 
   // ── Ler os prints para o formulário (sem gravar) ─────────────────────
   const handleRead = async () => {
@@ -403,6 +403,7 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
       setReadNote(bodyReadNote(merged));
       setIsFormDirty(true);
     } catch (err) {
+      setPrintQuestions([]); setPrintAnswers({});
       setReadNote({ text: err.message || 'Não consegui ler os prints. Tenta outra vez.', tone: 'warn' });
     } finally {
       setReadAttempt(photos.length);
@@ -427,7 +428,7 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
         ...(hasTyped ? { metrics: typed } : {}),
         ...(reviewed ? { reviewed: true, classifications: labelsStillValid(readState, typed) } : {}),
         ...fastingField(notes),
-        ...questionsPayload(printQuestions, printAnswers),
+        ...(photos.length ? questionsPayload(printQuestions, printAnswers) : {}),
       },
     }, ANALYZE_TIMEOUT_MS);
     if (error) throw new Error(error);

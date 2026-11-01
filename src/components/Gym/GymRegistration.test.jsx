@@ -1432,3 +1432,47 @@ describe('GymRegistration — #106: trocar um print volta a pedir a leitura', ()
     expect(screen.queryByRole('button', { name: /Analisar treino/i })).not.toBeInTheDocument();
   });
 });
+
+describe('GymRegistration — #106: as perguntas são dos prints que estão lá', () => {
+  const Q = { id: 'q1', kind: 'contexto', topic: 'máquina', item_name: null, question: 'Era a prensa a 45°?', options: ['Sim', 'Não'], assumed: 'Sim', impact_kcal: 0, impact_protein_g: 0, answer: null, answered_at: null };
+  const lerComPergunta = async () => {
+    mocks.invoke.mockResolvedValueOnce({ data: { preview: { exercises: [], metrics: {}, categories: [], class_types: [], session_name: '' }, readable: true, questions: [Q] }, error: null });
+    fireEvent.click(screen.getByRole('button', { name: 'Ler os prints e preencher' }));
+    fireEvent.click(within(await screen.findByTestId('carol-question-q1')).getByRole('button', { name: 'Não' }));
+  };
+  beforeEach(() => {
+    mocks.invoke.mockReset();
+    useAppStore.setState({ profile: PROFILE, gymSessions: [], exerciseLocker: [], planItemPrefill: null });
+  });
+
+  it('trocar de print e a releitura falhar: as perguntas antigas saem e não vão no pedido', async () => {
+    render(<GymRegistration onClose={vi.fn()} />);
+    await selectPhoto({ ler: false });
+    await lerComPergunta();
+    fireEvent.click(screen.getByRole('button', { name: 'Remover print 1' }));
+    expect(screen.queryByTestId('carol-question-q1')).not.toBeInTheDocument();
+    await selectPhoto({ ler: false });
+    mocks.invoke.mockResolvedValueOnce({ data: null, error: 'O Coach está ocupado.' });
+    fireEvent.click(screen.getByRole('button', { name: 'Ler os prints e preencher' }));
+    await screen.findByText('O Coach está ocupado.');
+    mocks.invoke.mockResolvedValueOnce({ data: { session: { id: 'sess-1' }, sets: [] }, error: null });
+    fireEvent.click(screen.getByRole('button', { name: /Analisar treino/i }));
+    gravarAssimSeHouver();
+    await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(3));
+    expect(mocks.invoke.mock.calls[2][1].body).not.toHaveProperty('carol_questions');
+  });
+
+  it('ler e depois tirar todos os prints: gravar não manda carol_questions', async () => {
+    render(<GymRegistration onClose={vi.fn()} />);
+    await selectPhoto({ ler: false });
+    await lerComPergunta();
+    fireEvent.click(screen.getByRole('button', { name: 'Remover print 1' }));
+    fireEvent.click(screen.getByRole('button', { name: /Adicionar exercício/ }));
+    fireEvent.change(screen.getByPlaceholderText('Nome do exercício'), { target: { value: 'Prensa' } });
+    mocks.invoke.mockResolvedValueOnce({ data: { session: { id: 'sess-1' }, sets: [] }, error: null });
+    fireEvent.click(screen.getByRole('button', { name: /Analisar treino/i }));
+    gravarAssimSeHouver();
+    await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(2));
+    expect(mocks.invoke.mock.calls[1][1].body).not.toHaveProperty('carol_questions');
+  });
+});
