@@ -6544,3 +6544,31 @@ Deno.test("dias parciais e o atleta ocasional (2026-11-01): a regra vai ao promp
   assertEquals(loggingProfileText({ kind: "ocasional" }), "regista as refeições de vez em quando (ocasional)");
   assertEquals(loggingProfileText({ kind: "completo" }), "regista tudo");
 });
+
+import { CHART_EXPLAIN_RULE } from "./index.ts";
+import { buildSystemInstruction as buildSysChart } from "./index.ts";
+
+Deno.test("explicar um gráfico (2026-11-01): a regra vai à doutrina fixa, nos dois turnos, e o exemplo é na voz dela", async () => {
+  const src = await Deno.readTextFile(new URL("./index.ts", import.meta.url));
+  assertStringIncludes(src, String.raw`CHART_EXPLAIN_RULE + ` + "`\\n` +");
+  // O formato do pedido do botão (BI/ExplainChartButton, buildChartExplainText).
+  assertStringIncludes(CHART_EXPLAIN_RULE, "Explica-me a leitura do gráfico");
+  assertStringIncludes(CHART_EXPLAIN_RULE, "1. Como se lê");
+  assertStringIncludes(CHART_EXPLAIN_RULE, "2. O que os números dele mostram");
+  assertStringIncludes(CHART_EXPLAIN_RULE, "não inventes pontos, datas nem valores intermédios");
+  assertStringIncludes(CHART_EXPLAIN_RULE, "Com um só ponto não há tendência");
+  assertStringIncludes(CHART_EXPLAIN_RULE, "sem repetir a lista de números");
+  // Doutrina fixa: entra com e sem a doutrina de plano (os mesmos argumentos
+  // vazios de staticDoctrineChars), e pesa pouco.
+  for (const planDoctrine of [true, false]) {
+    const args: unknown[] = [null, { height_cm: null, weight_kg: null, gender: null, birth_date: null, experience_level: null, resting_hr_bpm: null, dietary_restrictions: null, dietary_notes: null }, null, null, "", ""];
+    while (args.length < 36) args.push(undefined);
+    // deno-lint-ignore no-explicit-any
+    assertStringIncludes((buildSysChart as any)(...args, planDoctrine), CHART_EXPLAIN_RULE, `planDoctrine=${planDoctrine}`);
+  }
+  assert(CHART_EXPLAIN_RULE.length < 2000, String(CHART_EXPLAIN_RULE.length));
+  // O exemplo de resposta respeita a voz dela.
+  const exemplo = CHART_EXPLAIN_RULE.split("Resposta: «")[1].replace(/»\n$/, "");
+  assertCarolVoice(exemplo);
+  assert(!/\d+ pontos/.test(exemplo), "a resposta não repete a lista");
+});
