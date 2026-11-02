@@ -36,7 +36,9 @@ export function partialMealDays(meals, goalsFor, todayISO) {
     const n = Number(g);
     return n > 0 ? n : null;
   };
-  const profile = mealLoggingProfile(Array.isArray(meals) ? meals : [], todayISO, target(todayISO));
+  // O objetivo de CADA dia, também no perfil (2026-11-02): como o servidor (coach-chat,
+  // coach-daily-summary) — com o de hoje, um dia antigo julgava-se com o objetivo de agora.
+  const profile = mealLoggingProfile(Array.isArray(meals) ? meals : [], todayISO, target);
   const byDay = mealsByDay(meals);
   const cache = new Map();
   const isPartial = (dayISO) => {

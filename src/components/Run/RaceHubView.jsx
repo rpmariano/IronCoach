@@ -120,9 +120,10 @@ export default function RaceHubView({
   const info = race?.web_info || null;
 
   const dailyCheckins = useAppStore((s) => s.dailyCheckins);
+  const goalHistory = useAppStore((s) => s.goalHistory);
   const readiness = useMemo(() =>
-    calculateReadinessIndex(runs, meals, bodyAssessments, gymSessions, profile, race, dailyCheckins),
-  [runs, meals, bodyAssessments, gymSessions, profile, race, dailyCheckins]);
+    calculateReadinessIndex(runs, meals, bodyAssessments, gymSessions, profile, race, dailyCheckins, undefined, goalHistory),
+  [runs, meals, bodyAssessments, gymSessions, profile, race, dailyCheckins, goalHistory]);
 
   // Sem pilares com dados (readinessIndex.ts, 2026-10-04), nenhuma luz acende
   // e a pílula diz "a calibrar" — não "Baixa (0%)".
