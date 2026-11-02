@@ -114,9 +114,10 @@ export default function RaceReadinessCard({ runs, meals, bodyAssessments, gymSes
     return (coachPlanItems || []).some((i) => i && aceites.has(i.plan_id) && i.planned_date === today
       && (i.kind === 'corrida' || i.kind === 'ginasio') && i.status !== 'cancelado');
   }, [coachPlans, coachPlanItems, today]);
+  const goalHistory = useAppStore((s) => s.goalHistory);
   const readiness = useMemo(() =>
-    calculateReadinessIndex(runs, meals, bodyAssessments, gymSessions, profile, nextRace, dailyCheckins, trainingToday),
-    [runs, meals, bodyAssessments, gymSessions, profile, nextRace, dailyCheckins, trainingToday]
+    calculateReadinessIndex(runs, meals, bodyAssessments, gymSessions, profile, nextRace, dailyCheckins, trainingToday, goalHistory),
+    [runs, meals, bodyAssessments, gymSessions, profile, nextRace, dailyCheckins, trainingToday, goalHistory]
   );
 
   // Em dias de calendário, com a mesma função do biEngine, para os dois não

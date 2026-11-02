@@ -33,6 +33,7 @@ import { computeCompositionTrend } from '@formulas/compositionTrend.ts';
 import { computeRunAcwr, RUN_ACWR_MIN_HISTORY_WEEKS } from '@formulas/runAcwr.ts';
 import { computeCrossMetrics } from '@formulas/crossMetrics.ts';
 import { computeReadinessIndex as sharedComputeReadinessIndex } from '@formulas/readinessIndex.ts';
+import { calorieGoalResolver } from '@formulas/goalHistory.ts';
 import { runsOnly } from '@formulas/runKinds.ts';
 
 /**
@@ -894,11 +895,14 @@ export function detectCoachInsights(dataIn, profile) {
  * única implementação, partilhada com a Carol (specs/formulas-checklist.md
  * Fase E, o gap original que motivou toda a fase).
  */
-export function calculateReadinessIndex(runs, meals, bodyAssessments, gymSessions, profile, nextRace = null, dailyCheckins = [], trainingToday = undefined) {
+export function calculateReadinessIndex(runs, meals, bodyAssessments, gymSessions, profile, nextRace = null, dailyCheckins = [], trainingToday = undefined, goalHistory = null) {
   try {
     const today = todayISO();
     const todayCheckin = (dailyCheckins || []).find((c) => c?.date === today) || null;
-    return sharedComputeReadinessIndex(runs || [], meals || [], bodyAssessments || [], gymSessions || [], profile, today, nextRace, todayCheckin, trainingToday);
+    // O objetivo calórico de CADA dia (2026-11-02, como o servidor — dev-back 197683ee): um dia
+    // completo ou parcial julga-se com o objetivo desse dia, não com o de hoje.
+    const calorieGoalFor = calorieGoalResolver(goalHistory || [], profile, today);
+    return sharedComputeReadinessIndex(runs || [], meals || [], bodyAssessments || [], gymSessions || [], profile, today, nextRace, todayCheckin, trainingToday, calorieGoalFor);
   } catch (e) {
     return { score: 0, pillars: [], level: 'low', calibrating: true };
   }
