@@ -120,6 +120,23 @@ export function weekdayMinNoteProps(view, metric, todayISO) {
   return { text: `${base} — ${where} ${have}.` };
 }
 
+/** A nota do pedido à Carol do cartão por dia da semana (revisão de 2026-11-02): as médias só dos
+ *  dias da semana com registos que cheguem — os que o cartão usa —; os de poucos dados dizem-se
+ *  à parte, como pouco fiáveis, sem média. */
+export function weekdayExplainNote(wdDays, unit) {
+  const strong = [];
+  const thin = [];
+  (wdDays || []).forEach((d, i) => {
+    if (!d) return;
+    if (d.thin) thin.push(`${WD_SHORT[i]}: ${d.n} ${d.n === 1 ? 'dia' : 'dias'}, pouco fiável`);
+    else strong.push(`${WD_SHORT[i]} ${fmtInt(d.avg)} ${unit} (${d.n} dias)`);
+  });
+  const parts = [];
+  if (strong.length) parts.push(`Média por dia da semana: ${strong.join(', ')}.`);
+  if (thin.length) parts.push(`Com poucos dados: ${thin.join('; ')}.`);
+  return parts.join(' ') || null;
+}
+
 function WeekdayMinNote({ view, metric, todayISO, onViewPrevious }) {
   const { goPrev, ...note } = weekdayMinNoteProps(view, metric, todayISO);
   return <MinDataNote {...note} onAction={goPrev ? onViewPrevious : undefined} />;
@@ -443,7 +460,7 @@ export default function NutritionQuarterCharts({ view, metric, onViewWeek, onVie
             title: `${meta.label} por dia da semana`,
             period: view.label.title,
             series: [],
-            note: `Média por dia da semana: ${wdDays.map((d, i) => (d ? `${WD_SHORT[i]} ${fmtInt(d.avg)} ${meta.unit}` : null)).filter(Boolean).join(', ')}.`,
+            note: weekdayExplainNote(wdDays, meta.unit),
           }}
           value={fmtInt(wdDays[lowest].avg)}
           unit={`${meta.unit} ${WD_ON[lowest]}, o dia mais baixo`}
