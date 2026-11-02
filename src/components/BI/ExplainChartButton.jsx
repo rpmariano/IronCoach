@@ -15,8 +15,14 @@ import { fmtNumber } from '../../utils/dashboardVerdicts';
    `explain`: { title, period?, series: [{ label, unit?, values: (number|null)[], decimals?, format? }], note? }
    (`format(v)` escreve um valor à maneira da série — o ritmo «5.24/km» em vez de 324 segundos). */
 
-// Abaixo disto a diferença entre o início e o fim conta como «estável» (2% do intervalo de valores).
-const FLAT_SHARE = 0.02;
+/* A tendência (revisão de 2026-11-02): o primeiro ponto contra o último era ruído — numa série
+   diária (as kcal do mês) dois dias soltos decidiam «a subir» ou «a descer». A partir de
+   HALVES_MIN pontos compara-se a média da 1.ª metade com a da 2.ª (com número ímpar, o do meio
+   fica de fora); abaixo disso, o primeiro contra o último. Uma diferença menor que FLAT_SHARE do
+   intervalo de valores é «estável». */
+const HALVES_MIN = 4;
+const FLAT_SHARE = 0.1;
+const mean = (xs) => xs.reduce((s, v) => s + v, 0) / xs.length;
 
 const fmt = (v, decimals) => fmtNumber(v, decimals ?? (Math.abs(v) >= 100 ? 0 : 1));
 
@@ -30,9 +36,12 @@ export function seriesSummary(values) {
   const min = Math.min(...xs);
   const max = Math.max(...xs);
   const span = max - min;
-  let trend = 'estável';
-  if (xs.length >= 2 && span > 0 && Math.abs(end - start) > span * FLAT_SHARE) trend = end > start ? 'a subir' : 'a descer';
-  if (xs.length < 2) trend = null;
+  if (xs.length < 2) return { start, end, min, max, n: xs.length, trend: null };
+  const half = Math.floor(xs.length / 2);
+  const [a, b] = xs.length >= HALVES_MIN
+    ? [mean(xs.slice(0, half)), mean(xs.slice(xs.length - half))]
+    : [start, end];
+  const trend = span > 0 && Math.abs(b - a) > span * FLAT_SHARE ? (b > a ? 'a subir' : 'a descer') : 'estável';
   return { start, end, min, max, n: xs.length, trend };
 }
 

@@ -72,3 +72,17 @@ describe('ExplainChartButton', () => {
     expect(screen.getByTestId('explain-chart')).toBeInTheDocument();
   });
 });
+
+/* Revisão de 2026-11-02: a tendência de uma série diária não pode vir de dois dias soltos. */
+describe('seriesSummary — tendência por metades', () => {
+  it('com 4 ou mais pontos compara a média da 1.ª metade com a da 2.ª, não o primeiro com o último', () => {
+    // Primeiro 1800 e último 2600 diriam «a subir»; as metades (2 400 contra 1 900) dizem «a descer».
+    expect(seriesSummary([1800, 2600, 2800, 2400, 1700, 1600, 1800, 2600]).trend).toBe('a descer');
+    // Ruído à volta do mesmo valor: estável.
+    expect(seriesSummary([2000, 2400, 2200, 2100, 2350, 2150]).trend).toBe('estável');
+  });
+  it('com menos de 4 pontos, o primeiro contra o último', () => {
+    expect(seriesSummary([37.2, 38.1, 39.4]).trend).toBe('a subir');
+    expect(seriesSummary([5]).trend).toBeNull();
+  });
+});
