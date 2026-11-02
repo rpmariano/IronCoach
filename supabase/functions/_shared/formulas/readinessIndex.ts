@@ -191,6 +191,10 @@ export function computeReadinessIndex(
   // chamador não tem o plano à mão — o pilar do check-in fica com o texto
   // genérico de sempre; `raceTodayOrTomorrow` já se sabe por `nextRace`.
   trainingToday?: boolean,
+  // O objetivo calórico de cada dia (goalHistory.ts, calorieGoalResolver) —
+  // para julgar um dia completo/parcial como o ecrã da Nutrição (2026-11-02).
+  // Omitido, vale o objetivo atual do perfil.
+  calorieGoalFor?: (dayISO: string) => number,
 ): ReadinessIndex {
   const pillars: ReadinessPillar[] = [];
   // As caminhadas ficam fora de TODOS os pilares de corrida (carga, VDOT,
@@ -260,10 +264,11 @@ export function computeReadinessIndex(
   // entrava na média e punha a nutrição e a EA em "crítico". O perfil vem dos
   // 28 dias fechados; o atleta ocasional com menos de
   // READINESS_MIN_COMPLETE_DAYS_OCASIONAL dias completos fica sem dados.
-  const loggingProfile = mealLoggingProfile(closedMeals, todayISO, profile?.calorie_goal ?? null);
+  const calorieTarget = calorieGoalFor ?? profile?.calorie_goal ?? null;
+  const loggingProfile = mealLoggingProfile(closedMeals, todayISO, calorieTarget);
   const nutritionDays = Array.from({ length: READINESS_NUTRITION_DAYS }, (_, i) => addDaysISO(closedRef, -i));
   const dayStates = daysCompleteness(closedMeals, nutritionDays, {
-    calorieTarget: profile?.calorie_goal ?? null, profile: loggingProfile, todayISO,
+    calorieTarget, profile: loggingProfile, todayISO,
   });
   const completeDays = nutritionDays.filter((d) => dayStates.get(d) === "completo").length;
   const enoughComplete = loggingProfile.kind === "ocasional"

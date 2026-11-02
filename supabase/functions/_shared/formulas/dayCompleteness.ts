@@ -134,7 +134,8 @@ function median(xs: number[]): number | null {
 export function mealLoggingProfile(
   meals: MealForCompleteness[] | null | undefined,
   todayISO: string,
-  calorieTarget: number | null = null,
+  // Um número, ou o objetivo de cada dia (goalHistory.ts, calorieGoalResolver).
+  calorieTarget: number | null | ((dayISO: string) => number | null | undefined) = null,
 ): MealLoggingProfile {
   const start = mealProfileStartISO(todayISO);
   const yesterday = addDaysISO(todayISO, -1);

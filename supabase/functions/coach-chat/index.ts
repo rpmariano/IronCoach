@@ -53,6 +53,7 @@ import { planLoadViolations, runLoadReading, type LoadPlanItem, type RunLoadRead
 import { computeCrossMetrics } from "../_shared/formulas/crossMetrics.ts";
 import { computeReadinessIndex, READINESS_MIN_COMPLETE_DAYS_OCASIONAL, readinessMealsStartISO } from "../_shared/formulas/readinessIndex.ts";
 import { daysCompleteness, type MealLoggingProfile, mealLoggingProfile, mealsOfCompleteDays } from "../_shared/formulas/dayCompleteness.ts";
+import { calorieGoalResolver, GOAL_HISTORY_SELECT } from "../_shared/formulas/goalHistory.ts";
 import { computePhaseEvaluation } from "../_shared/formulas/racePhaseEvaluation.ts";
 import { computePhaseWindows, resolvePhaseState, type TrainingStatus } from "../_shared/formulas/racePhases.ts";
 import { getRecommendedPrepWeeks, getRacePrediction as sharedGetRacePrediction, computeEffectivePrepStart } from "../_shared/formulas/racePlanning.ts";
@@ -2692,7 +2693,9 @@ export function buildNutritionAnalyticsPanel(
   // micronutrientes é mesmo 0. Omitido, vale MICROS_NULL_SINCE de
   // nutritionPeriod.ts — que fica null até ao deploy da analyze-meal nova, e
   // aí a cobertura é sempre "desconhecida".
-  opts: { microsSince?: string | null } = {},
+  // `calorieGoalFor` (2026-11-02): o objetivo calórico de cada dia, do
+  // histórico de objetivos — o mesmo que o ecrã usa para julgar um dia.
+  opts: { microsSince?: string | null; calorieGoalFor?: (dayISO: string) => number } = {},
 ): string | null {
   if (!meals || meals.length === 0) return null;
 
@@ -2715,8 +2718,9 @@ export function buildNutritionAnalyticsPanel(
   // até hoje: de manhã, com o pequeno-almoço, hoje puxava a média para baixo.
   // O perfil vem dos 28 dias fechados (a consulta começa em hoje-28).
   const closedDayList = Array.from({ length: windowDays }, (_, i) => addDaysISO(todayISO, -(i + 1)));
-  const logging = mealLoggingProfile(meals, todayISO, profile?.calorie_goal ?? null);
-  const dayStates = daysCompleteness(meals, closedDayList, { calorieTarget: profile?.calorie_goal ?? null, profile: logging, todayISO });
+  const calorieTarget = opts.calorieGoalFor ?? profile?.calorie_goal ?? null;
+  const logging = mealLoggingProfile(meals, todayISO, calorieTarget);
+  const dayStates = daysCompleteness(meals, closedDayList, { calorieTarget, profile: logging, todayISO });
   const nComplete = closedDayList.filter((d) => dayStates.get(d) === "completo").length;
   const enoughComplete = logging.kind === "ocasional" ? nComplete >= READINESS_MIN_COMPLETE_DAYS_OCASIONAL : nComplete > 0;
   const completeMeals = enoughComplete ? mealsOfCompleteDays(meals, dayStates) : [];
@@ -3070,10 +3074,12 @@ export function buildReadinessPanel(
   // itens do plano (loadPlanItems) — evita o pilar do check-in dizer "hoje
   // o treino é mais leve" num dia de descanso.
   trainingToday: boolean | undefined = undefined,
+  // O objetivo calórico de cada dia (2026-11-02, goalHistory.ts).
+  calorieGoalFor: ((dayISO: string) => number) | undefined = undefined,
 ): string | null {
   const bodyForShared = (bodyAssessments || []).map((a: any) => ({ ...a, date: a.assessed_at }));
 
-  const readiness = computeReadinessIndex(runs || [], meals || [], bodyForShared, gymSessions || [], profile, todayISO, nextRace, todayCheckin, trainingToday);
+  const readiness = computeReadinessIndex(runs || [], meals || [], bodyForShared, gymSessions || [], profile, todayISO, nextRace, todayCheckin, trainingToday, calorieGoalFor);
   const cross = computeCrossMetrics(runs || [], gymSessions || [], bodyForShared, todayISO, "todos");
 
   if (readiness.pillars.length === 0) return null;
@@ -7552,6 +7558,14 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
     // deno-lint-ignore no-explicit-any
     const weekMeals = (mealsFromReadinessStart || []).filter((m: any) => typeof m?.date === "string" && m.date >= startISO);
 
+    // O objetivo calórico de cada dia (profile_goal_history, a mesma regra do
+    // ecrã — @formulas/goalHistory.ts, 2026-11-02): um dia julga-se completo
+    // ou parcial com o objetivo que valia nesse dia, não com o de hoje.
+    const { data: goalHistoryRows, error: err_goalHistory } = await sb
+      .from("profile_goal_history").select(GOAL_HISTORY_SELECT).eq("user_id", userId).order("valid_from", { ascending: true });
+    if (err_goalHistory) console.warn("coach-chat: profile_goal_history não lido:", err_goalHistory.message);
+    const calorieGoalFor = calorieGoalResolver(goalHistoryRows || [], profile, todayISO);
+
     const byDate: Record<string, { kcal: number; prot: number; carbs: number; fat: number; meals: number }> = {};
     for (const meal of (weekMeals || [])) {
       if (!byDate[meal.date]) byDate[meal.date] = { kcal: 0, prot: 0, carbs: 0, fat: 0, meals: 0 };
@@ -7579,10 +7593,10 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
 
     // Cada dia fechado: completo ou parcial (2026-11-01, dayCompleteness.ts),
     // com o perfil de registo dos 28 dias fechados.
-    const mealProfile = mealLoggingProfile(mealsFromReadinessStart || [], todayISO, (g.calorie_goal as number | null) ?? null);
+    const mealProfile = mealLoggingProfile(mealsFromReadinessStart || [], todayISO, calorieGoalFor);
     const historyDays = Array.from({ length: NUTRITION_WINDOW_DAYS - 1 }, (_, i) => addDaysISO(todayISO, -(i + 1)));
     const historyStates = daysCompleteness(mealsFromReadinessStart || [], historyDays, {
-      calorieTarget: (g.calorie_goal as number | null) ?? null, profile: mealProfile, todayISO,
+      calorieTarget: calorieGoalFor, profile: mealProfile, todayISO,
     });
     const historyLines: string[] = [];
     for (const iso of historyDays) {
@@ -7922,6 +7936,7 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
       profile,
       todayISO,
       NUTRITION_WINDOW_DAYS,
+      { calorieGoalFor },
     );
 
     // Só provas que ainda vão acontecer (upcomingRaces inclui "ontem" para
@@ -7967,6 +7982,7 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
       nextUpcomingRace,
       todayCheckin ?? null,
       trainingTodayForReadiness,
+      calorieGoalFor,
     );
     const racePhasesPanel = buildRacePhasesPanel(recentRuns || [], nextUpcomingRace, profile, todayISO);
 
