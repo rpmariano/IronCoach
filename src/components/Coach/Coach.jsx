@@ -168,6 +168,8 @@ export default function Coach() {
   const [pendingContinuation, setPendingContinuation] = useState(null);
   const continuationRunsRef = useRef(0);
   const lastProposedPlanIdRef = useRef(null);
+  // O último coachIntent tratado (o efeito dos pedidos não trata o mesmo duas vezes).
+  const handledIntentRef = useRef(null);
   /* A cadeia das partes de um plano longo (tudo-ou-nada): { of, parts: [{ planId,
      part }] } com as propostas já recebidas. Nada se aplica até a última ser
      aceite; recusar uma recusa todas. Vive aqui (recarregar a página deixa as
@@ -646,6 +648,13 @@ export default function Coach() {
   });
 
   useEffect(() => {
+    /* Um pedido trata-se uma vez (2026-11-01): o efeito podia correr duas vezes com o MESMO
+       intent antes de o `setCoachIntent(null)` chegar (o StrictMode em desenvolvimento, ou um
+       re-render pelo meio) — e um `say` ia duas vezes para o chat. O ref volta a null quando o
+       intent é consumido, para um pedido igual mais tarde ser tratado. */
+    if (!coachIntent) { handledIntentRef.current = null; return; }
+    if (handledIntentRef.current === coachIntent) return;
+    handledIntentRef.current = coachIntent;
     if (coachIntent && coachIntent.kind === 'proactive_intervention') {
       setCoachIntent(null);
       handleProactiveIntervention(coachIntent);

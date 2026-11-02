@@ -93,6 +93,14 @@ export default function NutritionMonthHeatmap({ view, metric, onViewDay, todayIS
       testId="nutrition-month-heatmap"
       label={`${meta.label} no mês`}
       hint={view.label.title}
+      explain={{
+        title: `${meta.label} no mês`,
+        period: view.label.title,
+        series: [{ label: `${meta.label} por dia`, unit: meta.unit, values: cells.filter((c) => c.state === 'closed').map((c) => c.value), decimals: 0 }],
+        note: sum.nDays > 0
+          ? `No objetivo em ${sum.daysInGoal} de ${sum.nDays} dias com registo completo; os dias com registo parcial ficam de fora.`
+          : null,
+      }}
       value={sum.nDays > 0 ? String(sum.daysInGoal) : '—'}
       unit={sum.nDays > 0 ? `de ${sum.nDays} ${sum.nDays === 1 ? 'dia' : 'dias'} no objetivo` : 'sem dias fechados com registo'}
       valueColor={sum.nDays > 0 ? meta.color : 'var(--text-4)'}
