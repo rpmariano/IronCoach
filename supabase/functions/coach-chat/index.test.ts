@@ -6572,3 +6572,18 @@ Deno.test("explicar um gráfico (2026-11-01): a regra vai à doutrina fixa, nos 
   assertCarolVoice(exemplo);
   assert(!/\d+ pontos/.test(exemplo), "a resposta não repete a lista");
 });
+
+Deno.test("coach-chat: o objetivo calórico de cada dia vem do histórico de objetivos, como no ecrã (2026-11-02)", async () => {
+  const src = await Deno.readTextFile(new URL("./index.ts", import.meta.url));
+  assertStringIncludes(src, '.from("profile_goal_history").select(GOAL_HISTORY_SELECT)');
+  assertStringIncludes(src, "const calorieGoalFor = calorieGoalResolver(goalHistoryRows || [], profile, todayISO);");
+  assertStringIncludes(src, "{ calorieGoalFor },");
+  assertEquals(/trainingTodayForReadiness,\s*calorieGoalFor,/.test(src), true);
+  // O painel julga o dia com o objetivo desse dia.
+  const refeicao = (date: string, meal_type: string, kcal: number) => ({ date, meal_type, meal_items: [{ quantity_grams: 100, calories_per_100g: kcal }] });
+  const meals = [refeicao("2026-10-03", "almoco", 600), refeicao("2026-10-03", "jantar", 500)];
+  const comHoje = buildNutritionAnalyticsPanel(meals, [], [], [], { calorie_goal: 2400 }, "2026-10-04", 7)!;
+  const comODia = buildNutritionAnalyticsPanel(meals, [], [], [], { calorie_goal: 2400 }, "2026-10-04", 7, { calorieGoalFor: () => 2000 })!;
+  assertStringIncludes(comHoje, "0 de 7 dias com registo completo");
+  assertStringIncludes(comODia, "1 de 7 dias com registo completo");
+});

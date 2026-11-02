@@ -632,3 +632,13 @@ Deno.test("yesterdayIntakeEvidence: «comeu abaixo do gasto» só com o dia de o
   // Sem TDEE, nunca.
   assertEquals(yesterdayIntakeEvidence(cheio("2026-10-31", 1800), today, null, 2400).ateBelowGasto, false);
 });
+
+Deno.test("yesterdayIntakeEvidence: o objetivo de ontem, não o de hoje (goalHistory.ts, 2026-11-02)", () => {
+  const m = (meal_type: string, kcal: number) => ({ date: "2026-10-31", meal_type, meal_items: [{ quantity_grams: 100, calories_per_100g: kcal }] });
+  const ontem = [m("almoco", 600), m("jantar", 500)]; // 1100 kcal, sem pequeno-almoço
+  // Com o objetivo de hoje (2400) era parcial; o de ontem era 2000: completo, e abaixo do gasto.
+  assertEquals(yesterdayIntakeEvidence(ontem, "2026-11-01", 2600, 2400).complete, false);
+  const goalFor = (d: string) => (d === "2026-10-31" ? 2000 : 2400);
+  const r = yesterdayIntakeEvidence(ontem, "2026-11-01", 2600, goalFor);
+  assertEquals([r.complete, r.ateBelowGasto], [true, true]);
+});
