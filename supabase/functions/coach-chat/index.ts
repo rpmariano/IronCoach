@@ -7542,27 +7542,33 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
     // micronutrientAverages sabe se um 0 é mesmo 0 (gravado depois de os
     // micronutrientes passarem a aceitar null) — sem ele a cobertura dos
     // "Micronutrientes hoje" fica sempre desconhecida.
-    const { data: mealsFromReadinessStart, error: err_weekMeals } = await sb
-      .from("meals")
-      .select(
-        "date, meal_type, created_at, meal_items(created_at, quantity_grams, calories_per_100g, protein_per_100g, carbs_per_100g, fat_per_100g, " +
-          "fiber_per_100g, sugar_per_100g, sodium_per_100g, iron_mg_per_100g, calcium_mg_per_100g, " +
-          "vitamin_c_mg_per_100g, potassium_mg_per_100g)",
-      )
-      .eq("user_id", userId)
-      .gte("date", mealsQueryStartISO)
-      .lte("date", todayISO);
+    // Em paralelo com as refeições, o objetivo calórico de cada dia
+    // (profile_goal_history, a mesma regra do ecrã — @formulas/goalHistory.ts,
+    // 2026-11-02): um dia julga-se completo ou parcial com o objetivo que
+    // valia nesse dia, não com o de hoje. Paralelo para não somar uma ida à
+    // base de dados à latência do chat (revisão do 197683ee).
+    const [
+      { data: mealsFromReadinessStart, error: err_weekMeals },
+      { data: goalHistoryRows, error: err_goalHistory },
+    ] = await Promise.all([
+      sb
+        .from("meals")
+        .select(
+          "date, meal_type, created_at, meal_items(created_at, quantity_grams, calories_per_100g, protein_per_100g, carbs_per_100g, fat_per_100g, " +
+            "fiber_per_100g, sugar_per_100g, sodium_per_100g, iron_mg_per_100g, calcium_mg_per_100g, " +
+            "vitamin_c_mg_per_100g, potassium_mg_per_100g)",
+        )
+        .eq("user_id", userId)
+        .gte("date", mealsQueryStartISO)
+        .lte("date", todayISO),
+      sb.from("profile_goal_history").select(GOAL_HISTORY_SELECT).eq("user_id", userId).order("valid_from", { ascending: true }),
+    ]);
     // A semana de sempre (hoje-6 .. hoje) para o resumo de hoje, o histórico
     // e os hábitos; a lista inteira (desde hoje-7) só vai para a prontidão e
     // para o painel de nutrição, que a cortam eles próprios.
     // deno-lint-ignore no-explicit-any
     const weekMeals = (mealsFromReadinessStart || []).filter((m: any) => typeof m?.date === "string" && m.date >= startISO);
 
-    // O objetivo calórico de cada dia (profile_goal_history, a mesma regra do
-    // ecrã — @formulas/goalHistory.ts, 2026-11-02): um dia julga-se completo
-    // ou parcial com o objetivo que valia nesse dia, não com o de hoje.
-    const { data: goalHistoryRows, error: err_goalHistory } = await sb
-      .from("profile_goal_history").select(GOAL_HISTORY_SELECT).eq("user_id", userId).order("valid_from", { ascending: true });
     if (err_goalHistory) console.warn("coach-chat: profile_goal_history não lido:", err_goalHistory.message);
     const calorieGoalFor = calorieGoalResolver(goalHistoryRows || [], profile, todayISO);
 

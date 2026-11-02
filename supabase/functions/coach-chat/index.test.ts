@@ -6548,6 +6548,8 @@ Deno.test("dias parciais e o atleta ocasional (2026-11-01): a regra vai ao promp
 Deno.test("coach-chat: o objetivo calórico de cada dia vem do histórico de objetivos, como no ecrã (2026-11-02)", async () => {
   const src = await Deno.readTextFile(new URL("./index.ts", import.meta.url));
   assertStringIncludes(src, '.from("profile_goal_history").select(GOAL_HISTORY_SELECT)');
+  // Em paralelo com as refeições — não soma uma ida à BD à latência (revisão do 197683ee).
+  assertEquals(/await Promise\.all\(\[\s*sb\s*\.from\("meals"\)[\s\S]{0,800}?\.from\("profile_goal_history"\)/.test(src), true);
   assertStringIncludes(src, "const calorieGoalFor = calorieGoalResolver(goalHistoryRows || [], profile, todayISO);");
   assertStringIncludes(src, "{ calorieGoalFor },");
   assertEquals(/trainingTodayForReadiness,\s*calorieGoalFor,/.test(src), true);
