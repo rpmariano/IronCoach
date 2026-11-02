@@ -1,5 +1,6 @@
 import { assertEquals } from "jsr:@std/assert@1";
-import { findByClientRequestId, insertOnce, isMissingRequestIdColumn, parseClientRequestId } from "./idempotency.ts";
+import { findByClientRequestId, insertOnce, isMissingRequestIdColumn, parseClientRequestId, settleReplay, SETTLE_MAX_WAIT_MS } from "./idempotency.ts";
+import { mealReplayBody } from "../analyze-meal/index.ts";
 
 // Incidente de 2026-10-31: o mesmo treino gravado 4 vezes com erros de
 // comunicação. O client_request_id torna a gravação idempotente.
@@ -113,5 +114,81 @@ Deno.test("as quatro funções gravam por insertOnce e procuram antes de qualque
     assertEquals(src.includes(`findByClientRequestId(sb, "${table}", userId, clientRequestId)`), true, f);
     // Nenhum insert direto de um registo novo ficou de fora.
     assertEquals(new RegExp(`from\\("${table}"\\)\\s*\\.insert\\(`).test(src), false, f);
+  }
+});
+
+// Revisão de 2026-11-01: uma tentativa B pode encontrar a linha de A antes de
+// as séries ou os alimentos estarem gravados — ou depois de A a desfazer.
+// deno-lint-ignore no-explicit-any
+function settleSb(state: { row: any | null; children: any[] }) {
+  return {
+    from: (table: string) => {
+      const chain = {
+        select: () => chain,
+        eq: () => chain,
+        maybeSingle: () => Promise.resolve({ data: state.row, error: null }),
+        then: (resolve: (v: unknown) => void) => resolve({ data: table === "children" ? state.children : [], error: null }),
+      };
+      return chain;
+    },
+  };
+}
+
+Deno.test("settleReplay: com filhas devolve logo; recente e sem filhas espera por elas; desfeita é gone", async () => {
+  const NOW = Date.parse("2026-11-01T20:00:00Z");
+  let t = NOW;
+  const clock = { nowMs: () => t, sleep: (ms: number) => Promise.resolve((t += ms)) };
+  const recente = { id: "s1", created_at: new Date(NOW - 3000).toISOString() };
+
+  // Já com séries: devolve sem esperar.
+  const a = await settleReplay(settleSb({ row: recente, children: [{ id: "x" }] }), "t", "s1", "children", "fk", clock);
+  assertEquals(["gone" in a, t], [false, NOW]);
+
+  // Recente e sem séries: relê; ao 2.º segundo aparecem.
+  const st = { row: recente, children: [] as unknown[] };
+  const sleepAndFill = (ms: number) => {
+    t += ms;
+    if (t - NOW >= 2000) st.children = [{ id: "y" }];
+    return Promise.resolve();
+  };
+  const b = await settleReplay(settleSb(st), "t", "s1", "children", "fk", { nowMs: () => t, sleep: sleepAndFill });
+  assertEquals("gone" in b ? null : b.children.length, 1);
+
+  // A desfez a linha entretanto: gone.
+  t = NOW;
+  const st2 = { row: recente as unknown, children: [] as unknown[] };
+  const c = await settleReplay(settleSb(st2), "t", "s1", "children", "fk", {
+    nowMs: () => t,
+    sleep: (ms: number) => { t += ms; st2.row = null; return Promise.resolve(); },
+  });
+  assertEquals("gone" in c, true);
+
+  // Recente e sempre sem filhas (uma aula sem séries): ao fim da espera devolve-a.
+  t = NOW;
+  const d = await settleReplay(settleSb({ row: recente, children: [] }), "t", "s1", "children", "fk", clock);
+  assertEquals(["gone" in d, t - NOW >= SETTLE_MAX_WAIT_MS], [false, true]);
+
+  // Antiga e sem filhas: não espera.
+  t = NOW;
+  const antiga = { id: "s2", created_at: new Date(NOW - 10 * 60_000).toISOString() };
+  const e = await settleReplay(settleSb({ row: antiga, children: [] }), "t", "s2", "children", "fk", clock);
+  assertEquals(["gone" in e, t], [false, NOW]);
+});
+
+Deno.test("mealReplayBody: a mesma forma das duas respostas de registo — meal.meal_items (manual) e items (fotos)", () => {
+  const items = [{ id: "i1", quantity_grams: 100, calories_per_100g: 250 }];
+  const body = mealReplayBody({ id: "m1", date: "2026-11-01" }, items);
+  assertEquals(body.items, items); // MealRegistration.jsx lê data.items no caminho das fotos
+  assertEquals(body.meal.meal_items, items); // e data.meal.meal_items no manual
+  assertEquals(body.replayed, true);
+  assertEquals(mealReplayBody({ id: "m2" }, null).items, []);
+});
+
+Deno.test("ginásio e refeição: a resposta repetida espera pelas filhas e grava de novo uma linha desfeita", async () => {
+  for (const f of ["analyze-gym", "analyze-meal"]) {
+    const src = await Deno.readTextFile(new URL(`../${f}/index.ts`, import.meta.url));
+    assertEquals(src.includes("await settleReplay(sb, "), true, f);
+    assertEquals(src.includes("const alreadyReply = alreadySaved ? await settled(alreadySaved) : null;"), true, f);
+    assertEquals(src.includes("STILL_SAVING_MESSAGE, retry: true }, 409)"), true, f);
   }
 });

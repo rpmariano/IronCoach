@@ -224,3 +224,16 @@ Deno.test("computeReadinessIndex: tirada longa num dia com as 3 principais a 40%
   const soPA = computeReadinessIndex(corrida, [...historia, { date: "2026-08-24", meal_type: "pequeno-almoco", calories: 400 }], body, [], { calorie_goal: 2400 }, "2026-08-25", null, null);
   assertEquals(soPA.pillars.find((p) => p.key === "ea")!.hasData, false);
 });
+
+/* 2026-11-02 (revisão da Nutrição B): o dia julga-se com o objetivo DESSE dia
+   (goalHistory.ts), como o ecrã — não com o de hoje. */
+Deno.test("computeReadinessIndex: com calorieGoalFor, um dia julga-se com o objetivo que valia nesse dia", () => {
+  const body = [{ date: "2026-08-01", weight_kg: 70, body_fat_pct: 15 }];
+  // Ontem só almoço e jantar, 1100 kcal (regra fixa: ≥ 50% do objetivo).
+  const ontem = [{ date: "2026-08-24", meal_type: "almoco", calories: 600 }, { date: "2026-08-24", meal_type: "jantar", calories: 500 }];
+  const hoje = { calorie_goal: 2400 }; // 1100 < 1200: parcial com o de hoje
+  const ea = (goalFor?: (d: string) => number) =>
+    computeReadinessIndex([], ontem, body, [], hoje, "2026-08-25", null, null, undefined, goalFor).pillars.find((p) => p.key === "ea")!;
+  assertEquals(ea().hasData, false);
+  assertEquals(ea(() => 2000).hasData, true); // nesse dia o objetivo era 2000: completo
+});

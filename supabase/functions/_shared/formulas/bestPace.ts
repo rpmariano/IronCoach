@@ -67,8 +67,17 @@ const EPS_KM = 0.005;
 /**
  * O tempo acumulado até ao km `d`, pelas voltas, ou null se não chegam lá.
  * Cada volta conta pela distância que tem; a marca a meio de uma volta
- * interpola-se no ritmo dessa volta. Uma linha incompleta antes da marca
- * (sem distância ou sem tempo) deixa o acumulado por saber: null.
+ * interpola-se no ritmo dessa volta. Revisão de 2026-11-01:
+ *   · uma volta de 0 km com tempo (o «Rest» parado de um treino de
+ *     intervalos) soma o tempo e nenhuma distância — os primeiros 5 km de uma
+ *     sessão de intervalos levam as paragens; sem elas o ritmo era só o das
+ *     repetições, e uma sessão de intervalos inventava um recorde de 5 km;
+ *   · uma volta com distância e sem tempo deixa o acumulado por saber (null)
+ *     — saltá-la juntava troços que não são seguidos;
+ *   · uma volta sem distância nem tempo não diz nada: ignora-se.
+ * A volta de aquecimento entra: as voltas gravadas não dizem qual é (o
+ * analyze-run guarda só distância e tempo), e com ela o pace dos primeiros
+ * D km só pode sair mais lento, nunca um recorde inventado.
  */
 export function timeToDistance(splits: SplitEntry[] | null | undefined, d: number): number | null {
   if (!Array.isArray(splits) || !(d > 0)) return null;
@@ -77,7 +86,11 @@ export function timeToDistance(splits: SplitEntry[] | null | undefined, d: numbe
   for (const s of splits) {
     const sd = Number(s?.distance_km);
     const st = Number(s?.time_seconds);
-    if (!(sd > 0) || !(st > 0)) return null;
+    if (!(sd > 0)) {
+      if (st > 0) time += st; // parado: o tempo conta
+      continue;
+    }
+    if (!(st > 0)) return null;
     if (dist + sd >= d - EPS_KM) return time + st * Math.min(1, Math.max(0, d - dist) / sd);
     dist += sd;
     time += st;
@@ -92,9 +105,22 @@ export function timeToDistance(splits: SplitEntry[] | null | undefined, d: numbe
  * `details.splits` ficava undefined e as voltas nunca contavam (não fazia
  * diferença enquanto as voltas não chegavam às faixas; agora faz).
  */
-export function withProjectedSplits<T extends { splits?: unknown }>(row: T): Omit<T, "splits"> & { details: { splits: SplitEntry[] | null } } {
-  const { splits, ...rest } = row;
-  return { ...rest, details: { splits: Array.isArray(splits) ? splits as SplitEntry[] : null } };
+export function withProjectedSplits<T extends { splits?: unknown; elevation_gain_m?: unknown; race_type?: unknown }>(
+  row: T,
+): Omit<T, "splits" | "elevation_gain_m" | "race_type"> & {
+  details: { splits: SplitEntry[] | null; elevation_gain_m?: unknown; race_type?: unknown };
+} {
+  // O D+ e a disciplina, se a consulta os projetou (`elevation_gain_m:details->
+  // elevation_gain_m`), também voltam para details — o VDOT lê-os (2026-11-01).
+  const { splits, elevation_gain_m, race_type, ...rest } = row;
+  return {
+    ...rest,
+    details: {
+      splits: Array.isArray(splits) ? splits as SplitEntry[] : null,
+      ...(elevation_gain_m !== undefined ? { elevation_gain_m } : {}),
+      ...(race_type !== undefined ? { race_type } : {}),
+    },
+  };
 }
 
 interface PaceEntry {

@@ -10,79 +10,10 @@ import { mealNutrients } from './nutrition';
    dia é o da última linha que começou até ao fim desse dia, em hora de
    Lisboa — mudar os objetivos às 14h vale para o dia inteiro. */
 
-/** Os mesmos valores por omissão de @formulas/macroAdherence.ts. */
-export const DAY_GOAL_DEFAULTS = { calorie_goal: 2000, protein_goal: 150, carbs_goal: 200, fat_goal: 70, water_goal_ml: 2000 };
-const GOAL_KEYS = Object.keys(DAY_GOAL_DEFAULTS);
-
-const lisbonDate = (ts) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Lisbon' }).format(new Date(ts));
-
-const pick = (src) => Object.fromEntries(GOAL_KEYS.map((k) => {
-  const n = Number(src?.[k]);
-  return [k, Number.isFinite(n) && n > 0 ? n : DAY_GOAL_DEFAULTS[k]];
-}));
-
-/**
- * Os objetivos que valiam em `dayISO`.
- *   { goals, estimated }
- * `estimated` quando o dia cai antes de haver histórico de verdade: na linha
- * 'inicial' (o ponto de partida que a migração estimou com os valores de
- * hoje) ou antes da primeira linha. Sem histórico nenhum (ainda a carregar,
- * ou no modo demo), valem os objetivos atuais do perfil, sem aviso.
- */
-export function goalsForDay(history, dayISO, profile) {
-  const rows = [...(history || [])]
-    .filter((r) => r?.valid_from)
-    .sort((a, b) => String(a.valid_from).localeCompare(String(b.valid_from)));
-  if (!rows.length) return { goals: pick(profile), estimated: false };
-  let row = null;
-  for (const r of rows) {
-    if (lisbonDate(r.valid_from) <= dayISO) row = r;
-    else break;
-  }
-  if (!row) return { goals: pick(rows[0]), estimated: true };
-  return { goals: pick(row), estimated: row.source === 'inicial' };
-}
-
-/** Primeiro dia em que o histórico de objetivos é de verdade (a migração
- *  20261003224956 correu a 2026-10-03). Antes disso o que há é uma estimativa
- *  — a linha 'inicial' copia os valores de hoje —, por isso qualquer dia
- *  anterior é «aproximado», seja qual for o `source` da linha que o cobre.
- *  Sem esta regra, quem nunca mudou de objetivos ficava com `estimated` para
- *  sempre (a linha 'inicial' é a única que tem) e a Nutrição dizia
- *  «objetivos aproximados» também nos dias posteriores a 3 de outubro
- *  (plano da Evolução, F3, 2026-10-04). */
-export const GOAL_HISTORY_SINCE = '2026-10-03';
-
-/**
- * O resolvedor dos objetivos de um dia, para quem precisa de muitos dias de
- * seguida (o resumo semanal/mensal da Nutrição): ordena e converte as datas
- * do histórico UMA vez, e responde por dia.
- *   goalsResolver(history, profile, todayISO) → (dayISO) => { goals, estimated }
- * - Hoje e o futuro valem o perfil de agora: o histórico carregado pode ainda
- *   não ter a última mudança, e é o perfil que manda.
- * - Dias passados: a última linha que começou até ao fim desse dia (Lisboa);
- *   antes da primeira linha, a primeira (estimativa); sem histórico nenhum
- *   (a carregar, modo demo), o perfil.
- * - `estimated` = dia < GOAL_HISTORY_SINCE, independentemente do source.
- */
-export function goalsResolver(history, profile, todayISO) {
-  const rows = (history || [])
-    .filter((r) => r?.valid_from)
-    .map((r) => ({ r, day: lisbonDate(r.valid_from) }))
-    .sort((a, b) => String(a.r.valid_from).localeCompare(String(b.r.valid_from)));
-  const current = pick(profile);
-  return (dayISO) => {
-    const estimated = dayISO < GOAL_HISTORY_SINCE;
-    if (todayISO && dayISO >= todayISO) return { goals: current, estimated };
-    if (!rows.length) return { goals: current, estimated };
-    let row = rows[0].r;
-    for (const x of rows) {
-      if (x.day <= dayISO) row = x.r;
-      else break;
-    }
-    return { goals: pick(row), estimated };
-  };
-}
+/* A regra do objetivo de cada dia vive em @formulas/goalHistory.ts desde
+   2026-11-02 — a mesma para o ecrã e para a Carol (coach-chat,
+   coach-daily-summary), que julgavam o mesmo dia com objetivos diferentes. */
+export { DAY_GOAL_DEFAULTS, GOAL_HISTORY_SINCE, goalsForDay, goalsResolver } from '@formulas/goalHistory.ts';
 
 /* Atingido ou não. Calorias, hidratos e gordura têm a mesma régua do resto
    da app (@formulas/nutritionCompliance.ts: 90-115% é dentro); proteína e

@@ -49,6 +49,50 @@ export async function findByClientRequestId(
   return data ?? null;
 }
 
+/** Uma linha gravada há menos disto ainda pode estar a meio: as séries ou os
+ *  itens gravam-se logo a seguir, e uma falha aí desfaz a linha (rollback). */
+export const SETTLE_YOUNG_MS = 120_000;
+/** Quanto se espera por elas, e de quanto em quanto se relê. */
+export const SETTLE_MAX_WAIT_MS = 6_000;
+export const SETTLE_STEP_MS = 1_000;
+
+/**
+ * A linha encontrada (de outra tentativa) e as linhas-filhas dela (séries de
+ * uma sessão, alimentos de uma refeição). Uma linha recente ainda sem filhas
+ * pode estar a meio de gravar: relê-se até SETTLE_MAX_WAIT_MS. `{ gone }`
+ * quando a outra tentativa falhou e a desfez entretanto — a linha já não
+ * existe (revisão de 2026-11-01).
+ */
+export async function settleReplay(
+  // deno-lint-ignore no-explicit-any
+  sb: any,
+  table: string,
+  rowId: string,
+  childTable: string,
+  childFk: string,
+  // deno-lint-ignore no-explicit-any
+  opts: { nowMs?: () => number; sleep?: (ms: number) => Promise<unknown>; maxWaitMs?: number } = {},
+  // deno-lint-ignore no-explicit-any
+): Promise<{ row: any; children: any[] } | { gone: true }> {
+  const now = opts.nowMs ?? Date.now;
+  const sleep = opts.sleep ?? ((ms: number) => new Promise((r) => setTimeout(r, ms)));
+  const maxWait = opts.maxWaitMs ?? SETTLE_MAX_WAIT_MS;
+  const start = now();
+  for (;;) {
+    const { data: row } = await sb.from(table).select("*").eq("id", rowId).maybeSingle();
+    if (!row) return { gone: true };
+    const { data: children } = await sb.from(childTable).select("*").eq(childFk, rowId);
+    const created = Date.parse(String(row.created_at ?? ""));
+    const young = Number.isFinite(created) && now() - created < SETTLE_YOUNG_MS;
+    if ((children ?? []).length || !young || now() - start >= maxWait) return { row, children: children ?? [] };
+    await sleep(SETTLE_STEP_MS);
+  }
+}
+
+/** A resposta a uma tentativa que encontrou a linha desfeita: tentar outra
+ *  vez com o mesmo id grava-a (já não há nada com ele). */
+export const STILL_SAVING_MESSAGE = "Esta gravação ainda não ficou feita. Tenta outra vez.";
+
 /**
  * Insere `row` (com o client_request_id, se houver) e devolve `{ data }` com
  * a linha nova, `{ existing }` se outra tentativa já a gravou, ou `{ error }`.

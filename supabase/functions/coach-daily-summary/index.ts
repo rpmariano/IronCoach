@@ -38,6 +38,7 @@ import { withUsageRecording } from "../_shared/usageRecorder.ts";
 import { attemptTimeoutMs, geminiHeaders, geminiUrl, geminiWithFallback, thinkingConfig } from "../_shared/geminiModel.ts";
 import { isWalkPlanItem, runMatchesPlanItem, runsOnly, walkIntensity, walksOnly } from "../_shared/formulas/runKinds.ts";
 import { dayCompleteness, mealLoggingProfile, mealProfileStartISO } from "../_shared/formulas/dayCompleteness.ts";
+import { calorieGoalResolver, GOAL_HISTORY_SELECT } from "../_shared/formulas/goalHistory.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -133,16 +134,21 @@ type MealTotals = { calories: number; protein: number; carbs: number; fat: numbe
  *  só num dia com o registo COMPLETO (dayCompleteness.ts, 2026-11-01). Um
  *  ontem só com o pequeno-almoço ficava "abaixo do gasto" e dizia ao atleta
  *  que perdia peso por comer pouco. `meals` são os 28 dias fechados (o
- *  perfil de registo) com o meal_type; os de hoje, se vierem, não contam. */
-// deno-lint-ignore no-explicit-any
-export function yesterdayIntakeEvidence(meals: any[], todayISO: string, tdee: number | null, calorieGoal: number | null) {
+ *  perfil de registo) com o meal_type; os de hoje, se vierem, não contam.
+ *  `calorieGoal`: um número, ou o objetivo de cada dia (goalHistory.ts,
+ *  2026-11-02) — o mesmo que o ecrã usa para julgar o dia. */
+export function yesterdayIntakeEvidence(
+  // deno-lint-ignore no-explicit-any
+  meals: any[], todayISO: string, tdee: number | null, calorieGoal: number | null | ((dayISO: string) => number),
+) {
   const yesterday = addDaysISO(todayISO, -1);
   // deno-lint-ignore no-explicit-any
   const ofYesterday = (meals || []).filter((m: any) => m?.date === yesterday);
   // deno-lint-ignore no-explicit-any
   const calories = ofYesterday.reduce((s: number, m: any) => s + totalsFromMeal(m).calories, 0);
   const profile = mealLoggingProfile(meals, todayISO, calorieGoal);
-  const complete = dayCompleteness(ofYesterday, calorieGoal, profile, { dayISO: yesterday, todayISO }) === "completo";
+  const goal = typeof calorieGoal === "function" ? calorieGoal(yesterday) : calorieGoal;
+  const complete = dayCompleteness(ofYesterday, goal, profile, { dayISO: yesterday, todayISO }) === "completo";
   return { calories, complete, ateBelowGasto: tdee != null && complete && calories > 0 && calories < tdee };
 }
 
@@ -1252,10 +1258,15 @@ Deno.serve(withUsageRecording("coach-daily-summary", async (req) => {
     // quando o alerta de perda de peso vai mesmo sair.
     let ateBelowGasto = false;
     if (bodyMetrics.weightLossTooFast && tdee != null) {
-      const { data: profileMeals } = await sb.from("meals")
-        .select("date, meal_type, meal_items(quantity_grams, calories_per_100g)")
-        .eq("user_id", userId).gte("date", mealProfileStartISO(today)).lte("date", addDaysISO(today, -1));
-      ateBelowGasto = yesterdayIntakeEvidence(profileMeals || [], today, tdee, profile?.calorie_goal ?? null).ateBelowGasto;
+      const [{ data: profileMeals }, { data: goalHistoryRows }] = await Promise.all([
+        sb.from("meals")
+          .select("date, meal_type, meal_items(quantity_grams, calories_per_100g)")
+          .eq("user_id", userId).gte("date", mealProfileStartISO(today)).lte("date", addDaysISO(today, -1)),
+        // O objetivo de cada dia, como o ecrã (@formulas/goalHistory.ts, 2026-11-02).
+        sb.from("profile_goal_history").select(GOAL_HISTORY_SELECT).eq("user_id", userId).order("valid_from", { ascending: true }),
+      ]);
+      const calorieGoalFor = calorieGoalResolver(goalHistoryRows || [], profile, today);
+      ateBelowGasto = yesterdayIntakeEvidence(profileMeals || [], today, tdee, calorieGoalFor).ateBelowGasto;
     }
     const weightLossEvidence = {
       trainedRecently: (load.acuteKm || 0) > 0,

@@ -101,5 +101,178 @@
       ]
     },
     "expect": []
+  },
+  {
+    "name": "o caso do Rui: o trail de 1-11 (15,92 km, 499 m D+, RPE 9) fica de fora — a tendência acaba na corrida de 30-10",
+    "input": {
+      "runs": [
+        {
+          "date": "2026-10-25",
+          "name": "Volkswagen Run",
+          "kind": "competicao",
+          "training_type": null,
+          "distance_km": 10.12,
+          "duration_seconds": 2969,
+          "effort_rpe": 9,
+          "details": {
+            "elevation_gain_m": 14,
+            "race_type": "10k"
+          }
+        },
+        {
+          "date": "2026-10-28",
+          "name": "Corrida de Hoje",
+          "kind": "treino",
+          "training_type": "continuo",
+          "distance_km": 5.12,
+          "duration_seconds": 1660,
+          "effort_rpe": 6,
+          "details": {
+            "elevation_gain_m": 44
+          }
+        },
+        {
+          "date": "2026-10-30",
+          "name": "Corrida de Hoje",
+          "kind": "treino",
+          "training_type": "continuo",
+          "distance_km": 6.08,
+          "duration_seconds": 2013,
+          "effort_rpe": 7,
+          "details": {
+            "elevation_gain_m": 64
+          }
+        },
+        {
+          "date": "2026-11-01",
+          "name": "Corrida de Hoje",
+          "kind": "treino",
+          "training_type": "trail",
+          "distance_km": 15.92,
+          "duration_seconds": 6664,
+          "effort_rpe": 9,
+          "details": {
+            "elevation_gain_m": 499
+          }
+        }
+      ]
+    },
+    "expect": [
+      {
+        "date": "2026-10-25",
+        "vdot": 41.1,
+        "label": "Volkswagen Run"
+      },
+      {
+        "date": "2026-10-30",
+        "vdot": 34.5,
+        "label": "Corrida de Hoje"
+      }
+    ]
+  },
+  {
+    "name": "o mesmo trail sem o tipo «trail»: os 31 m de D+ por km (ondulado) chegam para o tirar",
+    "input": {
+      "runs": [
+        {
+          "date": "2026-11-01",
+          "name": "Corrida de Hoje",
+          "kind": "treino",
+          "training_type": "continuo",
+          "distance_km": 15.92,
+          "duration_seconds": 6664,
+          "effort_rpe": 9,
+          "details": {
+            "elevation_gain_m": 499
+          }
+        }
+      ]
+    },
+    "expect": []
+  },
+  {
+    "name": "estrada com subidas moderadas (20 m D+/km, rolante) conta; 25 m/km já não",
+    "input": {
+      "runs": [
+        {
+          "date": "2026-09-01",
+          "kind": "treino",
+          "training_type": "tempo",
+          "distance_km": 10,
+          "duration_seconds": 2700,
+          "details": {
+            "elevation_gain_m": 200
+          }
+        },
+        {
+          "date": "2026-09-08",
+          "kind": "treino",
+          "training_type": "tempo",
+          "distance_km": 10,
+          "duration_seconds": 2700,
+          "details": {
+            "elevation_gain_m": 250
+          }
+        }
+      ]
+    },
+    "expect": [
+      {
+        "date": "2026-09-01",
+        "vdot": 45.3,
+        "label": "treino"
+      }
+    ]
+  },
+  {
+    "name": "uma prova de trail sem D+ registado fica de fora pela disciplina; subidas e técnico também",
+    "input": {
+      "runs": [
+        {
+          "date": "2026-09-10",
+          "kind": "competicao",
+          "training_type": null,
+          "distance_km": 12,
+          "duration_seconds": 4800,
+          "details": {
+            "race_type": "trail"
+          }
+        },
+        {
+          "date": "2026-09-12",
+          "kind": "treino",
+          "training_type": "subidas",
+          "distance_km": 6,
+          "duration_seconds": 2100,
+          "effort_rpe": 9,
+          "details": null
+        },
+        {
+          "date": "2026-09-14",
+          "kind": "treino",
+          "training_type": "tecnico",
+          "distance_km": 8,
+          "duration_seconds": 3600,
+          "effort_rpe": 8
+        },
+        {
+          "date": "2026-09-16",
+          "kind": "competicao",
+          "training_type": null,
+          "distance_km": 5,
+          "duration_seconds": 1350,
+          "details": {
+            "race_type": "estrada"
+          }
+        }
+      ]
+    },
+    "expect": [
+      {
+        "date": "2026-09-16",
+        "vdot": 43.4,
+        "label": "competicao"
+      }
+    ]
   }
 ]

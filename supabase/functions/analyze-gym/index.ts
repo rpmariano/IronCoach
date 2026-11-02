@@ -56,7 +56,7 @@ import {
 } from "../_shared/geminiFetch.ts";
 import { addUsage, emptyUsage, type GeminiUsage, usageFromGemini } from "../_shared/geminiUsage.ts";
 import { withUsageRecording } from "../_shared/usageRecorder.ts";
-import { findByClientRequestId, insertOnce, parseClientRequestId } from "../_shared/idempotency.ts";
+import { findByClientRequestId, insertOnce, parseClientRequestId, settleReplay, STILL_SAVING_MESSAGE } from "../_shared/idempotency.ts";
 import { parseAnsweredQuestions, parseRecordQuestions, RECORD_QUESTIONS_SCHEMA, recordAnswersSection, recordQuestionsRule } from "../_shared/recordQuestions.ts";
 import { ACTIVITY_PERIODS_PROMPT, ACTIVITY_PERIODS_SCHEMA, durationBreakdown, sessionDurationSeconds } from "../_shared/formulas/sessionDuration.ts";
 
@@ -1307,13 +1307,20 @@ Deno.serve(withUsageRecording("analyze-gym", async (req) => {
     // Idempotência (incidente de 2026-10-31, _shared/idempotency.ts): a mesma
     // tentativa reenviada devolve a sessão já gravada, sem gravar outra.
     const clientRequestId = parseClientRequestId(body.client_request_id);
+    // A sessão de outra tentativa, já com as séries (settleReplay espera por
+    // elas se a sessão acabou de ser gravada); null se essa tentativa a desfez.
     // deno-lint-ignore no-explicit-any
-    const replay = async (session: any) => {
-      const { data: sets } = await sb.from("workout_session_sets").select("*").eq("session_id", session.id);
-      return jsonResponse({ session, sets: sets ?? [], replayed: true });
+    const settled = async (session: any) => {
+      const s = await settleReplay(sb, "workout_sessions", session.id, "workout_session_sets", "session_id");
+      return "gone" in s ? null : jsonResponse({ session: s.row, sets: s.children, replayed: true });
     };
+    // deno-lint-ignore no-explicit-any
+    const replay = async (session: any) =>
+      (await settled(session)) ?? jsonResponse({ error: STILL_SAVING_MESSAGE, retry: true }, 409);
     const alreadySaved = !body.session_id ? await findByClientRequestId(sb, "workout_sessions", userId, clientRequestId) : null;
-    if (alreadySaved) return await replay(alreadySaved);
+    // Desfeita entretanto: este pedido grava-a de novo, como se fosse o primeiro.
+    const alreadyReply = alreadySaved ? await settled(alreadySaved) : null;
+    if (alreadyReply) return alreadyReply;
 
     if (body.mode === "manual") {
       if (!/^\d{4}-\d{2}-\d{2}$/.test(body.date ?? "")) {
