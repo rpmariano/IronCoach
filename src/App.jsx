@@ -1,5 +1,6 @@
 import React, { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
-import { supabase } from './lib/supabase';
+import { supabase, logAppEvent } from './lib/supabase';
+import { bootInfoOnce, bootMessage, trackHiddenAt } from './utils/bootTelemetry';
 import { announceBuildToServiceWorker } from './lib/assetCache';
 import { registerServiceWorker, maybeSyncPushSubscription, pushWantedFor, forgetPushSubscriptionOnThisDevice } from './lib/push';
 import { cenasPreviewAtiva } from './utils/cenasPreview';
@@ -683,6 +684,19 @@ export default function App() {
      sessão, e as boas-vindas esperam por ela no máximo 1,5 s: uma memória
      lenta ou em falha não atrasa a saudação, só a deixa sem esse contexto. */
   const sessionUserId = session?.user?.id || null;
+  /* #97 (2026-11-04): telemetria do arranque (utils/bootTelemetry.js) — uma linha em app_logs por
+     carregamento da página, com sessão: se o sistema a descartou, o tipo de navegação e há quanto
+     tempo estava escondida. Para confirmar com dados reais porque é que a app «recarrega sempre». */
+  // Lido já no 1.º render, antes de a página poder voltar a esconder-se e reescrever a hora.
+  useState(bootInfoOnce);
+  useEffect(() => trackHiddenAt(), []);
+  const bootLoggedRef = useRef(false);
+  useEffect(() => {
+    if (!sessionUserId || sessionUserId === 'demo-user' || bootLoggedRef.current) return;
+    bootLoggedRef.current = true;
+    const info = bootInfoOnce();
+    logAppEvent('info', 'app_boot', bootMessage(info), info);
+  }, [sessionUserId]);
   const [notesReadyFor, setNotesReadyFor] = useState(null);
   useEffect(() => {
     if (!sessionUserId || notesReadyFor === sessionUserId) return undefined;
