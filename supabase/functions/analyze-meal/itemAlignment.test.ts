@@ -224,3 +224,51 @@ Deno.test("alignPhotoAndWritten: um alimento com o source_index de outro escrito
   // Sem nada em comum com nenhum escrito, fica no índice que trouxe.
   assertEquals(mergePhotoAndWrittenItems([{ ...it("Galão", 200, 50), source_index: 1 }], [W("café")])!.map((x) => x.calories_per_100g), [50]);
 });
+
+// Revisão do 9583d6c3 (bloqueante): só se sai da ordem numa troca real, e no
+// emparelhamento por nome o mesmo nome (ou o do seu lugar) vem primeiro.
+Deno.test("revisão 9583d6c3: [hambúrguer, batatas] ← [Burger com batatas, Batatas fritas] fica pela ordem", () => {
+  const a = alignItems([it("Burger com batatas", 350, 260), it("Batatas fritas", 150, 310)], [W("hambúrguer"), W("batatas")]);
+  assertEquals(a.items.map((x) => x?.name), ["Burger com batatas", "Batatas fritas"]);
+  const b = alignItems([it("Bife com arroz", 300, 180), it("Arroz branco", 150, 130)], [W("bitoque"), W("arroz")]);
+  assertEquals(b.items.map((x) => x?.name), ["Bife com arroz", "Arroz branco"]);
+  // Com um item a mais, as batatas são as do lugar delas; o hambúrguer refaz-se.
+  const c = alignItems([it("Burger com batatas", 350, 260), it("Batatas fritas", 150, 310), it("Ketchup", 15, 100)], [W("hambúrguer"), W("batatas")]);
+  assertEquals(c.items.map((x) => x?.name ?? null), [null, "Batatas fritas"]);
+});
+
+Deno.test("revisão 9583d6c3: [pão, pão de queijo] ← [Pão de queijo, Pão] — o mesmo nome ganha ao contido", () => {
+  const a = alignItems([it("Pão de queijo", 80, 330), it("Pão", 60, 250)], [W("pão"), W("pão de queijo")]);
+  assertEquals(a.items.map((x) => x?.name), ["Pão", "Pão de queijo"]);
+  // Também com um item a mais.
+  const b = alignItems([it("Pão de queijo", 80, 330), it("Manteiga", 10, 720), it("Pão", 60, 250)], [W("pão"), W("pão de queijo")]);
+  assertEquals(b.items.map((x) => x?.name), ["Pão", "Pão de queijo"]);
+  assertEquals(b.extras.map((x) => x.name), ["Manteiga"]);
+});
+
+Deno.test("revisão 9583d6c3, fotos: o índice só muda numa troca real; prefere um escrito livre", () => {
+  // «Burger com batatas» com o índice do hambúrguer fica no hambúrguer.
+  const burger = mergePhotoAndWrittenItems(
+    [{ ...it("Burger com batatas", 350, 260), source_index: 1 }, { ...it("Batatas fritas", 150, 310), source_index: 2 }],
+    [W("hambúrguer"), W("batatas")],
+  )!;
+  assertEquals(burger.map((x) => [x.name, x.calories_per_100g]), [["hambúrguer", 260], ["batatas", 310]]);
+  // Trocados: cada um vai para o seu.
+  const queijo = mergePhotoAndWrittenItems(
+    [{ ...it("Pão de queijo", 80, 330), source_index: 1 }, { ...it("Pão", 60, 250), source_index: 2 }],
+    [W("pão"), W("pão de queijo")],
+  )!;
+  assertEquals(queijo.map((x) => [x.name, x.calories_per_100g]), [["pão", 250], ["pão de queijo", 330]]);
+  // Dois escritos com o mesmo nome: o item com o índice errado vai para o livre.
+  const ovos = alignPhotoAndWritten(
+    [{ ...it("Ovo", 50, 150), source_index: 1 }, { ...it("Ovo", 55, 150), source_index: 3 }],
+    [W("ovo"), W("ovo"), W("pão")],
+  );
+  assertEquals(ovos.items.map((x) => x?.quantity_grams ?? null), [50, 55, null]);
+  // A manteiga com o índice do «pão com manteiga» junta-se a ele.
+  const pm = mergePhotoAndWrittenItems(
+    [{ ...it("Pão", 60, 250), source_index: 1 }, { ...it("Manteiga", 10, 720), source_index: 1 }],
+    [W("pão com manteiga")],
+  )!;
+  assertEquals(pm.map((x) => x.quantity_grams), [70]);
+});
