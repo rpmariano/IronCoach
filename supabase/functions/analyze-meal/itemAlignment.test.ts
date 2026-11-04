@@ -203,3 +203,24 @@ Deno.test("analyzePhotosWithItems: se a recuperação falhar, regista «falhou»
   });
   assertEquals(logs.map((m) => m.outcome), ["falhou"]);
 });
+
+// Revisão do 8783bc20: com o mesmo número de itens, a ordem não vale quando
+// um item é, pelo nome, de outro escrito.
+Deno.test("alignItems: [pão, ovos] ← [Ovos, Pão] — pelo nome, não pela ordem", () => {
+  const a = alignItems([it("Ovos mexidos", 120, 150), it("Pão", 60, 250)], [W("pão"), W("ovos")]);
+  assertEquals(a.items.map((x) => x?.name), ["Pão", "Ovos mexidos"]);
+  assertEquals(a.pairs, [["Pão", "pão"], ["Ovos mexidos", "ovos"]]);
+  // Os nomes iguais pela ordem certa, ou sem nada em comum com ninguém: a ordem fica.
+  assertEquals(alignItems([it("Pão", 60), it("Ovos", 120)], [W("pão"), W("ovos")]).items.map((x) => x?.name), ["Pão", "Ovos"]);
+  assertEquals(alignItems([it("Pão de trigo", 60), it("Galão", 200)], [W("pão"), W("café")]).items.map((x) => x?.name), ["Pão de trigo", "Galão"]);
+  // Repetidos no lugar deles: «ovo», «ovo».
+  assertEquals(alignItems([it("Ovo", 50), it("Ovo", 55)], [W("ovo"), W("ovo")]).items.map((x) => x?.quantity_grams), [50, 55]);
+});
+
+Deno.test("alignPhotoAndWritten: um alimento com o source_index de outro escrito vai para o dele", () => {
+  const raw = [{ ...it("Ovos mexidos", 120, 150), source_index: 1 }, { ...it("Pão", 60, 250), source_index: 2 }];
+  const merged = mergePhotoAndWrittenItems(raw, [W("pão"), W("ovos")])!;
+  assertEquals(merged.map((x) => [x.name, x.calories_per_100g]), [["pão", 250], ["ovos", 150]]);
+  // Sem nada em comum com nenhum escrito, fica no índice que trouxe.
+  assertEquals(mergePhotoAndWrittenItems([{ ...it("Galão", 200, 50), source_index: 1 }], [W("café")])!.map((x) => x.calories_per_100g), [50]);
+});

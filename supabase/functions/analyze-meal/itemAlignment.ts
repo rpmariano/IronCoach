@@ -32,6 +32,21 @@ const tokens = (s: unknown): Set<string> =>
 /** As palavras de `a` todas em `b`. */
 const within = (a: Set<string>, b: Set<string>) => a.size > 0 && [...a].every((w) => b.has(w));
 
+/** O nome devolvido é o de um escrito: o mesmo, ou um contido no outro. */
+const sameFood = (name: unknown, writtenName: unknown): boolean => {
+  const k = foodKey(name);
+  if (k && k === foodKey(writtenName)) return true;
+  const a = tokens(name);
+  const b = tokens(writtenName);
+  return within(a, b) || within(b, a);
+};
+
+/** O item devolvido no lugar `i` é, pelo nome, de OUTRO escrito e não do
+ *  dele ([pão, ovos] ← [Ovos, Pão]): a ordem engana (revisão do 8783bc20).
+ *  Sem nenhuma palavra em comum com ninguém, a ordem fica. */
+const belongsElsewhere = (name: unknown, i: number, written: { name: string }[]): boolean =>
+  !sameFood(name, written[i].name) && written.some((w, j) => j !== i && sameFood(name, w.name));
+
 /** Os valores por 100 g que se pesam pelas gramas ao juntar partes. */
 const PER_100G = /_per_100g$/;
 
@@ -80,8 +95,9 @@ export function alignItems<T extends Item>(raw: T[], written: { name: string }[]
     const fam = optionalIngredientFamily(r.name);
     return !fam || additionFamilies(written[i].name).has(fam);
   };
-  // O mesmo número e cada um no lugar certo: pela ordem, como o pedido diz.
-  if (raw.length === written.length && raw.every((r, i) => fits(r, i))) {
+  // O mesmo número e cada um no lugar certo: pela ordem, como o pedido diz —
+  // a não ser que um item seja, pelo nome, de outro escrito.
+  if (raw.length === written.length && raw.every((r, i) => fits(r, i) && !belongsElsewhere(r.name, i, written))) {
     return {
       items: [...raw],
       extras: [],
@@ -159,7 +175,10 @@ export function alignPhotoAndWritten<T extends Item & { source_index?: number }>
       fromPhotos.push(item);
       continue;
     }
-    const i = idx - 1;
+    // O índice errado ([pão, ovos] com «Ovos» no 1): vai para o escrito de
+    // que é pelo nome (revisão do 8783bc20).
+    let i = idx - 1;
+    if (belongsElsewhere(item.name, i, written)) i = written.findIndex((w) => sameFood(item.name, w.name));
     // Um ingrediente opcional com o índice de um escrito que não o nomeia
     // («Manteiga» com o do café) é um ingrediente acrescentado: fora.
     const fam = optionalIngredientFamily(item.name);
