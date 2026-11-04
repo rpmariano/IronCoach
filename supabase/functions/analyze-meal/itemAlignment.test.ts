@@ -272,3 +272,31 @@ Deno.test("revisão 9583d6c3, fotos: o índice só muda numa troca real; prefere
   )!;
   assertEquals(pm.map((x) => x.quantity_grams), [70]);
 });
+
+// Revisão do 23684d82: nas fotos, um item sem nada em comum com o escrito do
+// seu índice e que é, pelo nome, de outro escrito já servido, fica de fora.
+Deno.test("revisão 23684d82, fotos: [ovo, pão, ovo] ← Ovo@1, Ovo@2, Ovo@3 — o pão não fica com o ovo, refaz-se", () => {
+  const a = alignPhotoAndWritten(
+    [{ ...it("Ovo", 50, 150), source_index: 1 }, { ...it("Ovo", 52, 150), source_index: 2 }, { ...it("Ovo", 55, 150), source_index: 3 }],
+    [W("ovo"), W("pão"), W("ovo")],
+  );
+  assertEquals(a.items.map((x) => x?.quantity_grams ?? null), [50, null, 55]);
+  assertEquals(mergePhotoAndWrittenItems(
+    [{ ...it("Ovo", 50, 150), source_index: 1 }, { ...it("Ovo", 52, 150), source_index: 2 }, { ...it("Ovo", 55, 150), source_index: 3 }],
+    [W("ovo"), W("pão"), W("ovo")],
+  ), null);
+});
+
+Deno.test("revisão 23684d82, fotos: só o mesmo nome tira um item do seu índice; uma palavra em comum, não", () => {
+  // «Burger com batatas» no índice do hambúrguer fica (o caso aprovado no 23684d82).
+  const a = alignPhotoAndWritten(
+    [{ ...it("Burger com batatas", 350, 260), source_index: 1 }, { ...it("Batatas fritas", 150, 310), source_index: 2 }],
+    [W("hambúrguer"), W("batatas")],
+  );
+  assertEquals(a.items.map((x) => x?.name), ["Burger com batatas", "Batatas fritas"]);
+  // Sem nada em comum com ninguém, fica no índice que trouxe (como antes).
+  assertEquals(alignPhotoAndWritten([{ ...it("Galão", 200, 50), source_index: 1 }], [W("café")]).items[0]?.name, "Galão");
+  // O mesmo nome de outro escrito já servido: fora.
+  const cafe = alignPhotoAndWritten([{ ...it("Café", 200, 2), source_index: 2 }, { ...it("Café", 210, 2), source_index: 1 }], [W("tosta"), W("café")]);
+  assertEquals(cafe.items.map((x) => x?.quantity_grams ?? null), [null, 200]);
+});
