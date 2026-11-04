@@ -63,6 +63,14 @@ const HEAD_RE = new RegExp(`^(${Object.keys(FAMILY).join("|")})s?\\b(.*)$`);
 // «de» («molho de tomate») é o próprio alimento à parte.
 const IN_DISH_RE = /^ (no|na|nos|nas|em|sobre|para) \S/;
 
+/** A família do ingrediente opcional quando o nome É o ingrediente
+ *  («Manteiga», «Azeite virgem extra», «Molho de tomate»); null num alimento
+ *  que só o leva («Pão com manteiga») ou que não tem nada a ver. */
+export function optionalIngredientFamily(name: unknown): string | null {
+  const m = keyOf(name).trim().match(HEAD_RE);
+  return m ? FAMILY[m[1]] : null;
+}
+
 /** Uma regra aprendida (de observações ou respostas) sobre um ingrediente
  *  opcional: não se usa nem se aprende. Fica a que ele escreveu à mão
  *  (manual), a quantidade do próprio ingrediente à parte e a de um alimento
