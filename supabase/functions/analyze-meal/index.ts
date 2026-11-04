@@ -631,21 +631,29 @@ export async function analyzePhotosWithItems(
   // um composto juntas, um repetido uma vez, um sem índice pelo nome.
   const a = alignPhotoAndWritten(raw, written);
   const missing = a.items.map((x, i) => (x ? -1 : i)).filter((i) => i >= 0);
-  if (missing.length || a.combined || a.moved) {
-    report?.({
-      ...mismatchMeta("fotos", written.length, raw, { items: a.items, extras: [], combined: a.combined, byOrder: a.moved }, missing.length ? "refeitos" : "emparelhado"),
-    });
-  }
+  const meta = (outcome: "emparelhado" | "refeitos" | "falhou") =>
+    mismatchMeta("fotos", written.length, raw, { items: a.items, extras: [], combined: a.combined, moved: a.moved }, outcome);
+  if (!missing.length && (a.combined || a.moved)) report?.(meta("emparelhado"));
   let allUsage = usage;
   // deno-lint-ignore no-explicit-any
   let extraQuestions: any[] = [];
   if (missing.length) {
     // Os que faltam, numa chamada curta só de texto (sem refazer as fotos).
-    // Se essa também falhar, falha como antes.
-    const redo = await analyzeManualItems(missing.map((i) => written[i]), notes, geminiKey, deadline, knowledge, report, false);
-    missing.forEach((i, j) => (a.items[i] = redo.items[j]));
-    allUsage = addUsage(allUsage, redo.usage);
-    if (Array.isArray(redo.questions)) extraQuestions = redo.questions;
+    // Sem tempo para ela, ou se também falhar, falha como antes.
+    if (!hasTimeFor(deadline)) {
+      report?.(meta("falhou"));
+      throw new Error("A análise não devolveu todos os alimentos que escreveste. Tenta novamente.");
+    }
+    try {
+      const redo = await analyzeManualItems(missing.map((i) => written[i]), notes, geminiKey, deadline, knowledge, undefined, false);
+      missing.forEach((i, j) => (a.items[i] = redo.items[j]));
+      allUsage = addUsage(allUsage, redo.usage);
+      if (Array.isArray(redo.questions)) extraQuestions = redo.questions;
+    } catch (e) {
+      report?.(meta("falhou"));
+      throw e;
+    }
+    report?.(meta("refeitos"));
   }
   // deno-lint-ignore no-explicit-any
   const items = [...a.fromPhotos, ...withWrittenNames(a.items as any[], written)];
@@ -800,18 +808,27 @@ export async function analyzeManualItems(
   // ingredientes acrescentados fora; os que faltam, refeitos à parte.
   const a = alignItems(rawItems, items);
   const missing = a.items.map((x, i) => (x ? -1 : i)).filter((i) => i >= 0);
-  if (rawItems.length !== items.length) {
-    report?.(mismatchMeta("manual", items.length, rawItems, a, !missing.length ? "emparelhado" : redoMissing ? "refeitos" : "falhou"));
-  }
+  const meta = (outcome: "emparelhado" | "refeitos" | "falhou") => mismatchMeta("manual", items.length, rawItems, a, outcome);
+  if (!missing.length && rawItems.length !== items.length) report?.(meta("emparelhado"));
   let allUsage = usage;
   // deno-lint-ignore no-explicit-any
   let extraQuestions: any[] = [];
   if (missing.length) {
-    if (!redoMissing) throw new Error("A estimativa não devolveu todos os alimentos pedidos. Tenta novamente.");
-    const redo = await analyzeManualItems(missing.map((i) => items[i]), notes, geminiKey, deadline, knowledge, report, false);
-    missing.forEach((i, j) => (a.items[i] = redo.items[j]));
-    allUsage = addUsage(allUsage, redo.usage);
-    if (Array.isArray(redo.questions)) extraQuestions = redo.questions;
+    // Sem a chamada curta (já é ela, ou não há tempo), falha como antes.
+    if (!redoMissing || !hasTimeFor(deadline)) {
+      report?.(meta("falhou"));
+      throw new Error("A estimativa não devolveu todos os alimentos pedidos. Tenta novamente.");
+    }
+    try {
+      const redo = await analyzeManualItems(missing.map((i) => items[i]), notes, geminiKey, deadline, knowledge, undefined, false);
+      missing.forEach((i, j) => (a.items[i] = redo.items[j]));
+      allUsage = addUsage(allUsage, redo.usage);
+      if (Array.isArray(redo.questions)) extraQuestions = redo.questions;
+    } catch (e) {
+      report?.(meta("falhou"));
+      throw e;
+    }
+    report?.(meta("refeitos"));
   }
   // deno-lint-ignore no-explicit-any
   const merged = (a.items as any[]).map((it, i) => ({

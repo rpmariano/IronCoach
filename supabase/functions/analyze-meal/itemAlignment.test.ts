@@ -30,14 +30,47 @@ Deno.test("alignItems: «pão com manteiga» partido em dois junta-se num só al
   assertEquals(a.pairs, [["Pão", "pão com manteiga"], ["Manteiga", "pão com manteiga"], ["Café", "café"]]);
 });
 
-Deno.test("alignItems: um item a menos fica a faltar (null); um nome diferente emparelha pela ordem", () => {
+Deno.test("alignItems: um item a menos fica a faltar (null); um nome diferente também — nunca pela ordem", () => {
   const menos = alignItems([it("Arroz", 150), it("Salada", 80)], [W("arroz"), W("frango grelhado"), W("salada")]);
   assertEquals(menos.items.map((x) => x?.name ?? null), ["Arroz", null, "Salada"]);
+  // Revisão do 5fd4c502: o que não emparelha pelo nome falta (refaz-se), não fica com o que sobrou.
   const outro = alignItems([it("Pão de trigo e centeio", 60), it("Fiambre de peru", 30), it("Manteiga", 10)], [W("Pão de mistura"), W("fiambre")]);
-  assertEquals(outro.items.map((x) => x?.name), ["Pão de trigo e centeio", "Fiambre de peru"]);
-  assertEquals([outro.byOrder, outro.extras.map((x) => x.name)], [1, ["Manteiga"]]);
-  // O mesmo número: pela ordem, como sempre.
+  assertEquals(outro.items.map((x) => x?.name ?? null), [null, "Fiambre de peru"]);
+  assertEquals(outro.extras.map((x) => x.name), ["Pão de trigo e centeio", "Manteiga"]);
+  // O mesmo número e cada um no lugar certo: pela ordem, como sempre.
   assertEquals(alignItems([it("X", 1), it("Y", 2)], [W("a"), W("b")]).items.map((x) => x?.name), ["X", "Y"]);
+});
+
+// Os casos da revisão do 5fd4c502 (bloqueante): nunca dar os valores de um
+// alimento a outro.
+Deno.test("revisão: [pão, ovos, café] ← [Pão, Ovos mexidos, Manteiga, Galão] — o café não fica com a manteiga", () => {
+  const a = alignItems([it("Pão", 60), it("Ovos mexidos", 120), it("Manteiga", 200, 720), it("Galão", 250, 50)], [W("pão"), W("ovos"), W("café")]);
+  assertEquals(a.items.map((x) => x?.name ?? null), ["Pão", "Ovos mexidos", null]); // o café refaz-se
+  assertEquals(a.extras.map((x) => x.name), ["Manteiga", "Galão"]);
+});
+
+Deno.test("revisão: [ovo, ovo, pão] ← [Ovo, Ovo, Pão, Manteiga] — os dois ovos emparelham um a um", () => {
+  const a = alignItems([it("Ovo", 50), it("Ovo", 55), it("Pão", 60), it("Manteiga", 10, 720)], [W("ovo"), W("ovo"), W("pão")]);
+  assertEquals(a.items.map((x) => [x?.name, x?.quantity_grams]), [["Ovo", 50], ["Ovo", 55], ["Pão", 60]]);
+  assertEquals(a.extras.map((x) => x.name), ["Manteiga"]);
+});
+
+Deno.test("revisão: «tosta mista» devolvida como Pão + Fiambre + Queijo — refaz-se, não fica só com o pão", () => {
+  const a = alignItems([it("Pão", 60), it("Fiambre", 30), it("Queijo", 30)], [W("tosta mista")]);
+  assertEquals(a.items, [null]);
+  assertEquals(a.extras.length, 3);
+});
+
+Deno.test("revisão: a Manteiga em 1.º lugar nunca é do primeiro escrito", () => {
+  const mais = alignItems([it("Manteiga", 10, 720), it("Pão", 60), it("Café", 200)], [W("pão"), W("café")]);
+  assertEquals(mais.items.map((x) => x?.name), ["Pão", "Café"]);
+  assertEquals(mais.extras.map((x) => x.name), ["Manteiga"]);
+  // O mesmo número, mas a Manteiga no lugar do pão: não vai pela ordem.
+  const igual = alignItems([it("Manteiga", 10, 720), it("Café", 200)], [W("pão"), W("café")]);
+  assertEquals(igual.items.map((x) => x?.name ?? null), [null, "Café"]);
+  // Com o índice do café, nas fotos, também fica de fora.
+  const fotos = alignPhotoAndWritten([{ ...it("Manteiga", 200, 720), source_index: 1 }], [W("café")]);
+  assertEquals(fotos.items, [null]);
 });
 
 Deno.test("combineParts: uma parte só fica igual; gramas a zero não dividem por zero", () => {
@@ -68,7 +101,7 @@ Deno.test("mismatchMeta: só contagens e nomes de alimentos", () => {
   const a = alignItems(raw, [W("torrada")]);
   assertEquals(mismatchMeta("manual", 1, raw, a, "emparelhado"), {
     mode: "manual", requested: 1, returned: 2, returned_names: ["Torrada", "Manteiga"], extras: ["Manteiga"],
-    combined: 0, by_order: 0, missing: 0, outcome: "emparelhado",
+    combined: 0, moved: 0, missing: 0, outcome: "emparelhado",
   });
 });
 
@@ -128,15 +161,22 @@ Deno.test("analyzeManualItems: um item a menos refaz-se numa chamada curta só c
   assertEquals(logs[0].outcome, "refeitos");
 });
 
-Deno.test("analyzeManualItems: se a chamada curta também falhar, falha como antes", async () => {
+Deno.test("analyzeManualItems: se a chamada curta também falhar, ou não houver tempo, falha como antes — e regista «falhou»", async () => {
+  const logs: Record<string, unknown>[] = [];
+  const report = (m: Record<string, unknown>) => logs.push(m);
+  // A chamada curta volta com nomes sem nada em comum: não se emparelham pela ordem.
   await withGemini([geminiReply([g("Arroz", 150, 130)]), geminiReply([g("Outra coisa", 10, 10), g("Mais outra", 10, 10)])], async () => {
-    // Pede 2, vem 1; a chamada curta pede 1 e vem com 2 sem nome em comum —
-    // pelo nome não dá, pela ordem só cabe 1: o emparelhamento dá-o, não falha.
-    const r = await analyzeManualItems([W("arroz"), W("frango")], null, "k");
-    assertEquals(r.items.map((x) => x.name), ["arroz", "frango"]);
+    await assertRejects(() => analyzeManualItems([W("arroz"), W("frango")], null, "k", Number.POSITIVE_INFINITY, "", report));
   });
   await withGemini([geminiReply([g("Arroz", 150, 130)]), new Response("{}", { status: 400 })], async () => {
-    await assertRejects(() => analyzeManualItems([W("arroz"), W("frango")], null, "k"));
+    await assertRejects(() => analyzeManualItems([W("arroz"), W("frango")], null, "k", Number.POSITIVE_INFINITY, "", report));
+  });
+  assertEquals(logs.map((m) => m.outcome), ["falhou", "falhou"]);
+  // Sem tempo para a chamada curta: nem se tenta.
+  await withGemini([geminiReply([g("Arroz", 150, 130)])], async (calls) => {
+    const deadline = Date.now() + 2000; // abaixo da margem de hasTimeFor
+    await assertRejects(() => analyzeManualItems([W("arroz"), W("frango")], null, "k", deadline), Error, "não devolveu todos os alimentos");
+    assertEquals(calls.length, 1);
   });
 });
 
@@ -153,4 +193,13 @@ Deno.test("analyzePhotosWithItems: um escrito em falta refaz-se só de texto, se
   });
   assertEquals(r.items.map((x) => x.name), ["Bife", "café", "pão"]);
   assertEquals(logs[0].outcome, "refeitos");
+});
+
+Deno.test("analyzePhotosWithItems: se a recuperação falhar, regista «falhou»", async () => {
+  const logs: Record<string, unknown>[] = [];
+  await withGemini([geminiReply([g("Bife", 180, 200, { source_index: 0 })]), new Response("{}", { status: 400 })], async () => {
+    await assertRejects(() =>
+      analyzePhotosWithItems(["aGk="], "image/jpeg", [W("pão")], null, "k", Number.POSITIVE_INFINITY, "", (m) => logs.push(m)));
+  });
+  assertEquals(logs.map((m) => m.outcome), ["falhou"]);
 });
