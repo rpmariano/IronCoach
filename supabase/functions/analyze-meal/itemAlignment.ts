@@ -32,20 +32,32 @@ const tokens = (s: unknown): Set<string> =>
 /** As palavras de `a` todas em `b`. */
 const within = (a: Set<string>, b: Set<string>) => a.size > 0 && [...a].every((w) => b.has(w));
 
-/** O nome devolvido é o de um escrito: o mesmo, ou um contido no outro. */
-const sameFood = (name: unknown, writtenName: unknown): boolean => {
+/** Quanto um nome devolvido é o de um escrito: 2 o mesmo nome, 1 um contido
+ *  no outro («Pão» e «pão de queijo»), 0 nada. O mesmo nome ganha ao contido
+ *  — [pão, pão de queijo] ← [Pão de queijo, Pão] (revisão do 9583d6c3). */
+const nameStrength = (name: unknown, writtenName: unknown): number => {
   const k = foodKey(name);
-  if (k && k === foodKey(writtenName)) return true;
+  if (k && k === foodKey(writtenName)) return 2;
   const a = tokens(name);
   const b = tokens(writtenName);
-  return within(a, b) || within(b, a);
+  return within(a, b) || within(b, a) ? 1 : 0;
 };
 
-/** O item devolvido no lugar `i` é, pelo nome, de OUTRO escrito e não do
- *  dele ([pão, ovos] ← [Ovos, Pão]): a ordem engana (revisão do 8783bc20).
- *  Sem nenhuma palavra em comum com ninguém, a ordem fica. */
-const belongsElsewhere = (name: unknown, i: number, written: { name: string }[]): boolean =>
-  !sameFood(name, written[i].name) && written.some((w, j) => j !== i && sameFood(name, w.name));
+/** Com o mesmo número de itens, a ordem só se deixa numa troca real: trocar
+ *  dois itens de lugar emparelha melhor os dois ([pão, ovos] ← [Ovos, Pão]).
+ *  [hambúrguer, batatas] ← [Burger com batatas, Batatas fritas] não é troca —
+ *  as batatas são as do lugar delas (revisão do 9583d6c3). */
+function hasRealSwap(raw: { name: string }[], written: { name: string }[]): boolean {
+  for (let i = 0; i < raw.length; i++) {
+    for (let j = 0; j < raw.length; j++) {
+      if (i === j) continue;
+      const kept = nameStrength(raw[i].name, written[i].name) + nameStrength(raw[j].name, written[j].name);
+      const swapped = nameStrength(raw[i].name, written[j].name) + nameStrength(raw[j].name, written[i].name);
+      if (swapped > kept) return true;
+    }
+  }
+  return false;
+}
 
 /** Os valores por 100 g que se pesam pelas gramas ao juntar partes. */
 const PER_100G = /_per_100g$/;
@@ -96,8 +108,8 @@ export function alignItems<T extends Item>(raw: T[], written: { name: string }[]
     return !fam || additionFamilies(written[i].name).has(fam);
   };
   // O mesmo número e cada um no lugar certo: pela ordem, como o pedido diz —
-  // a não ser que um item seja, pelo nome, de outro escrito.
-  if (raw.length === written.length && raw.every((r, i) => fits(r, i) && !belongsElsewhere(r.name, i, written))) {
+  // a não ser numa troca real de lugares.
+  if (raw.length === written.length && raw.every((r, i) => fits(r, i)) && !hasRealSwap(raw, written)) {
     return {
       items: [...raw],
       extras: [],
@@ -109,37 +121,51 @@ export function alignItems<T extends Item>(raw: T[], written: { name: string }[]
   const wKey = written.map((w) => foodKey(w.name));
   const groups: T[][] = written.map(() => []);
   const covered: Set<string>[] = written.map(() => new Set());
+  const rTok = raw.map((r) => tokens(r.name));
+  const rKey = raw.map((r) => foodKey(r.name));
+  // A pontuação de cada par: o mesmo nome (100), ou um nome contido no outro
+  // (as palavras em comum) — a parte de um composto, ou o escrito com mais
+  // detalhe. Um ingrediente opcional só num escrito que o nomeie.
+  const score = (ri: number, wi: number): number => {
+    if (!fits(raw[ri], wi)) return 0;
+    if (rKey[ri] && rKey[ri] === wKey[wi]) return 100;
+    if (within(rTok[ri], wTok[wi]) || within(wTok[wi], rTok[ri])) return [...rTok[ri]].filter((t) => wTok[wi].has(t)).length;
+    return 0;
+  };
+  const cover = (ri: number, wi: number) => rTok[ri].forEach((t) => wTok[wi].has(t) && covered[wi].add(t));
+  // 1.º, um item para cada escrito: os pares de pontuação mais alta primeiro —
+  // o mesmo nome antes do contido; em empate, o do seu lugar e depois a ordem.
+  // «ovo», «ovo» emparelham um a um; o primeiro item pela ordem do raw já não
+  // fica com o escrito de outro (revisão do 9583d6c3).
+  const cands: { ri: number; wi: number; sc: number }[] = [];
+  raw.forEach((_, ri) => written.forEach((_, wi) => {
+    const sc = score(ri, wi);
+    if (sc > 0) cands.push({ ri, wi, sc });
+  }));
+  cands.sort((a, b) => b.sc - a.sc || Number(b.ri === b.wi) - Number(a.ri === a.wi) || a.wi - b.wi || a.ri - b.ri);
+  const used = new Set<number>();
+  for (const c of cands) {
+    if (used.has(c.ri) || groups[c.wi].length) continue;
+    groups[c.wi].push(raw[c.ri]);
+    used.add(c.ri);
+    cover(c.ri, c.wi);
+  }
+  // 2.º, as partes de um composto já começado, se acrescentam palavras do
+  // escrito ainda por cobrir («Pão» + «Manteiga» de «pão com manteiga»).
   const leftovers: T[] = [];
-  for (const r of raw) {
-    const rk = foodKey(r.name);
-    const rt = tokens(r.name);
-    // A pontuação de cada escrito: o mesmo nome (100), ou um nome contido no
-    // outro (as palavras em comum) — a parte de um composto, ou o escrito com
-    // mais detalhe.
-    const scored = written.map((_, i) => {
-      if (!fits(r, i)) return { i, score: 0 };
-      if (rk && rk === wKey[i]) return { i, score: 100 };
-      if (within(rt, wTok[i]) || within(wTok[i], rt)) return { i, score: [...rt].filter((t) => wTok[i].has(t)).length };
-      return { i, score: 0 };
-    }).filter((x) => x.score > 0).sort((a, b) => b.score - a.score || a.i - b.i);
-    // Primeiro um escrito ainda sem item — «ovo», «ovo» emparelham um a um.
-    const free = scored.find((x) => !groups[x.i].length);
-    if (free) {
-      groups[free.i].push(r);
-      rt.forEach((t) => wTok[free.i].has(t) && covered[free.i].add(t));
-      continue;
-    }
-    // Senão, uma parte de um composto já começado, se acrescenta palavras do
-    // escrito ainda por cobrir («Pão» + «Manteiga» de «pão com manteiga»).
-    const part = scored.find((x) => x.score < 100 && [...rt].some((t) => wTok[x.i].has(t) && !covered[x.i].has(t)));
+  raw.forEach((r, ri) => {
+    if (used.has(ri)) return;
+    const part = cands
+      .filter((c) => c.ri === ri && c.sc < 100 && [...rTok[ri]].some((t) => wTok[c.wi].has(t) && !covered[c.wi].has(t)))
+      .sort((a, b) => b.sc - a.sc || a.wi - b.wi)[0];
     if (part) {
-      groups[part.i].push(r);
-      rt.forEach((t) => wTok[part.i].has(t) && covered[part.i].add(t));
-      continue;
+      groups[part.wi].push(r);
+      cover(ri, part.wi);
+      return;
     }
     // Nem uma coisa nem outra: um extra (um repetido, um ingrediente a mais).
     leftovers.push(r);
-  }
+  });
   // O que não emparelha pelo nome NÃO se emparelha pela ordem (revisão do
   // 5fd4c502: o café ficava com os valores da manteiga) — falta, e quem chama
   // refá-lo numa chamada curta.
@@ -169,18 +195,39 @@ export function alignPhotoAndWritten<T extends Item & { source_index?: number }>
   const groups: Omit<T, "source_index">[][] = written.map(() => []);
   const covered: Set<string>[] = written.map(() => new Set());
   const fromPhotos: Omit<T, "source_index">[] = [];
+  const validIdx = (v: unknown) => {
+    const n = Number(v);
+    return Number.isInteger(n) && n >= 1 && n <= written.length ? n - 1 : -1;
+  };
+  // Quão bem o escrito j já está servido pelos itens que trazem o índice dele.
+  const ownBest = written.map((w, j) =>
+    Math.max(0, ...raw.filter((r) => validIdx(r.source_index) === j).map((r) => nameStrength(r.name, w.name))));
   for (const { source_index, ...item } of raw) {
-    const idx = Number(source_index);
-    if (!(Number.isInteger(idx) && idx >= 1 && idx <= written.length)) {
+    const idx = validIdx(source_index);
+    if (idx < 0) {
       fromPhotos.push(item);
       continue;
     }
-    // O índice errado ([pão, ovos] com «Ovos» no 1): vai para o escrito de
-    // que é pelo nome (revisão do 8783bc20).
-    let i = idx - 1;
-    if (belongsElsewhere(item.name, i, written)) i = written.findIndex((w) => sameFood(item.name, w.name));
+    // O índice errado ([pão, ovos] com «Ovos» no 1): vai para o escrito de que
+    // é pelo nome — só numa troca real, se emparelha com ele melhor do que com
+    // o do seu índice E melhor do que os itens que já trazem o dele
+    // ([hambúrguer, batatas] com «Burger com batatas» no 1 fica no 1; revisão
+    // do 9583d6c3). Em empate, um escrito ainda sem item.
+    let i = idx;
+    const own = nameStrength(item.name, written[idx].name);
+    let best = own;
+    written.forEach((w, j) => {
+      if (j === idx) return;
+      const sj = nameStrength(item.name, w.name);
+      if (!(sj > own && sj > ownBest[j])) return;
+      if (sj > best || (sj === best && groups[i].length && !groups[j].length)) {
+        i = j;
+        best = sj;
+      }
+    });
     // Um ingrediente opcional com o índice de um escrito que não o nomeia
-    // («Manteiga» com o do café) é um ingrediente acrescentado: fora.
+    // («Manteiga» com o do café) foi acrescentado: fora. Com o de um que o
+    // nomeia («pão com manteiga») é uma parte, e junta-se a ele (abaixo).
     const fam = optionalIngredientFamily(item.name);
     if (fam && !additionFamilies(written[i].name).has(fam)) continue;
     const adds = [...tokens(item.name)].filter((t) => wTok[i].has(t) && !covered[i].has(t));
