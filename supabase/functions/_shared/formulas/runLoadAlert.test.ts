@@ -304,9 +304,19 @@ Deno.test("guarda do plano: com histórico, uma proposta que dispara a carga é 
   assert(v !== undefined);
   assert(v.ratio > 1.5);
   assertEquals(v.fixedKm, 0);
-  // Com a proposta no máximo que lhe cabe, o rácio desse dia fica ≤1,50.
-  // (hist4 já traz os km corridos dessa janela; soma-se só a proposta.)
-  const atCap = computeRunAcwr([...hist4, run(v.date, v.maxProposedKm)], v.date);
+  // hist4 é base baixa (10 km/semana): o limite é 10 + 10 = 20 km, acima dos
+  // 18 do ACWR 1,50 (#113/#114, 2026-11-06). No máximo que cabe, a janela
+  // fica no limite.
+  assertEquals([v.lowBase, v.limitKm], [true, 20]);
+  assert(v.doneKm + v.maxProposedKm <= v.limitKm, `máximo ${v.maxProposedKm} passa o limite ${v.limitKm}`);
+});
+
+Deno.test("guarda do plano: acima da base baixa, o limite é o ACWR 1,50 como sempre", () => {
+  const hist25 = [run("2026-08-29", 25), run("2026-09-05", 25), run("2026-09-12", 25), run("2026-09-19", 25)];
+  const [v] = guard(hist25, [item("2026-09-25", 25), item("2026-09-26", 25)]); // 50 km > 0,6 × 75 = 45
+  assert(v !== undefined);
+  assertEquals(v.lowBase, false);
+  const atCap = computeRunAcwr([...hist25, run(v.date, v.maxProposedKm)], v.date);
   assert(atCap.ratio <= 1.5, `máximo ${v.maxProposedKm} dá ${atCap.ratio}`);
 });
 
@@ -341,10 +351,11 @@ Deno.test("guarda do plano: o próximo bloco depois de uma semana de pico do pla
 });
 
 Deno.test("guarda do plano: plano em curso + proposta juntos passam de 1,50, e cada parte sozinha não", () => {
-  // ~10 km/semana; a 29/09 a janela (23 a 29/09) aguenta 18 km: 8 do plano
-  // em curso + 12 da proposta passam, cada um sozinho não.
+  // ~10 km/semana (base baixa): a 29/09 a janela (23 a 29/09) aguenta 20 km
+  // (10 + 10; o ACWR 1,50 dava 18): 8 do plano em curso + 13 da proposta
+  // passam, cada um sozinho não.
   const fixed = [item("2026-09-25", 8)];
-  const proposed = [item("2026-09-28", 6), item("2026-09-29", 6)];
+  const proposed = [item("2026-09-28", 6), item("2026-09-29", 7)];
   assertEquals(guard(hist4, fixed), []);
   assertEquals(guard(hist4, proposed), []);
   const [v] = guard(hist4, proposed, fixed);
@@ -352,8 +363,8 @@ Deno.test("guarda do plano: plano em curso + proposta juntos passam de 1,50, e c
   assertEquals(v.from, "2026-09-23");
   assertEquals(v.date, "2026-09-29");
   assertEquals(v.fixedKm, 8);
-  assertEquals(v.proposedKm, 12);
-  assertEquals(v.maxProposedKm, 10);
+  assertEquals(v.proposedKm, 13);
+  assertEquals(v.maxProposedKm, 12);
 });
 
 Deno.test("guarda do plano: avalia até 6 dias depois do último treino da proposta", () => {

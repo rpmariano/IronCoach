@@ -3156,8 +3156,10 @@ Deno.test("buildRaceEventsContext: em estrada, o eixo de D+ fica desligado (D+ d
   );
   // Bug #113 (2026-11-06): em estrada o nível mede-se pelos km (MIN_VOLUME_KM),
   // não pelo Tempo em Pé (doutrina de trail) — antes dava "Médio" aqui. Com
-  // 11,5 km na 2.ª semana mais alta, um 10 km fica Iniciante, e a Carol vê porquê.
-  assertStringIncludes(ctx!, "⚠ NÍVEL MEDIDO pelo histórico de treino: Iniciante — diverge do declarado (Básico) · medido pelos km: 11,5 km");
+  // 11,5 km na 2.ª semana mais alta, um 10 km fica Iniciante, e a Carol vê porquê
+  // — sem rótulo de falha (decisão do Rui de 2026-11-06).
+  assertStringIncludes(ctx!, "NÍVEL PELO VOLUME (km por semana: 11,5 km na 2.ª semana mais alta das últimas 4): Iniciante — o declarado é Básico; é uma leitura do volume, não uma falha");
+  assertEquals(ctx!.includes("⚠ NÍVEL"), false);
 });
 
 /* Bloco 8b — a previsão de tempo. Antes era calculada aqui só para aferir
@@ -4025,7 +4027,8 @@ Deno.test("plano com prova: ginásio no dia da prova, treino forte na véspera e
   const easyEve = await runProposeTrainingPlan(makePlanSbWithRaces(races).sb, "user-1", {
     race_id: "r1", period_start: "2026-08-10", period_end: "2026-08-15", summary: "x",
     items: [
-      { planned_date: "2026-08-14", kind: "corrida", training_type: "recuperacao", target_distance_km: 3 },
+      // Na véspera, a ativação (3 a 5 km) — uma rodagem de 3 km já não é sessão útil.
+      { planned_date: "2026-08-14", kind: "corrida", training_type: "ativacao", target_distance_km: 3 },
       { planned_date: "2026-08-15", kind: "corrida", training_type: "prova", target_distance_km: 10 },
     ],
   });
@@ -4843,12 +4846,14 @@ Deno.test("checkPlanLoad: sem histórico não há regra (3 corridas em 4 semanas
 
 Deno.test("checkPlanLoad: plano em curso + proposta juntos passam de 1,50 — a mensagem separa as partes e diz o que cabe", async () => {
   // Cada parte sozinha passa; juntas, a janela de 23 a 29/09 dispara.
-  const rows = [planRow("2026-09-28", 6), planRow("2026-09-29", 6)];
+  // Com 10 km/semana a base é baixa: o limite é 10 + 10 = 20 km por semana.
+  const rows = [planRow("2026-09-28", 7), planRow("2026-09-29", 7)];
   assertEquals(await checkPlanLoad(loadSb(hist, []), "u1", rows, [{ id: "p1" }], "2026-09-28", "2026-09-24"), null);
   const active = [planRow("2026-09-25", 8, { status: "pendente" })];
   const msg = await checkPlanLoad(loadSb(hist, active), "u1", rows, [{ id: "p1" }], "2026-09-28", "2026-09-24") ?? "";
-  assertStringIncludes(msg, "de 2026-09-23 a 2026-09-29: 0 km já corridos + 8 km do plano em curso + 12 km desta proposta");
-  assertStringIncludes(msg, "a proposta pode ter no máximo 10 km");
+  assertStringIncludes(msg, "de 2026-09-23 a 2026-09-29: 0 km já corridos + 8 km do plano em curso + 14 km desta proposta");
+  assertStringIncludes(msg, "base baixa: a média das 3 semanas antes + 10 km");
+  assertStringIncludes(msg, "a proposta pode ter no máximo 12 km");
 });
 
 Deno.test("checkPlanLoad: a carga do plano em curso não cai em cima de uma proposta leve (revisão de bf21a2b)", async () => {
@@ -6562,7 +6567,8 @@ Deno.test("coach-chat: o objetivo calórico de cada dia vem do histórico de obj
   assertStringIncludes(comODia, "1 de 7 dias com registo completo");
 });
 
-import { claimedProposals, planPeakWeeklyRunKm, planVolumeGapNote, proposalClaimCorrection, stripProposalClaims } from "./index.ts";
+import { claimedProposals, maintenanceGapError, proposalClaimCorrection, raceVolumeNote, sessionSizeError, stripProposalClaims } from "./index.ts";
+import { raceVolumeOutlook } from "../_shared/formulas/raceVolumeOutlook.ts";
 
 // Bug #112 (2026-11-06, 08:05): «Enviei a proposta de plano ajustada para
 // reveres e aceitares aqui mesmo no Coach» — sem chamar propose_training_plan.
@@ -6595,33 +6601,65 @@ Deno.test("bug #112: o ciclo corrige uma vez e a resposta final perde a frase se
   assertStringIncludes(src, "replyText = stripProposalClaims(replyText, unsent);");
 });
 
-// Bug #114: o plano aceite do Rui (corrida, km por semana de treino).
-const RUI_PLAN = [
-  { planned_date: "2026-10-20", kind: "corrida", training_type: "continuo", target_distance_km: 5 },
-  { planned_date: "2026-10-22", kind: "corrida", training_type: "continuo", target_distance_km: 6 },
-  { planned_date: "2026-10-23", kind: "corrida", training_type: "recuperacao", target_distance_km: 4 },
-  { planned_date: "2026-10-25", kind: "corrida", training_type: "prova", target_distance_km: 10 },
-  { planned_date: "2026-10-28", kind: "corrida", training_type: "continuo", target_distance_km: 5 },
-  { planned_date: "2026-10-30", kind: "corrida", training_type: "continuo", target_distance_km: 6 },
-  { planned_date: "2026-11-01", kind: "corrida", training_type: "recuperacao", target_distance_km: 3.5 },
-  { planned_date: "2026-10-27", kind: "ginasio", training_type: null, target_distance_km: null },
+// #113/#114 (decisão do Rui de 2026-11-06): uma só leitura do volume para a
+// prova, sessões úteis e o plano não fica vazio entre provas.
+const RUI_RUNS = [
+  { date: "2026-10-16", kind: "treino", training_type: "continuo", distance_km: 6.04, duration_seconds: 2206, effort_rpe: 5 },
+  { date: "2026-10-20", kind: "treino", training_type: "continuo", distance_km: 5.02, duration_seconds: 1837, effort_rpe: 3 },
+  { date: "2026-10-23", kind: "treino", training_type: "recuperacao", distance_km: 4.08, duration_seconds: 1591, effort_rpe: 2 },
+  { date: "2026-10-25", kind: "competicao", training_type: null, distance_km: 10.12, duration_seconds: 2969, effort_rpe: 9 },
+  { date: "2026-10-28", kind: "treino", training_type: "continuo", distance_km: 5.12, duration_seconds: 1660, effort_rpe: 6 },
+  { date: "2026-10-30", kind: "treino", training_type: "continuo", distance_km: 6.08, duration_seconds: 2013, effort_rpe: 7 },
+  { date: "2026-11-01", kind: "treino", training_type: "trail", distance_km: 15.92, duration_seconds: 6664, effort_rpe: 9 },
 ];
+const pItem = (planned_date: string, km: number, training_type = "continuo") => ({ planned_date, kind: "corrida", training_type, target_distance_km: km });
 
-Deno.test("bug #114: planPeakWeeklyRunKm — a semana de treino mais alta, sem as provas", () => {
-  assertEquals(planPeakWeeklyRunKm(RUI_PLAN), 15); // 20–25 out: 5 + 6 + 4 (a prova de 10 km não conta)
-  assertEquals(planPeakWeeklyRunKm([]), 0);
+Deno.test("raceVolumeNote: a meia de 29 nov do Rui — uma frase por prova, sem falha, com o ritmo como coisa boa", () => {
+  const plan = [pItem("2026-11-11", 5), pItem("2026-11-13", 5), pItem("2026-11-15", 21.1, "prova"), pItem("2026-11-18", 5), pItem("2026-11-25", 6)];
+  const race = { name: "Meia dos Descobrimentos", date: "2026-11-29", distance_km: 21.0975, experience_level: "basico" };
+  const outlook = raceVolumeOutlook({ race, runs: RUI_RUNS, planItems: plan, todayISO: "2026-11-06" });
+  const note = raceVolumeNote([{ race, outlook }]);
+  assertStringIncludes(note, "«Meia dos Descobrimentos» (29 nov, nível Básico):");
+  assertStringIncludes(note, "para os 35 do nível; o ritmo dele já é de Médio (VDOT 41,1)");
+  assertStringIncludes(note, "vai ser para completar, não para fazer tempo");
+  assertStringIncludes(note, "sem o apresentar como falha dele");
+  assertStringIncludes(note, "Não repitas este aviso noutras mensagens.");
+  // Uma prova que chega: nada.
+  const ok = raceVolumeOutlook({ race: { ...race, distance_km: 5, experience_level: "iniciante" }, runs: RUI_RUNS, todayISO: "2026-11-06" });
+  assertEquals(raceVolumeNote([{ race, outlook: ok }]), "");
 });
 
-Deno.test("bug #114: planVolumeGapNote — a Carol avisa quando o plano fica abaixo do volume do nível", () => {
-  const meia = { name: "Meia dos Descobrimentos", distance_km: 21.0975, experience_level: "basico" };
-  const note = planVolumeGapNote(RUI_PLAN, meia);
-  assertStringIncludes(note, "15 km, abaixo dos 35 km/semana");
-  assertStringIncludes(note, "«Volume de treino insuficiente»");
-  assertStringIncludes(note, "Não subas o volume para lá do limite seguro da carga");
-  // Chega ao volume, sem nível ou sem prova: nada.
-  assertEquals(planVolumeGapNote(RUI_PLAN, { ...meia, distance_km: 5, experience_level: "iniciante" }), ""); // 5 km iniciante: 10
-  assertEquals(planVolumeGapNote(RUI_PLAN, { ...meia, experience_level: null }), "");
-  assertEquals(planVolumeGapNote(RUI_PLAN, null), "");
+Deno.test("sessionSizeError: corrida fácil ≥ 5 km ou 30 min; ativação 3–5 km", () => {
+  assertEquals(sessionSizeError(pItem("2026-11-11", 5), 1), null);
+  assertEquals(sessionSizeError({ ...pItem("2026-11-11", 0), target_duration_min: 30 }, 1), null);
+  assertStringIncludes(sessionSizeError(pItem("2026-11-11", 3), 2)!, "pelo menos 5 km ou 30 min");
+  assertStringIncludes(sessionSizeError(pItem("2026-11-11", 2, "recuperacao"), 2)!, "Erro no treino 2");
+  assertEquals(sessionSizeError(pItem("2026-11-07", 3, "ativacao"), 1), null);
+  assertStringIncludes(sessionSizeError(pItem("2026-11-07", 2, "ativacao"), 1)!, "3 a 5 km");
+  assertStringIncludes(sessionSizeError(pItem("2026-11-07", 6, "ativacao"), 1)!, "3 a 5 km");
+  // Os treinos de qualidade e o ginásio não têm mínimo aqui.
+  assertEquals(sessionSizeError(pItem("2026-11-11", 3, "intervalos"), 1), null);
+  assertEquals(sessionSizeError({ planned_date: "2026-11-11", kind: "ginasio" }, 1), null);
+});
+
+Deno.test("maintenanceGapError: entre provas a 6+ dias o plano tem uma corrida; mais perto, não precisa", () => {
+  const races = [{ name: "Meia", date: "2026-11-15" }, { name: "6 km", date: "2026-11-22" }];
+  assertStringIncludes(maintenanceGapError([pItem("2026-11-15", 21.1, "prova"), pItem("2026-11-22", 6, "prova")], races)!, "não tem nenhuma corrida");
+  assertEquals(maintenanceGapError([pItem("2026-11-15", 21.1, "prova"), pItem("2026-11-19", 5), pItem("2026-11-22", 6, "prova")], races), null);
+  assertEquals(maintenanceGapError([], [{ name: "a", date: "2026-11-08" }, { name: "b", date: "2026-11-12" }]), null);
+  // Só o intervalo que cai na semana desta proposta: a semana de 9 a 15 nov não
+  // responde pelo intervalo 15→22, que é da parte seguinte.
+  const empty = [pItem("2026-11-15", 21.1, "prova"), pItem("2026-11-22", 6, "prova")];
+  assertEquals(maintenanceGapError(empty, races, { from: "2026-11-09", to: "2026-11-15" }), null);
+  assertStringIncludes(maintenanceGapError(empty, races, { from: "2026-11-16", to: "2026-11-22" })!, "não tem nenhuma corrida");
+});
+
+Deno.test("guarda de carga: a mensagem diz o limite e se é o da base baixa", async () => {
+  const src = await Deno.readTextFile(new URL("./index.ts", import.meta.url));
+  assertStringIncludes(src, "base baixa: a média das 3 semanas antes + 10 km");
+  assertStringIncludes(src, "a carga de corrida passa o limite seguro");
+  assertStringIncludes(src, "const gapError = maintenanceGapError(rows, racesInPeriod,");
+  assertStringIncludes(src, "volumeNote = raceVolumeNote(");
 });
 
 Deno.test("bug #113: o nível medido pela Carol passa a disciplina e a distância à triagem", async () => {
