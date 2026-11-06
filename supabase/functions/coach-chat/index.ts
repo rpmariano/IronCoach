@@ -250,27 +250,46 @@ const MAX_TOOL_ROUNDS = 4;  // idas-e-voltas de function calling antes de força
 // repetiu-a. O Rui procurou a proposta e não havia nada para aceitar.
 
 /** Uma frase em que ela diz que enviou/deixou uma proposta. */
-const PROPOSAL_CLAIM_RE = /\b(?:j[áa]\s+)?(?:te\s+)?(?:enviei|mandei|deixei|acabei\s+de\s+(?:enviar|mandar|deixar)|preparei|criei)(?:-te)?\s+(?:aqui\s+)?(?:a|uma|esta|essa|nova)?\s*(?:nova\s+)?propost[ae]s?\b/i;
-/** Frases que falam de uma proposta sem dizer que a enviou agora (revisão do
- *  lote f6b4053b): a negação («ainda não te enviei a proposta», «não preparei
- *  a proposta ainda»), o passado com data («ontem enviei-te a proposta; já a
- *  viste?») e o pôr de parte («deixei a proposta de lado»). */
-const PROPOSAL_NOT_CLAIM_RE = /(?:^|[^a-zà-ú])(?:ontem|anteontem|há\s+(?:\d+|uns|umas|dois|duas|três|alguns|algumas)\s+(?:dias?|semanas?)|(?:na|a)\s+semana\s+passada|no\s+outro\s+dia|de\s+lado|[àa]\s+parte)(?![a-zà-ú])/i;
-/** Uma negação na mesma oração, antes do verbo («ainda não te enviei…»). */
-const NEGATION_BEFORE_RE = /(?:^|[^a-zà-ú])(?:não|nao|nunca|nem)(?![a-zà-ú])[^.!?;,]*$/i;
+const PROPOSAL_CLAIM_RE = /(?<![a-zà-ú])(?:j[áa]\s+)?(?:t[ea]\s+)?(?:enviei|mandei|deixei|acabei\s+de\s+(?:enviar|mandar|deixar)|preparei|criei)(?:-t[ea])?(?:\s+(?:agora|j[áa]|aqui|hoje|mesmo|ontem|anteontem|a|uma|esta|essa|tua|outra|nova|de\s+novo))*\s+propost[ae]s?(?![a-zà-ú])/i;
+/** O passado com data e o pôr de parte (revisão do lote f6b4053b). Só contam
+ *  colados ao verbo — na mesma oração, antes dele, ou logo a seguir à
+ *  proposta: «ontem enviei-te a proposta», «enviei-te ontem a proposta»,
+ *  «deixei a proposta de lado». «Depois da prova de ontem, preparei uma
+ *  proposta» é um envio (2.ª revisão do lote). */
+const PROPOSAL_PAST_RE = /(?:^|[^a-zà-ú])(?:ontem|anteontem|há\s+(?:\d+|uns|umas|dois|duas|três|alguns|algumas)\s+(?:dias?|semanas?)|(?:na|a)\s+semana\s+passada|no\s+outro\s+dia|de\s+lado|[àa]\s+parte)(?![a-zà-ú])/i;
+/** A negação: «não», «nunca», «nem». */
+const NEGATION_RE = /(?:^|[^a-zà-ú])(?:não|nao|nunca|nem)(?![a-zà-ú])/i;
+/** O que separa orações: pontuação, «que», «mas», «e», «porque», «pois». */
+const CLAUSE_BREAK_RE = /[,;:—–]|(?:^|[^a-zà-ú])(?:que|mas|e|porque|pois)(?![a-zà-ú])/gi;
 
-/** A frase diz que ela enviou agora uma proposta. */
+/** A oração antes do verbo e a que vem logo a seguir à proposta. */
+function claimClause(sentence: string, m: RegExpExecArray): { before: string; after: string } {
+  const head = sentence.slice(0, m.index);
+  let cut = 0;
+  for (const b of head.matchAll(CLAUSE_BREAK_RE)) cut = (b.index ?? 0) + b[0].length;
+  const tail = sentence.slice(m.index + m[0].length);
+  const next = tail.search(/[,;:—–.!?]|(?:^|[^a-zà-ú])(?:que|mas|e|porque|pois|até)(?![a-zà-ú])/i);
+  return { before: head.slice(cut), after: next < 0 ? tail : tail.slice(0, next) };
+}
+
+/** A frase diz que ela enviou agora uma proposta: o verbo de envio sem
+ *  negação na mesma oração antes dele («não te preocupes que já te enviei…»
+ *  é envio), e sem data no passado nem «de lado» colados a ele. */
 function isProposalClaim(sentence: string): boolean {
   const m = PROPOSAL_CLAIM_RE.exec(sentence);
   if (!m) return false;
-  if (NEGATION_BEFORE_RE.test(sentence.slice(0, m.index))) return false;
-  return !PROPOSAL_NOT_CLAIM_RE.test(sentence);
+  const { before, after } = claimClause(sentence, m);
+  if (NEGATION_RE.test(before)) return false;
+  return !PROPOSAL_PAST_RE.test(before + " " + m[0] + " " + after);
 }
+
+/** Onde se corta uma frase — o mesmo para detetar e para tirar. */
+const CLAIM_SENTENCE_SPLIT = /(?<=[.!?;])[ \t]+/;
 
 /** O que ela diz que enviou: uma proposta de plano e/ou de objetivos. */
 export function claimedProposals(text: string | null | undefined): { plan: boolean; goals: boolean } {
   const out = { plan: false, goals: false };
-  for (const sentence of String(text ?? "").split(/(?<=[.!?;])\s+|\n+/)) {
+  for (const sentence of String(text ?? "").split("\n").flatMap((line) => line.split(CLAIM_SENTENCE_SPLIT))) {
     if (!isProposalClaim(sentence)) continue;
     if (/\b(?:objetivos?|metas?)\b/i.test(sentence)) out.goals = true;
     else out.plan = true;
@@ -292,7 +311,7 @@ export function stripProposalClaims(text: string, kinds: { plan: boolean; goals:
   const out: string[] = [];
   for (const line of text.split("\n")) {
     if (!line.trim()) { out.push(line); continue; }
-    const kept = line.split(/(?<=[.!?])[ \t]+/).filter((sentence) => !drop(sentence));
+    const kept = line.split(CLAIM_SENTENCE_SPLIT).filter((sentence) => !drop(sentence));
     if (kept.length) out.push(kept.join(" "));
   }
   const result = out.join("\n").replace(/\n{3,}/g, "\n\n").trim();
@@ -305,15 +324,22 @@ export function stripProposalClaims(text: string, kinds: { plan: boolean; goals:
  *  guarda do #112 continua de pé. */
 // deno-lint-ignore no-explicit-any
 export async function pendingProposalKinds(sb: any, userId: string): Promise<{ plan: boolean; goals: boolean }> {
-  const has = async (table: string) => {
+  // Um plano só conta com treino real (corrida/ginásio) — a regra de
+  // stalePendingIds: uma proposta de só-refeições não é a proposta de plano.
+  // deno-lint-ignore no-explicit-any
+  const hasTraining = (p: any) => (p?.coach_plan_items || []).some((i: any) => i?.kind === "corrida" || i?.kind === "ginasio");
+  const read = async (table: string, select: string, ok: (row: unknown) => boolean) => {
     try {
-      const { data, error } = await sb.from(table).select("id").eq("user_id", userId).eq("status", "proposto").limit(1);
-      return !error && Array.isArray(data) && data.length > 0;
+      const { data, error } = await sb.from(table).select(select).eq("user_id", userId).eq("status", "proposto");
+      return !error && Array.isArray(data) && data.some(ok);
     } catch {
       return false;
     }
   };
-  const [plan, goals] = await Promise.all([has("coach_plans"), has("coach_goal_proposals")]);
+  const [plan, goals] = await Promise.all([
+    read("coach_plans", "id, coach_plan_items(kind)", hasTraining),
+    read("coach_goal_proposals", "id", () => true),
+  ]);
   return { plan, goals };
 }
 
@@ -9479,8 +9505,11 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
         unsent.goals = unsent.goals && !pendingProposals.goals;
       }
       if (unsent.plan || unsent.goals) {
-        console.error("coach-chat: a frase da proposta não enviada saiu da resposta", JSON.stringify({ turnCase, ...unsent }));
-        replyText = stripProposalClaims(replyText, unsent);
+        const stripped = stripProposalClaims(replyText, unsent);
+        console.error(stripped !== replyText
+          ? "coach-chat: a frase da proposta não enviada saiu da resposta"
+          : "coach-chat: frase da proposta não enviada detetada, mas ficou (era a única)", JSON.stringify({ turnCase, ...unsent }));
+        replyText = stripped;
       }
     }
 

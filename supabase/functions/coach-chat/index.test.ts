@@ -6623,6 +6623,26 @@ Deno.test("bug #112 (revisão do lote): negações, passado com data e «de lado
   assertEquals(claimedProposals("Não te preocupes, enviei a proposta agora."), { plan: true, goals: false });
 });
 
+Deno.test("bug #112 (2.ª revisão do lote): os falsos negativos — data longe do verbo, negação noutra oração, «agora», «já te enviei»", () => {
+  const plan = { plan: true, goals: false };
+  const none = { plan: false, goals: false };
+  // A data noutra oração não anula o envio.
+  assertEquals(claimedProposals("Depois da prova de ontem, preparei uma proposta de plano ajustada."), plan);
+  assertEquals(claimedProposals("Como correu a semana passada, preparei uma nova proposta."), plan);
+  // Colada ao verbo, sim.
+  assertEquals(claimedProposals("Enviei-te ontem a proposta."), none);
+  assertEquals(claimedProposals("Mandei-te a proposta na semana passada."), none);
+  // A negação só conta na mesma oração do verbo.
+  assertEquals(claimedProposals("Não te preocupes que já te enviei a proposta."), plan);
+  assertEquals(claimedProposals("Ainda não te enviei a proposta, mas está quase."), none);
+  // As formas que escapavam.
+  assertEquals(claimedProposals("Enviei-te agora a proposta para veres."), plan);
+  assertEquals(claimedProposals("Já te enviei a proposta."), plan);
+  assertEquals(claimedProposals("Já ta enviei, a proposta está no Coach."), none); // sem «proposta» colada ao verbo: não é o padrão
+  // O «;» corta a frase nas duas funções: a parte com o envio sai, a outra fica.
+  assertEquals(stripProposalClaims("Ajustei a semana; enviei a proposta de plano.", plan), "Ajustei a semana;");
+});
+
 Deno.test("bug #112 (revisão do lote): stripProposalClaims guarda as quebras de linha e não leva a linha de cima", () => {
   const list = "O plano da semana:\n- terça 5 km\n- quinta 5 km\nEnviei a proposta de plano para aceitares.\n\nComo estás?";
   assertEquals(stripProposalClaims(list, { plan: true, goals: false }), "O plano da semana:\n- terça 5 km\n- quinta 5 km\n\nComo estás?");
@@ -6635,11 +6655,14 @@ Deno.test("bug #112 (revisão do lote): uma proposta pendente na BD torna a fras
   const sbWith = (pending: Record<string, any[]>) => ({
     from: (table: string) => {
       // deno-lint-ignore no-explicit-any
-      const c: any = { select: () => c, eq: () => c, limit: () => Promise.resolve({ data: pending[table] ?? [], error: null }) };
+      const c: any = { select: () => c, eq: () => c, then: (resolve: (v: unknown) => void) => resolve({ data: pending[table] ?? [], error: null }) };
       return c;
     },
   });
-  assertEquals(await pendingProposalKinds(sbWith({ coach_plans: [{ id: "p1" }] }), "u1"), { plan: true, goals: false });
+  assertEquals(await pendingProposalKinds(sbWith({ coach_plans: [{ id: "p1", coach_plan_items: [{ kind: "corrida" }] }] }), "u1"), { plan: true, goals: false });
+  // Uma proposta de só-refeições não é a proposta de plano (a regra de stalePendingIds).
+  assertEquals(await pendingProposalKinds(sbWith({ coach_plans: [{ id: "p2", coach_plan_items: [{ kind: "refeicao" }] }] }), "u1"), { plan: false, goals: false });
+  assertEquals(await pendingProposalKinds(sbWith({ coach_plans: [{ id: "p3", coach_plan_items: [{ kind: "ginasio" }] }] }), "u1"), { plan: true, goals: false });
   assertEquals(await pendingProposalKinds(sbWith({ coach_goal_proposals: [{ id: "g1" }] }), "u1"), { plan: false, goals: true });
   assertEquals(await pendingProposalKinds({ from: () => { throw new Error("rede"); } }, "u1"), { plan: false, goals: false });
   const src = await Deno.readTextFile(new URL("./index.ts", import.meta.url));
@@ -6663,7 +6686,8 @@ Deno.test("bug #112: stripProposalClaims tira só a frase da proposta não envia
 Deno.test("bug #112: o ciclo corrige uma vez e a resposta final perde a frase se ainda a tiver", async () => {
   const src = await Deno.readTextFile(new URL("./index.ts", import.meta.url));
   assertStringIncludes(src, "contents.push({ role: \"user\", parts: [{ text: proposalClaimCorrection(missing) }] });");
-  assertStringIncludes(src, "replyText = stripProposalClaims(replyText, unsent);");
+  assertStringIncludes(src, "const stripped = stripProposalClaims(replyText, unsent);");
+  assertStringIncludes(src, "detetada, mas ficou (era a única)");
 });
 
 // #113/#114 (decisão do Rui de 2026-11-06): uma só leitura do volume para a
