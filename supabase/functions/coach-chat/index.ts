@@ -239,7 +239,51 @@ export function chatAttemptMs(planTurn: boolean): number {
 }
 const MAX_HISTORY   = 30;   // mensagens mais recentes enviadas ao Gemini
 const MAX_MSG_LEN   = 2000; // caracteres máximos por mensagem
-const MAX_TOOL_ROUNDS = 4;  // idas-e-voltas de function calling antes de forçar resposta final
+const MAX_TOOL_ROUNDS = 4;
+
+// ─── «Enviei a proposta» sem proposta nenhuma (bug #112, 2026-11-06) ──────
+// Às 08:05 a Carol abriu a conversa com «Enviei a proposta de plano ajustada
+// para reveres e aceitares aqui mesmo no Coach» — com propose_training_plan
+// nas ferramentas, mas sem a chamar (uma só ronda, calls: []). A frase é a
+// mesma da proposta verdadeira de 03-11, que estava no histórico: o modelo
+// repetiu-a. O Rui procurou a proposta e não havia nada para aceitar.
+
+/** Uma frase em que ela diz que enviou/deixou uma proposta. */
+const PROPOSAL_CLAIM_RE = /\b(?:j[áa]\s+)?(?:te\s+)?(?:enviei|mandei|deixei|acabei\s+de\s+(?:enviar|mandar|deixar)|preparei|criei)(?:-te)?\s+(?:aqui\s+)?(?:a|uma|esta|essa|nova)?\s*(?:nova\s+)?propost[ae]s?\b/i;
+
+/** O que ela diz que enviou: uma proposta de plano e/ou de objetivos. */
+export function claimedProposals(text: string | null | undefined): { plan: boolean; goals: boolean } {
+  const out = { plan: false, goals: false };
+  for (const sentence of String(text ?? "").split(/(?<=[.!?])\s+|\n+/)) {
+    if (!PROPOSAL_CLAIM_RE.test(sentence)) continue;
+    if (/\b(?:objetivos?|metas?)\b/i.test(sentence)) out.goals = true;
+    else out.plan = true;
+  }
+  return out;
+}
+
+/** O texto sem as frases que dizem que enviou o que não enviou. Fica pelo
+ *  menos uma frase; os parágrafos que esvaziam saem. */
+export function stripProposalClaims(text: string, kinds: { plan: boolean; goals: boolean }): string {
+  if (!kinds.plan && !kinds.goals) return text;
+  const paragraphs = text.split(/\n{2,}/).map((para) =>
+    para.split(/(?<=[.!?])\s+/).filter((sentence) => {
+      if (!PROPOSAL_CLAIM_RE.test(sentence)) return true;
+      const isGoals = /\b(?:objetivos?|metas?)\b/i.test(sentence);
+      return isGoals ? !kinds.goals : !kinds.plan;
+    }).join(" ").trim()
+  ).filter(Boolean);
+  return paragraphs.length ? paragraphs.join("\n\n") : text;
+}
+
+/** A correção que vai ao modelo quando disse que enviou sem enviar. */
+export function proposalClaimCorrection(kinds: { plan: boolean; goals: boolean }): string {
+  const what = [kinds.plan ? "uma proposta de plano" : null, kinds.goals ? "uma proposta de objetivos" : null].filter(Boolean).join(" e ");
+  const tool = [kinds.plan ? "propose_training_plan" : null, kinds.goals ? "update_goals" : null].filter(Boolean).join(" / ");
+  return `[Nota do sistema, não do atleta] Na resposta anterior disseste que enviaste ${what}, mas não chamaste ` +
+    `${tool} — nada foi enviado e o atleta não tem nada para aceitar. Se a proposta é para fazer, chama ${tool} ` +
+    `agora; se não, responde de novo sem dizer que enviaste uma proposta.`;
+}  // idas-e-voltas de function calling antes de forçar resposta final
 // Uma tentativa ao Gemini pode demorar até isto: uma proposta de plano com as
 // refeições são milhares de tokens de saída. Eram 40 s com uma repetição a
 // partir do zero — uma resposta que precisava de 50 s era cortada aos 40,
@@ -3662,6 +3706,53 @@ const RACE_WEEK_DAYS = 7;
 // id da prova (SeriesBlock.intentByRaceId) — só com inscrição ativa. Uma
 // jornada para atacar pede 3 dias fáceis antes em vez de 2 (#6, getTaperDays
 // por intenção). null = a guarda de sempre, a mesma consulta, byte a byte.
+// ─── O volume do plano e o aviso do hub (bug #114, 2026-11-06) ────────────
+// «Se estou a correr o que a Carol me indica porque recebi os avisos?» O hub
+// da prova avisa «Volume de treino insuficiente» quando o volume fica abaixo
+// do MIN_VOLUME_KM do nível declarado (assessRaceViability) — e o plano dela,
+// preso ao limite seguro da carga (checkPlanLoad), chegava no máximo a 15 km
+// numa semana para uma meia de nível Básico (35 km). Os dois têm razão: subir
+// mais depressa aumenta o risco de lesão. O que faltava era ela dizê-lo.
+
+/** A semana (de segunda a domingo) de corrida mais alta do plano, em km, sem
+ *  as provas — o volume de TREINO que o plano constrói. */
+// deno-lint-ignore no-explicit-any
+export function planPeakWeeklyRunKm(rows: any[]): number {
+  const weeks = new Map<string, number>();
+  for (const r of rows || []) {
+    if (r?.kind !== "corrida" || r?.training_type === "prova") continue;
+    const d = typeof r?.planned_date === "string" ? r.planned_date : null;
+    if (!d || !ISO_DATE_RE.test(d)) continue;
+    const day = new Date(d + "T00:00:00Z");
+    const monday = addDaysISO(d, -((day.getUTCDay() + 6) % 7));
+    weeks.set(monday, (weeks.get(monday) || 0) + (Number(r?.target_distance_km) || 0));
+  }
+  return Math.round(Math.max(0, ...weeks.values()) * 10) / 10;
+}
+
+/** A nota para a Carol quando o plano não chega ao volume do nível para a
+ *  prova: o hub vai mostrar o aviso, e ela tem de dizer porquê — não é o
+ *  atleta a falhar o plano. "" quando chega, ou sem nível ou distância. */
+export function planVolumeGapNote(
+  // deno-lint-ignore no-explicit-any
+  rows: any[],
+  race: { name?: string | null; distance_km?: number | string | null; experience_level?: string | null } | null,
+): string {
+  const km = Number(race?.distance_km);
+  const level = race?.experience_level ?? null;
+  const cat = km > 0 ? sharedCategorizeDistance(km) : null;
+  const needed = cat && level ? SHARED_MIN_VOLUME_KM[level]?.[cat] : null;
+  if (needed == null) return "";
+  const peak = planPeakWeeklyRunKm(rows);
+  if (peak >= needed) return "";
+  const levelLabel = EXPERIENCE_LEVEL_LABELS[level as string] || level;
+  return ` ATENÇÃO, VOLUME: a semana de corrida mais alta deste plano tem ${String(peak).replace(".", ",")} km, abaixo dos ` +
+    `${needed} km/semana que a app pede ao nível ${levelLabel} para «${race?.name ?? "esta prova"}» — o hub da prova vai mostrar ` +
+    `«Volume de treino insuficiente» mesmo que ele cumpra o plano todo. Não subas o volume para lá do limite seguro da carga. ` +
+    `Diz-lhe já, numa frase, que esse aviso vai aparecer e porquê (subir mais depressa aumenta o risco de lesão), e que pode ` +
+    `ajustar o nível declarado, a prioridade ou o objetivo da prova.`;
+}
+
 export async function runProposeTrainingPlan(
   // deno-lint-ignore no-explicit-any
   sb: any, userId: string, args: any, seriesIntents: Record<string, SeriesIntent> | null = null,
@@ -4219,8 +4310,20 @@ export async function runProposeTrainingPlan(
     return `Erro ao gravar os treinos do plano: ${itemsErr.message}`;
   }
 
+  // Bug #114: o plano que fica abaixo do volume do nível para a prova.
+  let volumeNote = "";
+  if (raceId) {
+    try {
+      const { data: race } = await sb.from("race_events").select("name, distance_km, experience_level").eq("id", raceId).eq("user_id", userId).maybeSingle();
+      volumeNote = planVolumeGapNote(rows, race ?? null);
+    } catch (e) {
+      console.warn("plano: prova não lida para o volume:", e instanceof Error ? e.message : e);
+    }
+  }
+
   return `Plano criado com ${rows.length} treino(s), de ${period_start} a ${period_end}. ` +
-    `Está pendente de aceitação — o atleta revê-o e decide aqui mesmo no Coach (aparece também no ecrã Home). Não o mandes para outro ecrã.`;
+    `Está pendente de aceitação — o atleta revê-o e decide aqui mesmo no Coach (aparece também no ecrã Home). Não o mandes para outro ecrã.` +
+    volumeNote;
 }
 
 // Limites de bom senso por campo — travam valores impossíveis para qualquer
@@ -5528,11 +5631,14 @@ export function buildRaceEventsContext(
         forecastSuffix = `\n  PREVISÃO DE TEMPO: ${parts.join("; ")}`;
 
         const raceElevationM = e.race_type === "trail" && e.elevation_gain_m > 0 ? e.elevation_gain_m : 0;
+        // Estrada pelos km, trail pelo tempo em pé e D+ (bug #113, 2026-11-06).
         const triage = assessRaceLevelTriage({
           runs: flattenedRuns,
           todayISO,
           raceTimeSecondsPrevisto: prediction.predictedSeconds,
           raceElevationM,
+          raceType: e.race_type ?? "estrada",
+          raceDistanceKm: Number(e.distance_km) || null,
         });
         if (triage.level != null) {
           const measuredLabel = levelBandLabel(triage.level);
@@ -5543,6 +5649,12 @@ export function buildRaceEventsContext(
           } else {
             triageSuffix = `\n  ⚠ NÍVEL MEDIDO pelo histórico de treino: ${measuredLabel} — diverge do declarado (${EXPERIENCE_LEVEL_LABELS[e.experience_level] || e.experience_level})`;
           }
+          // O porquê vai com o número: a Carol explica-o ao atleta (bug #113).
+          triageSuffix += triage.axis === "km" && triage.peakWeeklyKm != null
+            ? ` · medido pelos km: ${String(triage.peakWeeklyKm).replace(".", ",")} km na 2.ª semana mais alta das últimas 4`
+            : triage.peakTimeOnFeetSeconds != null
+              ? ` · medido pelo tempo em pé: ${Math.round(triage.peakTimeOnFeetSeconds / 60)} min na 2.ª semana mais alta das últimas 4`
+              : "";
         }
       }
     }
@@ -7542,27 +7654,33 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
     // micronutrientAverages sabe se um 0 é mesmo 0 (gravado depois de os
     // micronutrientes passarem a aceitar null) — sem ele a cobertura dos
     // "Micronutrientes hoje" fica sempre desconhecida.
-    const { data: mealsFromReadinessStart, error: err_weekMeals } = await sb
-      .from("meals")
-      .select(
-        "date, meal_type, created_at, meal_items(created_at, quantity_grams, calories_per_100g, protein_per_100g, carbs_per_100g, fat_per_100g, " +
-          "fiber_per_100g, sugar_per_100g, sodium_per_100g, iron_mg_per_100g, calcium_mg_per_100g, " +
-          "vitamin_c_mg_per_100g, potassium_mg_per_100g)",
-      )
-      .eq("user_id", userId)
-      .gte("date", mealsQueryStartISO)
-      .lte("date", todayISO);
+    // Em paralelo com as refeições, o objetivo calórico de cada dia
+    // (profile_goal_history, a mesma regra do ecrã — @formulas/goalHistory.ts,
+    // 2026-11-02): um dia julga-se completo ou parcial com o objetivo que
+    // valia nesse dia, não com o de hoje. Paralelo para não somar uma ida à
+    // base de dados à latência do chat (revisão do 197683ee).
+    const [
+      { data: mealsFromReadinessStart, error: err_weekMeals },
+      { data: goalHistoryRows, error: err_goalHistory },
+    ] = await Promise.all([
+      sb
+        .from("meals")
+        .select(
+          "date, meal_type, created_at, meal_items(created_at, quantity_grams, calories_per_100g, protein_per_100g, carbs_per_100g, fat_per_100g, " +
+            "fiber_per_100g, sugar_per_100g, sodium_per_100g, iron_mg_per_100g, calcium_mg_per_100g, " +
+            "vitamin_c_mg_per_100g, potassium_mg_per_100g)",
+        )
+        .eq("user_id", userId)
+        .gte("date", mealsQueryStartISO)
+        .lte("date", todayISO),
+      sb.from("profile_goal_history").select(GOAL_HISTORY_SELECT).eq("user_id", userId).order("valid_from", { ascending: true }),
+    ]);
     // A semana de sempre (hoje-6 .. hoje) para o resumo de hoje, o histórico
     // e os hábitos; a lista inteira (desde hoje-7) só vai para a prontidão e
     // para o painel de nutrição, que a cortam eles próprios.
     // deno-lint-ignore no-explicit-any
     const weekMeals = (mealsFromReadinessStart || []).filter((m: any) => typeof m?.date === "string" && m.date >= startISO);
 
-    // O objetivo calórico de cada dia (profile_goal_history, a mesma regra do
-    // ecrã — @formulas/goalHistory.ts, 2026-11-02): um dia julga-se completo
-    // ou parcial com o objetivo que valia nesse dia, não com o de hoje.
-    const { data: goalHistoryRows, error: err_goalHistory } = await sb
-      .from("profile_goal_history").select(GOAL_HISTORY_SELECT).eq("user_id", userId).order("valid_from", { ascending: true });
     if (err_goalHistory) console.warn("coach-chat: profile_goal_history não lido:", err_goalHistory.message);
     const calorieGoalFor = calorieGoalResolver(goalHistoryRows || [], profile, todayISO);
 
@@ -8847,6 +8965,8 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
     let geminiJson: Record<string, unknown> | undefined;
     // A repetição depois de um MAX_TOKENS vazio faz-se uma vez por pedido.
     let truncatedRetried = false;
+    // A correção de uma proposta dita e não enviada (bug #112), uma vez.
+    let proposalClaimRetried = false;
     // Quando começou a ronda em curso (o log mede cada uma).
     let roundStartedAt = Date.now();
     // Rondas 0..MAX_TOOL_ROUNDS-1 podem executar ferramentas; a ronda
@@ -8979,6 +9099,24 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
         finalSystemInstruction += "\n\n" + SHORTER_REPLY_RETRY_INSTRUCTION;
         round--;
         continue;
+      }
+
+      /* Bug #112: disse «enviei a proposta» sem chamar a ferramenta. Com ela
+         nas ferramentas e tempo para mais uma ronda, devolve-se-lhe a resposta
+         com a correção, uma vez: chama-a agora, ou responde sem o dizer. */
+      if (functionCalls.length === 0 && !isFinalRound && !proposalClaimRetried && hasTimeFor(chatDeadline)) {
+        const claim = claimedProposals(extractReplyText(parsedRes));
+        const missing = {
+          plan: claim.plan && !planWasProposed && toolNamesSent.includes("propose_training_plan"),
+          goals: claim.goals && !goalWasProposed && !goalsWereUpdated && toolNamesSent.includes("update_goals"),
+        };
+        if (missing.plan || missing.goals) {
+          proposalClaimRetried = true;
+          console.error("coach-chat: disse que enviou uma proposta sem chamar a ferramenta — a corrigir", JSON.stringify({ round, turnCase, ...missing }));
+          contents.push({ role: "model", parts });
+          contents.push({ role: "user", parts: [{ text: proposalClaimCorrection(missing) }] });
+          continue;
+        }
       }
 
       if (functionCalls.length === 0 || isFinalRound) {
@@ -9134,6 +9272,18 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
       return jsonResponse({
         error: lostReplyText(message, proactiveTrigger),
       }, 502);
+    }
+
+    // Bug #112: se mesmo depois da correção diz que enviou o que não enviou
+    // (ou não houve tempo para a correção), a frase sai — o atleta nunca vai
+    // procurar uma proposta que não existe.
+    {
+      const claim = claimedProposals(replyText);
+      const unsent = { plan: claim.plan && !planWasProposed, goals: claim.goals && !goalWasProposed && !goalsWereUpdated };
+      if (unsent.plan || unsent.goals) {
+        console.error("coach-chat: a frase da proposta não enviada saiu da resposta", JSON.stringify({ turnCase, ...unsent }));
+        replyText = stripProposalClaims(replyText, unsent);
+      }
     }
 
     // ── Guardar resposta do modelo ───────────────────────────────────────

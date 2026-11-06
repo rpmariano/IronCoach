@@ -3154,10 +3154,10 @@ Deno.test("buildRaceEventsContext: em estrada, o eixo de D+ fica desligado (D+ d
     [makeRaceEvent({ race_type: "estrada", elevation_gain_m: null, experience_level: "basico" })],
     TODAY_ISO, null, null, RUNS_MEDIDO_INICIANTE,
   );
-  // Sem o eixo de D+, o nível medido vem só do Tempo em Pé — dá "Médio" para
-  // esta combinação (previsão de tempo diferente da prova de trail acima,
-  // por não somar D+ à distância equivalente), não o "Iniciante" de lá.
-  assertStringIncludes(ctx!, "⚠ NÍVEL MEDIDO pelo histórico de treino: Médio — diverge do declarado (Básico)");
+  // Bug #113 (2026-11-06): em estrada o nível mede-se pelos km (MIN_VOLUME_KM),
+  // não pelo Tempo em Pé (doutrina de trail) — antes dava "Médio" aqui. Com
+  // 11,5 km na 2.ª semana mais alta, um 10 km fica Iniciante, e a Carol vê porquê.
+  assertStringIncludes(ctx!, "⚠ NÍVEL MEDIDO pelo histórico de treino: Iniciante — diverge do declarado (Básico) · medido pelos km: 11,5 km");
 });
 
 /* Bloco 8b — a previsão de tempo. Antes era calculada aqui só para aferir
@@ -6548,6 +6548,8 @@ Deno.test("dias parciais e o atleta ocasional (2026-11-01): a regra vai ao promp
 Deno.test("coach-chat: o objetivo calórico de cada dia vem do histórico de objetivos, como no ecrã (2026-11-02)", async () => {
   const src = await Deno.readTextFile(new URL("./index.ts", import.meta.url));
   assertStringIncludes(src, '.from("profile_goal_history").select(GOAL_HISTORY_SELECT)');
+  // Em paralelo com as refeições — não soma uma ida à BD à latência (revisão do 197683ee).
+  assertEquals(/await Promise\.all\(\[\s*sb\s*\.from\("meals"\)[\s\S]{0,800}?\.from\("profile_goal_history"\)/.test(src), true);
   assertStringIncludes(src, "const calorieGoalFor = calorieGoalResolver(goalHistoryRows || [], profile, todayISO);");
   assertStringIncludes(src, "{ calorieGoalFor },");
   assertEquals(/trainingTodayForReadiness,\s*calorieGoalFor,/.test(src), true);
@@ -6558,4 +6560,72 @@ Deno.test("coach-chat: o objetivo calórico de cada dia vem do histórico de obj
   const comODia = buildNutritionAnalyticsPanel(meals, [], [], [], { calorie_goal: 2400 }, "2026-10-04", 7, { calorieGoalFor: () => 2000 })!;
   assertStringIncludes(comHoje, "0 de 7 dias com registo completo");
   assertStringIncludes(comODia, "1 de 7 dias com registo completo");
+});
+
+import { claimedProposals, planPeakWeeklyRunKm, planVolumeGapNote, proposalClaimCorrection, stripProposalClaims } from "./index.ts";
+
+// Bug #112 (2026-11-06, 08:05): «Enviei a proposta de plano ajustada para
+// reveres e aceitares aqui mesmo no Coach» — sem chamar propose_training_plan.
+const RUI_0805 = "Como antecipaste o treino de ginásio para quarta-feira e não realizaste a sessão de quinta, ajustei os dias restantes para não acumulares fadiga a 48 horas da prova. Mantemos a ativação curta de 2 km para hoje, o descanso total amanhã e o foco absoluto nos 10 km de domingo.\n\nEnviei a proposta de plano ajustada para reveres e aceitares aqui mesmo no Coach.\n\nComo te estás a sentir fisicamente e o que motivou estas trocas de dias?";
+
+Deno.test("bug #112: claimedProposals apanha «enviei a proposta» de plano e de objetivos", () => {
+  assertEquals(claimedProposals(RUI_0805), { plan: true, goals: false });
+  assertEquals(claimedProposals("Enviei-te a proposta de objetivos para reveres."), { plan: false, goals: true });
+  assertEquals(claimedProposals("Já te enviei uma nova proposta."), { plan: true, goals: false });
+  // Falar de uma proposta sem dizer que a enviou não conta.
+  assertEquals(claimedProposals("Queres que te proponha um plano? A proposta pode esperar."), { plan: false, goals: false });
+  assertEquals(claimedProposals(null), { plan: false, goals: false });
+});
+
+Deno.test("bug #112: stripProposalClaims tira só a frase da proposta não enviada", () => {
+  const out = stripProposalClaims(RUI_0805, { plan: true, goals: false });
+  assertEquals(out.includes("Enviei a proposta"), false);
+  assertStringIncludes(out, "Mantemos a ativação curta de 2 km para hoje");
+  assertStringIncludes(out, "Como te estás a sentir fisicamente");
+  // A dos objetivos fica se só o plano não foi enviado.
+  assertStringIncludes(stripProposalClaims("Enviei a proposta de objetivos. Enviei a proposta de plano.", { plan: true, goals: false }), "objetivos");
+  // Nunca fica vazio.
+  assertEquals(stripProposalClaims("Enviei a proposta de plano.", { plan: true, goals: false }), "Enviei a proposta de plano.");
+  assertStringIncludes(proposalClaimCorrection({ plan: true, goals: false }), "chama propose_training_plan agora");
+});
+
+Deno.test("bug #112: o ciclo corrige uma vez e a resposta final perde a frase se ainda a tiver", async () => {
+  const src = await Deno.readTextFile(new URL("./index.ts", import.meta.url));
+  assertStringIncludes(src, "contents.push({ role: \"user\", parts: [{ text: proposalClaimCorrection(missing) }] });");
+  assertStringIncludes(src, "replyText = stripProposalClaims(replyText, unsent);");
+});
+
+// Bug #114: o plano aceite do Rui (corrida, km por semana de treino).
+const RUI_PLAN = [
+  { planned_date: "2026-10-20", kind: "corrida", training_type: "continuo", target_distance_km: 5 },
+  { planned_date: "2026-10-22", kind: "corrida", training_type: "continuo", target_distance_km: 6 },
+  { planned_date: "2026-10-23", kind: "corrida", training_type: "recuperacao", target_distance_km: 4 },
+  { planned_date: "2026-10-25", kind: "corrida", training_type: "prova", target_distance_km: 10 },
+  { planned_date: "2026-10-28", kind: "corrida", training_type: "continuo", target_distance_km: 5 },
+  { planned_date: "2026-10-30", kind: "corrida", training_type: "continuo", target_distance_km: 6 },
+  { planned_date: "2026-11-01", kind: "corrida", training_type: "recuperacao", target_distance_km: 3.5 },
+  { planned_date: "2026-10-27", kind: "ginasio", training_type: null, target_distance_km: null },
+];
+
+Deno.test("bug #114: planPeakWeeklyRunKm — a semana de treino mais alta, sem as provas", () => {
+  assertEquals(planPeakWeeklyRunKm(RUI_PLAN), 15); // 20–25 out: 5 + 6 + 4 (a prova de 10 km não conta)
+  assertEquals(planPeakWeeklyRunKm([]), 0);
+});
+
+Deno.test("bug #114: planVolumeGapNote — a Carol avisa quando o plano fica abaixo do volume do nível", () => {
+  const meia = { name: "Meia dos Descobrimentos", distance_km: 21.0975, experience_level: "basico" };
+  const note = planVolumeGapNote(RUI_PLAN, meia);
+  assertStringIncludes(note, "15 km, abaixo dos 35 km/semana");
+  assertStringIncludes(note, "«Volume de treino insuficiente»");
+  assertStringIncludes(note, "Não subas o volume para lá do limite seguro da carga");
+  // Chega ao volume, sem nível ou sem prova: nada.
+  assertEquals(planVolumeGapNote(RUI_PLAN, { ...meia, distance_km: 5, experience_level: "iniciante" }), ""); // 5 km iniciante: 10
+  assertEquals(planVolumeGapNote(RUI_PLAN, { ...meia, experience_level: null }), "");
+  assertEquals(planVolumeGapNote(RUI_PLAN, null), "");
+});
+
+Deno.test("bug #113: o nível medido pela Carol passa a disciplina e a distância à triagem", async () => {
+  const src = await Deno.readTextFile(new URL("./index.ts", import.meta.url));
+  assertStringIncludes(src, 'raceType: e.race_type ?? "estrada",');
+  assertStringIncludes(src, "raceDistanceKm: Number(e.distance_km) || null,");
 });

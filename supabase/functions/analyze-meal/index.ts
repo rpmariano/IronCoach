@@ -37,6 +37,7 @@ import {
 } from "./variants.ts";
 import { foodKey } from "../_shared/formulas/foodKey.ts";
 import { nextTimeAdditionsSection, withButterQuestions } from "./optionalAdditions.ts";
+import { alignItems, alignPhotoAndWritten, mismatchMeta } from "./itemAlignment.ts";
 import { NOTES_EMPTY_MESSAGE, NOTES_ITEMS_SCHEMA, notesAreAnalyzable, notesItemsPrompt, parseNotesItems } from "./notesItems.ts";
 import { isWalk } from "../_shared/formulas/runKinds.ts";
 
@@ -245,8 +246,8 @@ const QUESTIONS_RULE =
   "lista que ele tem guardada. EXCEÇÃO — os ingredientes de confeção opcionais (manteiga, margarina, azeite, óleo, " +
   "molhos, maionese): se um alimento desta refeição os pode levar e as observações não dizem, pergunta SEMPRE, " +
   "mesmo num alimento guardado e mesmo que ele já tenha respondido noutra refeição — nunca os assumas do que foi " +
-  "antes. Uma só pergunta por ingrediente e alimento (nunca \"levou manteiga?\" e \"quanta manteiga?\" na mesma " +
-  "refeição). Na estimativa, usa o mais provável e diz qual foi em assumed. Cada pergunta: kind, " +
+  "antes — sempre como pergunta, NUNCA como um item à parte em items. Uma só pergunta por ingrediente e alimento " +
+  "(nunca \"levou manteiga?\" e \"quanta manteiga?\" na mesma refeição). Na estimativa, usa o mais provável e diz qual foi em assumed. Cada pergunta: kind, " +
   "topic (o tema, curto e SEMPRE com o prato ou alimento a que se aplica: \"tempero da salada\", \"ovos fritos\" — nunca só " +
   "\"tempero\" ou \"azeite\"; numa de quantidade, o alimento e o prato: \"azeite na salada\", \"manteiga no pão\"), " +
   "item_name (o nome EXATO do item " +
@@ -283,7 +284,9 @@ export function buildPhotosAndItemsPrompt(items: { name: string; grams: number |
     "\n\nAlém das fotos, o utilizador escreveu estes alimentos desta refeição:\n" +
     `${writtenItemsList(items)}\n\n` +
     "Como juntar as duas fontes:\n" +
-    "- Devolve um item para CADA alimento escrito, com source_index igual ao número dele na lista acima. " +
+    "- Devolve UM item para CADA alimento escrito, com source_index igual ao número dele na lista acima — nunca " +
+    "partas um alimento escrito em vários itens (\"pão com manteiga\" é um item só) nem acrescentes como item um " +
+    "ingrediente que não está na lista (a manteiga, o azeite, o molho vão para as perguntas). " +
     "O que o utilizador escreveu vale mais do que o que vês: se um alimento escrito também aparece nas fotos, " +
     "é o MESMO alimento — devolve-o uma vez só, com o source_index dele, e não o repitas como alimento das fotos.\n" +
     "- Para cada alimento das fotos que NÃO está na lista escrita, devolve um item com source_index 0.\n" +
@@ -305,34 +308,49 @@ export function buildPhotosAndItemsPrompt(items: { name: string; grams: number |
 // Repõe os alimentos escritos pelo source_index: o nome é o que o atleta
 // escreveu e as gramas, quando as deu, também (o Gemini só dá os valores).
 // Os das fotos vêm primeiro, como na foto; os escritos a seguir. Um índice
-// repetido é o mesmo alimento escrito duas vezes — fica o primeiro. null se
-// faltar algum dos escritos (quem chama trata como falha da análise).
-export function mergePhotoAndWrittenItems<T extends { quantity_grams: number; source_index?: number }>(
+// repetido é o mesmo alimento escrito duas vezes — fica o primeiro; as partes
+// de um composto juntam-se, e um escrito sem índice fica com o item das fotos
+// do mesmo nome (alignPhotoAndWritten, 2026-11-04). null se ainda faltar
+// algum dos escritos (quem chama refá-los — analyzePhotosWithItems).
+export function mergePhotoAndWrittenItems<T extends { name: string; quantity_grams: number; source_index?: number }>(
   raw: T[],
   written: { name: string; grams: number | null }[],
 ): Omit<T, "source_index">[] | null {
-  const byIndex = new Map<number, Omit<T, "source_index">>();
-  const fromPhotos: Omit<T, "source_index">[] = [];
-  for (const { source_index, ...item } of raw) {
-    const idx = Number(source_index);
-    if (Number.isInteger(idx) && idx >= 1 && idx <= written.length) {
-      if (!byIndex.has(idx)) byIndex.set(idx, item);
-    } else {
-      fromPhotos.push(item);
-    }
-  }
-  if (byIndex.size !== written.length) return null;
-  const fromWritten = written.map((w, i) => {
-    const est = byIndex.get(i + 1)!;
+  const a = alignPhotoAndWritten(raw, written);
+  if (a.items.some((x) => !x)) return null;
+  return [...a.fromPhotos, ...withWrittenNames(a.items as Omit<T, "source_index">[], written)];
+}
+
+/** Os itens dos alimentos escritos com o nome e as gramas do atleta. */
+function withWrittenNames<T extends { quantity_grams: number }>(items: T[], written: { name: string; grams: number | null }[]) {
+  return written.map((w, i) => ({
+    ...items[i], name: w.name.slice(0, 120), quantity_grams: w.grams != null ? w.grams : items[i].quantity_grams,
     // grams_explicit: o atleta deu as gramas — não se lhe pergunta a quantidade
     // (parseQuestions). Não é coluna: pickMealItem deixa-o de fora.
-    return {
-      ...est, name: w.name.slice(0, 120), quantity_grams: w.grams != null ? w.grams : est.quantity_grams,
-      ...(w.grams != null ? { grams_explicit: true } : {}),
-    };
-  });
-  return [...fromPhotos, ...fromWritten];
+    ...(w.grams != null ? { grams_explicit: true } : {}),
+  }));
 }
+
+/** Quando os itens não batem certo com o que se pediu: para o próximo
+ *  diagnóstico, só contagens e nomes de alimentos (mismatchMeta). Nunca
+ *  rejeita — um log que falha não pode partir a gravação. */
+// deno-lint-ignore no-explicit-any
+export function logItemsMismatch(sb: any, userId: string, meta: Record<string, unknown>): void {
+  try {
+    sb.from("app_logs").insert({
+      user_id: userId,
+      level: meta.outcome === "falhou" ? "error" : "info",
+      event: "analyze-meal",
+      message: "Itens da estimativa não batem certo com os pedidos",
+      meta,
+    }).then(({ error }: { error: { message: string } | null }) => {
+      if (error) console.warn("app_logs (analyze-meal) não gravado:", error.message);
+    }, () => {});
+  } catch (_) { /* nunca rejeita */ }
+}
+
+/** Quem quer saber de um desencontro (o handler passa logItemsMismatch). */
+type ReportMismatch = ((meta: Record<string, unknown>) => void) | undefined;
 
 // Prompt para o registo manual de texto (sem foto): o utilizador só indica
 // nome de CADA alimento (uma lista, adicionada localmente no cliente sem
@@ -370,7 +388,10 @@ export function buildManualItemsPrompt(items: { name: string; grams: number | nu
   prompt += knowledge + cookingFactsRule(notes) + QUESTIONS_RULE + "\nSem fotos: from_label=false em todos os itens.\n";
   prompt +=
     '\nDevolve exatamente um item no array "items" para CADA alimento da lista, pela MESMA ' +
-    "ORDEM em que aparecem acima. Responde apenas com JSON estruturado conforme o schema.";
+    "ORDEM em que aparecem acima — nem mais nem menos. Nunca partas um alimento da lista em vários itens " +
+    '("pão com manteiga", "tosta mista" ou "arroz de pato" são UM item cada) e nunca acrescentes como item ' +
+    "um ingrediente que não está na lista: a manteiga, o azeite ou o molho que um alimento pode levar vão para " +
+    "as perguntas (questions), não para items. Responde apenas com JSON estruturado conforme o schema.";
   return prompt;
 }
 
@@ -582,7 +603,7 @@ async function analyzeWithGemini(
 // Fotos + alimentos escritos numa só chamada (bug #47). Os escritos voltam
 // com o nome e as gramas do atleta (mergePhotoAndWrittenItems); faltando
 // algum, a análise falha como as outras — "Tentar de novo" repete-a.
-async function analyzePhotosWithItems(
+export async function analyzePhotosWithItems(
   images: string[],
   mime: string,
   written: { name: string; grams: number | null }[],
@@ -590,6 +611,7 @@ async function analyzePhotosWithItems(
   geminiKey: string,
   deadline = Number.POSITIVE_INFINITY,
   knowledge = "",
+  report: ReportMismatch = undefined,
   // deno-lint-ignore no-explicit-any
 ): Promise<{ items: any[]; usage: GeminiUsage; facts: CookingFact[]; questions: unknown }> {
   const parts: unknown[] = [{ text: buildPhotosAndItemsPrompt(written, notes, knowledge) }];
@@ -605,23 +627,40 @@ async function analyzePhotosWithItems(
     deadline,
     RESPONSE_SCHEMA_WITH_SOURCE,
   );
-  const items = mergePhotoAndWrittenItems(raw, written);
-  if (!items) {
-    throw new Error("A análise não devolveu todos os alimentos que escreveste. Tenta novamente.");
+  // Os escritos emparelhados (alignPhotoAndWritten, 2026-11-04): as partes de
+  // um composto juntas, um repetido uma vez, um sem índice pelo nome.
+  const a = alignPhotoAndWritten(raw, written);
+  const missing = a.items.map((x, i) => (x ? -1 : i)).filter((i) => i >= 0);
+  const meta = (outcome: "emparelhado" | "refeitos" | "falhou") =>
+    mismatchMeta("fotos", written.length, raw, { items: a.items, extras: [], combined: a.combined, moved: a.moved }, outcome);
+  if (!missing.length && (a.combined || a.moved)) report?.(meta("emparelhado"));
+  let allUsage = usage;
+  // deno-lint-ignore no-explicit-any
+  let extraQuestions: any[] = [];
+  if (missing.length) {
+    // Os que faltam, numa chamada curta só de texto (sem refazer as fotos).
+    // Sem tempo para ela, ou se também falhar, falha como antes.
+    if (!hasTimeFor(deadline)) {
+      report?.(meta("falhou"));
+      throw new Error("A análise não devolveu todos os alimentos que escreveste. Tenta novamente.");
+    }
+    try {
+      const redo = await analyzeManualItems(missing.map((i) => written[i]), notes, geminiKey, deadline, knowledge, undefined, false);
+      missing.forEach((i, j) => (a.items[i] = redo.items[j]));
+      allUsage = addUsage(allUsage, redo.usage);
+      if (Array.isArray(redo.questions)) extraQuestions = redo.questions;
+    } catch (e) {
+      report?.(meta("falhou"));
+      throw e;
+    }
+    report?.(meta("refeitos"));
   }
-  // Os escritos ficam com o nome do atleta — as perguntas seguem-no. Só o
-  // primeiro de cada source_index, como em mergePhotoAndWrittenItems.
-  const seen = new Set<number>();
-  const pairs = raw
-    .filter((r) => {
-      const i = Number(r.source_index);
-      if (!Number.isInteger(i) || i < 1 || i > written.length || seen.has(i)) return false;
-      seen.add(i);
-      return true;
-    })
-    .map((r): [string, string] => [String(r.name), written[Number(r.source_index) - 1].name.slice(0, 120)]);
+  // deno-lint-ignore no-explicit-any
+  const items = [...a.fromPhotos, ...withWrittenNames(a.items as any[], written)];
+  // Os escritos ficam com o nome do atleta — as perguntas seguem-no.
   const finalNames = items.map((it) => String((it as { name?: unknown }).name ?? ""));
-  return { items, usage, facts, questions: remapQuestionItems(questions, pairs, finalNames) };
+  const allQuestions = [...(Array.isArray(questions) ? remapQuestionItems(questions, a.pairs, finalNames) as unknown[] : []), ...extraQuestions];
+  return { items, usage: allUsage, facts, questions: allQuestions };
 }
 
 // Bug #48 (fase C): um alimento que o atleta adiciona à despensa — por
@@ -744,12 +783,15 @@ const MAX_WRITTEN_ITEMS = 30;
 // texto, sem imagens, por isso cada tentativa é rápida — dá para tentar mais
 // vezes quando a chamada fica presa. O prazo do pedido (deadline) corta as
 // tentativas antes do que a app espera pela resposta.
-async function analyzeManualItems(
+export async function analyzeManualItems(
   items: { name: string; grams: number | null }[],
   notes: string | null,
   geminiKey: string,
   deadline = Number.POSITIVE_INFINITY,
   knowledge = "",
+  report: ReportMismatch = undefined,
+  // Refazer, numa chamada curta, os alimentos que faltarem (uma vez só).
+  redoMissing = true,
   // deno-lint-ignore no-explicit-any
 ): Promise<{ items: any[]; usage: GeminiUsage; facts: CookingFact[]; questions: unknown }> {
   const parts: unknown[] = [{ text: buildManualItemsPrompt(items, notes, knowledge) }];
@@ -761,17 +803,42 @@ async function analyzeManualItems(
     30000,
     deadline,
   );
-  if (rawItems.length !== items.length) {
-    throw new Error("A estimativa não devolveu todos os alimentos pedidos. Tenta novamente.");
+  // Um item a mais ou a menos já não impede a gravação (2026-11-04,
+  // itemAlignment.ts): pelo nome, as partes de um composto juntas, os
+  // ingredientes acrescentados fora; os que faltam, refeitos à parte.
+  const a = alignItems(rawItems, items);
+  const missing = a.items.map((x, i) => (x ? -1 : i)).filter((i) => i >= 0);
+  const meta = (outcome: "emparelhado" | "refeitos" | "falhou") => mismatchMeta("manual", items.length, rawItems, a, outcome);
+  if (!missing.length && rawItems.length !== items.length) report?.(meta("emparelhado"));
+  let allUsage = usage;
+  // deno-lint-ignore no-explicit-any
+  let extraQuestions: any[] = [];
+  if (missing.length) {
+    // Sem a chamada curta (já é ela, ou não há tempo), falha como antes.
+    if (!redoMissing || !hasTimeFor(deadline)) {
+      report?.(meta("falhou"));
+      throw new Error("A estimativa não devolveu todos os alimentos pedidos. Tenta novamente.");
+    }
+    try {
+      const redo = await analyzeManualItems(missing.map((i) => items[i]), notes, geminiKey, deadline, knowledge, undefined, false);
+      missing.forEach((i, j) => (a.items[i] = redo.items[j]));
+      allUsage = addUsage(allUsage, redo.usage);
+      if (Array.isArray(redo.questions)) extraQuestions = redo.questions;
+    } catch (e) {
+      report?.(meta("falhou"));
+      throw e;
+    }
+    report?.(meta("refeitos"));
   }
-  const merged = rawItems.map((it, i) => ({
+  // deno-lint-ignore no-explicit-any
+  const merged = (a.items as any[]).map((it, i) => ({
     ...it,
     name: items[i].name.slice(0, 120),
     quantity_grams: items[i].grams != null ? items[i].grams : it.quantity_grams,
   }));
   // O nome passa a ser o escrito — as perguntas seguem-no.
-  const pairs = rawItems.map((it, i): [string, string] => [String(it.name), items[i].name.slice(0, 120)]);
-  return { items: merged, usage, facts, questions: remapQuestionItems(questions, pairs, merged.map((m) => m.name)) };
+  const mainQuestions = Array.isArray(questions) ? remapQuestionItems(questions, a.pairs, merged.map((m) => m.name)) as unknown[] : [];
+  return { items: merged, usage: allUsage, facts, questions: [...mainQuestions, ...extraQuestions] };
 }
 
 // Espelha DIETARY_RESTRICTION_INFO em supabase/functions/coach-chat/index.ts
@@ -1607,7 +1674,7 @@ Deno.serve(withUsageRecording("analyze-meal", async (req) => {
         try {
           est = await analyzeManualItems(
             written, [meal.notes, answersNote].filter(Boolean).join("\n"), geminiKey, extractionDeadline,
-            knowledgeSection(pantry.foods, pantry.rules, pantry.variants),
+            knowledgeSection(pantry.foods, pantry.rules, pantry.variants), (m) => logItemsMismatch(sb, userId, m),
           );
         } catch (e) {
           return jsonResponse({ error: e instanceof Error ? e.message : "Falha na estimativa." }, 502);
@@ -1752,6 +1819,7 @@ Deno.serve(withUsageRecording("analyze-meal", async (req) => {
         if (unknown.length) {
           const est = await analyzeManualItems(
             unknown.map((u) => u.item), rawNotes, geminiKey, extractionDeadline, knowledgeSection(pantry.foods, pantry.rules, pantry.variants),
+            (m) => logItemsMismatch(sb, userId, m),
           );
           const byIndex = new Map(unknown.map((u, i) => [u.index, u.food ? withPantryValues(est.items[i], u.food, u.pending) : est.items[i]]));
           // grams_explicit: as gramas são do atleta — sem pergunta de quantidade.
@@ -1975,7 +2043,7 @@ Deno.serve(withUsageRecording("analyze-meal", async (req) => {
     let variantsOut: ReturnType<typeof resolveVariants> = { items: [], questions: [], renames: [] };
     try {
       ({ items, usage, facts, questions: rawQuestions } = written.length
-        ? await analyzePhotosWithItems(images, mime, written, rawNotes, geminiKey, extractionDeadline, knowledge)
+        ? await analyzePhotosWithItems(images, mime, written, rawNotes, geminiKey, extractionDeadline, knowledge, (m) => logItemsMismatch(sb, userId, m))
         : await analyzeWithGemini(images, mime, rawNotes, geminiKey, extractionDeadline, knowledge));
       // Bug #87: as variantes primeiro — uma variante nova fica com os valores
       // que o modelo estimou para ela, não com os do genérico da despensa.
