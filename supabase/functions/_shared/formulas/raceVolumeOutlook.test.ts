@@ -64,6 +64,21 @@ Deno.test("raceVolumeOutlook: chega quando o projetado chega ao do nível", () =
   assertEquals([ok.recommendedWeeklyKm, ok.status], [15, "chega"]);
 });
 
+Deno.test("raceVolumeOutlook: semanas por planear não contam como zero (revisão do lote e3901569)", () => {
+  // Só a primeira semana planeada (até 13-11): a meia de 29 nov fica por planear,
+  // não «abaixo» — as semanas de 14 a 28 ainda podem somar.
+  const week1 = PLAN.filter((i) => i.planned_date <= "2026-11-13");
+  const o = raceVolumeOutlook({ race: CAL.meia29, runs: RUI_RUNS, planItems: week1, todayISO: TODAY, plannedUntilISO: "2026-11-13" });
+  assertEquals([o.status, o.projectedWeeklyKm, o.gapKm, o.currentWeeklyKm, o.recommendedWeeklyKm], ["por_planear", null, 0, 15.9, 35]);
+  // Sem plano nenhum, o mesmo.
+  assertEquals(raceVolumeOutlook({ race: CAL.meia29, runs: RUI_RUNS, todayISO: TODAY }).status, "por_planear");
+  // O que já se sabe chega: «chega», com esse mínimo como projetado.
+  const easy = raceVolumeOutlook({ race: { ...CAL.meia29, distance_km: 5, experience_level: "iniciante" }, runs: RUI_RUNS, planItems: week1, todayISO: TODAY, plannedUntilISO: "2026-11-13" });
+  assertEquals([easy.status, easy.recommendedWeeklyKm, easy.projectedWeeklyKm], ["chega", 10, 18.9]);
+  // Com o plano até à prova (period_end = dia da prova), a leitura completa.
+  assertEquals(raceVolumeOutlook({ race: CAL.meia29, runs: RUI_RUNS, planItems: PLAN, todayISO: TODAY, plannedUntilISO: "2026-11-29" }).status, "abaixo");
+});
+
 Deno.test("guarda de carga com base baixa: o plano do Rui com corridas úteis entre provas passa", () => {
   const v = planLoadViolations({ runs: RUI_RUNS, fixedItems: [], proposedItems: PLAN, today: TODAY });
   assertEquals(v, []);

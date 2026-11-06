@@ -48,12 +48,15 @@ export interface RaceVolumeOutlook {
   /** O que o nível declarado pede para a distância (MIN_VOLUME_KM). */
   recommendedWeeklyKm: number | null;
   /** A mesma leitura na véspera da prova, com o plano aceite cumprido. null
-   *  sem plano para lá de hoje (aí conta o de hoje). */
+   *  com a prova já amanhã ou hoje (aí conta o de hoje), ou com semanas antes
+   *  dela ainda por planear (status «por_planear»). */
   projectedWeeklyKm: number | null;
-  /** «chega»: o projetado (ou o de hoje) chega ao recomendado; «abaixo»: não
-   *  chega — uma leitura, não uma falha; «sem_dados»: sem nível, distância
+  /** «chega»: o projetado chega ao recomendado; «abaixo»: não chega — uma
+   *  leitura, não uma falha; «por_planear»: há semanas antes da prova sem
+   *  plano e o que já se sabe ainda não chega — não se dá um «abaixo» que as
+   *  semanas por planear podem desmentir; «sem_dados»: sem nível, distância
    *  ou histórico. */
-  status: "chega" | "abaixo" | "sem_dados";
+  status: "chega" | "abaixo" | "por_planear" | "sem_dados";
   /** Quanto falta, em km/semana (0 quando chega). */
   gapKm: number;
   /** O sinal positivo, só para o texto: o nível que o ritmo já tem (o melhor
@@ -96,6 +99,16 @@ export function secondHighestWeeklyKm(days: DayKm[], asOfISO: string): number | 
   return Math.round(sorted[1] * 10) / 10;
 }
 
+/** A 2.ª semana mais alta das 4, sem mínimo de semanas com corridas. */
+function secondHighestRaw(days: DayKm[], asOfISO: string): number {
+  const weeks = [0, 1, 2, 3].map((w) => {
+    const end = addDaysISO(asOfISO, -7 * w);
+    const start = addDaysISO(end, -6);
+    return days.filter((d) => d.date >= start && d.date <= end && d.km > 0).reduce((s, d) => s + d.km, 0);
+  }).sort((a, b) => b - a);
+  return Math.round(weeks[1] * 10) / 10;
+}
+
 /** Os km que um item de corrida do plano soma: os indicados, ou pela duração
  *  a 6 min/km. Caminhadas, cancelados e feitos (já estão nas corridas) fora. */
 function plannedKm(i: OutlookPlanItem): number {
@@ -110,9 +123,18 @@ function plannedKm(i: OutlookPlanItem): number {
  * (caminhadas saem); `planItems` os treinos do plano aceite — os de hoje em
  * diante contam como feitos na projeção, as provas antes desta incluídas (a
  * carga é real), a própria prova não (é no dia dela, fora da semana).
+ *
+ * `plannedUntilISO`: o último dia que o plano cobre (o period_end). Sem ele,
+ * o último planned_date dos itens. Os dias depois disso estão por planear e
+ * não contam como zero: se a véspera da prova fica para lá dele, a leitura só
+ * diz «chega» quando o que já se sabe chega (é um mínimo — semanas por
+ * planear só podem somar); senão é «por_planear», nunca um «abaixo» falso.
  */
 export function raceVolumeOutlook(
-  { race, runs, planItems, todayISO }: { race: OutlookRace; runs: OutlookRun[] | null | undefined; planItems?: OutlookPlanItem[] | null; todayISO: string },
+  { race, runs, planItems, todayISO, plannedUntilISO }: {
+    race: OutlookRace; runs: OutlookRun[] | null | undefined; planItems?: OutlookPlanItem[] | null; todayISO: string;
+    plannedUntilISO?: string | null;
+  },
 ): RaceVolumeOutlook {
   const km = Number(race?.distance_km);
   const category = km > 0 ? categorizeDistance(km) : null;
@@ -131,21 +153,37 @@ export function raceVolumeOutlook(
     .filter((i) => !eve || i.planned_date <= eve)
     .map((i) => ({ date: i.planned_date, km: plannedKm(i) }))
     .filter((d) => d.km > 0);
-  const projected = eve && eve > todayISO && future.length ? secondHighestWeeklyKm([...done, ...future], eve) : null;
+  const lastPlanned = (planItems || []).reduce((m, i) => (typeof i?.planned_date === "string" && i.planned_date > m ? i.planned_date : m), "");
+  const until = plannedUntilISO ?? (lastPlanned || null);
+  const horizon = until && until > todayISO ? until : todayISO;
+  const raceAhead = !!eve && eve > todayISO;
+  const planned = raceAhead && horizon >= eve!;
+  const projected = planned ? secondHighestWeeklyKm([...done, ...future], eve!) : null;
+  // Por planear: o mínimo que já se sabe (os dias sem plano a zero, sem a
+  // regra das 3 semanas — é só um piso).
+  const floor = raceAhead && !planned ? secondHighestRaw([...done, ...future], eve!) : null;
 
   // O sinal positivo do ritmo: o melhor VDOT das últimas 12 semanas.
   const since = addDaysISO(todayISO, -84);
   const recent = computeVdotTrend(runs || []).filter((p) => p.date >= since && p.date <= todayISO);
   const best = recent.reduce<{ vdot: number; date: string } | null>((b, p) => (!b || p.vdot > b.vdot ? { vdot: p.vdot, date: p.date } : b), null);
 
-  const reading = projected ?? current;
-  const status = recommended == null || reading == null ? "sem_dados" : reading >= recommended ? "chega" : "abaixo";
+  let status: RaceVolumeOutlook["status"];
+  let reading: number | null;
+  if (recommended == null) { status = "sem_dados"; reading = null; }
+  else if (raceAhead && !planned) {
+    reading = floor != null && floor >= recommended ? floor : null;
+    status = reading != null ? "chega" : current == null ? "sem_dados" : "por_planear";
+  } else {
+    reading = projected ?? current;
+    status = reading == null ? "sem_dados" : reading >= recommended ? "chega" : "abaixo";
+  }
   return {
     category,
     level,
     currentWeeklyKm: current,
     recommendedWeeklyKm: recommended,
-    projectedWeeklyKm: projected,
+    projectedWeeklyKm: planned ? projected : status === "chega" ? reading : null,
     status,
     gapKm: status === "abaixo" ? Math.round((recommended! - reading!) * 10) / 10 : 0,
     vdot: best ? Math.round(best.vdot * 10) / 10 : null,
