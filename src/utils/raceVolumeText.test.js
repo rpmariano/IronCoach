@@ -17,6 +17,12 @@ describe('volumeReadingText', () => {
 });
 
 describe('volumeReadingNote', () => {
+  it('por planear: só a linha neutra (com ou sem plano), nunca «para completar» nem o ritmo', () => {
+    const pp = { ...base, status: 'por_planear', projectedWeeklyKm: null, gapKm: 0 };
+    expect(volumeReadingNote({ ...pp, hasPlan: true })).toBe('O plano ainda não chega à semana da prova.');
+    expect(volumeReadingNote({ ...pp, hasPlan: false })).toBe('Ainda não há plano até à semana da prova.');
+    expect(volumeReadingText(pp)).toBe('Corres 12 km/semana · a meia pede 35.');
+  });
   it('abaixo: «para completar, não para fazer tempo», nunca uma falha; e o ritmo acima como coisa boa', () => {
     const n = volumeReadingNote(base);
     expect(n).toContain('para completar, não para fazer tempo');
@@ -33,13 +39,25 @@ describe('outlookForRace', () => {
   const TODAY = '2026-11-06';
   const runs = ['2026-10-14', '2026-10-21', '2026-10-28', '2026-11-04'].map((date) => ({ date, distance_km: 12 }));
   const race = { date: '2026-11-29', distance_km: 21.1, experience_level: 'basico' };
+  const items = ['2026-11-16', '2026-11-18', '2026-11-20', '2026-11-22', '2026-11-24', '2026-11-26'].map((d, i) => ({ plan_id: 'p1', planned_date: d, kind: 'corrida', status: 'pendente', target_distance_km: 8 + i }));
   it('só os itens dos planos aceites contam na projeção; o nível cai para o do perfil', () => {
-    const items = ['2026-11-16', '2026-11-18', '2026-11-20', '2026-11-22', '2026-11-24', '2026-11-26'].map((d, i) => ({ plan_id: 'p1', planned_date: d, kind: 'corrida', status: 'pendente', target_distance_km: 8 + i }));
-    const aceite = outlookForRace({ race, runs, coachPlans: [{ id: 'p1', status: 'aceite' }], coachPlanItems: items, todayISO: TODAY });
-    const proposto = outlookForRace({ race, runs, coachPlans: [{ id: 'p1', status: 'proposto' }], coachPlanItems: items, todayISO: TODAY });
+    const aceite = outlookForRace({ race, runs, coachPlans: [{ id: 'p1', status: 'aceite', period_end: '2026-11-29' }], coachPlanItems: items, todayISO: TODAY });
+    const proposto = outlookForRace({ race, runs, coachPlans: [{ id: 'p1', status: 'proposto', period_end: '2026-11-29' }], coachPlanItems: items, todayISO: TODAY });
     expect(aceite.projectedWeeklyKm).toBeGreaterThan(0);
+    expect(aceite.status).toBe('abaixo');
+    expect(aceite.hasPlan).toBe(true);
     expect(proposto.projectedWeeklyKm).toBeNull();
+    expect(proposto.status).toBe('por_planear');
+    expect(proposto.hasPlan).toBe(false);
     expect(outlookForRace({ race: { ...race, experience_level: null }, profile: { experience_level: 'medio' }, runs, todayISO: TODAY }).level).toBe('medio');
+  });
+  it('plannedUntilISO é o period_end mais tardio dos planos aceites: antes da semana da prova, «por_planear»', () => {
+    const curto = outlookForRace({ race, runs, coachPlans: [{ id: 'p1', status: 'aceite', period_end: '2026-11-22' }, { id: 'p0', status: 'aceite', period_end: '2026-11-15T00:00:00' }], coachPlanItems: items.slice(0, 4), todayISO: TODAY });
+    expect(curto.status).toBe('por_planear');
+    expect(curto.projectedWeeklyKm).toBeNull();
+    expect(volumeReadingNote(curto)).toBe('O plano ainda não chega à semana da prova.');
+    const cadeia = outlookForRace({ race, runs, coachPlans: [{ id: 'p0', status: 'aceite', period_end: '2026-11-15' }, { id: 'p1', status: 'aceite', period_end: '2026-11-29' }], coachPlanItems: items, todayISO: TODAY });
+    expect(cadeia.status).not.toBe('por_planear');
   });
   it('sem data ou distância, nada', () => {
     expect(outlookForRace({ race: { date: null, distance_km: 10 }, runs, todayISO: TODAY })).toBeNull();

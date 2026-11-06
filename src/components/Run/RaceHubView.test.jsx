@@ -806,10 +806,13 @@ describe('RaceHubView — volume até à prova (#113/#114)', () => {
   const meia = { id: 'race-2', name: 'Meia dos Descobrimentos', date: futureISO(70), distance_km: 21.1, race_type: 'estrada', race_priority: 'a', status: 'agendada', experience_level: 'basico', created_at: new Date().toISOString() };
   const poucos = [2, 5, 9, 12, 16, 19, 23, 26].map((n, i) => ({ id: `v${i}`, kind: 'treino', training_type: 'continuo', date: pastISO(n), distance_km: 6, duration_seconds: 2100 }));
 
-  it('abaixo do nível: a leitura neutra, a frase «para completar», e nenhum alerta de volume', () => {
+  // Sem plano até à prova (dev-back 2c5f32b6): as semanas por planear não contam como zero — o
+  // atual e o recomendado, uma linha neutra, e nunca o «para completar».
+  it('sem plano até à prova: a leitura neutra, «ainda não há plano», sem «para completar» nem alerta de volume', () => {
     render(<RaceHubView race={meia} runs={poucos} profile={{ experience_level: 'basico' }} />);
-    expect(screen.getByTestId('volume-outlook-line')).toHaveTextContent(/^Corres 12 km\/semana · a meia pede 35/);
-    expect(screen.getByTestId('volume-outlook-note')).toHaveTextContent('para completar, não para fazer tempo');
+    expect(screen.getByTestId('volume-outlook-line')).toHaveTextContent(/^Corres 12 km\/semana · a meia pede 35\.$/);
+    expect(screen.getByTestId('volume-outlook-note')).toHaveTextContent('Ainda não há plano até à semana da prova.');
+    expect(screen.queryByText(/para completar/)).toBeNull();
     expect(screen.queryByText(/volume médio recente/)).toBeNull();
     expect(screen.queryByText(/insuficiente/i)).toBeNull();
   });
