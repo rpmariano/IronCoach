@@ -34,6 +34,7 @@ import { EXPERIENCE_LEVELS, experienceLevelDescription } from '../../utils/exper
 import ExperienceLevelHelp from '../shared/ExperienceLevelHelp';
 import { useToast } from '../shared/ToastProvider';
 import { assessRaceViability, knownRecentWeeklyVolume } from '../../utils/raceViability';
+import { outlookForRace, volumeReadingNote, volumeReadingText } from '../../utils/raceVolumeText';
 import { raceLabel } from '../../utils/planDivergence';
 import { getRecommendedPrepWeeks, computeEffectivePrepStartDate } from '../../utils/racePlanEngine';
 import { usePersistedFormDraft, restorePersistedFormDraft, clearPersistedFormDraft } from '../../utils/formDraftPersistence';
@@ -252,6 +253,7 @@ export default function RunAgenda({ onClose }) {
   useCarouselActiveHeight(scrollRef, pageRefs, PAGE_KEYS.indexOf(activePage));
 
   const activeTab = useAppStore(state => state.activeTab);
+  const coachPlanItems = useAppStore(state => state.coachPlanItems);
   const [initialTab] = useState(activeTab);
 
   // Destino pendente quando se tenta sair (nav para outro módulo) com
@@ -323,10 +325,19 @@ export default function RunAgenda({ onClose }) {
     return !!currentKey && currentKey !== experienceLevelCategoryKey;
   }, [editingEventId, draft.experience_level, draft.race_type, draft.distance_km, draft.elevation_gain_m, experienceLevelCategoryKey]);
 
+  /* #113/#114 (2026-11-06): o volume até à prova numa leitura neutra (utils/raceVolumeText.js), no
+     lugar de «Volume de treino insuficiente» — que parecia acusar o atleta de falhar o plano. */
+  const volumeOutlook = useMemo(() => outlookForRace({
+    race: { date: draft.date, distance_km: parseFormNumber(draft.distance_km), experience_level: draft.experience_level || null },
+    profile, runs, coachPlans, coachPlanItems, todayISO: todayIso,
+  }), [draft.date, draft.distance_km, draft.experience_level, profile, runs, coachPlans, coachPlanItems, todayIso]);
+  const volumeLine = volumeReadingText(volumeOutlook);
+  const volumeNote = volumeReadingNote(volumeOutlook);
+  const otherFlags = viability.flags.filter((f) => f !== 'volume_insuficiente');
+
   const FLAG_LABELS = {
     ultra_para_iniciante: 'Ultra desaconselhado para iniciante',
     tempo_insuficiente:   `Tempo insuficiente para a preparação`,
-    volume_insuficiente:  `Volume de treino insuficiente`,
   };  // Trava a navegação para fora da app enquanto houver alterações por
   // gravar no formulário — mesmo mecanismo usado em Perfil.jsx.
   useEffect(() => {
@@ -1416,8 +1427,14 @@ export default function RunAgenda({ onClose }) {
                   <span className="text-[11px] font-bold text-[var(--text-3)] uppercase tracking-wider flex items-center gap-1.5">
                     Avaliação da Carol
                   </span>
-                  {viability.flags.length > 0 ? (
-                    viability.flags.map(flag => (
+                  {volumeLine && (
+                    <p className="text-[11px] font-medium text-[var(--text-2)]" data-testid="volume-outlook-line">
+                      {volumeLine}
+                      {volumeNote && <span className="block text-[var(--text-3)]" data-testid="volume-outlook-note">{volumeNote}</span>}
+                    </p>
+                  )}
+                  {otherFlags.length > 0 ? (
+                    otherFlags.map(flag => (
                       <p key={flag} className="text-[11px] font-medium flex items-center gap-1.5" style={{ color: 'var(--color-warn)' }}>
                         <AlertTriangle size={12} />
                         {FLAG_LABELS[flag] || flag}

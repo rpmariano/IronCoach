@@ -52,6 +52,7 @@ import { classifyRaceOutcome, describeRaceOutcome, raceResultSeconds } from '../
 import { achievementsForRace, missedInRace, describeMissedInRace } from '../../utils/achievements';
 import { badgesForRace } from '../../utils/badges';
 import { todayISO } from '../../lib/utils';
+import { outlookForRace, volumeReadingNote, volumeReadingText } from '../../utils/raceVolumeText';
 import { experienceLevelLabel } from '../../utils/experience';
 import { normalizeStartTime } from '../../utils/startTime';
 import './RaceHubView.css';
@@ -87,6 +88,17 @@ export default function RaceHubView({
       coachPlanItems: storePlanItems,
     });
   }, [race, profile, runs, storePlans, storePlanItems]);
+
+  /* #113/#114 (2026-11-06): o volume até à prova numa só leitura, neutra (utils/raceVolumeText.js),
+     no lugar do aviso «volume insuficiente» — que parecia acusar o atleta de falhar o plano. */
+  const volumeOutlook = useMemo(
+    () => outlookForRace({ race, profile, runs, coachPlans: storePlans, coachPlanItems: storePlanItems, todayISO: todayISO() }),
+    [race, profile, runs, storePlans, storePlanItems],
+  );
+  const volumeLine = volumeReadingText(volumeOutlook);
+  const volumeNote = volumeReadingNote(volumeOutlook);
+  // Os outros alertas de viabilidade ficam; o do volume passa à leitura acima.
+  const viabilityAlerts = plan.viability.flags.filter((f) => f !== 'volume_insuficiente');
 
   const {
     raceDate,
@@ -938,20 +950,27 @@ export default function RaceHubView({
           {carolAnalysis.overviewText}
         </p>
 
+        {volumeLine && (
+          <div data-testid="volume-outlook" className="mt-3 rounded-xl px-3 py-2.5" style={{ background: 'var(--surface-soft)', border: '1px solid var(--border-faint)' }}>
+            <p className="text-[11px] font-extrabold uppercase tracking-wider text-[var(--text-3)]">Volume até à prova</p>
+            <p className="text-[13px] mt-1 text-[var(--text-1)]" data-testid="volume-outlook-line">{volumeLine}</p>
+            {volumeNote && <p className="text-[12px] mt-1 text-[var(--text-2)]" data-testid="volume-outlook-note">{volumeNote}</p>}
+          </div>
+        )}
+
         {/* Os alertas de viabilidade eram âmbar dentro do ecrã da prova, onde
             tudo o resto também é âmbar — não se distinguiam do cenário. Coral
             (Warning), o bloco de aviso do sistema. Texto inalterado. */}
-        {plan.viability.flags.length > 0 && (
+        {viabilityAlerts.length > 0 && (
           <Warning
             title="Alertas de Viabilidade"
             icon={<AlertTriangle size={12} />}
             className="mt-4"
           >
-            {plan.viability.flags.map((flag) => (
+            {viabilityAlerts.map((flag) => (
               <span key={flag} className="block">
                 {flag === 'ultra_para_iniciante' && '• Prova de Ultra-Trail não recomendada para nível iniciante sem histórico de maratona.'}
                 {flag === 'tempo_insuficiente' && `• Faltam ${Math.floor(daysToRace / 7)} semanas — a preparação recomendada para esta distância é de ${totalWeeks} semanas.`}
-                {flag === 'volume_insuficiente' && `• O teu volume médio recente (${carolAnalysis.weeklyVolumeKm} km/sem) está abaixo do recomendado para esta distância.`}
               </span>
             ))}
           </Warning>

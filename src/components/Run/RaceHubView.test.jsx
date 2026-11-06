@@ -797,3 +797,20 @@ describe('RaceHubView — «Marcar a próxima prova» passa pelo navGuard', () =
     expect(useAppStore.getState().openCreationMode).toBe('race');
   });
 });
+
+/* #113/#114 (2026-11-06): o aviso «volume insuficiente» passa a uma leitura única e neutra do
+   volume até à prova — nunca um aviso de falha. */
+describe('RaceHubView — volume até à prova (#113/#114)', () => {
+  const futureISO = (days) => { const d = new Date(); d.setDate(d.getDate() + days); return d.toISOString().slice(0, 10); };
+  const pastISO = (days) => { const d = new Date(); d.setDate(d.getDate() - days); return d.toISOString().slice(0, 10); };
+  const meia = { id: 'race-2', name: 'Meia dos Descobrimentos', date: futureISO(70), distance_km: 21.1, race_type: 'estrada', race_priority: 'a', status: 'agendada', experience_level: 'basico', created_at: new Date().toISOString() };
+  const poucos = [2, 5, 9, 12, 16, 19, 23, 26].map((n, i) => ({ id: `v${i}`, kind: 'treino', training_type: 'continuo', date: pastISO(n), distance_km: 6, duration_seconds: 2100 }));
+
+  it('abaixo do nível: a leitura neutra, a frase «para completar», e nenhum alerta de volume', () => {
+    render(<RaceHubView race={meia} runs={poucos} profile={{ experience_level: 'basico' }} />);
+    expect(screen.getByTestId('volume-outlook-line')).toHaveTextContent(/^Corres 12 km\/semana · a meia pede 35/);
+    expect(screen.getByTestId('volume-outlook-note')).toHaveTextContent('para completar, não para fazer tempo');
+    expect(screen.queryByText(/volume médio recente/)).toBeNull();
+    expect(screen.queryByText(/insuficiente/i)).toBeNull();
+  });
+});
