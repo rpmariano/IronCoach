@@ -6595,7 +6595,7 @@ Deno.test("coach-chat: o objetivo calórico de cada dia vem do histórico de obj
   assertStringIncludes(comODia, "1 de 7 dias com registo completo");
 });
 
-import { claimedProposals, maintenanceGapError, proposalClaimCorrection, raceVolumeNote, sessionSizeError, stripProposalClaims } from "./index.ts";
+import { claimedProposals, maintenanceGapError, pendingProposalKinds, proposalClaimCorrection, raceVolumeNote, sessionSizeError, stripProposalClaims } from "./index.ts";
 import { raceVolumeOutlook } from "../_shared/formulas/raceVolumeOutlook.ts";
 
 // Bug #112 (2026-11-06, 08:05): «Enviei a proposta de plano ajustada para
@@ -6609,6 +6609,43 @@ Deno.test("bug #112: claimedProposals apanha «enviei a proposta» de plano e de
   // Falar de uma proposta sem dizer que a enviou não conta.
   assertEquals(claimedProposals("Queres que te proponha um plano? A proposta pode esperar."), { plan: false, goals: false });
   assertEquals(claimedProposals(null), { plan: false, goals: false });
+});
+
+Deno.test("bug #112 (revisão do lote): negações, passado com data e «de lado» não são frases de envio", () => {
+  const none = { plan: false, goals: false };
+  assertEquals(claimedProposals("Ainda não te enviei a proposta, primeiro quero saber como estás."), none);
+  assertEquals(claimedProposals("Não preparei a proposta ainda."), none);
+  assertEquals(claimedProposals("Deixei a proposta de lado até vermos a prova."), none);
+  assertEquals(claimedProposals("Ontem enviei-te a proposta; já a viste?"), none);
+  assertEquals(claimedProposals("Há dois dias mandei-te a proposta de objetivos."), none);
+  // A negação só conta antes do verbo, na mesma oração.
+  assertEquals(claimedProposals("Enviei a proposta — não te esqueças de a ver."), { plan: true, goals: false });
+  assertEquals(claimedProposals("Não te preocupes, enviei a proposta agora."), { plan: true, goals: false });
+});
+
+Deno.test("bug #112 (revisão do lote): stripProposalClaims guarda as quebras de linha e não leva a linha de cima", () => {
+  const list = "O plano da semana:\n- terça 5 km\n- quinta 5 km\nEnviei a proposta de plano para aceitares.\n\nComo estás?";
+  assertEquals(stripProposalClaims(list, { plan: true, goals: false }), "O plano da semana:\n- terça 5 km\n- quinta 5 km\n\nComo estás?");
+  // Uma linha sem pontuação no fim não vai com a frase de baixo.
+  assertEquals(stripProposalClaims("Fica assim\nEnviei a proposta. Diz-me se serve.", { plan: true, goals: false }), "Fica assim\nDiz-me se serve.");
+});
+
+Deno.test("bug #112 (revisão do lote): uma proposta pendente na BD torna a frase verdadeira; uma falha a ler conta como nenhuma", async () => {
+  // deno-lint-ignore no-explicit-any
+  const sbWith = (pending: Record<string, any[]>) => ({
+    from: (table: string) => {
+      // deno-lint-ignore no-explicit-any
+      const c: any = { select: () => c, eq: () => c, limit: () => Promise.resolve({ data: pending[table] ?? [], error: null }) };
+      return c;
+    },
+  });
+  assertEquals(await pendingProposalKinds(sbWith({ coach_plans: [{ id: "p1" }] }), "u1"), { plan: true, goals: false });
+  assertEquals(await pendingProposalKinds(sbWith({ coach_goal_proposals: [{ id: "g1" }] }), "u1"), { plan: false, goals: true });
+  assertEquals(await pendingProposalKinds({ from: () => { throw new Error("rede"); } }, "u1"), { plan: false, goals: false });
+  const src = await Deno.readTextFile(new URL("./index.ts", import.meta.url));
+  assertStringIncludes(src, "missing.plan = missing.plan && !pendingProposals.plan;");
+  assertStringIncludes(src, "unsent.plan = unsent.plan && !pendingProposals.plan;");
+  assertStringIncludes(src, "const MAX_TOOL_ROUNDS = 4;  // idas-e-voltas");
 });
 
 Deno.test("bug #112: stripProposalClaims tira só a frase da proposta não enviada", () => {
@@ -6645,7 +6682,7 @@ const pItem = (planned_date: string, km: number, training_type = "continuo") => 
 Deno.test("raceVolumeNote: a meia de 29 nov do Rui — uma frase por prova, sem falha, com o ritmo como coisa boa", () => {
   const plan = [pItem("2026-11-11", 5), pItem("2026-11-13", 5), pItem("2026-11-15", 21.1, "prova"), pItem("2026-11-18", 5), pItem("2026-11-25", 6)];
   const race = { name: "Meia dos Descobrimentos", date: "2026-11-29", distance_km: 21.0975, experience_level: "basico" };
-  const outlook = raceVolumeOutlook({ race, runs: RUI_RUNS, planItems: plan, todayISO: "2026-11-06" });
+  const outlook = raceVolumeOutlook({ race, runs: RUI_RUNS, planItems: plan, todayISO: "2026-11-06", plannedUntilISO: "2026-11-29" });
   const note = raceVolumeNote([{ race, outlook }]);
   assertStringIncludes(note, "«Meia dos Descobrimentos» (29 nov, nível Básico):");
   assertStringIncludes(note, "para os 35 do nível; o ritmo dele já é de Médio (VDOT 41,1)");
@@ -6661,7 +6698,14 @@ Deno.test("sessionSizeError: corrida fácil ≥ 5 km ou 30 min; ativação 3–5
   assertEquals(sessionSizeError(pItem("2026-11-11", 5), 1), null);
   assertEquals(sessionSizeError({ ...pItem("2026-11-11", 0), target_duration_min: 30 }, 1), null);
   assertStringIncludes(sessionSizeError(pItem("2026-11-11", 3), 2)!, "pelo menos 5 km ou 30 min");
+  // A recuperação: ≥ 3 km ou ≥ 20 min — o trote de 20 min a seguir a uma prova passa.
   assertStringIncludes(sessionSizeError(pItem("2026-11-11", 2, "recuperacao"), 2)!, "Erro no treino 2");
+  assertStringIncludes(sessionSizeError(pItem("2026-11-11", 2, "recuperacao"), 2)!, "pelo menos 3 km ou 20 min");
+  assertEquals(sessionSizeError(pItem("2026-11-16", 3, "recuperacao"), 1), null);
+  assertEquals(sessionSizeError({ ...pItem("2026-11-16", 0, "recuperacao"), target_duration_min: 20 }, 1), null);
+  assertStringIncludes(sessionSizeError({ ...pItem("2026-11-16", 0, "recuperacao"), target_duration_min: 15 }, 1)!, "recuperação");
+  // O continuo continua nos 5 km ou 30 min.
+  assertStringIncludes(sessionSizeError({ ...pItem("2026-11-11", 0), target_duration_min: 20 }, 1)!, "pelo menos 5 km ou 30 min");
   assertEquals(sessionSizeError(pItem("2026-11-07", 3, "ativacao"), 1), null);
   assertStringIncludes(sessionSizeError(pItem("2026-11-07", 2, "ativacao"), 1)!, "3 a 5 km");
   assertStringIncludes(sessionSizeError(pItem("2026-11-07", 6, "ativacao"), 1)!, "3 a 5 km");
@@ -6680,6 +6724,14 @@ Deno.test("maintenanceGapError: entre provas a 6+ dias o plano tem uma corrida; 
   const empty = [pItem("2026-11-15", 21.1, "prova"), pItem("2026-11-22", 6, "prova")];
   assertEquals(maintenanceGapError(empty, races, { from: "2026-11-09", to: "2026-11-15" }), null);
   assertStringIncludes(maintenanceGapError(empty, races, { from: "2026-11-16", to: "2026-11-22" })!, "não tem nenhuma corrida");
+});
+
+Deno.test("outlook no servidor (revisão do lote): o plano em curso que fica, o period_end e o nível do perfil", async () => {
+  const src = await Deno.readTextFile(new URL("./index.ts", import.meta.url));
+  assertStringIncludes(src, "...(pendingPlans || []).filter(inThisChain).map((p: any) => p.id)");
+  assertStringIncludes(src, ".gte(\"planned_date\", todayPlansISO).lt(\"planned_date\", period_start)");
+  assertStringIncludes(src, "race: { ...race, experience_level: race.experience_level || profileLevel }");
+  assertStringIncludes(src, "plannedUntilISO: period_end");
 });
 
 Deno.test("guarda de carga: a mensagem diz o limite e se é o da base baixa", async () => {

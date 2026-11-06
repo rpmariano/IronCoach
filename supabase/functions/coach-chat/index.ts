@@ -240,7 +240,7 @@ export function chatAttemptMs(planTurn: boolean): number {
 }
 const MAX_HISTORY   = 30;   // mensagens mais recentes enviadas ao Gemini
 const MAX_MSG_LEN   = 2000; // caracteres máximos por mensagem
-const MAX_TOOL_ROUNDS = 4;
+const MAX_TOOL_ROUNDS = 4;  // idas-e-voltas de function calling antes de forçar resposta final
 
 // ─── «Enviei a proposta» sem proposta nenhuma (bug #112, 2026-11-06) ──────
 // Às 08:05 a Carol abriu a conversa com «Enviei a proposta de plano ajustada
@@ -251,30 +251,70 @@ const MAX_TOOL_ROUNDS = 4;
 
 /** Uma frase em que ela diz que enviou/deixou uma proposta. */
 const PROPOSAL_CLAIM_RE = /\b(?:j[áa]\s+)?(?:te\s+)?(?:enviei|mandei|deixei|acabei\s+de\s+(?:enviar|mandar|deixar)|preparei|criei)(?:-te)?\s+(?:aqui\s+)?(?:a|uma|esta|essa|nova)?\s*(?:nova\s+)?propost[ae]s?\b/i;
+/** Frases que falam de uma proposta sem dizer que a enviou agora (revisão do
+ *  lote f6b4053b): a negação («ainda não te enviei a proposta», «não preparei
+ *  a proposta ainda»), o passado com data («ontem enviei-te a proposta; já a
+ *  viste?») e o pôr de parte («deixei a proposta de lado»). */
+const PROPOSAL_NOT_CLAIM_RE = /(?:^|[^a-zà-ú])(?:ontem|anteontem|há\s+(?:\d+|uns|umas|dois|duas|três|alguns|algumas)\s+(?:dias?|semanas?)|(?:na|a)\s+semana\s+passada|no\s+outro\s+dia|de\s+lado|[àa]\s+parte)(?![a-zà-ú])/i;
+/** Uma negação na mesma oração, antes do verbo («ainda não te enviei…»). */
+const NEGATION_BEFORE_RE = /(?:^|[^a-zà-ú])(?:não|nao|nunca|nem)(?![a-zà-ú])[^.!?;,]*$/i;
+
+/** A frase diz que ela enviou agora uma proposta. */
+function isProposalClaim(sentence: string): boolean {
+  const m = PROPOSAL_CLAIM_RE.exec(sentence);
+  if (!m) return false;
+  if (NEGATION_BEFORE_RE.test(sentence.slice(0, m.index))) return false;
+  return !PROPOSAL_NOT_CLAIM_RE.test(sentence);
+}
 
 /** O que ela diz que enviou: uma proposta de plano e/ou de objetivos. */
 export function claimedProposals(text: string | null | undefined): { plan: boolean; goals: boolean } {
   const out = { plan: false, goals: false };
-  for (const sentence of String(text ?? "").split(/(?<=[.!?])\s+|\n+/)) {
-    if (!PROPOSAL_CLAIM_RE.test(sentence)) continue;
+  for (const sentence of String(text ?? "").split(/(?<=[.!?;])\s+|\n+/)) {
+    if (!isProposalClaim(sentence)) continue;
     if (/\b(?:objetivos?|metas?)\b/i.test(sentence)) out.goals = true;
     else out.plan = true;
   }
   return out;
 }
 
-/** O texto sem as frases que dizem que enviou o que não enviou. Fica pelo
- *  menos uma frase; os parágrafos que esvaziam saem. */
+/** O texto sem as frases que dizem que enviou o que não enviou. Linha a
+ *  linha (revisão do lote f6b4053b): as quebras de linha ficam (listas), uma
+ *  linha sem pontuação no fim não vai com a frase seguinte, e só sai a linha
+ *  que esvazia. Fica pelo menos uma frase. */
 export function stripProposalClaims(text: string, kinds: { plan: boolean; goals: boolean }): string {
   if (!kinds.plan && !kinds.goals) return text;
-  const paragraphs = text.split(/\n{2,}/).map((para) =>
-    para.split(/(?<=[.!?])\s+/).filter((sentence) => {
-      if (!PROPOSAL_CLAIM_RE.test(sentence)) return true;
-      const isGoals = /\b(?:objetivos?|metas?)\b/i.test(sentence);
-      return isGoals ? !kinds.goals : !kinds.plan;
-    }).join(" ").trim()
-  ).filter(Boolean);
-  return paragraphs.length ? paragraphs.join("\n\n") : text;
+  const drop = (sentence: string) => {
+    if (!isProposalClaim(sentence)) return false;
+    const isGoals = /\b(?:objetivos?|metas?)\b/i.test(sentence);
+    return isGoals ? kinds.goals : kinds.plan;
+  };
+  const out: string[] = [];
+  for (const line of text.split("\n")) {
+    if (!line.trim()) { out.push(line); continue; }
+    const kept = line.split(/(?<=[.!?])[ \t]+/).filter((sentence) => !drop(sentence));
+    if (kept.length) out.push(kept.join(" "));
+  }
+  const result = out.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+  return result ? result : text;
+}
+
+/** As propostas por decidir que já estão na BD: a frase «enviei-te a
+ *  proposta» de um turno sem a ferramenta pode ser verdade se há uma de
+ *  antes (revisão do lote f6b4053b). Uma falha a ler conta como nenhuma — a
+ *  guarda do #112 continua de pé. */
+// deno-lint-ignore no-explicit-any
+export async function pendingProposalKinds(sb: any, userId: string): Promise<{ plan: boolean; goals: boolean }> {
+  const has = async (table: string) => {
+    try {
+      const { data, error } = await sb.from(table).select("id").eq("user_id", userId).eq("status", "proposto").limit(1);
+      return !error && Array.isArray(data) && data.length > 0;
+    } catch {
+      return false;
+    }
+  };
+  const [plan, goals] = await Promise.all([has("coach_plans"), has("coach_goal_proposals")]);
+  return { plan, goals };
 }
 
 /** A correção que vai ao modelo quando disse que enviou sem enviar. */
@@ -284,7 +324,7 @@ export function proposalClaimCorrection(kinds: { plan: boolean; goals: boolean }
   return `[Nota do sistema, não do atleta] Na resposta anterior disseste que enviaste ${what}, mas não chamaste ` +
     `${tool} — nada foi enviado e o atleta não tem nada para aceitar. Se a proposta é para fazer, chama ${tool} ` +
     `agora; se não, responde de novo sem dizer que enviaste uma proposta.`;
-}  // idas-e-voltas de function calling antes de forçar resposta final
+}
 // Uma tentativa ao Gemini pode demorar até isto: uma proposta de plano com as
 // refeições são milhares de tokens de saída. Eram 40 s com uma repetição a
 // partir do zero — uma resposta que precisava de 50 s era cortada aos 40,
@@ -3771,11 +3811,15 @@ export function raceVolumeNote(entries: { race: { name: string; date: string }; 
 /** Uma corrida fácil tem pelo menos isto (km ou minutos). */
 export const MIN_EASY_RUN_KM = 5;
 export const MIN_EASY_RUN_MIN = 30;
+/** A recuperação é mais curta: o trote de 20 min no dia a seguir a uma prova
+ *  é útil (revisão do lote e3901569). */
+export const MIN_RECOVERY_RUN_KM = 3;
+export const MIN_RECOVERY_RUN_MIN = 20;
 /** A ativação antes de uma prova: 3 a 5 km. */
 export const ACTIVATION_KM_RANGE: [number, number] = [3, 5];
 /** Duas provas a pelo menos isto de distância têm corridas de manutenção entre elas. */
 export const MAINTENANCE_GAP_DAYS = 6;
-const EASY_RUN_TYPES = new Set(["continuo", "recuperacao", "longo"]);
+const EASY_RUN_TYPES = new Set(["continuo", "longo"]);
 
 /** O erro de uma corrida curta de mais para valer a pena; null se serve. */
 // deno-lint-ignore no-explicit-any
@@ -3789,6 +3833,10 @@ export function sessionSizeError(item: any, n: number): string | null {
       return `Erro no treino ${n}: a ativação antes de uma prova tem ${lo} a ${hi} km (tem ${String(km).replace(".", ",")} km).`;
     }
     return null;
+  }
+  if (item.training_type === "recuperacao" && !(km >= MIN_RECOVERY_RUN_KM || min >= MIN_RECOVERY_RUN_MIN)) {
+    return `Erro no treino ${n}: uma recuperação tem pelo menos ${MIN_RECOVERY_RUN_KM} km ou ${MIN_RECOVERY_RUN_MIN} min — ` +
+      `mais curta não vale a saída. Junta-a a outra ou tira-a.`;
   }
   if (EASY_RUN_TYPES.has(item.training_type) && !(km >= MIN_EASY_RUN_KM || min >= MIN_EASY_RUN_MIN)) {
     return `Erro no treino ${n}: uma corrida fácil (${item.training_type}) tem pelo menos ${MIN_EASY_RUN_KM} km ou ${MIN_EASY_RUN_MIN} min — ` +
@@ -4395,15 +4443,38 @@ export async function runProposeTrainingPlan(
 
   // O volume até às provas do período (raceVolumeOutlook, #113/#114): o que
   // o plano projeta contra o que o nível pede — a Carol di-lo uma vez, agora.
+  // Revisão do lote e3901569: conta também o que fica do plano em curso (os
+  // itens por fazer dos planos aceites e das partes anteriores desta cadeia,
+  // antes desta proposta — a mesma regra da guarda de carga); os dias depois
+  // do period_end estão por planear e não contam como zero (plannedUntilISO);
+  // sem nível na prova, o do perfil, como o cliente (raceVolumeText.js).
   let volumeNote = "";
   if (racesInPeriod.length) {
     try {
-      const { data: recentRuns } = await sb.from("runs")
-        .select("date, kind, training_type, distance_km, duration_seconds, effort_rpe, details")
-        .eq("user_id", userId).gte("date", addDaysISO(todayPlansISO, -84)).lte("date", todayPlansISO);
+      // deno-lint-ignore no-explicit-any
+      const keepPlanIds = [...trainingPlans.map((p: any) => p.id), ...(pendingPlans || []).filter(inThisChain).map((p: any) => p.id)];
+      const [{ data: recentRuns }, keptRes, profileRes] = await Promise.all([
+        sb.from("runs")
+          .select("date, kind, training_type, distance_km, duration_seconds, effort_rpe, details")
+          .eq("user_id", userId).gte("date", addDaysISO(todayPlansISO, -84)).lte("date", todayPlansISO),
+        keepPlanIds.length && period_start > todayPlansISO
+          ? sb.from("coach_plan_items")
+            .select("planned_date, kind, training_type, status, target_distance_km, target_duration_min")
+            .eq("user_id", userId).in("plan_id", keepPlanIds).eq("status", "pendente")
+            .gte("planned_date", todayPlansISO).lt("planned_date", period_start)
+          : Promise.resolve({ data: [] }),
+        racesInPeriod.some((r) => !r.experience_level)
+          ? sb.from("profiles").select("experience_level").eq("id", userId).maybeSingle()
+          : Promise.resolve({ data: null }),
+      ]);
+      const planItems = [...(keptRes?.data || []), ...rows.map((r) => ({ ...r, status: "pendente" }))];
+      const profileLevel = profileRes?.data?.experience_level ?? null;
       volumeNote = raceVolumeNote(racesInPeriod.map((race) => ({
         race,
-        outlook: raceVolumeOutlook({ race, runs: recentRuns || [], planItems: rows.map((r) => ({ ...r, status: "pendente" })), todayISO: todayPlansISO }),
+        outlook: raceVolumeOutlook({
+          race: { ...race, experience_level: race.experience_level || profileLevel },
+          runs: recentRuns || [], planItems, todayISO: todayPlansISO, plannedUntilISO: period_end,
+        }),
       })));
     } catch (e) {
       console.warn("plano: volume até às provas não calculado:", e instanceof Error ? e.message : e);
@@ -6296,7 +6367,8 @@ function planDoctrineDetail(): string {
       `(3 a 5 km fáceis, com 3-4 acelerações curtas), não recuperacao: o servidor recusa ` +
       `longo, tempo, fartlek, intervalos, subidas e ginásio nesses dois dias. As sugestões alimentares desses ` +
       `dias seguem o bloco VÉSPERA E MANHÃ DA PROVA quando existir.\n\n` +
-      `SESSÕES ÚTEIS: uma corrida fácil (continuo, recuperacao, longo) tem pelo menos ${MIN_EASY_RUN_KM} km ou ${MIN_EASY_RUN_MIN} min, e ` +
+      `SESSÕES ÚTEIS: uma corrida fácil (continuo, longo) tem pelo menos ${MIN_EASY_RUN_KM} km ou ${MIN_EASY_RUN_MIN} min, a ` +
+      `recuperacao ${MIN_RECOVERY_RUN_KM} km ou ${MIN_RECOVERY_RUN_MIN} min (ex.: o trote no dia a seguir a uma prova), e ` +
       `a ativação ${ACTIVATION_KM_RANGE[0]} a ${ACTIVATION_KM_RANGE[1]} km — o servidor recusa as mais curtas. Com pouco volume, mais vale ` +
       `menos corridas e mais úteis do que várias de 2-3 km. Entre duas provas com ${MAINTENANCE_GAP_DAYS} dias ou mais de ` +
       `intervalo, depois da recuperação da primeira, o plano tem pelo menos uma corrida de manutenção fácil — nunca fica ` +
@@ -9080,6 +9152,8 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
     let truncatedRetried = false;
     // A correção de uma proposta dita e não enviada (bug #112), uma vez.
     let proposalClaimRetried = false;
+    // As propostas por decidir de antes (lidas só se houver uma frase a corrigir).
+    let pendingProposals: { plan: boolean; goals: boolean } | null = null;
     // Quando começou a ronda em curso (o log mede cada uma).
     let roundStartedAt = Date.now();
     // Rondas 0..MAX_TOOL_ROUNDS-1 podem executar ferramentas; a ronda
@@ -9223,6 +9297,12 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
           plan: claim.plan && !planWasProposed && toolNamesSent.includes("propose_training_plan"),
           goals: claim.goals && !goalWasProposed && !goalsWereUpdated && toolNamesSent.includes("update_goals"),
         };
+        // Uma proposta de antes ainda por decidir: a frase pode ser verdade.
+        if (missing.plan || missing.goals) {
+          pendingProposals ??= await pendingProposalKinds(sb, userId);
+          missing.plan = missing.plan && !pendingProposals.plan;
+          missing.goals = missing.goals && !pendingProposals.goals;
+        }
         if (missing.plan || missing.goals) {
           proposalClaimRetried = true;
           console.error("coach-chat: disse que enviou uma proposta sem chamar a ferramenta — a corrigir", JSON.stringify({ round, turnCase, ...missing }));
@@ -9393,6 +9473,11 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
     {
       const claim = claimedProposals(replyText);
       const unsent = { plan: claim.plan && !planWasProposed, goals: claim.goals && !goalWasProposed && !goalsWereUpdated };
+      if (unsent.plan || unsent.goals) {
+        pendingProposals ??= await pendingProposalKinds(sb, userId);
+        unsent.plan = unsent.plan && !pendingProposals.plan;
+        unsent.goals = unsent.goals && !pendingProposals.goals;
+      }
       if (unsent.plan || unsent.goals) {
         console.error("coach-chat: a frase da proposta não enviada saiu da resposta", JSON.stringify({ turnCase, ...unsent }));
         replyText = stripProposalClaims(replyText, unsent);
