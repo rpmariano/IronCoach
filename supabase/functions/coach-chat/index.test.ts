@@ -6694,16 +6694,21 @@ Deno.test("raceVolumeNote: a meia de 29 nov do Rui — uma frase por prova, sem 
   assertEquals(raceVolumeNote([{ race, outlook: ok }]), "");
 });
 
-Deno.test("sessionSizeError: corrida fácil ≥ 5 km ou 30 min; ativação 3–5 km", () => {
+Deno.test("sessionSizeError: corrida fácil ≥ 5 km ou 30 min; recuperação ≥ 4 km ou 30 min; ativação 3–5 km", async () => {
   assertEquals(sessionSizeError(pItem("2026-11-11", 5), 1), null);
   assertEquals(sessionSizeError({ ...pItem("2026-11-11", 0), target_duration_min: 30 }, 1), null);
   assertStringIncludes(sessionSizeError(pItem("2026-11-11", 3), 2)!, "pelo menos 5 km ou 30 min");
-  // A recuperação: ≥ 3 km ou ≥ 20 min — o trote de 20 min a seguir a uma prova passa.
+  // A recuperação: ≥ 4 km ou ≥ 30 min (decisão do Rui, 2026-11-06).
   assertStringIncludes(sessionSizeError(pItem("2026-11-11", 2, "recuperacao"), 2)!, "Erro no treino 2");
-  assertStringIncludes(sessionSizeError(pItem("2026-11-11", 2, "recuperacao"), 2)!, "pelo menos 3 km ou 20 min");
-  assertEquals(sessionSizeError(pItem("2026-11-16", 3, "recuperacao"), 1), null);
-  assertEquals(sessionSizeError({ ...pItem("2026-11-16", 0, "recuperacao"), target_duration_min: 20 }, 1), null);
-  assertStringIncludes(sessionSizeError({ ...pItem("2026-11-16", 0, "recuperacao"), target_duration_min: 15 }, 1)!, "recuperação");
+  assertStringIncludes(sessionSizeError(pItem("2026-11-11", 3, "recuperacao"), 2)!, "uma recuperação tem pelo menos 4 km ou 30 min");
+  assertEquals(sessionSizeError(pItem("2026-11-16", 4, "recuperacao"), 1), null);
+  assertEquals(sessionSizeError({ ...pItem("2026-11-16", 0, "recuperacao"), target_duration_min: 30 }, 1), null);
+  assertStringIncludes(sessionSizeError({ ...pItem("2026-11-16", 0, "recuperacao"), target_duration_min: 20 }, 1)!, "recuperação");
+  // A doutrina diz o mesmo.
+  const src = await Deno.readTextFile(new URL("./index.ts", import.meta.url));
+  assertStringIncludes(src, "recuperacao ${MIN_RECOVERY_RUN_KM} km ou ${MIN_RECOVERY_RUN_MIN} min");
+  assertStringIncludes(src, "export const MIN_RECOVERY_RUN_KM = 4;");
+  assertStringIncludes(src, "export const MIN_RECOVERY_RUN_MIN = 30;");
   // O continuo continua nos 5 km ou 30 min.
   assertStringIncludes(sessionSizeError({ ...pItem("2026-11-11", 0), target_duration_min: 20 }, 1)!, "pelo menos 5 km ou 30 min");
   assertEquals(sessionSizeError(pItem("2026-11-07", 3, "ativacao"), 1), null);
