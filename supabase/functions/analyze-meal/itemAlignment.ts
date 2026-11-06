@@ -225,6 +225,12 @@ export function alignPhotoAndWritten<T extends Item & { source_index?: number }>
         best = sj;
       }
     });
+    // Nada em comum com o escrito do seu índice e com o MESMO nome de outro
+    // escrito, já servido ([ovo, pão, ovo] com «Ovo» no índice do pão): é
+    // desse, não deste — fora. O escrito fica sem item e refaz-se (revisão
+    // do 23684d82). Só com o mesmo nome: com uma palavra em comum («Burger
+    // com batatas» no índice do hambúrguer) fica, que pode ser o dele.
+    if (i === idx && own === 0 && written.some((w, j) => j !== idx && nameStrength(item.name, w.name) === 2)) continue;
     // Um ingrediente opcional com o índice de um escrito que não o nomeia
     // («Manteiga» com o do café) foi acrescentado: fora. Com o de um que o
     // nomeia («pão com manteiga») é uma parte, e junta-se a ele (abaixo).

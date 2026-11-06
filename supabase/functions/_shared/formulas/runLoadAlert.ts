@@ -290,8 +290,41 @@ export function runLoadInterventionToOpen(
 // - Avalia-se do primeiro dia da proposta até 6 dias depois do último: o
 //   rácio ainda sobe enquanto as corridas antigas saem da janela crónica.
 // - A prova não entra: é um dado, o plano não a pode encurtar, e uma meia
-//   maratona passa sozinha o 1,50 no dia dela.
+//   maratona passa sozinha o 1,50 no dia dela. As provas JÁ CORRIDAS contam
+//   a 100% (estão nas corridas registadas): a carga foi real.
 // - Um item de hoje só conta se ainda não houver corrida registada hoje.
+// - Base baixa (#113/#114, 2026-11-06): com menos de LOW_BASE_WEEKLY_KM
+//   km/semana nas 3 semanas antes da janela, o rácio sozinho não deixava
+//   nada — 1,5 × uma base pequena é quase nada, e duas provas comiam a
+//   margem toda (o Rui, com 5, 6, 19 e 27 km, ficava com 2 km de ativação
+//   e semanas vazias entre provas, e o hub pedia-lhe mais km). Aí o limite
+//   é uma subida absoluta: a semana pode chegar à média dessas 3 semanas +
+//   LOW_BASE_RAMP_KM, ou ao ACWR 1,50, o que for maior. Acima da base
+//   baixa, o ACWR 1,50 como sempre.
+
+/** Abaixo disto (km/semana, média das 3 semanas antes da janela de 7 dias)
+ *  é base baixa: o limite passa a ser uma subida absoluta. */
+export const LOW_BASE_WEEKLY_KM = 20;
+/** Quanto a semana pode subir sobre essa média com base baixa: 10 km — duas
+ *  corridas fáceis de 5 km (a sessão mínima útil do plano). 8 km já não
+ *  deixava duas sessões úteis a quem tem uma semana de 12 km; mais do que 10
+ *  é mais do que dobrar a base de quem corre 8 km por semana. */
+export const LOW_BASE_RAMP_KM = 10;
+
+/**
+ * O máximo de km na janela aguda (7 dias): ACWR ≤ 1,50 dá
+ *   aguda ≤ L × anterior ÷ (4 − L) = 0,6 × anterior
+ * (anterior = os km dos 21 dias antes da janela); com base baixa (média
+ * dessas 3 semanas < LOW_BASE_WEEKLY_KM), o maior entre esse e a média +
+ * LOW_BASE_RAMP_KM.
+ */
+export function acuteLimitKm(olderKm: number): { limitKm: number; lowBase: boolean } {
+  const byRatio = (ACWR_DANGER * olderKm) / (4 - ACWR_DANGER);
+  const priorWeekly = olderKm / 3;
+  if (priorWeekly >= LOW_BASE_WEEKLY_KM) return { limitKm: byRatio, lowBase: false };
+  const byRamp = priorWeekly + LOW_BASE_RAMP_KM;
+  return byRamp > byRatio ? { limitKm: byRamp, lowBase: true } : { limitKm: byRatio, lowBase: false };
+}
 
 export interface PlanLoadViolation {
   /** A janela de 7 dias: de `from` a `date`. */
@@ -303,8 +336,11 @@ export interface PlanLoadViolation {
   doneKm: number;
   fixedKm: number;
   proposedKm: number;
-  /** O máximo da proposta nessa janela para o rácio ficar ≤1,50 (0 se nada cabe). */
+  /** O máximo da proposta nessa janela para caber no limite (0 se nada cabe). */
   maxProposedKm: number;
+  /** O limite da janela, em km, e se é o da base baixa (acuteLimitKm). */
+  limitKm: number;
+  lowBase: boolean;
 }
 
 type DayKm = { date: string; distance_km: number; duration_seconds?: number | null };
@@ -343,21 +379,23 @@ export function planLoadViolations(
   const first = proposed.reduce((min, r) => (r.date < min ? r.date : min), proposed[0].date);
   const last = addDaysISO(proposed.reduce((max, r) => (r.date > max ? r.date : max), first), 6);
   const out: PlanLoadViolation[] = [];
+  // Um pouco de folga no arredondamento: 22,0 km contra um limite de 21,99.
+  const EPS = 0.05;
   for (let d = first; d <= last; d = addDaysISO(d, 1)) {
-    const withPlan = computeRunAcwr(projected, d);
-    if (!(withPlan.chronicWeeklyKm > 0) || !(withPlan.ratio > ACWR_DANGER)) continue;
-    const without = computeRunAcwr(baseline, d);
-    if (without.chronicWeeklyKm > 0 && without.ratio > ACWR_DANGER) continue;
     const from = addDaysISO(d, -6);
+    // A janela aguda com a proposta, contra o limite (acuteLimitKm) dos 21
+    // dias antes dela — o ACWR 1,50, ou com base baixa a subida absoluta.
+    const olderKm = kmIn(projected, addDaysISO(d, -27), addDaysISO(d, -7));
+    const { limitKm, lowBase } = acuteLimitKm(olderKm);
+    const acuteWith = kmIn(projected, from, d);
+    if (!(acuteWith > limitKm + EPS)) continue;
+    // O que já vinha de trás (sem a proposta) não é da proposta.
+    const olderWithout = kmIn(baseline, addDaysISO(d, -27), addDaysISO(d, -7));
+    if (kmIn(baseline, from, d) > acuteLimitKm(olderWithout).limitKm + EPS) continue;
+    const withPlan = computeRunAcwr(projected, d);
     const done = kmIn(past, from, d);
     const fixedKm = kmIn(fixed, from, d);
     const proposedKm = kmIn(proposed, from, d);
-    // rácio = aguda ÷ ((anterior + aguda) ÷ 4) ≤ L  ⇔  aguda ≤ L × anterior ÷ (4 − L)
-    // (0,6 × anterior com L = 1,5), com "anterior" os km dos 21 dias antes
-    // da janela aguda. O que sobra para a proposta é esse teto menos o que
-    // já lá está e o que o plano em curso lá tem.
-    const olderKm = kmIn(projected, addDaysISO(d, -27), addDaysISO(d, -7));
-    const maxAcute = (ACWR_DANGER * olderKm) / (4 - ACWR_DANGER);
     out.push({
       from,
       date: d,
@@ -365,7 +403,11 @@ export function planLoadViolations(
       doneKm: round1(done),
       fixedKm: round1(fixedKm),
       proposedKm: round1(proposedKm),
-      maxProposedKm: Math.max(0, Math.floor((maxAcute - done - fixedKm) * 10) / 10),
+      // O que sobra para a proposta: o limite menos o que já lá está e o que
+      // o plano em curso lá tem.
+      maxProposedKm: Math.max(0, Math.floor((limitKm - done - fixedKm) * 10) / 10),
+      limitKm: round1(limitKm),
+      lowBase,
     });
     // A janela seguinte que se reporta começa depois desta: a mesma carga
     // não se conta duas vezes.

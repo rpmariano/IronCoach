@@ -116,7 +116,10 @@
       "timeOnFeetBand": "basico",
       "elevationBand": null,
       "level": "basico",
-      "weeksWithData": 4
+      "weeksWithData": 4,
+      "axis": "tempo",
+      "peakWeeklyKm": 0,
+      "weeklyKmBand": null
     }
   },
   {
@@ -155,7 +158,10 @@
       "timeOnFeetBand": "medio",
       "elevationBand": "avancado",
       "level": "medio",
-      "weeksWithData": 4
+      "weeksWithData": 4,
+      "axis": "tempo",
+      "peakWeeklyKm": 0,
+      "weeklyKmBand": null
     }
   },
   {
@@ -194,7 +200,10 @@
       "timeOnFeetBand": "avancado",
       "elevationBand": "sub_iniciante",
       "level": "sub_iniciante",
-      "weeksWithData": 4
+      "weeksWithData": 4,
+      "axis": "tempo",
+      "peakWeeklyKm": 0,
+      "weeklyKmBand": null
     }
   },
   {
@@ -218,7 +227,10 @@
       "timeOnFeetBand": null,
       "elevationBand": null,
       "level": null,
-      "weeksWithData": 1
+      "weeksWithData": 1,
+      "axis": "tempo",
+      "peakWeeklyKm": null,
+      "weeklyKmBand": null
     }
   },
   {
@@ -252,7 +264,10 @@
       "timeOnFeetBand": "basico",
       "elevationBand": "medio",
       "level": "basico",
-      "weeksWithData": 3
+      "weeksWithData": 3,
+      "axis": "tempo",
+      "peakWeeklyKm": 0,
+      "weeklyKmBand": null
     }
   }
 ]

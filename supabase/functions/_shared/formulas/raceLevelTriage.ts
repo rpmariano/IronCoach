@@ -15,7 +15,7 @@
 // NÃO herda "avançado" para uma prova de trail — o eixo de D+ puxa-o para
 // baixo sozinho, sem precisar de uma regra especial.
 
-import type { ExperienceLevel } from "./vocabulary.ts";
+import { categorizeDistance, type ExperienceLevel, MIN_VOLUME_KM } from "./vocabulary.ts";
 
 // "Abaixo de Iniciante" é um estado próprio, não um erro: é o piso que a
 // doutrina #3 marca como Red Flag (equivalente ao ICE < 0,40 proposto nas
@@ -94,6 +94,8 @@ export function bandElevation(
 export interface RunForTriage {
   date: string;
   duration_seconds?: number | null;
+  /** Para o eixo de km das provas de estrada (2026-11-06). */
+  distance_km?: number | string | null;
   /** Já achatado a partir de runs.details.elevation_gain_m pelo chamador. */
   elevation_gain_m?: number | null;
 }
@@ -103,6 +105,7 @@ export interface WeeklyBucket {
   endISO: string;
   timeOnFeetSeconds: number;
   elevationGainM: number;
+  distanceKm: number;
   runsCount: number;
 }
 
@@ -130,6 +133,7 @@ export function computeLast4WeeklyBuckets(runs: RunForTriage[], todayISO: string
       endISO,
       timeOnFeetSeconds: inRange.reduce((s, r) => s + (Number(r.duration_seconds) || 0), 0),
       elevationGainM: inRange.reduce((s, r) => s + (Number(r.elevation_gain_m) || 0), 0),
+      distanceKm: inRange.reduce((s, r) => s + (Number(r.distance_km) || 0), 0),
       runsCount: inRange.length,
     });
   }
@@ -150,12 +154,34 @@ export function computeLast4WeeklyBuckets(runs: RunForTriage[], todayISO: string
  */
 export function secondHighestOfLast4Weeks(
   buckets: WeeklyBucket[],
-  metric: "timeOnFeetSeconds" | "elevationGainM",
+  metric: "timeOnFeetSeconds" | "elevationGainM" | "distanceKm",
 ): number | null {
   const weeksWithData = buckets.filter((b) => b.runsCount > 0).length;
   if (weeksWithData < 3) return null;
   const sorted = buckets.map((b) => b[metric]).sort((a, b) => b - a);
   return sorted[1];
+}
+
+// ─── Estrada: o volume semanal em km (bug #113, 2026-11-06) ──────────────
+// A doutrina do tempo em pé (Bloco 8) é de trail: «A estrada mantém-se em km
+// (MIN_VOLUME_KM)» (specs/nivel-por-prova.md, Âmbito). Aplicada a um 10 km de
+// estrada, com 49 min previstos, bastava 1h10 de corrida por semana para
+// «Avançado» — o Rui, com 1h51 (227%), ficava Avançado; pelos km dele (a 2.ª
+// semana mais alta, 15,9 km) é Iniciante nos 10 km.
+/** O nível pelo volume semanal típico de cada nível (MIN_VOLUME_KM) para a
+ *  categoria de distância da prova. Abaixo do de Iniciante fica Iniciante: o
+ *  alerta vermelho (sub_iniciante) é da doutrina de trail, a estrada não o tem. */
+export function bandWeeklyKm(
+  weeklyKm: number | null | undefined,
+  raceDistanceKm: number | null | undefined,
+): LevelBand | null {
+  const cat = categorizeDistance(Number(raceDistanceKm));
+  if (weeklyKm == null || !cat || !(Number(raceDistanceKm) > 0)) return null;
+  const km = Number(weeklyKm);
+  if (km >= MIN_VOLUME_KM.avancado[cat]) return "avancado";
+  if (km >= MIN_VOLUME_KM.medio[cat]) return "medio";
+  if (km >= MIN_VOLUME_KM.basico[cat]) return "basico";
+  return "iniciante";
 }
 
 // ─── Composição ──────────────────────────────────────────────────────────
@@ -167,6 +193,11 @@ export interface RaceLevelTriageInput {
   raceTimeSecondsPrevisto: number | null;
   /** D+ da prova, em metros. 0/null em estrada — desliga o eixo de D+. */
   raceElevationM: number | null;
+  /** A disciplina da prova (race_events.race_type) e a distância: com eles,
+   *  uma prova que não é de trail mede-se pelos km (bandWeeklyKm). Sem eles,
+   *  como antes (tempo em pé e D+) — os chamadores antigos não mudam. */
+  raceType?: string | null;
+  raceDistanceKm?: number | null;
 }
 
 export interface RaceLevelTriageResult {
@@ -177,9 +208,15 @@ export interface RaceLevelTriageResult {
   peakElevationM: number | null;
   timeOnFeetBand: LevelBand | null;
   elevationBand: LevelBand | null;
-  /** min(timeOnFeetBand, elevationBand) — null se nenhum eixo for avaliável. */
+  /** min(timeOnFeetBand, elevationBand) em trail; weeklyKmBand em estrada —
+   *  null se nenhum eixo for avaliável. */
   level: LevelBand | null;
   weeksWithData: number;
+  /** O eixo que decidiu: "km" (estrada) ou "tempo" (tempo em pé, e D+ em trail). */
+  axis: "km" | "tempo";
+  /** A 2.ª semana mais alta das últimas 4, em km. */
+  peakWeeklyKm: number | null;
+  weeklyKmBand: LevelBand | null;
 }
 
 /**
@@ -199,8 +236,12 @@ export function assessRaceLevelTriage(input: RaceLevelTriageInput): RaceLevelTri
   const peakElevation = secondHighestOfLast4Weeks(buckets, "elevationGainM");
   const elevationBand = bandElevation(peakElevation, input.raceElevationM);
 
+  const peakKm = secondHighestOfLast4Weeks(buckets, "distanceKm");
+  const weeklyKmBand = bandWeeklyKm(peakKm, input.raceDistanceKm);
+  const road = input.raceType != null && input.raceType !== "trail" && Number(input.raceDistanceKm) > 0;
+
   const bands = [timeOnFeetBand, elevationBand].filter((b): b is LevelBand => b != null);
-  const level = bands.length > 0 ? bands.reduce(minLevel) : null;
+  const level = road ? weeklyKmBand : bands.length > 0 ? bands.reduce(minLevel) : null;
 
   return {
     peakTimeOnFeetSeconds: peakTimeOnFeet,
@@ -209,5 +250,8 @@ export function assessRaceLevelTriage(input: RaceLevelTriageInput): RaceLevelTri
     elevationBand,
     level,
     weeksWithData,
+    axis: road ? "km" : "tempo",
+    peakWeeklyKm: peakKm == null ? null : Math.round(peakKm * 10) / 10,
+    weeklyKmBand,
   };
 }
