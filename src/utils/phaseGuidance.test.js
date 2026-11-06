@@ -10,7 +10,7 @@ const meia = { distanceKm: 21.1, raceType: 'estrada', racePriority: 'a' };
 describe('phaseGuidance — base', () => {
   it('o volume semanal mínimo para a distância e o nível, face ao que ele corre', () => {
     expect(phaseGuidance({ ...meia, phaseId: 'base', experienceLevel: 'medio', weeklyVolumeKm: 32.5 }))
-      .toBe('Para a meia, quero que chegues aos 45 km por semana; andas nos 32,5. Sobe devagar: no máximo 10% por semana.');
+      .toBe('Para a meia, quero que chegues aos 45 km por semana; andas nos 32,5. Sobe com calma: a semana sem passar 1,5 vezes a tua média das últimas 4.');
     expect(phaseGuidance({ ...meia, phaseId: 'base', experienceLevel: 'medio', weeklyVolumeKm: 50 }))
       .toContain('já andas nos 50, por isso aqui é mantê-los fáceis');
     // Sem histórico, sem número dele.
@@ -18,9 +18,21 @@ describe('phaseGuidance — base', () => {
       .toBe('Para a meia, quero que chegues aos 45 km por semana, quase todos em ritmo fácil.');
   });
 
-  it('o iniciante sobe mais devagar; o trail com D+ tem subidas desde já', () => {
-    expect(phaseGuidance({ distanceKm: 10, phaseId: 'base', experienceLevel: 'iniciante', weeklyVolumeKm: 8 }))
-      .toContain('Sobe devagar: no máximo 2 a 3 km por semana.');
+  /* 2026-11-06: quanto pode subir é a régua da guarda de carga do servidor (runLoadAlert.ts) —
+     com base baixa (< LOW_BASE_WEEKLY_KM), até LOW_BASE_RAMP_KM acima da média das 3 anteriores,
+     para todos os níveis; acima dela, o ACWR até 1,5. Nunca o «10%» nem os «2 a 3 km». */
+  it('com base baixa, a rampa da guarda (até 10 km acima da média das últimas 3), em todos os níveis', () => {
+    for (const experienceLevel of ['iniciante', 'basico', 'medio']) {
+      const t = phaseGuidance({ ...meia, phaseId: 'base', experienceLevel, weeklyVolumeKm: 12 });
+      expect(t).toContain('Sobe com calma: até 10 km por semana acima da média das últimas 3.');
+      expect(t).not.toMatch(/10%|2 a 3 km/);
+    }
+    // No limite (20 km/semana) já é a régua do ACWR.
+    expect(phaseGuidance({ ...meia, phaseId: 'base', experienceLevel: 'basico', weeklyVolumeKm: 20 }))
+      .toContain('a semana sem passar 1,5 vezes a tua média das últimas 4');
+  });
+
+  it('o trail com D+ tem subidas desde já', () => {
     expect(phaseGuidance({ distanceKm: 25, raceType: 'trail', elevationGainM: 1200, phaseId: 'base', experienceLevel: 'medio' }))
       .toContain('Com 1200 m de D+ na prova, as subidas entram já.');
     // Corrida 2.2 #2: ao iniciante, as subidas curtas só depois de semanas de base.
@@ -31,7 +43,7 @@ describe('phaseGuidance — base', () => {
   it('sem nível declarado, nem "no teu nível" nem os limites do iniciante: pergunta (revisão de 2026-09-26)', () => {
     const pergunta = 'Diz-me há quanto tempo corres e afino isto.';
     expect(phaseGuidance({ distanceKm: 10, phaseId: 'base', experienceLevel: null, weeklyVolumeKm: 8 }))
-      .toBe(`Para os 10 km, quero que chegues aos 15 km por semana; andas nos 8. Sobe devagar. ${pergunta}`);
+      .toBe(`Para os 10 km, quero que chegues aos 15 km por semana; andas nos 8. Sobe com calma. ${pergunta}`);
     expect(phaseGuidance({ distanceKm: 25, raceType: 'trail', elevationGainM: 1200, phaseId: 'base', experienceLevel: null }))
       .toBe(`Para o trail, quero que chegues aos 35 km por semana, quase todos em ritmo fácil. Com 1200 m de D+ na prova, as subidas também vão entrar. ${pergunta}`);
     // Nem o teto do longo (10 a 12 km, 1h30) nem os dias de polimento (10) do iniciante.
