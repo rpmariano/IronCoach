@@ -301,6 +301,11 @@ export function runLoadInterventionToOpen(
 //   é uma subida absoluta: a semana pode chegar à média dessas 3 semanas +
 //   LOW_BASE_RAMP_KM, ou ao ACWR 1,50, o que for maior. Acima da base
 //   baixa, o ACWR 1,50 como sempre.
+//   Consequência aceite (decisão do Rui, revisão do lote e3901569): com base
+//   muito baixa a subida absoluta passa muito o rácio. A 2 km/semana a regra
+//   deixa uma semana de 12 km — ACWR 12 ÷ ((12 + 6) ÷ 4) ≈ 2,7. É de
+//   propósito: com tão pouca base, o rácio não diz nada de útil e só proibia
+//   as sessões úteis.
 
 /** Abaixo disto (km/semana, média das 3 semanas antes da janela de 7 dias)
  *  é base baixa: o limite passa a ser uma subida absoluta. */
