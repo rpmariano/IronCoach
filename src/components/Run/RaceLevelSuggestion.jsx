@@ -3,6 +3,7 @@ import { Calculator, AlertOctagon } from 'lucide-react';
 import Warning, { WarningAction } from '../shared/Warning';
 import { getRacePrediction } from '../../utils/biEngine';
 import { assessRaceLevelTriage } from '@formulas/raceLevelTriage.ts';
+import { raceVolumeOutlook } from '@formulas/raceVolumeOutlook.ts';
 import { formatHoursMinutes } from '../../utils/run';
 
 // Rótulos das 5 bandas do motor de triagem (Bloco 8) — 4 coincidem com
@@ -82,6 +83,8 @@ export default function RaceLevelSuggestion({
     const flattenedRuns = (runs || []).map((r) => ({
       date: r.date,
       duration_seconds: r.duration_seconds,
+      // #113: em estrada o nível sai dos km semanais (bandWeeklyKm).
+      distance_km: r.distance_km,
       elevation_gain_m: r.details?.elevation_gain_m ?? r.elevation_gain_m ?? null,
     }));
 
@@ -91,9 +94,16 @@ export default function RaceLevelSuggestion({
       todayISO,
       raceTimeSecondsPrevisto: predictedSeconds,
       raceElevationM,
+      raceType,
+      raceDistanceKm: distanceKm,
     });
 
-    return { ...triage, isTrail: raceType === 'trail', raceElevationM };
+    // #113: o ritmo como sinal positivo (o melhor VDOT das últimas 12 semanas) — só se diz, não
+    // muda o nível, que em estrada é o dos km.
+    const paceLevel = raceType !== 'trail'
+      ? raceVolumeOutlook({ race: { date: todayISO, distance_km: distanceKm }, runs: runs || [], todayISO }).paceLevel
+      : null;
+    return { ...triage, isTrail: raceType === 'trail', raceElevationM, paceLevel };
   }, [raceType, distanceKm, elevationGainM, declaredLevel, profile, runs, todayISO]);
 
   if (!result) return null;
@@ -111,10 +121,15 @@ export default function RaceLevelSuggestion({
   const elevationStr = result.isTrail && result.raceElevationM > 0 && result.peakElevationM != null
     ? `sobes ${Math.round(result.peakElevationM)} m por semana`
     : null;
-  const evidence = [
-    timeStr ? `corres ${timeStr} por semana` : null,
-    elevationStr,
-  ].filter(Boolean).join(', ');
+  // #113 (2026-11-06): em estrada o nível mede-se pelos km semanais — a evidência diz os km, não o
+  // tempo (que dava «Avançado» a quem corre muitas horas devagar).
+  const kmStr = result.peakWeeklyKm != null ? `${String(result.peakWeeklyKm).replace('.', ',')} km` : null;
+  const evidence = result.axis === 'km'
+    ? (kmStr ? `corres ${kmStr} por semana` : '')
+    : [
+      timeStr ? `corres ${timeStr} por semana` : null,
+      elevationStr,
+    ].filter(Boolean).join(', ');
 
   // sub_iniciante não tem opção no <select> de nível (EXPERIENCE_LEVELS) —
   // de propósito: não há "nível seguro" abaixo de Iniciante para oferecer
@@ -136,10 +151,19 @@ export default function RaceLevelSuggestion({
      prova. "Bate certo" é o verde do dentro-do-alvo; "não bate certo" é o
      coral do aviso. Os textos são os mesmos. */
   const matchesDeclared = declaredLevel && declaredLevel === result.level;
+  // Em estrada é uma leitura do volume, não uma falha (#113, aprovado pelo Rui). E o ritmo, quando
+  // já é de um nível acima, diz-se como coisa boa.
+  const byKm = result.axis === 'km';
+  const LEVEL_ORDER = ['sub_iniciante', 'iniciante', 'basico', 'medio', 'avancado'];
+  const paceAbove = byKm && result.paceLevel && LEVEL_ORDER.indexOf(result.paceLevel) > LEVEL_ORDER.indexOf(result.level);
+  const paceLine = paceAbove ? (
+    <span className="block mt-1.5" data-testid="level-pace-positive">O teu ritmo já é de {levelLabel(result.paceLevel)} — falta volume, não ritmo.</span>
+  ) : null;
   if (matchesDeclared) {
     return (
       <Warning tone="ok" title="Nível calculado: bate certo" icon={<Calculator size={12} />} className="mt-1.5">
         Pelos teus últimos treinos ({evidence}), o nível que escolheste bate certo.
+        {paceLine}
         <span className="block mt-1.5 text-[11px]" style={{ color: 'var(--text-4)' }}>{NOTA_FORMULA}</span>
       </Warning>
     );
@@ -147,7 +171,7 @@ export default function RaceLevelSuggestion({
 
   return (
     <Warning
-      title="Nível calculado"
+      title={byKm ? 'Nível pelo volume' : 'Nível calculado'}
       icon={<Calculator size={14} />}
       className="mt-1.5"
       actions={
@@ -157,7 +181,8 @@ export default function RaceLevelSuggestion({
       }
     >
       Pelos teus últimos treinos ({evidence}), classificas-te como{' '}
-      <strong>{levelLabel(result.level)}</strong> para esta prova.
+      <strong>{levelLabel(result.level)}</strong> para esta prova{byKm ? ' — é uma leitura do volume, não uma falha' : ''}.
+      {paceLine}
       <span className="block mt-1.5 text-[11px]" style={{ color: 'var(--text-4)' }}>{NOTA_FORMULA}</span>
     </Warning>
   );
