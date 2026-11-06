@@ -3786,10 +3786,10 @@ export function raceVolumeNote(entries: { race: { name: string; date: string }; 
 /** Uma corrida fácil tem pelo menos isto (km ou minutos). */
 export const MIN_EASY_RUN_KM = 5;
 export const MIN_EASY_RUN_MIN = 30;
-/** A recuperação é mais curta: o trote de 20 min no dia a seguir a uma prova
- *  é útil (revisão do lote e3901569). */
-export const MIN_RECOVERY_RUN_KM = 3;
-export const MIN_RECOVERY_RUN_MIN = 20;
+/** A recuperação pode ser mais curta em km: 4 km ou 30 min (decisão do Rui,
+ *  2026-11-06, depois da revisão do lote e3901569). */
+export const MIN_RECOVERY_RUN_KM = 4;
+export const MIN_RECOVERY_RUN_MIN = 30;
 /** A ativação antes de uma prova: 3 a 5 km. */
 export const ACTIVATION_KM_RANGE: [number, number] = [3, 5];
 /** Duas provas a pelo menos isto de distância têm corridas de manutenção entre elas. */
