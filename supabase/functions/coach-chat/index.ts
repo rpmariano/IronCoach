@@ -250,29 +250,80 @@ const MAX_TOOL_ROUNDS = 4;  // idas-e-voltas de function calling antes de força
 // repetiu-a. O Rui procurou a proposta e não havia nada para aceitar.
 
 /** Uma frase em que ela diz que enviou/deixou uma proposta. */
-const PROPOSAL_CLAIM_RE = /\b(?:j[áa]\s+)?(?:te\s+)?(?:enviei|mandei|deixei|acabei\s+de\s+(?:enviar|mandar|deixar)|preparei|criei)(?:-te)?\s+(?:aqui\s+)?(?:a|uma|esta|essa|nova)?\s*(?:nova\s+)?propost[ae]s?\b/i;
-/** Frases que falam de uma proposta sem dizer que a enviou agora (revisão do
- *  lote f6b4053b): a negação («ainda não te enviei a proposta», «não preparei
- *  a proposta ainda»), o passado com data («ontem enviei-te a proposta; já a
- *  viste?») e o pôr de parte («deixei a proposta de lado»). */
-const PROPOSAL_NOT_CLAIM_RE = /(?:^|[^a-zà-ú])(?:ontem|anteontem|há\s+(?:\d+|uns|umas|dois|duas|três|alguns|algumas)\s+(?:dias?|semanas?)|(?:na|a)\s+semana\s+passada|no\s+outro\s+dia|de\s+lado|[àa]\s+parte)(?![a-zà-ú])/i;
-/** Uma negação na mesma oração, antes do verbo («ainda não te enviei…»). */
-const NEGATION_BEFORE_RE = /(?:^|[^a-zà-ú])(?:não|nao|nunca|nem)(?![a-zà-ú])[^.!?;,]*$/i;
+const PROPOSAL_CLAIM_RE = /(?<![a-zà-ú])(?:j[áa]\s+)?(?:t[ea]\s+)?(?:enviei|mandei|deixei|acabei\s+de\s+(?:enviar|mandar|deixar)|preparei|criei)(?:-t[ea])?(?:\s+(?:agora|j[áa]|aqui|hoje|mesmo|ontem|anteontem|a|uma|esta|essa|tua|outra|nova|de\s+novo))*\s+propost[ae]s?(?![a-zà-ú])/i;
+/** O passado com data e o pôr de parte (revisão do lote f6b4053b). Só contam
+ *  colados ao verbo — na mesma oração, antes dele, ou logo a seguir à
+ *  proposta: «ontem enviei-te a proposta», «enviei-te ontem a proposta»,
+ *  «deixei a proposta de lado». «Depois da prova de ontem, preparei uma
+ *  proposta» é um envio (2.ª revisão do lote). */
+const PROPOSAL_PAST_RE = /(?:^|[^a-zà-ú])(?:ontem|anteontem|há\s+(?:\d+|uns|umas|dois|duas|três|alguns|algumas)\s+(?:dias?|semanas?)|(?:na|a)\s+semana\s+passada|no\s+outro\s+dia|de\s+lado|[àa]\s+parte)(?![a-zà-ú])/i;
+/** A negação: «não», «nunca», «nem». */
+const NEGATION_RE = /(?:^|[^a-zà-ú])(?:não|nao|nunca|nem)(?![a-zà-ú])/i;
+/** O que separa orações: pontuação, «que», «mas», «e», «porque», «pois». */
+const CLAUSE_BREAK_RE = /[,;:—–]|(?:^|[^a-zà-ú])(?:que|mas|e|porque|pois)(?![a-zà-ú])/gi;
 
-/** A frase diz que ela enviou agora uma proposta. */
-function isProposalClaim(sentence: string): boolean {
-  const m = PROPOSAL_CLAIM_RE.exec(sentence);
-  if (!m) return false;
-  if (NEGATION_BEFORE_RE.test(sentence.slice(0, m.index))) return false;
-  return !PROPOSAL_NOT_CLAIM_RE.test(sentence);
+/** A oração antes do verbo e a que vem logo a seguir à proposta. */
+function claimClause(sentence: string, m: RegExpExecArray): { before: string; after: string } {
+  const head = sentence.slice(0, m.index);
+  let cut = 0;
+  for (const b of head.matchAll(CLAUSE_BREAK_RE)) cut = (b.index ?? 0) + b[0].length;
+  const tail = sentence.slice(m.index + m[0].length);
+  const next = tail.search(/[,;:—–.!?]|(?:^|[^a-zà-ú])(?:que|mas|e|porque|pois|até)(?![a-zà-ú])/i);
+  return { before: head.slice(cut), after: next < 0 ? tail : tail.slice(0, next) };
 }
+
+/** A frase diz que ela enviou agora uma proposta: o verbo de envio sem
+ *  negação na mesma oração antes dele («não te preocupes que já te enviei…»
+ *  é envio), e sem data no passado nem «de lado» colados a ele. */
+function isProposalClaim(sentence: string): boolean {
+  return proposalClaimKind(sentence) !== null;
+}
+
+/** Uma frase de afirmação é de objetivos só se for uma proposta enviada que
+ *  fala de objetivos; uma alteração ao plano é sempre do plano. */
+function claimIsGoals(sentence: string): boolean {
+  return proposalClaimKind(sentence) === "proposal" && /\b(?:objetivos?|metas?)\b/i.test(sentence);
+}
+
+/** «Reajustei os próximos dias», «ajustámos o que foi preciso», «alterei o
+ *  plano» — uma alteração ao plano afirmada como feita (bug #115, 2026-11-07,
+ *  11:20: «Reajustei os próximos dias… e reorganizei as sessões falhadas»,
+ *  sem propose_training_plan). Só o pretérito: «vou ajustar» é uma promessa. */
+const PLAN_CHANGE_CLAIM_RE = /(?<![a-zà-ú])(?:j[áa]\s+)?(?:te\s+)?(?:re)?(?:ajustei|ajust[áa]mos|alterei|alter[áa]mos|mudei|mud[áa]mos|reorganizei|reorganiz[áa]mos|reformulei|reformul[áa]mos|reprogramei|redistribu[íi]|atualizei|adaptei|adapt[áa]mos|reestruturei|troquei|mexi)(?:-te|-lhe)?(?:\s+(?:j[áa]|agora|hoje|aqui|tamb[ée]m|ligeiramente|um\s+pouco|n?[oa]s?|em|teus?|tuas?|pr[óo]xim[oa]s?|restantes?|seguintes?|[úu]ltim[oa]s?|dois|duas|tr[êe]s))*\s+(?:plano|dias|semana|treinos?|sess[õo]es|calend[áa]rio|agenda|o\s+que\s+(?:foi|era)\s+preciso)(?![a-zà-ú])/i;
+/** «O plano já está ajustado», «os treinos foram reorganizados». */
+const PLAN_CHANGED_PASSIVE_RE = /(?<![a-zà-ú])(?:plano|semana|dias|treinos?|sess[õo]es)\s+(?:j[áa]\s+)?(?:est[áa]|est[ãa]o|foi|foram|ficou|ficaram)\s+(?:j[áa]\s+)?(?:re)?(?:ajustad|alterad|atualizad|reorganizad|adaptad|reformulad|reprogramad)[oa]s?(?![a-zà-ú])/i;
+/** «O plano que ajustei para ti», «dizer que reajustei os dias foi uma
+ *  imprecisão» — a referência e a retratação não são uma afirmação. */
+const PLAN_CHANGE_REFERENCE_RE = /(?:plano|semana|dias|treinos?|sess[õo]es|dizer|disse|afirmar|afirmei)\s+que\s+(?:te\s+)?$/i;
+
+/** O tipo de afirmação da frase: uma proposta enviada, uma alteração ao plano
+ *  feita, ou nenhuma. As mesmas exclusões para todas (a negação na oração do
+ *  verbo, a data no passado colada a ele). */
+function proposalClaimKind(sentence: string): "proposal" | "plan_change" | null {
+  for (const [re, kind] of [
+    [PROPOSAL_CLAIM_RE, "proposal"],
+    [PLAN_CHANGE_CLAIM_RE, "plan_change"],
+    [PLAN_CHANGED_PASSIVE_RE, "plan_change"],
+  ] as const) {
+    const m = re.exec(sentence);
+    if (!m) continue;
+    const { before, after } = claimClause(sentence, m);
+    if (NEGATION_RE.test(before) || PROPOSAL_PAST_RE.test(before + " " + m[0] + " " + after)) continue;
+    if (kind === "plan_change" && PLAN_CHANGE_REFERENCE_RE.test(sentence.slice(0, m.index))) continue;
+    return kind;
+  }
+  return null;
+}
+
+/** Onde se corta uma frase — o mesmo para detetar e para tirar. */
+const CLAIM_SENTENCE_SPLIT = /(?<=[.!?;])[ \t]+/;
 
 /** O que ela diz que enviou: uma proposta de plano e/ou de objetivos. */
 export function claimedProposals(text: string | null | undefined): { plan: boolean; goals: boolean } {
   const out = { plan: false, goals: false };
-  for (const sentence of String(text ?? "").split(/(?<=[.!?;])\s+|\n+/)) {
+  for (const sentence of String(text ?? "").split("\n").flatMap((line) => line.split(CLAIM_SENTENCE_SPLIT))) {
     if (!isProposalClaim(sentence)) continue;
-    if (/\b(?:objetivos?|metas?)\b/i.test(sentence)) out.goals = true;
+    if (claimIsGoals(sentence)) out.goals = true;
     else out.plan = true;
   }
   return out;
@@ -286,13 +337,12 @@ export function stripProposalClaims(text: string, kinds: { plan: boolean; goals:
   if (!kinds.plan && !kinds.goals) return text;
   const drop = (sentence: string) => {
     if (!isProposalClaim(sentence)) return false;
-    const isGoals = /\b(?:objetivos?|metas?)\b/i.test(sentence);
-    return isGoals ? kinds.goals : kinds.plan;
+    return claimIsGoals(sentence) ? kinds.goals : kinds.plan;
   };
   const out: string[] = [];
   for (const line of text.split("\n")) {
     if (!line.trim()) { out.push(line); continue; }
-    const kept = line.split(/(?<=[.!?])[ \t]+/).filter((sentence) => !drop(sentence));
+    const kept = line.split(CLAIM_SENTENCE_SPLIT).filter((sentence) => !drop(sentence));
     if (kept.length) out.push(kept.join(" "));
   }
   const result = out.join("\n").replace(/\n{3,}/g, "\n\n").trim();
@@ -305,15 +355,22 @@ export function stripProposalClaims(text: string, kinds: { plan: boolean; goals:
  *  guarda do #112 continua de pé. */
 // deno-lint-ignore no-explicit-any
 export async function pendingProposalKinds(sb: any, userId: string): Promise<{ plan: boolean; goals: boolean }> {
-  const has = async (table: string) => {
+  // Um plano só conta com treino real (corrida/ginásio) — a regra de
+  // stalePendingIds: uma proposta de só-refeições não é a proposta de plano.
+  // deno-lint-ignore no-explicit-any
+  const hasTraining = (p: any) => (p?.coach_plan_items || []).some((i: any) => i?.kind === "corrida" || i?.kind === "ginasio");
+  const read = async (table: string, select: string, ok: (row: unknown) => boolean) => {
     try {
-      const { data, error } = await sb.from(table).select("id").eq("user_id", userId).eq("status", "proposto").limit(1);
-      return !error && Array.isArray(data) && data.length > 0;
+      const { data, error } = await sb.from(table).select(select).eq("user_id", userId).eq("status", "proposto");
+      return !error && Array.isArray(data) && data.some(ok);
     } catch {
       return false;
     }
   };
-  const [plan, goals] = await Promise.all([has("coach_plans"), has("coach_goal_proposals")]);
+  const [plan, goals] = await Promise.all([
+    read("coach_plans", "id, coach_plan_items(kind)", hasTraining),
+    read("coach_goal_proposals", "id", () => true),
+  ]);
   return { plan, goals };
 }
 
@@ -321,9 +378,11 @@ export async function pendingProposalKinds(sb: any, userId: string): Promise<{ p
 export function proposalClaimCorrection(kinds: { plan: boolean; goals: boolean }): string {
   const what = [kinds.plan ? "uma proposta de plano" : null, kinds.goals ? "uma proposta de objetivos" : null].filter(Boolean).join(" e ");
   const tool = [kinds.plan ? "propose_training_plan" : null, kinds.goals ? "update_goals" : null].filter(Boolean).join(" / ");
-  return `[Nota do sistema, não do atleta] Na resposta anterior disseste que enviaste ${what}, mas não chamaste ` +
-    `${tool} — nada foi enviado e o atleta não tem nada para aceitar. Se a proposta é para fazer, chama ${tool} ` +
-    `agora; se não, responde de novo sem dizer que enviaste uma proposta.`;
+  return `[Nota do sistema, não do atleta] Na resposta anterior disseste que enviaste ${what}` +
+    `${kinds.plan ? " ou que ajustaste o plano" : ""}, mas não chamaste ${tool} — nada foi enviado nem mudou, e o ` +
+    `atleta não tem nada para aceitar. Se a alteração é para fazer, chama ${tool} agora; se não há nada a mudar, ` +
+    `responde de novo a dizer que o plano fica como está e porquê. Nunca digas que alteraste ou enviaste o que não ` +
+    `passou pela ferramenta.`;
 }
 // Uma tentativa ao Gemini pode demorar até isto: uma proposta de plano com as
 // refeições são milhares de tokens de saída. Eram 40 s com uma repetição a
@@ -3578,6 +3637,20 @@ export function extractReplyText(geminiJson: any): string | undefined {
   return undefined;
 }
 
+/** O campo `reply` do JSON da resposta (RESPONSE_SCHEMA), ou o texto tal como
+ *  veio se não for JSON. É o texto que a guarda do #112 tem de ler: no JSON
+ *  cru, o «\n» antes de um parágrafo deixa um «n» colado à primeira palavra
+ *  e a frase «Enviei a proposta» escapava à ronda de correção (bug #115). */
+export function replyFieldText(raw: string | undefined): string | undefined {
+  if (typeof raw !== "string") return raw;
+  try {
+    const parsed = JSON.parse(raw);
+    return typeof parsed?.reply === "string" && parsed.reply.trim() ? parsed.reply : raw;
+  } catch {
+    return raw;
+  }
+}
+
 // Máximo de treinos por proposta — um plano semanal razoável não passa daqui,
 // e o limite trava uma resposta descontrolada do modelo a criar dezenas de
 // linhas na base de dados.
@@ -3786,10 +3859,10 @@ export function raceVolumeNote(entries: { race: { name: string; date: string }; 
 /** Uma corrida fácil tem pelo menos isto (km ou minutos). */
 export const MIN_EASY_RUN_KM = 5;
 export const MIN_EASY_RUN_MIN = 30;
-/** A recuperação é mais curta: o trote de 20 min no dia a seguir a uma prova
- *  é útil (revisão do lote e3901569). */
-export const MIN_RECOVERY_RUN_KM = 3;
-export const MIN_RECOVERY_RUN_MIN = 20;
+/** A recuperação pode ser mais curta em km: 4 km ou 30 min (decisão do Rui,
+ *  2026-11-06, depois da revisão do lote e3901569). */
+export const MIN_RECOVERY_RUN_KM = 4;
+export const MIN_RECOVERY_RUN_MIN = 30;
 /** A ativação antes de uma prova: 3 a 5 km. */
 export const ACTIVATION_KM_RANGE: [number, number] = [3, 5];
 /** Duas provas a pelo menos isto de distância têm corridas de manutenção entre elas. */
@@ -8840,9 +8913,11 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
 
     const planCheckinPrompt = targetsReviewPrompt ? targetsReviewPrompt : planContinuationIn ? buildPlanContinuationTurn(planContinuationIn) : onboardingStartPrompt ? onboardingStartPrompt : raceConflictPrompt ? raceConflictPrompt : cupMapPrompt ? cupMapPrompt : planDivergence.length > 0
       ? `A app detetou que o plano já não bate certo com a realidade e chamou-te — o atleta abriu o chat a partir desse aviso. ` +
-        `Motivos: ${planDivergence.map((t) => `"${t}"`).join("; ")}. Começa por estes pontos, por ordem de gravidade: explica em duas frases o que muda e porquê, ` +
-        `e propõe já o plano ajustado com propose_training_plan (replace_active_plan=true se houver plano aceite) — o dia da prova como prova, a véspera leve, ` +
-        `as sessões falhadas reorganizadas sem as empilhar. Pergunta-lhe só o que os dados não dizem (como se sente, se houve algum motivo).` :
+        `Motivos: ${planDivergence.map((t) => `"${t}"`).join("; ")}. Começa por estes pontos, por ordem de gravidade. Se o plano tem de mudar, ` +
+        `chama já propose_training_plan com o plano ajustado (replace_active_plan=true se houver plano aceite) — o dia da prova como prova, a véspera leve, ` +
+        `as sessões falhadas reorganizadas sem as empilhar — e diz em duas frases o que a proposta muda e porquê, para ele rever e aceitar. ` +
+        `Se não há nada a mudar (ex.: só faltam a véspera e a prova), diz-lhe que o plano fica como está e porquê. Nunca digas que ajustaste, ` +
+        `reorganizaste ou alteraste o plano sem a chamada: sem ela nada mudou. Pergunta-lhe só o que os dados não dizem (como se sente, se houve algum motivo).` :
       `O atleta abriu propositadamente o chat ao clicar no botão "Adaptar Plano" — foi ele que veio ter ` +
       `contigo, não surgiu nenhum alerta automático a chamar-te. ` +
       (alreadyTalkedToday
@@ -9266,7 +9341,9 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
          nas ferramentas e tempo para mais uma ronda, devolve-se-lhe a resposta
          com a correção, uma vez: chama-a agora, ou responde sem o dizer. */
       if (functionCalls.length === 0 && !isFinalRound && !proposalClaimRetried && hasTimeFor(chatDeadline)) {
-        const claim = claimedProposals(extractReplyText(parsedRes));
+        // O campo reply já parseado: no JSON cru, «\\n» antes de um parágrafo
+        // colava um «n» ao verbo e a frase escapava (bug #115).
+        const claim = claimedProposals(replyFieldText(extractReplyText(parsedRes)));
         const missing = {
           plan: claim.plan && !planWasProposed && toolNamesSent.includes("propose_training_plan"),
           goals: claim.goals && !goalWasProposed && !goalsWereUpdated && toolNamesSent.includes("update_goals"),
@@ -9453,8 +9530,11 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
         unsent.goals = unsent.goals && !pendingProposals.goals;
       }
       if (unsent.plan || unsent.goals) {
-        console.error("coach-chat: a frase da proposta não enviada saiu da resposta", JSON.stringify({ turnCase, ...unsent }));
-        replyText = stripProposalClaims(replyText, unsent);
+        const stripped = stripProposalClaims(replyText, unsent);
+        console.error(stripped !== replyText
+          ? "coach-chat: a frase da proposta não enviada saiu da resposta"
+          : "coach-chat: frase da proposta não enviada detetada, mas ficou (era a única)", JSON.stringify({ turnCase, ...unsent }));
+        replyText = stripped;
       }
     }
 

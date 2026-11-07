@@ -2,6 +2,8 @@
 // o subconjunto do PostgREST que variants.ts, learnFromMeal e o
 // runSavePantryFood usam sobre athlete_foods/athlete_food_rules. Gera ids,
 // respeita o unique (user_id, name_key) nos upserts e regista as escritas.
+// Também as refeições do registo revisto (#106, 2026-11-07): insert com
+// .single(), delete, o unique (user_id, client_request_id) e o storage.
 
 type Row = Record<string, unknown>;
 type Filter = [op: string, col: string, val: unknown];
@@ -13,6 +15,21 @@ export class FakeFoodsDb {
   updateError: ((row: Row, patch: Row) => string | null) | null = null;
   private seq = 0;
   nextId = () => `id-${++this.seq}`;
+  /** O storage: os caminhos que subiram e os que saíram. */
+  uploads: string[] = [];
+  removed: string[] = [];
+  storage = {
+    from: (_bucket: string) => ({
+      upload: (path: string, _bytes: unknown, _o?: unknown) => {
+        this.uploads.push(path);
+        return Promise.resolve({ error: null });
+      },
+      remove: (paths: string[]) => {
+        this.removed.push(...paths);
+        return Promise.resolve({ error: null });
+      },
+    }),
+  };
 
   from(table: string) {
     return new FakeQuery(this, table);
@@ -21,9 +38,9 @@ export class FakeFoodsDb {
 
 class FakeQuery {
   private filters: Filter[] = [];
-  private op: "select" | "upsert" | "update" | "insert" = "select";
+  private op: "select" | "upsert" | "update" | "insert" | "delete" = "select";
   private payload: Row | Row[] | null = null;
-  private single = false;
+  private one = false;
   private returning = false;
   private orders: [string, boolean][] = [];
   private lim: number | null = null;
@@ -54,6 +71,10 @@ class FakeQuery {
     this.payload = patch;
     return this;
   }
+  delete() {
+    this.op = "delete";
+    return this;
+  }
   private f(op: string, c: string, v: unknown) {
     this.filters.push([op, c, v]);
     return this;
@@ -76,7 +97,11 @@ class FakeQuery {
     return this;
   }
   maybeSingle() {
-    this.single = true;
+    this.one = true;
+    return this;
+  }
+  single() {
+    this.one = true;
     return this;
   }
 
@@ -107,9 +132,13 @@ class FakeQuery {
         const kids = this.db.tables[e.table] ?? [];
         out = out.map((r) => ({ ...r, [e.table]: kids.filter((k) => k[e.fk] === r.id).map((k) => ({ ...k })) }));
       }
-      return { data: this.single ? (out[0] ?? null) : out, error: null };
+      return { data: this.one ? (out[0] ?? null) : out, error: null };
     }
     this.db.writes.push({ table: this.table, op: this.op, payload: this.payload });
+    if (this.op === "delete") {
+      this.db.tables[this.table] = rows.filter((r) => !this.match(r));
+      return { data: null, error: null };
+    }
     if (this.op === "update") {
       const hits = rows.filter((r) => this.match(r));
       for (const r of hits) {
@@ -122,12 +151,18 @@ class FakeQuery {
     const list = Array.isArray(this.payload) ? this.payload : [this.payload!];
     const saved: Row[] = [];
     for (const p of list) {
-      const hit = rows.find((r) => r.user_id === p.user_id && r.name_key === p.name_key);
+      // O unique de client_request_id (idempotência): a 2.ª tentativa bate nele.
+      if (this.op === "insert" && p.client_request_id != null &&
+        rows.some((r) => r.user_id === p.user_id && r.client_request_id === p.client_request_id)) {
+        return { data: null, error: { code: "23505", message: "duplicate key value violates unique constraint" } };
+      }
+      // O unique (user_id, name_key) é só dos alimentos da despensa.
+      const hit = p.name_key !== undefined ? rows.find((r) => r.user_id === p.user_id && r.name_key === p.name_key) : undefined;
       if (hit) Object.assign(hit, p);
-      else rows.push({ id: this.db.nextId(), parent_id: null, variant_label: null, ...p });
+      else rows.push({ id: this.db.nextId(), parent_id: null, variant_label: null, created_at: new Date().toISOString(), ...p });
       saved.push({ ...(hit ?? rows.at(-1)!) });
     }
-    return { data: this.returning ? saved : null, error: null };
+    return { data: this.returning ? (this.one ? (saved[0] ?? null) : saved) : null, error: null };
   }
 
   then<T>(resolve: (v: ReturnType<FakeQuery["run"]>) => T) {

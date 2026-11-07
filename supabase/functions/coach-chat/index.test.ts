@@ -6567,7 +6567,7 @@ Deno.test("coach-chat: o objetivo calórico de cada dia vem do histórico de obj
   assertStringIncludes(comODia, "1 de 7 dias com registo completo");
 });
 
-import { claimedProposals, maintenanceGapError, pendingProposalKinds, proposalClaimCorrection, raceVolumeNote, sessionSizeError, stripProposalClaims } from "./index.ts";
+import { claimedProposals, maintenanceGapError, pendingProposalKinds, proposalClaimCorrection, raceVolumeNote, replyFieldText, sessionSizeError, stripProposalClaims } from "./index.ts";
 import { raceVolumeOutlook } from "../_shared/formulas/raceVolumeOutlook.ts";
 
 // Bug #112 (2026-11-06, 08:05): «Enviei a proposta de plano ajustada para
@@ -6595,6 +6595,80 @@ Deno.test("bug #112 (revisão do lote): negações, passado com data e «de lado
   assertEquals(claimedProposals("Não te preocupes, enviei a proposta agora."), { plan: true, goals: false });
 });
 
+Deno.test("bug #112 (2.ª revisão do lote): os falsos negativos — data longe do verbo, negação noutra oração, «agora», «já te enviei»", () => {
+  const plan = { plan: true, goals: false };
+  const none = { plan: false, goals: false };
+  // A data noutra oração não anula o envio.
+  assertEquals(claimedProposals("Depois da prova de ontem, preparei uma proposta de plano ajustada."), plan);
+  assertEquals(claimedProposals("Como correu a semana passada, preparei uma nova proposta."), plan);
+  // Colada ao verbo, sim.
+  assertEquals(claimedProposals("Enviei-te ontem a proposta."), none);
+  assertEquals(claimedProposals("Mandei-te a proposta na semana passada."), none);
+  // A negação só conta na mesma oração do verbo.
+  assertEquals(claimedProposals("Não te preocupes que já te enviei a proposta."), plan);
+  assertEquals(claimedProposals("Ainda não te enviei a proposta, mas está quase."), none);
+  // As formas que escapavam.
+  assertEquals(claimedProposals("Enviei-te agora a proposta para veres."), plan);
+  assertEquals(claimedProposals("Já te enviei a proposta."), plan);
+  assertEquals(claimedProposals("Já ta enviei, a proposta está no Coach."), none); // sem «proposta» colada ao verbo: não é o padrão
+  // O «;» corta a frase nas duas funções: a parte com o envio sai, a outra fica.
+  assertEquals(stripProposalClaims("Revi a semana; enviei a proposta de plano.", plan), "Revi a semana;");
+});
+
+// Bug #115 (2026-11-07, 11:20, caso E, aviso de plano desalinhado): a mensagem
+// gravada depois de a guarda tirar a frase do envio. Ficou «Reajustei os
+// próximos dias… e reorganizei as sessões falhadas», sem propose_training_plan.
+const RUI_1120 = "O desvio nos registos dos dias 5 e 6 de novembro e a reorganização do ginásio alteraram o ritmo de preparação antes da prova. Reajustei os próximos dias para assegurar que chegas a amanhã com frescura máxima e reorganizei as sessões falhadas sem as empilhar.\n\nComo te estás a sentir fisicamente e o que motivou a ausência de registos nestes últimos dias?";
+
+Deno.test("bug #115: a alteração ao plano afirmada sem ferramenta é apanhada, e sai", () => {
+  const plan = { plan: true, goals: false };
+  const none = { plan: false, goals: false };
+  assertEquals(claimedProposals(RUI_1120), plan);
+  const out = stripProposalClaims(RUI_1120, plan);
+  assertEquals(out.includes("Reajustei"), false);
+  assertStringIncludes(out, "O desvio nos registos");
+  assertStringIncludes(out, "Como te estás a sentir fisicamente");
+  // As formulações reais e as vizinhas.
+  assertEquals(claimedProposals("Os imprevistos de trabalho acontecem e ajustámos o que foi preciso."), plan);
+  assertEquals(claimedProposals("Alterei o plano para chegares fresco."), plan);
+  assertEquals(claimedProposals("Ajustei os teus treinos da semana."), plan);
+  assertEquals(claimedProposals("O plano já está ajustado à tua semana."), plan);
+  assertEquals(claimedProposals("Os treinos foram reorganizados."), plan);
+  // Uma alteração ao plano é do plano mesmo a falar de objetivos.
+  assertEquals(claimedProposals("Ajustei o plano aos teus objetivos."), plan);
+  // Não são afirmações: a promessa, a negação, a retratação, a referência, a data.
+  assertEquals(claimedProposals("Vou ajustar o plano e mando-te a proposta."), none);
+  assertEquals(claimedProposals("Não alterei o plano: hoje é descanso."), none);
+  assertEquals(claimedProposals("Tens toda a razão. Dizer que reajustei os dias foi uma imprecisão minha."), none);
+  assertEquals(claimedProposals("No plano que ajustei para ti, amanhã é a prova."), none);
+  assertEquals(claimedProposals("Ontem ajustei o plano contigo."), none);
+  assertEquals(claimedProposals("O plano fica como está: hoje descanso, amanhã a prova."), none);
+});
+
+Deno.test("bug #115: a ronda de correção lê o campo reply, não o JSON cru", () => {
+  const reply = "Revi a semana.\n\nEnviei-te a proposta de plano para aceitares.";
+  const raw = JSON.stringify({ reply, mood: "neutra" });
+  // No JSON cru, «\n\nEnviei» tem um «n» colado ao verbo: escapava.
+  assertEquals(claimedProposals(raw).plan, false);
+  assertEquals(replyFieldText(raw), reply);
+  assertEquals(claimedProposals(replyFieldText(raw)), { plan: true, goals: false });
+  // Não-JSON ou sem reply: o texto tal como veio.
+  assertEquals(replyFieldText("texto solto"), "texto solto");
+  assertEquals(replyFieldText(undefined), undefined);
+});
+
+Deno.test("bug #115: a correção e o aviso de plano desalinhado mandam chamar a ferramenta ou dizer que fica como está", async () => {
+  const c = proposalClaimCorrection({ plan: true, goals: false });
+  assertStringIncludes(c, "ou que ajustaste o plano");
+  assertStringIncludes(c, "chama propose_training_plan agora");
+  assertStringIncludes(c, "o plano fica como está e porquê");
+  const src = await Deno.readTextFile(new URL("./index.ts", import.meta.url));
+  assertStringIncludes(src, "const claim = claimedProposals(replyFieldText(extractReplyText(parsedRes)));");
+  assertStringIncludes(src, "Nunca digas que ajustaste, ");
+  assertStringIncludes(src, "diz-lhe que o plano fica como está e porquê");
+  assertEquals(src.includes("explica em duas frases o que muda e porquê, "), false);
+});
+
 Deno.test("bug #112 (revisão do lote): stripProposalClaims guarda as quebras de linha e não leva a linha de cima", () => {
   const list = "O plano da semana:\n- terça 5 km\n- quinta 5 km\nEnviei a proposta de plano para aceitares.\n\nComo estás?";
   assertEquals(stripProposalClaims(list, { plan: true, goals: false }), "O plano da semana:\n- terça 5 km\n- quinta 5 km\n\nComo estás?");
@@ -6607,11 +6681,14 @@ Deno.test("bug #112 (revisão do lote): uma proposta pendente na BD torna a fras
   const sbWith = (pending: Record<string, any[]>) => ({
     from: (table: string) => {
       // deno-lint-ignore no-explicit-any
-      const c: any = { select: () => c, eq: () => c, limit: () => Promise.resolve({ data: pending[table] ?? [], error: null }) };
+      const c: any = { select: () => c, eq: () => c, then: (resolve: (v: unknown) => void) => resolve({ data: pending[table] ?? [], error: null }) };
       return c;
     },
   });
-  assertEquals(await pendingProposalKinds(sbWith({ coach_plans: [{ id: "p1" }] }), "u1"), { plan: true, goals: false });
+  assertEquals(await pendingProposalKinds(sbWith({ coach_plans: [{ id: "p1", coach_plan_items: [{ kind: "corrida" }] }] }), "u1"), { plan: true, goals: false });
+  // Uma proposta de só-refeições não é a proposta de plano (a regra de stalePendingIds).
+  assertEquals(await pendingProposalKinds(sbWith({ coach_plans: [{ id: "p2", coach_plan_items: [{ kind: "refeicao" }] }] }), "u1"), { plan: false, goals: false });
+  assertEquals(await pendingProposalKinds(sbWith({ coach_plans: [{ id: "p3", coach_plan_items: [{ kind: "ginasio" }] }] }), "u1"), { plan: true, goals: false });
   assertEquals(await pendingProposalKinds(sbWith({ coach_goal_proposals: [{ id: "g1" }] }), "u1"), { plan: false, goals: true });
   assertEquals(await pendingProposalKinds({ from: () => { throw new Error("rede"); } }, "u1"), { plan: false, goals: false });
   const src = await Deno.readTextFile(new URL("./index.ts", import.meta.url));
@@ -6635,7 +6712,8 @@ Deno.test("bug #112: stripProposalClaims tira só a frase da proposta não envia
 Deno.test("bug #112: o ciclo corrige uma vez e a resposta final perde a frase se ainda a tiver", async () => {
   const src = await Deno.readTextFile(new URL("./index.ts", import.meta.url));
   assertStringIncludes(src, "contents.push({ role: \"user\", parts: [{ text: proposalClaimCorrection(missing) }] });");
-  assertStringIncludes(src, "replyText = stripProposalClaims(replyText, unsent);");
+  assertStringIncludes(src, "const stripped = stripProposalClaims(replyText, unsent);");
+  assertStringIncludes(src, "detetada, mas ficou (era a única)");
 });
 
 // #113/#114 (decisão do Rui de 2026-11-06): uma só leitura do volume para a
@@ -6666,16 +6744,21 @@ Deno.test("raceVolumeNote: a meia de 29 nov do Rui — uma frase por prova, sem 
   assertEquals(raceVolumeNote([{ race, outlook: ok }]), "");
 });
 
-Deno.test("sessionSizeError: corrida fácil ≥ 5 km ou 30 min; ativação 3–5 km", () => {
+Deno.test("sessionSizeError: corrida fácil ≥ 5 km ou 30 min; recuperação ≥ 4 km ou 30 min; ativação 3–5 km", async () => {
   assertEquals(sessionSizeError(pItem("2026-11-11", 5), 1), null);
   assertEquals(sessionSizeError({ ...pItem("2026-11-11", 0), target_duration_min: 30 }, 1), null);
   assertStringIncludes(sessionSizeError(pItem("2026-11-11", 3), 2)!, "pelo menos 5 km ou 30 min");
-  // A recuperação: ≥ 3 km ou ≥ 20 min — o trote de 20 min a seguir a uma prova passa.
+  // A recuperação: ≥ 4 km ou ≥ 30 min (decisão do Rui, 2026-11-06).
   assertStringIncludes(sessionSizeError(pItem("2026-11-11", 2, "recuperacao"), 2)!, "Erro no treino 2");
-  assertStringIncludes(sessionSizeError(pItem("2026-11-11", 2, "recuperacao"), 2)!, "pelo menos 3 km ou 20 min");
-  assertEquals(sessionSizeError(pItem("2026-11-16", 3, "recuperacao"), 1), null);
-  assertEquals(sessionSizeError({ ...pItem("2026-11-16", 0, "recuperacao"), target_duration_min: 20 }, 1), null);
-  assertStringIncludes(sessionSizeError({ ...pItem("2026-11-16", 0, "recuperacao"), target_duration_min: 15 }, 1)!, "recuperação");
+  assertStringIncludes(sessionSizeError(pItem("2026-11-11", 3, "recuperacao"), 2)!, "uma recuperação tem pelo menos 4 km ou 30 min");
+  assertEquals(sessionSizeError(pItem("2026-11-16", 4, "recuperacao"), 1), null);
+  assertEquals(sessionSizeError({ ...pItem("2026-11-16", 0, "recuperacao"), target_duration_min: 30 }, 1), null);
+  assertStringIncludes(sessionSizeError({ ...pItem("2026-11-16", 0, "recuperacao"), target_duration_min: 20 }, 1)!, "recuperação");
+  // A doutrina diz o mesmo.
+  const src = await Deno.readTextFile(new URL("./index.ts", import.meta.url));
+  assertStringIncludes(src, "recuperacao ${MIN_RECOVERY_RUN_KM} km ou ${MIN_RECOVERY_RUN_MIN} min");
+  assertStringIncludes(src, "export const MIN_RECOVERY_RUN_KM = 4;");
+  assertStringIncludes(src, "export const MIN_RECOVERY_RUN_MIN = 30;");
   // O continuo continua nos 5 km ou 30 min.
   assertStringIncludes(sessionSizeError({ ...pItem("2026-11-11", 0), target_duration_min: 20 }, 1)!, "pelo menos 5 km ou 30 min");
   assertEquals(sessionSizeError(pItem("2026-11-07", 3, "ativacao"), 1), null);
