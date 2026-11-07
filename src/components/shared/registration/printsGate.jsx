@@ -22,11 +22,11 @@ export const AWAITING_READ_HINT = 'Primeiro lê os prints, no botão junto das f
 
 /** O botão principal enquanto os prints estão por ler (bug #110): o «Analisar» fica à vista mas
     desativado, e a leitura faz-se no botão junto das fotos (PhotoReadSection) — nunca aqui. */
-export function AwaitingReadAction({ label }) {
+export function AwaitingReadAction({ label, hint = AWAITING_READ_HINT }) {
   return (
     <div className="w-full flex flex-col gap-1.5">
       <p id="awaiting-read-hint" className="text-[11.5px] leading-snug text-center text-[var(--text-2)]">
-        {AWAITING_READ_HINT}
+        {hint}
       </p>
       <CoachAnalyzeButton label={label} disabled aria-describedby="awaiting-read-hint" />
     </div>

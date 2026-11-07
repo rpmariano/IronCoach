@@ -208,7 +208,7 @@ export default function CarolQuestionsForm({
 /* As perguntas de uma leitura de prints (bug #106, contrato do Backend 6597c0ec): a Carol pergunta
    o contexto do que leu (no máximo 3). Não há «Responder» — as respostas seguem com o registo, em
    `carol_questions`, quando se carrega em Analisar. Sem impacto em kcal (é sempre 0). */
-export function PrintQuestions({ questions, answers, onChange, testid = 'print-questions' }) {
+export function PrintQuestions({ questions, answers, onChange, testid = 'print-questions', intro = null }) {
   if (!questions?.length) return null;
   const set = (id, patch) => onChange({ ...answers, [id]: { ...(answers?.[id] || {}), ...patch } });
   return (
@@ -216,7 +216,7 @@ export function PrintQuestions({ questions, answers, onChange, testid = 'print-q
       <div className="flex gap-2.5 items-start">
         <CoachAvatar size={36} mood="thinking" />
         <p className="text-[13px] leading-[1.5] mt-0.5" style={{ color: 'var(--text-2)' }}>
-          {questions.length === 1 ? 'Li os prints. Uma pergunta' : 'Li os prints. Umas perguntas'} para acertar a análise — se não souberes, deixa: fico com o que assumi.
+          {intro || `${questions.length === 1 ? 'Li os prints. Uma pergunta' : 'Li os prints. Umas perguntas'} para acertar a análise — se não souberes, deixa: fico com o que assumi.`}
         </p>
       </div>
       {questions.map((q) => (
@@ -234,16 +234,17 @@ export function PrintQuestions({ questions, answers, onChange, testid = 'print-q
 }
 
 /** O `carol_questions` do pedido de gravar: as perguntas lidas, com `answer` preenchido (ou null)
- *  e `answered_at` quando há resposta. No máximo 3 (o servidor também corta). */
-export function questionsPayload(questions, answers, now = () => new Date().toISOString()) {
+ *  e `answered_at` quando há resposta. No máximo 3 (o servidor também corta) — as refeições levam
+ *  mais (#106, até 7: as do modelo, a da variante e a da manteiga), com `max`. */
+export function questionsPayload(questions, answers, now = () => new Date().toISOString(), max = 3) {
   if (!Array.isArray(questions) || !questions.length) return {};
   return {
-    carol_questions: questions.slice(0, 3).map((q) => {
+    carol_questions: questions.slice(0, max).map((q) => {
       const answer = answerOf(answers?.[q.id]).slice(0, 60) || null;
       return { ...q, answer, answered_at: answer ? now() : null };
     }),
   };
 }
 
-/** As perguntas que vieram numa resposta de leitura (array válido, no máximo 3). */
-export const readQuestions = (data) => (Array.isArray(data?.questions) ? data.questions.filter((q) => q && q.id && q.question).slice(0, 3) : []);
+/** As perguntas que vieram numa resposta de leitura (array válido, no máximo 3; `max` nas refeições). */
+export const readQuestions = (data, max = 3) => (Array.isArray(data?.questions) ? data.questions.filter((q) => q && q.id && q.question).slice(0, max) : []);

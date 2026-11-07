@@ -5,6 +5,7 @@ import { ANALYZE_TIMEOUT_MS } from '../../lib/edgeTimeouts';
 import { compressImage } from '../../lib/image';
 import { CoachAnalyzeButton } from '../shared/CoachButton';
 import { AnalysisSkeleton, AnalysisFailure } from '../shared/AnalysisState';
+import SaveErrorLine from '../shared/SaveErrorLine';
 import useAnalysis from '../../utils/useAnalysis';
 import { ScanLine } from 'lucide-react';
 import { firstRecordMoment } from '../../utils/firstRecord';
@@ -21,7 +22,8 @@ import useRegistrationExit from '../shared/registration/useRegistrationExit';
 import PhotoReadSection from '../shared/registration/PhotoReadSection';
 import RegistrationSection from '../shared/registration/RegistrationSection';
 import { FieldInput, FieldTextarea } from '../shared/registration/Field';
-import { useClientRequestId, upsertById, saveErrorText } from '../../utils/clientRequestId';
+import { useClientRequestId, upsertById, } from '../../utils/clientRequestId';
+import { saveError, saveRefusal, reportSaveFailure, saveFailureMessage } from '../../utils/saveFailure';
 import { printsNeedRead, AwaitingReadAction } from '../shared/registration/printsGate';
 import { PrintQuestions, questionsPayload, readQuestions } from '../shared/CarolQuestionsForm';
 
@@ -150,10 +152,12 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
   const [assessmentTime, setAssessmentTime] = useState('');
   const [notes, setNotes] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
+  // #116: a gravação que falhou, para o «Tentar de novo» ao lado da mensagem dela.
+  const [failedSave, setFailedSave] = useState(null);
 
   const [photos, setPhotos] = useState([]); // [{ dataUrl, base64 }]
   // A espera e a falha da análise com prints (src/utils/useAnalysis.js).
-  const analysis = useAnalysis();
+  const analysis = useAnalysis({ kind: 'body' });
   const isAnalyzing = analysis.isAnalyzing;
   /* "Ler os prints": `readState` guarda quantos prints havia quando a leitura
      correu e as etiquetas que a Renpho dava. Se ao gravar os prints são os
@@ -323,7 +327,7 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
     try {
       let savedAssessment = null;
       if (needsReanalysis) {
-        const { data, error } = await invokeEdgeFunctionWithTimeout('analyze-body', {
+        const editRes = await invokeEdgeFunctionWithTimeout('analyze-body', {
           body: {
             mode: 'manual',
             assessment_id: assessmentIdToEdit,
@@ -334,8 +338,9 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
             ...fastingField(notes),
           },
         }, ANALYZE_TIMEOUT_MS);
-        if (error) throw new Error(error);
-        if (data?.error) throw new Error(data.error);
+        const { data, error } = editRes;
+        if (error) throw saveError(editRes);
+        if (data?.error) throw saveRefusal(data.error);
         savedAssessment = data?.assessment;
         useAppStore.getState().clearDismissedIntervention(assessmentIdToEdit);
       } else {
@@ -353,7 +358,10 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
       finishCreateAndGoToCalendar(savedAssessment, needsReanalysis ? 'Avaliação reanalisada pela Carol' : 'Avaliação atualizada');
     } catch (err) {
       console.error(err);
-      setErrorMsg(err.message || 'Falha a guardar alterações. Tenta novamente.');
+      reportSaveFailure('body', err, { step: 'edit' });
+      const message = saveFailureMessage(err, 'Não consegui guardar as alterações agora. Tenta de novo.');
+      setErrorMsg(message);
+      setFailedSave({ message, retry: () => handleSaveEdit() });
     } finally {
       setIsSaving(false);
     }
@@ -396,7 +404,7 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
         body: { mode: 'preview', images: photos.map(p => p.base64), mime_type: 'image/jpeg', notes: notes.trim() || null },
       }, ANALYZE_TIMEOUT_MS);
       if (error) throw new Error(error);
-      if (data?.error) throw new Error(data.error);
+      if (data?.error) throw saveRefusal(data.error);
       const preview = data?.preview || {};
       const merged = mergeBodyPreview(metricsRef.current, preview.metrics);
       setMetrics(merged.metrics);
@@ -436,8 +444,8 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
       },
     }, ANALYZE_TIMEOUT_MS);
     const { data, error } = saveRes;
-    if (error) throw new Error(saveErrorText(saveRes));
-    if (data?.error) throw new Error(data.error);
+    if (error) throw saveError(saveRes);
+    if (data?.error) throw saveRefusal(data.error);
 
     const saved = await persistAssessmentTime(data.assessment);
     setBodyAssessments(upsertById(bodyAssessments, saved));
@@ -455,8 +463,8 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
         body: { mode: 'manual', date, assessment_time: normalizeStartTime(assessmentTime), notes: notes.trim() || null, metrics: payloadMetricsOf(metrics), ...fastingField(notes), client_request_id: requestId.get() },
       }, ANALYZE_TIMEOUT_MS);
       const { data, error } = saveRes;
-      if (error) throw new Error(saveErrorText(saveRes));
-      if (data?.error) throw new Error(data.error);
+      if (error) throw saveError(saveRes);
+      if (data?.error) throw saveRefusal(data.error);
 
       const saved = await persistAssessmentTime(data.assessment);
       setBodyAssessments(upsertById(bodyAssessments, saved));
@@ -464,7 +472,10 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
       finishCreateAndGoToCalendar(saved, 'Avaliação registada');
     } catch (err) {
       console.error(err);
-      setErrorMsg(err.message || 'Falha a gravar a avaliação. Tenta novamente.');
+      reportSaveFailure('body', err, { step: 'manual' });
+      const message = saveFailureMessage(err, 'Não consegui gravar a avaliação agora. Tenta de novo — não fica repetida.');
+      setErrorMsg(message);
+      setFailedSave({ message, retry: () => saveFromFields() });
     } finally {
       setIsSaving(false);
     }
@@ -654,7 +665,7 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
         />
       )}
 
-      {errorMsg && <p role="alert" className="text-[13px] font-medium mt-3 text-center" style={{ color: 'var(--danger)' }}>{errorMsg}</p>}
+      <SaveErrorLine message={errorMsg} onRetry={failedSave && failedSave.message === errorMsg ? failedSave.retry : null} retrying={isSaving} />
     </RegistrationShell>
   );
 }

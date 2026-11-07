@@ -1,4 +1,5 @@
 import { useCallback, useRef, useState } from 'react';
+import { reportSaveFailure } from './saveFailure';
 
 /**
  * useAnalysis — a máquina de estados das três operações que dependem da IA e
@@ -24,7 +25,11 @@ import { useCallback, useRef, useState } from 'react';
  * perde numa falha — o `catch` vive aqui e não chega a mexer no estado do
  * ecrã.
  */
-export default function useAnalysis() {
+/**
+ * @param {{ kind?: 'meal'|'run'|'gym'|'body' }} [opts]  com kind, uma falha regista-se em app_logs
+ *   (save_failed, #116) — a não ser que o invoke já a tenha registado.
+ */
+export default function useAnalysis({ kind = null } = {}) {
   const [status, setStatus] = useState('idle');
   const [error, setError] = useState(null);
   // A última tarefa corrida, para o "Tentar de novo" a repetir tal e qual.
@@ -44,11 +49,12 @@ export default function useAnalysis() {
       // apanha a consola, e a mensagem técnica é o que permite perceber
       // depois se foi timeout, 401 ou resposta inválida.
       console.error(err);
+      if (kind) reportSaveFailure(kind, err);
       setError(err?.message || '');
       setStatus('error');
       return undefined;
     }
-  }, []);
+  }, [kind]);
 
   const retry = useCallback(() => {
     if (lastTaskRef.current) return run(lastTaskRef.current);

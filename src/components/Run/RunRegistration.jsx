@@ -10,6 +10,7 @@ import { diplomaFormValues } from '../../utils/diplomaReading';
 import DiplomaReadingCard, { useDiplomaReading } from './DiplomaReadingCard';
 import { CoachAnalyzeButton } from '../shared/CoachButton';
 import { AnalysisSkeleton, AnalysisFailure } from '../shared/AnalysisState';
+import SaveErrorLine from '../shared/SaveErrorLine';
 import useAnalysis from '../../utils/useAnalysis';
 import SectionLabel from '../shared/SectionLabel';
 import GlassCard from '../shared/GlassCard';
@@ -46,7 +47,8 @@ import RegistrationSection from '../shared/registration/RegistrationSection';
 import { findPendingPlanItems } from '../../utils/planPrefill';
 import CarolInterventionActions from '../shared/CarolInterventionActions';
 import { FieldInput, FieldSelect, FieldTextarea } from '../shared/registration/Field';
-import { useClientRequestId, saveErrorText } from '../../utils/clientRequestId';
+import { useClientRequestId, } from '../../utils/clientRequestId';
+import { saveError, saveRefusal, reportSaveFailure, saveFailureMessage } from '../../utils/saveFailure';
 import { printsNeedRead, AwaitingReadAction } from '../shared/registration/printsGate';
 import { PrintQuestions, questionsPayload, readQuestions } from '../shared/CarolQuestionsForm';
 
@@ -396,7 +398,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
      (src/utils/useAnalysis.js). Só a análise por foto passa por aqui — o
      registo manual (handleSaveCorrida) é uma gravação, não uma leitura de
      print, e fica com o `errorMsg` de sempre. */
-  const analysis = useAnalysis();
+  const analysis = useAnalysis({ kind: 'run' });
   const analyzingRun = analysis.isAnalyzing;
   /* Formulário único (registo unificado, decisões 2 e 6): já não há
      "Foto | Manual". Os prints são opcionais e os campos estão sempre à
@@ -447,6 +449,8 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
   const [savingWithCarol, setSavingWithCarol] = useState(null);
   const showAnalysis = analyzingRun || !!savingWithCarol;
   const [errorMsg, setErrorMsg] = useState('');
+  // #116: a gravação que falhou, para o «Tentar de novo» ao lado da mensagem dela.
+  const [failedSave, setFailedSave] = useState(null);
   /* Um campo obrigatório em falta ao gravar era só uma linha vermelha no fundo
      do formulário, fora do ecrã quando se carrega em "Guardar" a meio de uma
      página longa — foi o que aconteceu com o tempo oficial da prova
@@ -1715,7 +1719,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
       await finishCreatedRun({ ...created.run, ...payload });
       return;
     }
-    const { data, error } = await invokeEdgeFunctionWithTimeout('analyze-run', {
+    const editRes = await invokeEdgeFunctionWithTimeout('analyze-run', {
       body: {
         run_id: created.run.id,
         keep_paths: keep,
@@ -1733,8 +1737,9 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
         ...(editedTypedSinceCreated() ? { typed: editedTypedSinceCreated() } : {}),
       },
     }, ANALYZE_TIMEOUT_MS);
-    if (error) throw new Error(error);
-    if (data?.error) throw new Error(data.error);
+    const { data, error } = editRes;
+    if (error) throw saveError(editRes);
+    if (data?.error) throw saveRefusal(data.error);
     applyExtractedRun(data.run);
     // Não se volta a insistir nas métricas: o atleta já juntou o que tinha.
     await finishCreatedRun(data.run);
@@ -1774,8 +1779,8 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
         },
       }, ANALYZE_TIMEOUT_MS);
       const { data, error } = saveRes;
-      if (error) throw new Error(saveErrorText(saveRes));
-      if (data?.error) throw new Error(data.error);
+      if (error) throw saveError(saveRes);
+      if (data?.error) throw saveRefusal(data.error);
 
       const createdRun = data.run;
       // Gravada: a próxima gravação é sobre ela (run_id); um registo novo terá outro id.
@@ -1979,7 +1984,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
       if (runIdToEdit) {
         if (signatureChanged) {
           setSavingWithCarol(photosChanged && runPhotos.length > 0 ? 'foto' : 'manual');
-          const { data, error } = await invokeEdgeFunctionWithTimeout('analyze-run', {
+          const editRes = await invokeEdgeFunctionWithTimeout('analyze-run', {
             body: photosChanged && runPhotos.length > 0 ? reanalysisBody() : {
               mode: 'manual',
               run_id: runIdToEdit,
@@ -2020,7 +2025,8 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
               leg_stiffness_kn_m: parseFloat(legStiffness) || null,
             },
           }, ANALYZE_TIMEOUT_MS);
-          if (error) throw new Error(error);
+          const { data, error } = editRes;
+          if (error) throw saveError(editRes);
           const updatedRun = data.run;
           if (photosChanged && runPhotos.length === 0 && originalPhotoPathsRef.current.length) {
             // Todos os prints removidos: a corrida fica sem imagens (os
@@ -2098,8 +2104,8 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
         },
       }, ANALYZE_TIMEOUT_MS);
       const { data, error } = saveRes;
-      if (error) throw new Error(saveErrorText(saveRes));
-      if (data?.error) throw new Error(data.error);
+      if (error) throw saveError(saveRes);
+      if (data?.error) throw saveRefusal(data.error);
 
       newlySavedRun = data.run;
       if (!created) requestId.renew();
@@ -2116,7 +2122,10 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
       await finishSavedRun(newlySavedRun, 'Corrida registada');
     } catch (err) {
       console.error(err);
-      setErrorMsg(err.message || 'Falha a gravar a corrida. Tenta novamente.');
+      reportSaveFailure('run', err, { step: 'manual' });
+      const message = saveFailureMessage(err, 'Não consegui gravar a corrida agora. Tenta de novo — não fica repetida.');
+      setErrorMsg(message);
+      setFailedSave({ message, retry: () => handleSaveCorrida(forceBypassMissing, forceReanalyze) });
     } finally {
       setIsSubmitting(false);
       setSavingWithCarol(null);
@@ -2205,7 +2214,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
         },
       }, ANALYZE_TIMEOUT_MS);
       if (error) throw new Error(error);
-      if (data?.error) throw new Error(data.error);
+      if (data?.error) throw saveRefusal(data.error);
       const read = data?.preview || {};
       const now = liveForm.current;
       let filled = 0;
@@ -2702,7 +2711,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
             {renderCoreMetrics()}
             {renderManualDetails()}
 
-            {errorMsg && <p role="alert" className="text-[13px] font-medium mt-3" style={{ color: 'var(--danger)' }}>{errorMsg}</p>}
+            <SaveErrorLine message={errorMsg} center={false} onRetry={failedSave && failedSave.message === errorMsg ? failedSave.retry : null} retrying={isSubmitting} />
           </div>
         </section>
 
@@ -2967,7 +2976,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
 
           {renderCarolIntervention()}
 
-          {errorMsg && <p role="alert" className="text-[13px] font-medium mt-3" style={{ color: 'var(--danger)' }}>{errorMsg}</p>}
+          <SaveErrorLine message={errorMsg} center={false} onRetry={failedSave && failedSave.message === errorMsg ? failedSave.retry : null} retrying={isSubmitting} />
       </>
     );
   };
