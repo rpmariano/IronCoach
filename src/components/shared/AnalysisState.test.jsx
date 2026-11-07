@@ -89,6 +89,9 @@ describe('AnalysisFailure — a causa, dita por ela', () => {
     expect(classifyAnalysisFailure('TypeError: Failed to fetch')).toBe('offline');
     expect(classifyAnalysisFailure('qualquer coisa', false)).toBe('offline');
     expect(classifyAnalysisFailure('Timeout na análise.')).toBe('timeout');
+    // #116: a ligação que falhou com o telemóvel «com rede» é «A ligação falhou», não «sem rede» nem uma demora.
+    expect(classifyAnalysisFailure('A ligação falhou. Pode já ter ficado gravado — tentar de novo não o repete.')).toBe('network');
+    expect(classifyAnalysisFailure('Failed to send a request to the Edge Function')).toBe('network');
     expect(classifyAnalysisFailure('Edge Function returned 401')).toBe('session');
     expect(classifyAnalysisFailure('Falha na análise.')).toBe('other');
   });

@@ -23,7 +23,8 @@ import useRegistrationExit from '../shared/registration/useRegistrationExit';
 import PlanPrefillBanner from '../shared/registration/PlanPrefillBanner';
 import { mealSuggestionsFor } from '../../utils/planPrefill';
 import { FieldInput, FieldTextarea, caretToEnd } from '../shared/registration/Field';
-import { useClientRequestId, upsertById, saveErrorText } from '../../utils/clientRequestId';
+import { useClientRequestId, upsertById, } from '../../utils/clientRequestId';
+import { saveError, saveRefusal } from '../../utils/saveFailure';
 
 /* Espelha MEAL_TYPES em supabase/functions/analyze-meal e mealTypeLabel()
    em src/utils/nutrition.js — as duas usam hífen (ex.: "pequeno-almoco"). A
@@ -138,7 +139,7 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
      preenchido e não havia forma de repetir sem refazer tudo. `errorMsg`
      fica, mas só para as validações locais (nome do alimento, gramas,
      número de fotos). */
-  const analysis = useAnalysis();
+  const analysis = useAnalysis({ kind: 'meal' });
   const isAnalyzing = analysis.isAnalyzing;
 
   // Manual — "Adicionar alimento" só acrescenta {name, grams} a uma lista
@@ -389,8 +390,8 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
       },
     }, ANALYZE_TIMEOUT_MS);
     const { data, error } = saveRes;
-    if (error) throw new Error(saveErrorText(saveRes));
-    if (data?.error) throw new Error(data.error);
+    if (error) throw saveError(saveRes);
+    if (data?.error) throw saveRefusal(data.error);
 
     // A resposta traz meal e items em separado — o store espera-os juntos,
     // tal como loadInitialData os carrega (select('*, meal_items(*)')).
@@ -616,8 +617,8 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
       },
     }, ANALYZE_TIMEOUT_MS);
     const { data, error } = saveRes;
-    if (error) throw new Error(saveErrorText(saveRes));
-    if (data?.error) throw new Error(data.error);
+    if (error) throw saveError(saveRes);
+    if (data?.error) throw saveRefusal(data.error);
 
     const savedMeal = await persistMealTime(data.meal);
     setMeals(upsertById(meals, savedMeal));
@@ -652,7 +653,7 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
     {
       let savedMeal = null;
       if (needsReanalysis) {
-        const { data, error } = await invokeEdgeFunctionWithTimeout('analyze-meal', {
+        const editRes = await invokeEdgeFunctionWithTimeout('analyze-meal', {
           body: {
             mode: 'manual',
             meal_id: mealIdToEdit,
@@ -663,8 +664,9 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
             items: manualItems.map(i => ({ name: i.name, grams: i.grams })),
           },
         }, ANALYZE_TIMEOUT_MS);
-        if (error) throw new Error(error);
-        if (data?.error) throw new Error(data.error);
+        const { data, error } = editRes;
+        if (error) throw saveError(editRes);
+        if (data?.error) throw saveRefusal(data.error);
         savedMeal = data?.meal;
         useAppStore.getState().clearDismissedIntervention(mealIdToEdit);
       } else {

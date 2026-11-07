@@ -151,3 +151,85 @@ describe('invokeEdgeFunctionWithTimeout — deteção de timeout do cliente', ()
     expect(result.error).toMatch(/timeout/i);
   });
 });
+
+/* #116 (2026-11-07): uma gravação que falha regista-se como save_failed — com o tipo de registo, o
+   nome do erro, o tamanho do corpo e as fotos, sem conteúdo do atleta; e o log que não sai por falta
+   de rede fica no telemóvel para ir depois. */
+describe('invokeEdgeFunctionWithTimeout — save_failed (#116)', () => {
+  let inserts;
+  function spyAppLogs(result = { error: null }) {
+    inserts = [];
+    vi.spyOn(supabase.auth, 'getSession').mockResolvedValue({ data: { session: { user: { id: 'u1' } } } });
+    vi.spyOn(supabase, 'from').mockImplementation((table) => ({
+      insert: (row) => { inserts.push({ table, row }); return Promise.resolve(typeof result === 'function' ? result(row) : result); },
+    }));
+  }
+  const settle = () => new Promise((r) => setTimeout(r, 0));
+  afterEach(() => { vi.restoreAllMocks(); localStorage.clear(); });
+
+  it('falha de rede numa gravação com fotos: save_failed com o tipo, o nome do erro, o tamanho e as fotos — sem as fotos nem as notas', async () => {
+    spyAppLogs();
+    vi.spyOn(functionsProto, 'invoke').mockResolvedValue({ data: null, error: functionsFetchError() });
+    const body = { client_request_id: 'c1', images: ['A'.repeat(1000), 'B'.repeat(500)], notes: 'pequeno-almoço com o Zé', date: '2026-11-07' };
+    const res = await invokeEdgeFunctionWithTimeout('analyze-meal', { body }, 45000);
+    await settle();
+    expect(res.isNetwork).toBe(true);
+    const logs = inserts.filter((i) => i.table === 'app_logs').map((i) => i.row);
+    expect(logs).toHaveLength(1);
+    const [log] = logs;
+    expect(log.event).toBe('save_failed');
+    expect(log.meta).toMatchObject({ kind: 'meal', stage: 'invoke', saveMode: 'create', errorName: 'FunctionsFetchError', message: 'Failed to send a request to the Edge Function', isNetwork: true, photoCount: 2, hasPhotos: true });
+    expect(log.meta.bodyBytes).toBeGreaterThan(1500);
+    expect(JSON.stringify(log)).not.toMatch(/Zé|AAAA/);
+  });
+
+  it('o texto do servidor para o atleta não vai para o log (só que o havia); uma edição diz-se edit', async () => {
+    spyAppLogs();
+    vi.spyOn(functionsProto, 'invoke').mockResolvedValue({
+      data: null,
+      error: { name: 'FunctionsHttpError', message: 'Edge Function returned a non-2xx status code', context: { status: 400, json: async () => ({ error: 'Rui, não percebi esta refeição.' }) } },
+    });
+    await invokeEdgeFunctionWithTimeout('analyze-meal', { body: { mode: 'manual', meal_id: 'm1', items: [] } }, 45000);
+    await settle();
+    const log = inserts.find((i) => i.row.event === 'save_failed').row;
+    expect(log.meta).toMatchObject({ kind: 'meal', saveMode: 'edit', status: 400, serverText: true, message: null, hasPhotos: false });
+    expect(JSON.stringify(log)).not.toContain('Rui');
+  });
+
+  it('o que não grava (preview, coach-chat) fica com o log de sempre', async () => {
+    spyAppLogs();
+    vi.spyOn(functionsProto, 'invoke').mockResolvedValue({ data: null, error: functionsFetchError() });
+    await invokeEdgeFunctionWithTimeout('analyze-gym', { body: { mode: 'preview', images: ['x'] } }, 45000);
+    await invokeEdgeFunctionWithTimeout('coach-chat', { body: { message: 'olá' } }, 45000);
+    await settle();
+    const events = inserts.map((i) => i.row.event);
+    expect(events).toEqual(['analyze-gym', 'coach-chat']);
+  });
+
+  it('o timeout de uma gravação também é save_failed', async () => {
+    spyAppLogs();
+    vi.spyOn(functionsProto, 'invoke').mockImplementation((_f, opts) => new Promise((resolve) => {
+      opts.signal.addEventListener('abort', () => resolve({ data: null, error: functionsFetchError() }));
+    }));
+    await invokeEdgeFunctionWithTimeout('analyze-run', { body: { client_request_id: 'r1' } }, 10);
+    await settle();
+    expect(inserts[0].row).toMatchObject({ event: 'save_failed', meta: { kind: 'run', errorName: 'Timeout', isTimeout: true, timeoutMs: 10 } });
+  });
+
+  it('sem rede, o próprio log fica no telemóvel e vai com o log seguinte que sai', async () => {
+    let online = false;
+    spyAppLogs(() => (online ? { error: null } : { error: { message: 'TypeError: Failed to fetch', code: '' } }));
+    vi.spyOn(functionsProto, 'invoke').mockResolvedValue({ data: null, error: functionsFetchError() });
+    await invokeEdgeFunctionWithTimeout('analyze-body', { body: { mode: 'manual', metrics: {} } }, 45000);
+    await settle();
+    expect(JSON.parse(localStorage.getItem('ironhealth.pendingAppLogs'))).toHaveLength(1);
+
+    online = true;
+    const { logAppEvent } = await import('./supabase');
+    await logAppEvent('info', 'app_boot', 'x', {});
+    await settle();
+    expect(localStorage.getItem('ironhealth.pendingAppLogs')).toBeNull();
+    const batch = inserts.at(-1).row;
+    expect(Array.isArray(batch) && batch[0]).toMatchObject({ event: 'save_failed', meta: { kind: 'body' } });
+  });
+});

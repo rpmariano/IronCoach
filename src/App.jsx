@@ -1,5 +1,5 @@
 import React, { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
-import { supabase, logAppEvent } from './lib/supabase';
+import { supabase, logAppEvent, sendPendingAppLogs } from './lib/supabase';
 import { bootInfoOnce, bootMessage, trackHiddenAt } from './utils/bootTelemetry';
 import { announceBuildToServiceWorker } from './lib/assetCache';
 import { registerServiceWorker, maybeSyncPushSubscription, pushWantedFor, forgetPushSubscriptionOnThisDevice } from './lib/push';
@@ -696,6 +696,14 @@ export default function App() {
     bootLoggedRef.current = true;
     const info = bootInfoOnce();
     logAppEvent('info', 'app_boot', bootMessage(info), info);
+  }, [sessionUserId]);
+  /* #116: os logs que falharam por falta de rede (lib/pendingLogs.js) vão quando a rede volta; no
+     arranque vão atrás do app_boot. */
+  useEffect(() => {
+    if (!sessionUserId || sessionUserId === 'demo-user') return undefined;
+    const online = () => { sendPendingAppLogs(); };
+    window.addEventListener('online', online);
+    return () => window.removeEventListener('online', online);
   }, [sessionUserId]);
   const [notesReadyFor, setNotesReadyFor] = useState(null);
   useEffect(() => {

@@ -41,7 +41,14 @@ export function upsertById(list, row) {
 /** A mensagem de uma gravação que falhou: num timeout ou numa falha de rede o registo pode já ter
  *  ficado gravado no servidor — e tentar outra vez já não o repete. */
 export const SAVE_RETRY_SAFE_TEXT = 'A ligação falhou ou demorou demasiado. Pode já ter ficado gravado — tentar outra vez não o repete.';
+/** #116: a falha de rede (FunctionsFetchError) diz-se como tal — não como uma demora. */
+export const SAVE_NETWORK_TEXT = 'A ligação falhou. Pode já ter ficado gravado — tentar de novo não o repete.';
 export function saveErrorText(res) {
-  if (res?.isTimeout || res?.isNetwork) return SAVE_RETRY_SAFE_TEXT;
+  if (res?.isTimeout) return SAVE_RETRY_SAFE_TEXT;
+  if (res?.isNetwork) return SAVE_NETWORK_TEXT;
+  /* #116: só o texto que o servidor escreveu para o atleta (serverText). Sem ele, o error é o da
+     supabase-js, em inglês («Edge Function returned a non-2xx status code») — um 502/546 do gateway
+     — e o atleta via «Edge Function». O servidor não gravou (ou gravou e a idempotência apanha). */
+  if (res && 'serverText' in res) return res.serverText || 'Não consegui gravar agora. Tenta de novo — não fica repetido.';
   return res?.error || 'Falha a gravar. Tenta novamente.';
 }

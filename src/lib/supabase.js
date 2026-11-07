@@ -1,4 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
+import { queuePendingLog, flushPendingLogs } from './pendingLogs';
+import { saveKindOf, describeBody, saveModeOf, technicalMessage } from './saveTelemetry';
 
 const SUPABASE_URL = 'https://roxfzsiciizkevopgpnl.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJveGZ6c2ljaWl6a2V2b3BncG5sIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODMyNjg0NDksImV4cCI6MjA5ODg0NDQ0OX0.bS7FyzDIqj4Aov18OXw6SsJrx1hT1DxYQfzmeHHH7bw';
@@ -10,22 +12,30 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
  * ai_usage, gravados pelo servidor)
  */
 export async function logAppEvent(level, event, message = null, meta = {}) {
+  let row = null;
   try {
     const { data: { session } } = await supabase.auth.getSession();
     const userId = session?.user?.id || null;
-    const { error } = await supabase.from('app_logs').insert({
-      user_id: userId,
-      level,
-      event,
-      message,
-      meta,
-    });
+    row = { user_id: userId, level, event, message, meta };
+    const { error } = await supabase.from('app_logs').insert(row);
     if (error) {
       console.warn('[logAppEvent] Falha ao registar log:', error);
+      // #116: sem rede, o log da falha também não sai — fica no telemóvel e vai depois. Só as
+      // falhas de rede (sem código); uma recusa da base de dados não passaria mais tarde.
+      if (!error.code) queuePendingLog(row);
+    } else {
+      sendPendingAppLogs();
     }
   } catch (err) {
     console.warn('[logAppEvent] Falha ao registar log:', err);
+    queuePendingLog(row || { user_id: null, level, event, message, meta });
   }
+}
+
+/** Envia os logs que ficaram no telemóvel por falta de rede (#116). Chamado no arranque, quando a
+ *  rede volta e depois de cada log que sai bem. */
+export function sendPendingAppLogs() {
+  return flushPendingLogs((rows) => supabase.from('app_logs').insert(rows));
 }
 
 /**
@@ -70,6 +80,35 @@ export async function logAppEvent(level, event, message = null, meta = {}) {
  * temporizador, a única fonte fiável de saber se fomos nós a desistir,
  * independentemente de a livraria rejeitar ou resolver.
  */
+/* #116: uma gravação (analyze-meal/-run/-gym/-body, fora dos modos que não gravam) que falha
+   regista-se como save_failed — o tipo de registo, o nome e a mensagem técnica do erro, o estado
+   HTTP, o tamanho aproximado do corpo e se levava fotos. O texto que o servidor escreveu para o
+   atleta não vai (pode ter o nome dele): só que o havia. Devolve false quando não é uma gravação,
+   e aí fica o log de sempre (event = nome da função). */
+function logSaveFailure(fnName, body, info) {
+  const kind = saveKindOf(fnName, body);
+  if (!kind) return false;
+  const { bodyBytes, photoCount, hasPhotos } = describeBody(body);
+  logAppEvent('error', 'save_failed', `${kind}: ${info.errorName}`, {
+    kind,
+    fn: fnName,
+    stage: 'invoke',
+    saveMode: saveModeOf(body),
+    errorName: info.errorName,
+    message: info.serverText ? null : technicalMessage(info.message),
+    serverText: !!info.serverText,
+    status: info.status ?? null,
+    isNetwork: !!info.isNetwork,
+    isTimeout: !!info.isTimeout,
+    bodyBytes,
+    photoCount,
+    hasPhotos,
+    online: typeof navigator === 'undefined' ? null : navigator.onLine !== false,
+    ...(info.timeoutMs ? { timeoutMs: info.timeoutMs } : {}),
+  });
+  return true;
+}
+
 export async function invokeEdgeFunctionWithTimeout(fnName, options = {}, timeoutMs = 45000) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -89,7 +128,9 @@ export async function invokeEdgeFunctionWithTimeout(fnName, options = {}, timeou
       // no catch mais abaixo, que se decide se isto é um timeout nosso.
       if (controller.signal.aborted) {
         console.warn(`[EdgeFunction:${fnName}] Tempo limite excedido (${timeoutMs}ms).`);
-        logAppEvent('error', fnName, 'Timeout excedido', { timeoutMs });
+        if (!logSaveFailure(fnName, options.body, { errorName: 'Timeout', message: 'Timeout excedido', isTimeout: true, timeoutMs })) {
+          logAppEvent('error', fnName, 'Timeout excedido', { timeoutMs });
+        }
         return { data: null, error: 'A operação demorou demasiado tempo a responder (timeout). Por favor, tente novamente.', isTimeout: true };
       }
 
@@ -123,7 +164,14 @@ export async function invokeEdgeFunctionWithTimeout(fnName, options = {}, timeou
         } catch (_) {}
       }
       console.error(`[EdgeFunction:${fnName}] Erro na execução:`, detailedMsg, detail ?? '', error);
-      logAppEvent('error', fnName, detailedMsg || 'Erro na execução', detail ? { fnName, detail } : { fnName });
+      const logged = logSaveFailure(fnName, options.body, {
+        errorName: error?.name || 'Error',
+        message: error?.message,
+        serverText,
+        status: error.context?.status ?? null,
+        isNetwork: error?.name === 'FunctionsFetchError',
+      });
+      if (!logged) logAppEvent('error', fnName, detailedMsg || 'Erro na execução', detail ? { fnName, detail } : { fnName });
       // O servidor respondeu (mesmo que com erro) — não há timeout nem
       // processamento em curso a aguardar. `status` e `isNetwork` (ação
       // P.12) deixam quem chama distinguir "o servidor respondeu com um
@@ -154,14 +202,18 @@ export async function invokeEdgeFunctionWithTimeout(fnName, options = {}, timeou
     // acima falhar) — mas na prática o ramo acima é que trata o caso real.
     if (controller.signal.aborted) {
       console.warn(`[EdgeFunction:${fnName}] Tempo limite excedido (${timeoutMs}ms).`);
-      logAppEvent('error', fnName, 'Timeout excedido', { timeoutMs });
+      if (!logSaveFailure(fnName, options.body, { errorName: 'Timeout', message: 'Timeout excedido', isTimeout: true, timeoutMs })) {
+        logAppEvent('error', fnName, 'Timeout excedido', { timeoutMs });
+      }
       return { data: null, error: 'A operação demorou demasiado tempo a responder (timeout). Por favor, tente novamente.', isTimeout: true };
     }
     // Falha antes/sem resposta do servidor (rede, DNS, CORS...) — ex.:
     // "Failed to send a request to the Edge Function". O pedido nunca
     // chegou a ser processado, por isso NÃO é um timeout.
     console.error(`[EdgeFunction:${fnName}] Exceção não tratada:`, err);
-    logAppEvent('error', fnName, err.message || 'Exceção não tratada', { error: String(err) });
+    if (!logSaveFailure(fnName, options.body, { errorName: err?.name || 'Error', message: err?.message, isNetwork: true })) {
+      logAppEvent('error', fnName, err.message || 'Exceção não tratada', { error: String(err) });
+    }
     return { data: null, error: err.message || 'Falha de rede ou de comunicação com o servidor.', isTimeout: false, status: null, isNetwork: true };
   }
 }

@@ -313,6 +313,28 @@ describe('GymRegistration — registo manual também passa pelo Coach (analyze-g
     await screen.findByText('Falha a gravar treino.');
     expect(onClose).not.toHaveBeenCalled();
   });
+
+  /* #116 (2026-11-07): a falha de rede diz-se numa frase clara, nunca «Edge Function», e o «Tentar
+     de novo» repete a gravação com o MESMO client_request_id (a idempotência não a duplica). */
+  it('#116: falha de rede — frase clara e «Tentar de novo» com o mesmo client_request_id', async () => {
+    mocks.invoke.mockResolvedValueOnce({ data: null, error: 'Failed to send a request to the Edge Function', isNetwork: true, isTimeout: false, status: null });
+    render(<GymRegistration onClose={onClose} />);
+    goManual();
+
+    fireEvent.click(screen.getByRole('button', { name: /Analisar treino/i }));
+    gravarAssimSeHouver();
+
+    await screen.findByText(/^A ligação falhou\./);
+    expect(screen.queryByText(/Edge Function/)).toBeNull();
+    const firstId = mocks.invoke.mock.calls.at(-1)[1].body.client_request_id;
+    expect(firstId).toBeTruthy();
+
+    mocks.invoke.mockResolvedValueOnce({ data: null, error: 'Failed to send a request to the Edge Function', isNetwork: true });
+    fireEvent.click(screen.getByRole('button', { name: /Tentar de novo/ }));
+    await waitFor(() => expect(mocks.invoke.mock.calls.length).toBeGreaterThanOrEqual(2));
+    expect(mocks.invoke.mock.calls.at(-1)[1].body.client_request_id).toBe(firstId);
+    expect(onClose).not.toHaveBeenCalled();
+  });
 });
 
 /* Pedido 2026-09-14: registar um treino de ginásio SEM vir do botão

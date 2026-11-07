@@ -5,6 +5,7 @@ import { ANALYZE_TIMEOUT_MS } from '../../lib/edgeTimeouts';
 import { compressImage } from '../../lib/image';
 import { CoachAnalyzeButton } from '../shared/CoachButton';
 import { AnalysisSkeleton, AnalysisFailure } from '../shared/AnalysisState';
+import SaveErrorLine from '../shared/SaveErrorLine';
 import useAnalysis from '../../utils/useAnalysis';
 import { Dumbbell, Users } from 'lucide-react';
 import { firstRecordMoment } from '../../utils/firstRecord';
@@ -25,7 +26,8 @@ import { usePersistedDraftMedia } from '../../utils/draftMediaPersistence';
 import { normalizeStartTime, startTimeInputValue } from '../../utils/startTime';
 import CarolInterventionActions from '../shared/CarolInterventionActions';
 import { FieldInput, FieldTextarea } from '../shared/registration/Field';
-import { useClientRequestId, upsertById, saveErrorText } from '../../utils/clientRequestId';
+import { useClientRequestId, upsertById, } from '../../utils/clientRequestId';
+import { saveError, saveRefusal, reportSaveFailure, saveFailureMessage } from '../../utils/saveFailure';
 import { printsNeedRead, AwaitingReadAction } from '../shared/registration/printsGate';
 import { PrintQuestions, questionsPayload, readQuestions } from '../shared/CarolQuestionsForm';
 
@@ -86,6 +88,8 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
      prints, a Carol lê-os; o que o atleta escreveu ganha sempre ao que ela
      ler (analyze-gym). Já não há "Foto | Manual" à escolha. */
   const [errorMsg, setErrorMsg] = useState('');
+  // #116: a gravação que falhou, para o «Tentar de novo» ao lado da mensagem dela.
+  const [failedSave, setFailedSave] = useState(null);
 
   // Limpa o item do plano do store assim que foi consumido para os estados
   // iniciais acima — nunca deve reaparecer numa próxima abertura "Novo Treino".
@@ -100,7 +104,7 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
      e que pode falhar. O registo manual e a edição continuam com `errorMsg`:
      são gravações, não análises de imagem, e não há alternativa manual para
      onde cair. */
-  const analysis = useAnalysis();
+  const analysis = useAnalysis({ kind: 'gym' });
   const isAnalyzing = analysis.isAnalyzing;
   /* Ler os prints e/ou as observações para o formulário, sem gravar (F2,
      Opção A). `reviewedPhotos` guarda quantos prints havia quando a leitura
@@ -441,7 +445,7 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
         },
       }, ANALYZE_TIMEOUT_MS);
       if (error) throw new Error(error);
-      if (data?.error) throw new Error(data.error);
+      if (data?.error) throw saveRefusal(data.error);
 
       const result = mergePreview(formRef.current, data.preview, planBlocks);
       const { patch } = result;
@@ -561,8 +565,8 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
         },
       }, ANALYZE_TIMEOUT_MS);
       const { data, error } = saveRes;
-      if (error) throw new Error(saveErrorText(saveRes));
-      if (data?.error) throw new Error(data.error);
+      if (error) throw saveError(saveRes);
+      if (data?.error) throw saveRefusal(data.error);
 
       const analysed = { ...data.session, workout_session_sets: data.sets || [] };
       if (!Array.isArray(analysed.workout_session_sets) || analysed.workout_session_sets.length === 0) {
@@ -608,8 +612,8 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
         },
       }, ANALYZE_TIMEOUT_MS);
       const { data, error } = saveRes;
-      if (error) throw new Error(saveErrorText(saveRes));
-      if (data?.error) throw new Error(data.error);
+      if (error) throw saveError(saveRes);
+      if (data?.error) throw saveRefusal(data.error);
 
       const analysed = { ...data.session, workout_session_sets: data.sets || [] };
       if (!Array.isArray(analysed.workout_session_sets) || analysed.workout_session_sets.length === 0) {
@@ -629,7 +633,10 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
       finishCreateAndGoToCalendar(sessionWithSets, 'Treino registado');
     } catch (err) {
       console.error(err);
-      setErrorMsg(err.message || 'Falha a gravar o treino. Tenta novamente.');
+      reportSaveFailure('gym', err, { step: 'manual' });
+      const message = saveFailureMessage(err, 'Não consegui gravar o treino agora. Tenta de novo — não fica repetido.');
+      setErrorMsg(message);
+      setFailedSave({ message, retry: () => handleSaveManual() });
     } finally {
       setIsSaving(false);
     }
@@ -652,7 +659,7 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
 
       let savedSession = null;
       if (needsReanalysis) {
-        const { data, error } = await invokeEdgeFunctionWithTimeout('analyze-gym', {
+        const editRes = await invokeEdgeFunctionWithTimeout('analyze-gym', {
           body: {
             mode: 'manual',
             session_id: sessionIdToEdit,
@@ -665,8 +672,9 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
             ...metricsAndSetsBody(),
           },
         }, ANALYZE_TIMEOUT_MS);
-        if (error) throw new Error(error);
-        if (data?.error) throw new Error(data.error);
+        const { data, error } = editRes;
+        if (error) throw saveError(editRes);
+        if (data?.error) throw saveRefusal(data.error);
         savedSession = data?.session ? { ...data.session, workout_session_sets: data.sets || [] } : null;
         useAppStore.getState().clearDismissedIntervention(sessionIdToEdit);
       } else {
@@ -686,7 +694,10 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
       finishCreateAndGoToCalendar(savedSession, needsReanalysis ? 'Treino reanalisado pela Carol' : 'Treino atualizado');
     } catch (err) {
       console.error(err);
-      setErrorMsg(err.message || 'Falha a guardar alterações. Tenta novamente.');
+      reportSaveFailure('gym', err, { step: 'edit' });
+      const message = saveFailureMessage(err, 'Não consegui guardar as alterações agora. Tenta de novo.');
+      setErrorMsg(message);
+      setFailedSave({ message, retry: () => handleSaveEdit() });
     } finally {
       setIsSaving(false);
     }
@@ -1122,7 +1133,7 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
           />
         )}
 
-        {errorMsg && <p role="alert" className="text-[13px] font-medium mt-3 text-center" style={{ color: 'var(--danger)' }}>{errorMsg}</p>}
+        <SaveErrorLine message={errorMsg} onRetry={failedSave && failedSave.message === errorMsg ? failedSave.retry : null} retrying={isSaving} />
     </RegistrationShell>
   );
 }
