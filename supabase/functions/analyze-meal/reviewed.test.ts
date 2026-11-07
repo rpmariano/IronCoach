@@ -55,6 +55,8 @@ Deno.test("preview com fotos: os alimentos e as perguntas, sem gravar nada", asy
   // O que vai ao cliente: as colunas que se gravam e o from_label.
   const out = previewMealItem(read.items[1]);
   assertEquals([out.name, out.quantity_grams, out.calories_per_100g, out.from_label, out.iron_mg_per_100g], ["Iogurte grego", 125, 97, true, null]);
+  // preview_grams: as gramas da leitura, que o cliente devolve tal e qual no gravar.
+  assertEquals(out.preview_grams, 125);
   assertEquals("source_index" in out, false);
 });
 
@@ -115,10 +117,36 @@ Deno.test("gravar com reviewed sem respostas: comenta com as perguntas por confi
   // Uma resposta «Outro…» de preparação vai ao modelo; se ele falhar, a resposta fica como facto.
   const db2 = new FakeFoodsDb();
   const failing = { ...fakeDeps(seen as never), estimateManual: () => Promise.reject(new Error("rede")) };
-  const prep = { ...previewQuestion("com queijo da serra"), kind: "preparacao", topic: "tosta", options: ["com flamengo", "com queijo da serra"], assumed: "com flamengo" };
-  const r2 = await saveReviewedMeal(db2, USER, input({ carol_questions: [prep] }), EMPTY_PANTRY, failing);
+  const prep = { ...previewQuestion("com queijo da serra"), id: "q2", kind: "preparacao", topic: "tosta", options: ["com flamengo", "com queijo da serra"], assumed: "com flamengo" };
+  const iogurteQ = { ...previewQuestion("200 g"), id: "q3", topic: "Iogurte grego · quantidade", item_name: "Iogurte grego", options: ["150 g", "200 g"], assumed: "150 g" };
+  const r2 = await saveReviewedMeal(db2, USER, input({ carol_questions: [prep, iogurteQ] }), EMPTY_PANTRY, failing);
   assert("ok" in r2 && r2.ok);
-  assertEquals((db2.tables.meals[0].carol_questions as CarolQuestion[])[0].answer, "com queijo da serra");
+  // Revisão do lote 8aaa3eb9: a de preparação cuja reestimativa falhou fica por
+  // responder (o modo answer aplica-a depois); a de quantidade aplicou-se.
+  const qs = db2.tables.meals[0].carol_questions as CarolQuestion[];
+  assertEquals(qs.find((q) => q.id === "q2")!.answer, null);
+  assertEquals(qs.find((q) => q.id === "q3")!.answer, "200 g");
+  // E os alimentos devolvidos são os da BD, já com a quantidade aplicada.
+  assertEquals(r2.items.find((i) => i.name === "Iogurte grego")!.quantity_grams, 200);
+  assertEquals((db2.tables.meal_items as { name: string; quantity_grams: number }[]).find((i) => i.name === "Iogurte grego")!.quantity_grams, 200);
+});
+
+Deno.test("reviewed: gramas editadas por ele + resposta de quantidade — a edição manda, a resposta fica como facto (não se soma duas vezes)", async () => {
+  const db = new FakeFoodsDb();
+  const seen: { comments?: { ctx: { questions: CarolQuestion[] } }[] } = {};
+  // A leitura deu 120 g; ele escreveu 160 e respondeu «2 fatias» (+20 sobre a assumida).
+  const edited = { ...previewMealItem(TOSTA), quantity_grams: 160 };
+  const r = await saveReviewedMeal(db, USER, input({ items: [edited], carol_questions: [previewQuestion("2 fatias (~40 g)")] }), EMPTY_PANTRY, fakeDeps(seen as never));
+  assert("ok" in r && r.ok);
+  assertEquals(r.items[0].quantity_grams, 160);
+  assertEquals((db.tables.meals[0].carol_questions as CarolQuestion[])[0].answer, "2 fatias (~40 g)");
+  assertEquals(seen.comments![0].ctx.questions[0].answer, "2 fatias (~40 g)");
+  // Sem preview_grams (cliente antigo) a resposta aplica-se como antes.
+  const db2 = new FakeFoodsDb();
+  const noPreview = { ...previewMealItem(TOSTA), quantity_grams: 160, preview_grams: undefined };
+  const r2 = await saveReviewedMeal(db2, USER, input({ items: [noPreview], carol_questions: [previewQuestion("2 fatias (~40 g)")] }), EMPTY_PANTRY, fakeDeps());
+  assert("ok" in r2 && r2.ok);
+  assertEquals(r2.items[0].quantity_grams, 180);
 });
 
 Deno.test("replay idempotente: a 2.ª tentativa com o mesmo client_request_id devolve a refeição da 1.ª e tira as fotos dela", async () => {
@@ -143,11 +171,17 @@ Deno.test("reviewed: o que volta do cliente não se confia", () => {
   assertEquals(parseReviewedMealItems([{ ...TOSTA, quantity_grams: 0 }]), null);
   assertEquals(parseReviewedMealItems([{ ...TOSTA, calories_per_100g: 2000 }]), null);
   assertEquals(parseReviewedMealItems([{ ...TOSTA, protein_per_100g: null }]), null); // um macro em falta não
+  // Coerência: proteína + hidratos + gordura não passam de 100 g por 100 g.
+  assertEquals(parseReviewedMealItems([{ ...TOSTA, protein_per_100g: 50, carbs_per_100g: 40, fat_per_100g: 20 }]), null);
+  assertEquals(parseReviewedMealItems([{ ...TOSTA, protein_per_100g: 0, carbs_per_100g: 0, fat_per_100g: 100 }])!.length, 1);
   const ok = parseReviewedMealItems([{ ...TOSTA, name: "  Tosta  ", extra: "x" }])!;
   assertEquals([ok[0].name, ok[0].iron_mg_per_100g, "extra" in ok[0]], ["Tosta", null, false]);
   const { questions, answers } = parseReviewedMealQuestions([previewQuestion("2 fatias (~40 g)"), { id: "x", question: "sem opções" }]);
   assertEquals(questions.length, 1);
   assertEquals(questions[0].answer, null);
+  // O impacto vem do cliente: limitado.
+  const big = parseReviewedMealQuestions([{ ...previewQuestion(null), impact_kcal: 99999, impact_protein_g: -5000 }]).questions[0];
+  assertEquals([big.impact_kcal, big.impact_protein_g], [2000, -200]);
   assertEquals(answers, [{ id: "q1", answer: "2 fatias (~40 g)" }]);
 });
 

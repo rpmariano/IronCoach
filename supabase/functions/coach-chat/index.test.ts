@@ -6643,6 +6643,9 @@ Deno.test("bug #115: a alteração ao plano afirmada sem ferramenta é apanhada,
   assertEquals(claimedProposals("No plano que ajustei para ti, amanhã é a prova."), none);
   assertEquals(claimedProposals("Ontem ajustei o plano contigo."), none);
   assertEquals(claimedProposals("O plano fica como está: hoje descanso, amanhã a prova."), none);
+  // Revisão do lote 42dec7e2: o calendário e a agenda são o update_race_event, não o plano.
+  assertEquals(claimedProposals("Atualizei o teu calendário com a nova data."), none);
+  assertEquals(claimedProposals("Mudei a agenda da prova para domingo."), none);
 });
 
 Deno.test("bug #115: a ronda de correção lê o campo reply, não o JSON cru", () => {
@@ -6681,7 +6684,14 @@ Deno.test("bug #112 (revisão do lote): uma proposta pendente na BD torna a fras
   const sbWith = (pending: Record<string, any[]>) => ({
     from: (table: string) => {
       // deno-lint-ignore no-explicit-any
-      const c: any = { select: () => c, eq: () => c, then: (resolve: (v: unknown) => void) => resolve({ data: pending[table] ?? [], error: null }) };
+      const c: any = {
+        filters: [] as [string, string, unknown][],
+        select: () => c,
+        eq: (k: string, v: unknown) => (c.filters.push(["eq", k, v]), c),
+        gte: (k: string, v: unknown) => (c.filters.push(["gte", k, v]), c),
+        // deno-lint-ignore no-explicit-any
+        then: (resolve: (v: unknown) => void) => resolve({ data: (pending[table] ?? []).filter((row: any) => c.filters.every(([op, k, v]: [string, string, unknown]) => op === "eq" ? k === "user_id" || row[k] === undefined || row[k] === v : String(row[k] ?? "") >= String(v))), error: null }),
+      };
       return c;
     },
   });
@@ -6691,10 +6701,19 @@ Deno.test("bug #112 (revisão do lote): uma proposta pendente na BD torna a fras
   assertEquals(await pendingProposalKinds(sbWith({ coach_plans: [{ id: "p3", coach_plan_items: [{ kind: "ginasio" }] }] }), "u1"), { plan: true, goals: false });
   assertEquals(await pendingProposalKinds(sbWith({ coach_goal_proposals: [{ id: "g1" }] }), "u1"), { plan: false, goals: true });
   assertEquals(await pendingProposalKinds({ from: () => { throw new Error("rede"); } }, "u1"), { plan: false, goals: false });
+  // Revisão do lote 42dec7e2: um plano aceite nas últimas 48 h torna «o plano já está ajustado» verdade.
+  const now = Date.parse("2026-11-07T12:00:00Z");
+  const accepted = (h: number) => sbWith({ coach_plans: [{ id: "a1", status: "aceite", accepted_at: new Date(now - h * 3600e3).toISOString(), coach_plan_items: [{ kind: "corrida" }] }] });
+  assertEquals((await pendingProposalKinds(accepted(10), "u1", now)).plan, true);
+  assertEquals((await pendingProposalKinds(accepted(60), "u1", now)).plan, false);
   const src = await Deno.readTextFile(new URL("./index.ts", import.meta.url));
   assertStringIncludes(src, "missing.plan = missing.plan && !pendingProposals.plan;");
   assertStringIncludes(src, "unsent.plan = unsent.plan && !pendingProposals.plan;");
   assertStringIncludes(src, "const MAX_TOOL_ROUNDS = 4;  // idas-e-voltas");
+  // Outra ferramenta de escrita neste pedido: a guarda não desdiz uma alteração que existiu.
+  assertStringIncludes(src, "const otherWriteRan = () => raceWasUpdated || goalsWereUpdated || goalWasProposed || interventionWasResolved || cupWasUpdated;");
+  assertStringIncludes(src, "plan: claim.plan && !planWasProposed && !otherWriteRan() && toolNamesSent.includes(\"propose_training_plan\"),");
+  assertStringIncludes(src, "unsent = { plan: claim.plan && !planWasProposed && !otherWriteRan(),");
 });
 
 Deno.test("bug #112: stripProposalClaims tira só a frase da proposta não enviada", () => {
