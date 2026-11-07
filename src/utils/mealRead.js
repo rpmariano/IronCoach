@@ -22,20 +22,35 @@ export function writtenItemsPayload(manualItems) {
   return (manualItems || []).map((i) => ({ name: String(i.name || '').trim(), grams: gramsValue(i.grams) })).filter((i) => i.name);
 }
 
-/** A assinatura dos alimentos escritos: mudou depois da leitura → a leitura já não vale. */
-export function writtenSignature(manualItems) {
-  return JSON.stringify(writtenItemsPayload(manualItems).map((i) => [i.name.toLowerCase(), i.grams]));
+/** A assinatura do que a leitura leu além das fotos — os alimentos escritos e as observações (as
+ *  notas mudam o que a Carol lê e pergunta: «sem açúcar», «frito em azeite»). Mudou depois da
+ *  leitura → a leitura já não vale (revisão do 50f7dc88). */
+export function writtenSignature(manualItems, notes = '') {
+  return JSON.stringify([
+    writtenItemsPayload(manualItems).map((i) => [i.name.toLowerCase(), i.grams]),
+    String(notes || '').trim(),
+  ]);
 }
+
+/** O campo de cada alimento revisto com as gramas que a leitura deu (revisão do 50f7dc88): a
+ *  resposta de quantidade e a edição das gramas somavam-se no servidor; com as gramas originais ele
+ *  sabe o que o atleta mudou. O nome confirma-o o Backend — muda-se aqui. */
+export const PREVIEW_GRAMS_FIELD = 'preview_grams';
 
 /** Os alimentos lidos (os do preview), com uma chave local para a lista. */
 export function previewItems(data, now = Date.now()) {
   const list = Array.isArray(data?.items) ? data.items : [];
-  return list.filter((it) => it && String(it.name || '').trim()).map((it, i) => ({ ...it, key: `lido-${now}-${i}` }));
+  return list.filter((it) => it && String(it.name || '').trim()).map((it, i) => ({ ...it, key: `lido-${now}-${i}`, previewGrams: gramsValue(it.quantity_grams) }));
 }
 
-/** Os alimentos revistos como vão no pedido de gravar: sem a chave local, as gramas em número. */
+/** Os alimentos revistos como vão no pedido de gravar: sem os campos locais, as gramas em número, e
+ *  as gramas da leitura em PREVIEW_GRAMS_FIELD. */
 export function reviewedItemsPayload(items) {
-  return (items || []).map(({ key: _key, ...it }) => ({ ...it, quantity_grams: gramsValue(it.quantity_grams) }));
+  return (items || []).map(({ key: _key, previewGrams, ...it }) => ({
+    ...it,
+    quantity_grams: gramsValue(it.quantity_grams),
+    [PREVIEW_GRAMS_FIELD]: previewGrams ?? null,
+  }));
 }
 
 /** O que impede gravar os alimentos revistos, ou null: lista vazia, ou gramas fora de 0 < g ≤ 5000. */

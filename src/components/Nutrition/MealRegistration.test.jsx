@@ -1494,7 +1494,9 @@ describe('MealRegistration — #106: ler as fotos antes de gravar', () => {
     expect(body.reviewed).toBe(true);
     expect(body.client_request_id).toBeTruthy();
     expect(body.images).toEqual(['AAA']);
-    expect(body.items).toEqual([{ ...ITEM('Tosta mista', 150, 260) }]);
+    // As gramas da leitura vão com cada alimento: a edição (120 → 150) e a resposta de quantidade
+    // não se somam no servidor (revisão do 50f7dc88).
+    expect(body.items).toEqual([{ ...ITEM('Tosta mista', 150, 260), preview_grams: 120 }]);
     expect(body.carol_questions).toHaveLength(4);
     expect(body.carol_questions[0]).toMatchObject({ id: 'q1', answer: '2 fatias (~40 g)' });
     expect(body.carol_questions[0].answered_at).toBeTruthy();
@@ -1515,7 +1517,7 @@ describe('MealRegistration — #106: ler as fotos antes de gravar', () => {
     expect(mocks.invoke).not.toHaveBeenCalled();
   });
 
-  it('trocar as fotos ou os escritos depois da leitura volta a pedi-la', async () => {
+  it('trocar as fotos, os escritos ou as observações depois da leitura volta a pedi-la', async () => {
     mocks.preview.mockResolvedValue(PREVIEW_OK);
     render(<MealRegistration onClose={onClose} />);
     await addPhoto();
@@ -1527,6 +1529,14 @@ describe('MealRegistration — #106: ler as fotos antes de gravar', () => {
     expect(analyzeBtn()).toBeDisabled();
     expect(screen.queryByTestId('meal-read-items')).toBeNull();
     await readPhotos();
+    expect(analyzeBtn()).toBeEnabled();
+
+    // Mudar as observações: a Carol leu com as antigas — volta a pedir (revisão do 50f7dc88).
+    fireEvent.change(screen.getByPlaceholderText(/Detalhes que mudam os valores/), { target: { value: 'sem açúcar' } });
+    expect(analyzeBtn()).toBeDisabled();
+    expect(screen.queryByTestId('meal-read-questions')).toBeNull();
+    await readPhotos();
+    expect(mocks.preview.mock.calls.at(-1)[1].body.notes).toBe('sem açúcar');
     expect(analyzeBtn()).toBeEnabled();
 
     // Tirar a foto e pôr outra (o mesmo número): volta a pedir.

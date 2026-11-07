@@ -393,8 +393,8 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
   const removePhoto = (idx) => { setPhotos(prev => prev.filter((_, i) => i !== idx)); forgetRead(); };
   const clearPhotos = () => { setPhotos([]); forgetRead(); };
 
-  // A leitura vale enquanto as fotos e os alimentos escritos forem os mesmos.
-  const writtenSig = writtenSignature(manualItems);
+  // A leitura vale enquanto as fotos, os alimentos escritos e as observações forem os mesmos.
+  const writtenSig = writtenSignature(manualItems, notes);
   const readValid = !!readState && readState.count === photos.length && readState.written === writtenSig;
   const attemptValid = !!readAttempt && readAttempt.count === photos.length && readAttempt.written === writtenSig;
   const needsRead = !mealIdToEdit && printsNeedRead({
@@ -1197,7 +1197,7 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
                 </div>
               ))}
               {manualItems.length > 0 && (
-                <p className="text-[11px] text-[var(--text-3)] px-1">Os alimentos que escreveste já estão nesta lista. Juntar ou mudar um escrito volta a pedir a leitura.</p>
+                <p className="text-[11px] text-[var(--text-3)] px-1">Os alimentos que escreveste já estão nesta lista. Juntar ou mudar um escrito, ou as observações, volta a pedir a leitura.</p>
               )}
             </div>
           )}
