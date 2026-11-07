@@ -1828,6 +1828,42 @@ export function parseReviewedFacts(raw: unknown): CookingFact[] {
     .filter((f: CookingFact) => f.topic && f.value);
 }
 
+/** Numa falha a meio das respostas do registo revisto: que respostas já estão
+ *  na BD (o alimento delas mudou, ou não tinham de mexer em nenhum) e quais
+ *  ficam por aplicar (tinham de mexer e o alimento está como foi gravado). */
+export function reviewedAnswersOutcome(
+  questions: CarolQuestion[], answers: { id: string; answer: string }[],
+  // deno-lint-ignore no-explicit-any
+  before: any[], after: any[], factOnly: Set<string>,
+): { answered: string[]; unapplied: string[] } {
+  const answered: string[] = [];
+  const unapplied: string[] = [];
+  const byId = new Map(questions.map((q) => [q.id, q]));
+  // deno-lint-ignore no-explicit-any
+  const afterById = new Map(after.map((it: any) => [it.id, it]));
+  // deno-lint-ignore no-explicit-any
+  const same = (a: any, b: any) =>
+    !!b && a.name === b.name && Number(a.quantity_grams) === Number(b.quantity_grams) &&
+    NUTRIENT_COLUMNS.every((k) => (a[k] ?? null) === (b[k] ?? null));
+  for (const a of answers) {
+    const q = byId.get(a.id);
+    if (!q) continue;
+    // Só confirma, ou é só facto: nada a mexer.
+    if (factOnly.has(q.id) || foodKey(a.answer) === foodKey(q.assumed)) {
+      answered.push(q.id);
+      continue;
+    }
+    const item = before.find((it) => foodKey(it.name) === foodKey(q.item_name));
+    // Sem alimento a que se refira, o modo answer também não mexeria em nada.
+    if (!item) {
+      answered.push(q.id);
+      continue;
+    }
+    (same(item, afterById.get(item.id)) ? unapplied : answered).push(q.id);
+  }
+  return { answered, unapplied };
+}
+
 export type ReviewedMealInput = {
   date: unknown; meal_type: unknown; notes: string | null; mealTimeField: Record<string, unknown>;
   images: string[]; mime: string; items: unknown; carol_questions: unknown; facts: unknown;
@@ -1932,14 +1968,28 @@ export async function saveReviewedMeal(
   }
   if (!applied) {
     // Sem respostas, ou a aplicá-las falhou a meio: os alimentos relidos da BD
-    // (parte pode já ter mudado) e as perguntas por responder — o modo answer
-    // aplica-as depois (revisão do lote 8aaa3eb9).
+    // (parte pode já ter mudado — revisão do lote 8aaa3eb9).
     const { data: freshItems } = await sb.from("meal_items").select("*").eq("meal_id", meal.id);
     if (freshItems) finalItems = freshItems;
-    unapplied = answers.map((a) => a.id);
+    // Por responder fica só a resposta que tinha de mexer num alimento e não
+    // mexeu: o modo answer aplica-a depois. A que já mudou o alimento, a que
+    // só confirma e a que é só facto (factOnly) ficam respondidas — senão a app
+    // pedia-a outra vez e uma quantidade somava-se duas vezes (revisão de 33fccf8a).
+    const outcome = reviewedAnswersOutcome(questions, answers, savedItems || [], finalItems, factOnly);
+    unapplied = outcome.unapplied;
+    let commentQuestions = questions;
+    if (outcome.answered.length) {
+      const nowISO = new Date().toISOString();
+      const byId = new Map(answers.map((a) => [a.id, a.answer]));
+      const done = new Set(outcome.answered);
+      const withAnswers = questions.map((q) => (done.has(q.id) ? { ...q, answer: byId.get(q.id)!, answered_at: nowISO } : q));
+      const { error: qErr } = await sb.from("meals").update({ carol_questions: withAnswers }).eq("id", meal.id);
+      if (qErr) unapplied = answers.map((a) => a.id);
+      else commentQuestions = withAnswers;
+    }
     const coachUsage = await deps.attachComment(meal, {
       date: meal.date ?? date, meal_type: meal.meal_type ?? meal_type, meal_time: meal.meal_time ?? null, notes,
-      totals: totalsFromItems(finalItems), items: finalItems, questions,
+      totals: totalsFromItems(finalItems), items: finalItems, questions: commentQuestions,
     });
     usage = addUsage(usage, coachUsage);
     const { data: fresh } = await sb.from("meals").select("*").eq("id", meal.id).maybeSingle();
