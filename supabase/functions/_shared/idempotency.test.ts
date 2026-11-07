@@ -106,7 +106,7 @@ Deno.test("as quatro funções gravam por insertOnce e procuram antes de qualque
     ["analyze-gym", "workout_sessions", 2],
     ["analyze-run", "runs", 2],
     ["analyze-body", "body_assessments", 3],
-    ["analyze-meal", "meals", 2],
+    ["analyze-meal", "meals", 3], // + o registo revisto (#106 nas refeições, 2026-11-07)
   ];
   for (const [f, table, n] of casos) {
     const src = await read(f);
