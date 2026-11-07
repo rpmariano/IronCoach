@@ -1835,14 +1835,22 @@ export type ReviewedMealInput = {
 };
 
 // deno-lint-ignore no-explicit-any
-export type ReviewedMealResult = { ok: true; meal: any; items: any[]; usage: GeminiUsage; pantry_added: string[] } | { ok: false; status: number; error: string } | { existing: any };
+export type ReviewedMealResult =
+  // deno-lint-ignore no-explicit-any
+  | { ok: true; meal: any; items: any[]; usage: GeminiUsage; pantry_added: string[]; unapplied_question_ids: string[] }
+  | { ok: false; status: number; error: string }
+  // deno-lint-ignore no-explicit-any
+  | { existing: any };
 
 /**
  * Grava o registo revisto: as fotos sobem para o storage como no registo
  * direto, os alimentos são os que o atleta reviu (não se voltam a ler as
  * fotos) e as respostas aplicam-se como no modo "answer" — uma resposta
  * diferente da assumida acerta o alimento — com o comentário feito com elas
- * como factos. `{ existing }` quando outra tentativa com o mesmo
+ * como factos. Uma resposta que não se aplicou (a reestimativa falhou, ou a
+ * gravação falhou a meio) fica por responder e vem em
+ * `unapplied_question_ids`, para o cliente a voltar a pedir pelo modo
+ * "answer". `{ existing }` quando outra tentativa com o mesmo
  * client_request_id já a gravou (as fotos desta saem).
  */
 export async function saveReviewedMeal(
@@ -1893,8 +1901,8 @@ export async function saveReviewedMeal(
   }
 
   // As respostas: como no modo "answer", com o comentário sempre (ainda não há).
-  // Sem respostas, ou se aplicá-las falhar, o comentário faz-se com as
-  // perguntas como estão — as respondidas como factos.
+  // Sem respostas, ou se aplicá-las falhar a meio, o comentário faz-se com as
+  // perguntas por responder (unapplied_question_ids).
   // Uma resposta de quantidade a um alimento cujas gramas ele editou fica
   // como facto: a edição dele manda, e somar a diferença da resposta por cima
   // contava-a duas vezes (revisão do lote 8aaa3eb9: 150 assumidos, 200
@@ -1909,12 +1917,14 @@ export async function saveReviewedMeal(
   let finalItems = savedItems || [];
   let usage: GeminiUsage = emptyUsage();
   let applied = false;
+  let unapplied: string[] = [];
   if (answers.length) {
     const r = await applyMealAnswers(sb, userId, finalMeal, answers, pantry, deps, { forceComment: true, factOnly, keepOnEstimateFailure: true });
     if (r.ok) {
       finalMeal = r.meal;
       finalItems = r.items;
       usage = r.usage;
+      unapplied = r.unapplied;
       applied = true;
     } else {
       console.warn("analyze-meal: as respostas do registo revisto não se aplicaram — ficam por responder:", r.error);
@@ -1926,6 +1936,7 @@ export async function saveReviewedMeal(
     // aplica-as depois (revisão do lote 8aaa3eb9).
     const { data: freshItems } = await sb.from("meal_items").select("*").eq("meal_id", meal.id);
     if (freshItems) finalItems = freshItems;
+    unapplied = answers.map((a) => a.id);
     const coachUsage = await deps.attachComment(meal, {
       date: meal.date ?? date, meal_type: meal.meal_type ?? meal_type, meal_time: meal.meal_time ?? null, notes,
       totals: totalsFromItems(finalItems), items: finalItems, questions,
@@ -1938,7 +1949,7 @@ export async function saveReviewedMeal(
   // A despensa aprende com os alimentos revistos (com o from_label do preview)
   // e com os factos que o preview leu.
   const learned = await learnFromMeal(sb, userId, items, [...parseReviewedFacts(input.facts), ...portionFacts(input.written, pantry.byKey, pantry.rules)]);
-  return { ok: true, meal: finalMeal, items: finalItems, usage, pantry_added: learned.fromLabel };
+  return { ok: true, meal: finalMeal, items: finalItems, usage, pantry_added: learned.fromLabel, unapplied_question_ids: unapplied };
 }
 
 /** As fotos do pedido: `images` (array) ou `image_base64` (formato antigo, 1 foto). */
@@ -2122,6 +2133,8 @@ Deno.serve(withUsageRecording("analyze-meal", async (req) => {
       if (!r.ok) return jsonResponse({ error: r.error }, r.status);
       return jsonResponse({
         meal: r.meal, items: r.items, usage: r.usage,
+        // As respostas que não se aplicaram: as perguntas ficam por responder (modo answer).
+        unapplied_question_ids: r.unapplied_question_ids,
         ...(r.pantry_added.length ? { pantry_added: r.pantry_added } : {}),
       });
     }
