@@ -1505,7 +1505,10 @@ export type MealDeps = {
 };
 
 // deno-lint-ignore no-explicit-any
-export type MealAnswersResult = { ok: true; meal: any; items: any[]; learned: unknown; usage: GeminiUsage } | { ok: false; status: number; error: string };
+export type MealAnswersResult =
+  // deno-lint-ignore no-explicit-any
+  | { ok: true; meal: any; items: any[]; learned: unknown; usage: GeminiUsage; unapplied: string[] }
+  | { ok: false; status: number; error: string };
 
 /**
  * As respostas do atleta às perguntas da Carol numa refeição gravada (o modo
@@ -1513,12 +1516,16 @@ export type MealAnswersResult = { ok: true; meal: any; items: any[]; learned: un
  * resposta igual à que ela assumiu só confirma; uma diferente volta a estimar
  * o alimento a que se refere (com a resposta no nome) e refaz o comentário.
  * `meal` traz meal_items. `forceComment`: o comentário faz-se sempre (o
- * registo revisto ainda não tem nenhum).
+ * registo revisto ainda não tem nenhum). `factOnly`: perguntas que ficam
+ * respondidas sem mexer no alimento (o atleta já editou as gramas no registo
+ * revisto — a edição dele manda). `keepOnEstimateFailure`: se a reestimativa
+ * falhar, o resto aplica-se na mesma e as perguntas dela ficam por responder
+ * (`unapplied`), para o modo answer as aplicar depois.
  */
 export async function applyMealAnswers(
   // deno-lint-ignore no-explicit-any
   sb: any, userId: string, meal: any, rawAnswers: unknown, pantry: Pantry, deps: Pick<MealDeps, "estimateManual" | "attachComment">,
-  opts: { forceComment?: boolean } = {},
+  opts: { forceComment?: boolean; factOnly?: Set<string>; keepOnEstimateFailure?: boolean } = {},
 ): Promise<MealAnswersResult> {
   const questions: CarolQuestion[] = Array.isArray(meal.carol_questions) ? meal.carol_questions : [];
   const wanted = new Map<string, string>(
@@ -1539,17 +1546,19 @@ export async function applyMealAnswers(
   const mealItems: any[] = meal.meal_items || [];
   // deno-lint-ignore no-explicit-any
   type Change = {
-    item: any; answers: string[]; facts: string[]; grams: number | null; reestimate: boolean; estimateGrams: boolean;
+    item: any; answers: string[]; facts: string[]; grams: number | null; reestimate: boolean; estimateGrams: boolean; qids: string[];
     // Bug #87: a variante escolhida (com a linha dela, se já tem valores) e o nome novo do alimento.
     // deno-lint-ignore no-explicit-any
     variant?: { generic: string; label: string; stored: any | null }; rename?: string;
   };
   const changes = new Map<string, Change>();
   for (const q of answered) {
+    if (opts.factOnly?.has(q.id)) continue;
     if (foodKey(q.answer) === foodKey(q.assumed)) continue;
     const item = mealItems.find((it) => foodKey(it.name) === foodKey(q.item_name));
     if (!item) continue;
-    const c = changes.get(item.id) ?? { item, answers: [], facts: [], grams: null, reestimate: false, estimateGrams: false };
+    const c = changes.get(item.id) ?? { item, answers: [], facts: [], grams: null, reestimate: false, estimateGrams: false, qids: [] };
+    c.qids.push(q.id);
     const answerGrams = q.kind === "quantidade" ? optionGrams(q.answer) : null;
     if (q.kind === "variante") {
       // Bug #87: os valores da variante escolhida vêm da base de dados, sem o
@@ -1597,9 +1606,10 @@ export async function applyMealAnswers(
   }
 
   let usage: GeminiUsage = emptyUsage();
-  const list = [...changes.values()].filter((c) => c.reestimate);
+  let list = [...changes.values()].filter((c) => c.reestimate);
+  // As perguntas cuja reestimativa falhou (keepOnEstimateFailure): ficam por responder.
+  const failed = new Set<string>();
   if (list.length) {
-    
     const written = list.map((c) => ({
       name: c.variant ? variantName(c.variant.generic, c.variant.label) : `${c.item.name} (${c.answers.join(", ")})`.slice(0, 120),
       // Sem gramas na resposta ("Outro…" numa quantidade), o modelo estima a porção.
@@ -1612,7 +1622,14 @@ export async function applyMealAnswers(
         written, [meal.notes, answersNote].filter(Boolean).join("\n"), knowledgeSection(pantry.foods, pantry.rules, pantry.variants),
       );
     } catch (e) {
-      return { ok: false, status: 502, error: e instanceof Error ? e.message : "Falha na estimativa." };
+      if (!opts.keepOnEstimateFailure) return { ok: false, status: 502, error: e instanceof Error ? e.message : "Falha na estimativa." };
+      console.warn("analyze-meal: a reestimativa das respostas falhou — ficam por responder:", e instanceof Error ? e.message : e);
+      for (const c of list) {
+        for (const id of c.qids) failed.add(id);
+        changes.delete(c.item.id);
+      }
+      list = [];
+      est = { items: [], usage: emptyUsage() };
     }
     usage = est.usage;
     for (let i = 0; i < list.length; i++) {
@@ -1633,7 +1650,8 @@ export async function applyMealAnswers(
   }
 
   const nowISO = new Date().toISOString();
-  const byId = new Map(answered.map((q) => [q.id, q]));
+  const applied = answered.filter((q) => !failed.has(q.id));
+  const byId = new Map(applied.map((q) => [q.id, q]));
   // Um alimento reestimado ganhou a resposta no nome: uma pergunta ainda
   // por responder sobre ele passa a apontar para o nome novo — senão,
   // respondida mais tarde, já não o encontrava (revisão pré-master).
@@ -1661,7 +1679,7 @@ export async function applyMealAnswers(
       : Promise.resolve(null),
     // A variante pergunta-se sempre: a resposta não vira regra (uma regra por
     // confirmar sobre o genérico mandava-o ao modelo em todos os registos).
-    learnRules(sb, userId, answered.filter((q) => q.kind !== "variante").map((q) => ({ topic: q.topic, value: q.answer })), "resposta", nowISO),
+    learnRules(sb, userId, applied.filter((q) => q.kind !== "variante").map((q) => ({ topic: q.topic, value: q.answer })), "resposta", nowISO),
     // Bug #87: a variante escolhida fica na despensa, ligada ao genérico.
     Promise.all(variantLearn.map((it) => learnVariantFood(sb, userId, it, nowISO, { countSeen: false }))),
   ]);
@@ -1672,6 +1690,7 @@ export async function applyMealAnswers(
     items: freshItems || mealItems,
     learned,
     usage: addUsage(usage, coachUsage),
+    unapplied: [...failed],
   };
 }
 
@@ -1709,11 +1728,25 @@ export async function readMealPhotos(
   return { items, questions, facts: read.facts || [], usage: read.usage };
 }
 
-/** Um alimento do preview, para o cliente: o que se grava, mais o from_label. */
+/** Um alimento do preview, para o cliente: o que se grava, mais o from_label
+ *  e preview_grams — as gramas que a leitura deu, que o cliente devolve tal e
+ *  qual no gravar (revisão do lote 8aaa3eb9): é por elas que se sabe se ele
+ *  editou as gramas, e aí a resposta de quantidade não se soma outra vez. */
 // deno-lint-ignore no-explicit-any
 export function previewMealItem(it: any): Record<string, unknown> {
-  return { ...pickMealItem(it), from_label: it?.from_label === true };
+  const row = pickMealItem(it);
+  return { ...row, from_label: it?.from_label === true, preview_grams: row.quantity_grams };
 }
+
+/** O impacto de uma pergunta vem do cliente: limitado. */
+const MAX_IMPACT_KCAL = 2000;
+const MAX_IMPACT_PROTEIN_G = 200;
+const clampAbs = (v: unknown, max: number) => {
+  const n = Number(v);
+  return Number.isFinite(n) ? Math.max(-max, Math.min(max, n)) : 0;
+};
+/** Proteína + hidratos + gordura por 100 g: mais do que isto é impossível (com folga de arredondamento). */
+const MAX_MACROS_PER_100G = 100.5;
 
 const REVIEWED_MAX_GRAMS = 5000;
 /** Por 100 g: macros e fibra/açúcar em g (≤ 100), energia em kcal (≤ 950). */
@@ -1735,7 +1768,12 @@ export function parseReviewedMealItems(raw: unknown): any[] | null {
     const name = typeof it?.name === "string" ? it.name.trim().slice(0, 120) : "";
     const grams = Number(it?.quantity_grams);
     if (!name || !Number.isFinite(grams) || grams <= 0 || grams > REVIEWED_MAX_GRAMS) return null;
-    const row: Record<string, unknown> = { name, quantity_grams: Math.round(grams * 10) / 10, from_label: it?.from_label === true };
+    const previewGrams = Number(it?.preview_grams);
+    const row: Record<string, unknown> = {
+      name, quantity_grams: Math.round(grams * 10) / 10, from_label: it?.from_label === true,
+      // As gramas da leitura (preview_grams): null num cliente que não as manda.
+      preview_grams: Number.isFinite(previewGrams) && previewGrams > 0 ? previewGrams : null,
+    };
     for (const k of NUTRIENT_COLUMNS) {
       const v = it?.[k];
       if (v == null || v === "") {
@@ -1747,6 +1785,8 @@ export function parseReviewedMealItems(raw: unknown): any[] | null {
       if (!Number.isFinite(n) || n < 0 || n > (REVIEWED_PER100_MAX[k] ?? 100000)) return null;
       row[k] = n;
     }
+    // Coerência: os macros não passam de 100 g por 100 g.
+    if (Number(row.protein_per_100g) + Number(row.carbs_per_100g) + Number(row.fat_per_100g) > MAX_MACROS_PER_100G) return null;
     out.push(row);
   }
   return out;
@@ -1771,8 +1811,8 @@ export function parseReviewedMealQuestions(raw: unknown): { questions: CarolQues
     questions.push({
       id, kind: QUESTION_KINDS.has(q?.kind) ? q.kind : "preparacao", topic, item_name: qText(q?.item_name, 120) || topic,
       question, options, assumed: qText(q?.assumed, 60),
-      impact_kcal: Number.isFinite(Number(q?.impact_kcal)) ? Number(q.impact_kcal) : 0,
-      impact_protein_g: Number.isFinite(Number(q?.impact_protein_g)) ? Number(q.impact_protein_g) : 0,
+      impact_kcal: clampAbs(q?.impact_kcal, MAX_IMPACT_KCAL),
+      impact_protein_g: clampAbs(q?.impact_protein_g, MAX_IMPACT_PROTEIN_G),
       answer: null, answered_at: null,
     });
     const answer = qText(q?.answer, 60);
@@ -1855,36 +1895,44 @@ export async function saveReviewedMeal(
   // As respostas: como no modo "answer", com o comentário sempre (ainda não há).
   // Sem respostas, ou se aplicá-las falhar, o comentário faz-se com as
   // perguntas como estão — as respondidas como factos.
+  // Uma resposta de quantidade a um alimento cujas gramas ele editou fica
+  // como facto: a edição dele manda, e somar a diferença da resposta por cima
+  // contava-a duas vezes (revisão do lote 8aaa3eb9: 150 assumidos, 200
+  // respondidos e 200 escritos davam 250).
+  const factOnly = new Set<string>();
+  for (const q of questions) {
+    if (q.kind !== "quantidade") continue;
+    const it = items.find((x) => foodKey(x.name) === foodKey(q.item_name));
+    if (it && it.preview_grams != null && Math.abs(Number(it.quantity_grams) - Number(it.preview_grams)) > 0.5) factOnly.add(q.id);
+  }
   let finalMeal = { ...meal, meal_items: savedItems || [] };
   let finalItems = savedItems || [];
   let usage: GeminiUsage = emptyUsage();
   let applied = false;
   if (answers.length) {
-    const r = await applyMealAnswers(sb, userId, finalMeal, answers, pantry, deps, { forceComment: true });
+    const r = await applyMealAnswers(sb, userId, finalMeal, answers, pantry, deps, { forceComment: true, factOnly, keepOnEstimateFailure: true });
     if (r.ok) {
       finalMeal = r.meal;
       finalItems = r.items;
       usage = r.usage;
       applied = true;
     } else {
-      console.warn("analyze-meal: as respostas do registo revisto não se aplicaram — ficam como factos do comentário:", r.error);
+      console.warn("analyze-meal: as respostas do registo revisto não se aplicaram — ficam por responder:", r.error);
     }
   }
   if (!applied) {
-    const nowISO = new Date().toISOString();
-    const byId = new Map(answers.map((a) => [a.id, a.answer]));
-    const withAnswers = questions.map((q) => (byId.has(q.id) ? { ...q, answer: byId.get(q.id)!, answered_at: nowISO } : q));
-    if (answers.length) {
-      const { error: qErr } = await sb.from("meals").update({ carol_questions: withAnswers }).eq("id", meal.id);
-      if (!qErr) finalMeal = { ...finalMeal, carol_questions: withAnswers };
-    }
+    // Sem respostas, ou a aplicá-las falhou a meio: os alimentos relidos da BD
+    // (parte pode já ter mudado) e as perguntas por responder — o modo answer
+    // aplica-as depois (revisão do lote 8aaa3eb9).
+    const { data: freshItems } = await sb.from("meal_items").select("*").eq("meal_id", meal.id);
+    if (freshItems) finalItems = freshItems;
     const coachUsage = await deps.attachComment(meal, {
       date: meal.date ?? date, meal_type: meal.meal_type ?? meal_type, meal_time: meal.meal_time ?? null, notes,
-      totals: totalsFromItems(finalItems), items: finalItems, questions: withAnswers,
+      totals: totalsFromItems(finalItems), items: finalItems, questions,
     });
     usage = addUsage(usage, coachUsage);
     const { data: fresh } = await sb.from("meals").select("*").eq("id", meal.id).maybeSingle();
-    if (fresh) finalMeal = { ...fresh, meal_items: finalItems };
+    finalMeal = { ...(fresh ?? finalMeal), meal_items: finalItems };
   }
 
   // A despensa aprende com os alimentos revistos (com o from_label do preview)
