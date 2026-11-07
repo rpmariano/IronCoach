@@ -6570,47 +6570,58 @@ Deno.test("coach-chat: o objetivo calórico de cada dia vem do histórico de obj
 import { claimedProposals, maintenanceGapError, pendingProposalKinds, proposalClaimCorrection, raceVolumeNote, replyFieldText, sessionSizeError, stripProposalClaims } from "./index.ts";
 import { raceVolumeOutlook } from "../_shared/formulas/raceVolumeOutlook.ts";
 
+// O plano e os objetivos do que ela diz (os tipos à parte nos testes deles).
+const claimPG = (t: string | null | undefined) => {
+  const c = claimedProposals(t);
+  return { plan: c.plan, goals: c.goals };
+};
+// deno-lint-ignore no-explicit-any
+const pendingPG = async (sb: any, userId: string) => {
+  const k = await pendingProposalKinds(sb, userId);
+  return { plan: k.plan, goals: k.goals };
+};
+
 // Bug #112 (2026-11-06, 08:05): «Enviei a proposta de plano ajustada para
 // reveres e aceitares aqui mesmo no Coach» — sem chamar propose_training_plan.
 const RUI_0805 = "Como antecipaste o treino de ginásio para quarta-feira e não realizaste a sessão de quinta, ajustei os dias restantes para não acumulares fadiga a 48 horas da prova. Mantemos a ativação curta de 2 km para hoje, o descanso total amanhã e o foco absoluto nos 10 km de domingo.\n\nEnviei a proposta de plano ajustada para reveres e aceitares aqui mesmo no Coach.\n\nComo te estás a sentir fisicamente e o que motivou estas trocas de dias?";
 
 Deno.test("bug #112: claimedProposals apanha «enviei a proposta» de plano e de objetivos", () => {
-  assertEquals(claimedProposals(RUI_0805), { plan: true, goals: false });
-  assertEquals(claimedProposals("Enviei-te a proposta de objetivos para reveres."), { plan: false, goals: true });
-  assertEquals(claimedProposals("Já te enviei uma nova proposta."), { plan: true, goals: false });
+  assertEquals(claimPG(RUI_0805), { plan: true, goals: false });
+  assertEquals(claimPG("Enviei-te a proposta de objetivos para reveres."), { plan: false, goals: true });
+  assertEquals(claimPG("Já te enviei uma nova proposta."), { plan: true, goals: false });
   // Falar de uma proposta sem dizer que a enviou não conta.
-  assertEquals(claimedProposals("Queres que te proponha um plano? A proposta pode esperar."), { plan: false, goals: false });
-  assertEquals(claimedProposals(null), { plan: false, goals: false });
+  assertEquals(claimPG("Queres que te proponha um plano? A proposta pode esperar."), { plan: false, goals: false });
+  assertEquals(claimPG(null), { plan: false, goals: false });
 });
 
 Deno.test("bug #112 (revisão do lote): negações, passado com data e «de lado» não são frases de envio", () => {
   const none = { plan: false, goals: false };
-  assertEquals(claimedProposals("Ainda não te enviei a proposta, primeiro quero saber como estás."), none);
-  assertEquals(claimedProposals("Não preparei a proposta ainda."), none);
-  assertEquals(claimedProposals("Deixei a proposta de lado até vermos a prova."), none);
-  assertEquals(claimedProposals("Ontem enviei-te a proposta; já a viste?"), none);
-  assertEquals(claimedProposals("Há dois dias mandei-te a proposta de objetivos."), none);
+  assertEquals(claimPG("Ainda não te enviei a proposta, primeiro quero saber como estás."), none);
+  assertEquals(claimPG("Não preparei a proposta ainda."), none);
+  assertEquals(claimPG("Deixei a proposta de lado até vermos a prova."), none);
+  assertEquals(claimPG("Ontem enviei-te a proposta; já a viste?"), none);
+  assertEquals(claimPG("Há dois dias mandei-te a proposta de objetivos."), none);
   // A negação só conta antes do verbo, na mesma oração.
-  assertEquals(claimedProposals("Enviei a proposta — não te esqueças de a ver."), { plan: true, goals: false });
-  assertEquals(claimedProposals("Não te preocupes, enviei a proposta agora."), { plan: true, goals: false });
+  assertEquals(claimPG("Enviei a proposta — não te esqueças de a ver."), { plan: true, goals: false });
+  assertEquals(claimPG("Não te preocupes, enviei a proposta agora."), { plan: true, goals: false });
 });
 
 Deno.test("bug #112 (2.ª revisão do lote): os falsos negativos — data longe do verbo, negação noutra oração, «agora», «já te enviei»", () => {
   const plan = { plan: true, goals: false };
   const none = { plan: false, goals: false };
   // A data noutra oração não anula o envio.
-  assertEquals(claimedProposals("Depois da prova de ontem, preparei uma proposta de plano ajustada."), plan);
-  assertEquals(claimedProposals("Como correu a semana passada, preparei uma nova proposta."), plan);
+  assertEquals(claimPG("Depois da prova de ontem, preparei uma proposta de plano ajustada."), plan);
+  assertEquals(claimPG("Como correu a semana passada, preparei uma nova proposta."), plan);
   // Colada ao verbo, sim.
-  assertEquals(claimedProposals("Enviei-te ontem a proposta."), none);
-  assertEquals(claimedProposals("Mandei-te a proposta na semana passada."), none);
+  assertEquals(claimPG("Enviei-te ontem a proposta."), none);
+  assertEquals(claimPG("Mandei-te a proposta na semana passada."), none);
   // A negação só conta na mesma oração do verbo.
-  assertEquals(claimedProposals("Não te preocupes que já te enviei a proposta."), plan);
-  assertEquals(claimedProposals("Ainda não te enviei a proposta, mas está quase."), none);
+  assertEquals(claimPG("Não te preocupes que já te enviei a proposta."), plan);
+  assertEquals(claimPG("Ainda não te enviei a proposta, mas está quase."), none);
   // As formas que escapavam.
-  assertEquals(claimedProposals("Enviei-te agora a proposta para veres."), plan);
-  assertEquals(claimedProposals("Já te enviei a proposta."), plan);
-  assertEquals(claimedProposals("Já ta enviei, a proposta está no Coach."), none); // sem «proposta» colada ao verbo: não é o padrão
+  assertEquals(claimPG("Enviei-te agora a proposta para veres."), plan);
+  assertEquals(claimPG("Já te enviei a proposta."), plan);
+  assertEquals(claimPG("Já ta enviei, a proposta está no Coach."), none); // sem «proposta» colada ao verbo: não é o padrão
   // O «;» corta a frase nas duas funções: a parte com o envio sai, a outra fica.
   assertEquals(stripProposalClaims("Revi a semana; enviei a proposta de plano.", plan), "Revi a semana;");
 });
@@ -6623,35 +6634,50 @@ const RUI_1120 = "O desvio nos registos dos dias 5 e 6 de novembro e a reorganiz
 Deno.test("bug #115: a alteração ao plano afirmada sem ferramenta é apanhada, e sai", () => {
   const plan = { plan: true, goals: false };
   const none = { plan: false, goals: false };
-  assertEquals(claimedProposals(RUI_1120), plan);
+  assertEquals(claimPG(RUI_1120), plan);
   const out = stripProposalClaims(RUI_1120, plan);
   assertEquals(out.includes("Reajustei"), false);
   assertStringIncludes(out, "O desvio nos registos");
   assertStringIncludes(out, "Como te estás a sentir fisicamente");
   // As formulações reais e as vizinhas.
-  assertEquals(claimedProposals("Os imprevistos de trabalho acontecem e ajustámos o que foi preciso."), plan);
-  assertEquals(claimedProposals("Alterei o plano para chegares fresco."), plan);
-  assertEquals(claimedProposals("Ajustei os teus treinos da semana."), plan);
-  assertEquals(claimedProposals("O plano já está ajustado à tua semana."), plan);
-  assertEquals(claimedProposals("Os treinos foram reorganizados."), plan);
+  assertEquals(claimPG("Os imprevistos de trabalho acontecem e ajustámos o que foi preciso."), plan);
+  assertEquals(claimPG("Alterei o plano para chegares fresco."), plan);
+  assertEquals(claimPG("Ajustei os teus treinos da semana."), plan);
+  assertEquals(claimPG("O plano já está ajustado à tua semana."), plan);
+  assertEquals(claimPG("Os treinos foram reorganizados."), plan);
   // Uma alteração ao plano é do plano mesmo a falar de objetivos.
-  assertEquals(claimedProposals("Ajustei o plano aos teus objetivos."), plan);
+  assertEquals(claimPG("Ajustei o plano aos teus objetivos."), plan);
   // Não são afirmações: a promessa, a negação, a retratação, a referência, a data.
-  assertEquals(claimedProposals("Vou ajustar o plano e mando-te a proposta."), none);
-  assertEquals(claimedProposals("Não alterei o plano: hoje é descanso."), none);
-  assertEquals(claimedProposals("Tens toda a razão. Dizer que reajustei os dias foi uma imprecisão minha."), none);
-  assertEquals(claimedProposals("No plano que ajustei para ti, amanhã é a prova."), none);
-  assertEquals(claimedProposals("Ontem ajustei o plano contigo."), none);
-  assertEquals(claimedProposals("O plano fica como está: hoje descanso, amanhã a prova."), none);
+  assertEquals(claimPG("Vou ajustar o plano e mando-te a proposta."), none);
+  assertEquals(claimPG("Não alterei o plano: hoje é descanso."), none);
+  assertEquals(claimPG("Tens toda a razão. Dizer que reajustei os dias foi uma imprecisão minha."), none);
+  assertEquals(claimPG("No plano que ajustei para ti, amanhã é a prova."), none);
+  assertEquals(claimPG("Ontem ajustei o plano contigo."), none);
+  assertEquals(claimPG("O plano fica como está: hoje descanso, amanhã a prova."), none);
+  // Revisão do lote 42dec7e2: o calendário e a agenda são o update_race_event, não o plano.
+  assertEquals(claimPG("Atualizei o teu calendário com a nova data."), none);
+  assertEquals(claimPG("Mudei a agenda da prova para domingo."), none);
+});
+
+Deno.test("seguimento de 8a5f2044: claimedProposals diz o tipo, e o strip tira só o tipo pedido", () => {
+  const mixed = "Reajustei os próximos dias. Enviei-te a proposta de plano.";
+  assertEquals(claimedProposals(mixed), { plan: true, goals: false, sent: true, change: true });
+  assertEquals(claimedProposals("Já te enviei a proposta."), { plan: true, goals: false, sent: true, change: false });
+  assertEquals(claimedProposals(RUI_1120), { plan: true, goals: false, sent: false, change: true });
+  // Com outra escrita no pedido: a alteração fica, o envio falso sai.
+  assertEquals(stripProposalClaims(mixed, { plan: true, change: false, goals: false }), "Reajustei os próximos dias.");
+  assertEquals(stripProposalClaims(mixed, { plan: false, change: true, goals: false }), "Enviei-te a proposta de plano.");
+  // Sem `change`, `plan` tira as duas (como antes).
+  assertEquals(stripProposalClaims(mixed + " Como estás?", { plan: true, goals: false }), "Como estás?");
 });
 
 Deno.test("bug #115: a ronda de correção lê o campo reply, não o JSON cru", () => {
   const reply = "Revi a semana.\n\nEnviei-te a proposta de plano para aceitares.";
   const raw = JSON.stringify({ reply, mood: "neutra" });
   // No JSON cru, «\n\nEnviei» tem um «n» colado ao verbo: escapava.
-  assertEquals(claimedProposals(raw).plan, false);
+  assertEquals(claimPG(raw).plan, false);
   assertEquals(replyFieldText(raw), reply);
-  assertEquals(claimedProposals(replyFieldText(raw)), { plan: true, goals: false });
+  assertEquals(claimPG(replyFieldText(raw)), { plan: true, goals: false });
   // Não-JSON ou sem reply: o texto tal como veio.
   assertEquals(replyFieldText("texto solto"), "texto solto");
   assertEquals(replyFieldText(undefined), undefined);
@@ -6681,20 +6707,42 @@ Deno.test("bug #112 (revisão do lote): uma proposta pendente na BD torna a fras
   const sbWith = (pending: Record<string, any[]>) => ({
     from: (table: string) => {
       // deno-lint-ignore no-explicit-any
-      const c: any = { select: () => c, eq: () => c, then: (resolve: (v: unknown) => void) => resolve({ data: pending[table] ?? [], error: null }) };
+      const c: any = {
+        filters: [] as [string, string, unknown][],
+        select: () => c,
+        eq: (k: string, v: unknown) => (c.filters.push(["eq", k, v]), c),
+        gte: (k: string, v: unknown) => (c.filters.push(["gte", k, v]), c),
+        // deno-lint-ignore no-explicit-any
+        then: (resolve: (v: unknown) => void) => resolve({ data: (pending[table] ?? []).filter((row: any) => c.filters.every(([op, k, v]: [string, string, unknown]) => op === "eq" ? k === "user_id" || row[k] === undefined || row[k] === v : String(row[k] ?? "") >= String(v))), error: null }),
+      };
       return c;
     },
   });
-  assertEquals(await pendingProposalKinds(sbWith({ coach_plans: [{ id: "p1", coach_plan_items: [{ kind: "corrida" }] }] }), "u1"), { plan: true, goals: false });
+  assertEquals(await pendingPG(sbWith({ coach_plans: [{ id: "p1", coach_plan_items: [{ kind: "corrida" }] }] }), "u1"), { plan: true, goals: false });
   // Uma proposta de só-refeições não é a proposta de plano (a regra de stalePendingIds).
-  assertEquals(await pendingProposalKinds(sbWith({ coach_plans: [{ id: "p2", coach_plan_items: [{ kind: "refeicao" }] }] }), "u1"), { plan: false, goals: false });
-  assertEquals(await pendingProposalKinds(sbWith({ coach_plans: [{ id: "p3", coach_plan_items: [{ kind: "ginasio" }] }] }), "u1"), { plan: true, goals: false });
-  assertEquals(await pendingProposalKinds(sbWith({ coach_goal_proposals: [{ id: "g1" }] }), "u1"), { plan: false, goals: true });
-  assertEquals(await pendingProposalKinds({ from: () => { throw new Error("rede"); } }, "u1"), { plan: false, goals: false });
+  assertEquals(await pendingPG(sbWith({ coach_plans: [{ id: "p2", coach_plan_items: [{ kind: "refeicao" }] }] }), "u1"), { plan: false, goals: false });
+  assertEquals(await pendingPG(sbWith({ coach_plans: [{ id: "p3", coach_plan_items: [{ kind: "ginasio" }] }] }), "u1"), { plan: true, goals: false });
+  assertEquals(await pendingPG(sbWith({ coach_goal_proposals: [{ id: "g1" }] }), "u1"), { plan: false, goals: true });
+  assertEquals(await pendingPG({ from: () => { throw new Error("rede"); } }, "u1"), { plan: false, goals: false });
+  // Revisão do lote 42dec7e2: um plano aceite nas últimas 48 h torna «o plano já está ajustado» verdade.
+  const now = Date.parse("2026-11-07T12:00:00Z");
+  const accepted = (h: number) => sbWith({ coach_plans: [{ id: "a1", status: "aceite", accepted_at: new Date(now - h * 3600e3).toISOString(), coach_plan_items: [{ kind: "corrida" }] }] });
+  // Seguimento da revisão de 8a5f2044: o aceite há pouco é à parte (recentPlan) —
+  // torna verdade uma alteração, não um envio.
+  assertEquals(await pendingProposalKinds(accepted(10), "u1", now), { plan: false, goals: false, recentPlan: true });
+  assertEquals((await pendingProposalKinds(accepted(60), "u1", now)).recentPlan, false);
   const src = await Deno.readTextFile(new URL("./index.ts", import.meta.url));
-  assertStringIncludes(src, "missing.plan = missing.plan && !pendingProposals.plan;");
+  assertStringIncludes(src, "sentMissing = sentMissing && !pendingProposals.plan;");
   assertStringIncludes(src, "unsent.plan = unsent.plan && !pendingProposals.plan;");
   assertStringIncludes(src, "const MAX_TOOL_ROUNDS = 4;  // idas-e-voltas");
+  // Outra ferramenta de escrita neste pedido: a guarda não desdiz uma alteração que existiu.
+  assertStringIncludes(src, "const otherWriteRan = () => raceWasUpdated || goalsWereUpdated || goalWasProposed || interventionWasResolved || cupWasUpdated;");
+  // …mas só para as frases de alteração: o envio falso (#112) continua a ser corrigido.
+  assertStringIncludes(src, "let sentMissing = claim.sent && planToolOn;");
+  assertStringIncludes(src, "let changeMissing = claim.change && planToolOn && !otherWriteRan();");
+  assertStringIncludes(src, "changeMissing = changeMissing && !pendingProposals.plan && !pendingProposals.recentPlan;");
+  assertStringIncludes(src, "change: claim.change && !planWasProposed && !otherWriteRan(),");
+  assertStringIncludes(src, "unsent.change = unsent.change && !pendingProposals.plan && !pendingProposals.recentPlan;");
 });
 
 Deno.test("bug #112: stripProposalClaims tira só a frase da proposta não enviada", () => {

@@ -289,7 +289,9 @@ function claimIsGoals(sentence: string): boolean {
  *  plano» — uma alteração ao plano afirmada como feita (bug #115, 2026-11-07,
  *  11:20: «Reajustei os próximos dias… e reorganizei as sessões falhadas»,
  *  sem propose_training_plan). Só o pretérito: «vou ajustar» é uma promessa. */
-const PLAN_CHANGE_CLAIM_RE = /(?<![a-zà-ú])(?:j[áa]\s+)?(?:te\s+)?(?:re)?(?:ajustei|ajust[áa]mos|alterei|alter[áa]mos|mudei|mud[áa]mos|reorganizei|reorganiz[áa]mos|reformulei|reformul[áa]mos|reprogramei|redistribu[íi]|atualizei|adaptei|adapt[áa]mos|reestruturei|troquei|mexi)(?:-te|-lhe)?(?:\s+(?:j[áa]|agora|hoje|aqui|tamb[ée]m|ligeiramente|um\s+pouco|n?[oa]s?|em|teus?|tuas?|pr[óo]xim[oa]s?|restantes?|seguintes?|[úu]ltim[oa]s?|dois|duas|tr[êe]s))*\s+(?:plano|dias|semana|treinos?|sess[õo]es|calend[áa]rio|agenda|o\s+que\s+(?:foi|era)\s+preciso)(?![a-zà-ú])/i;
+// Sem «calendário» nem «agenda» (revisão do lote 42dec7e2): «atualizei o teu
+// calendário» é o update_race_event, uma alteração que existiu.
+const PLAN_CHANGE_CLAIM_RE = /(?<![a-zà-ú])(?:j[áa]\s+)?(?:te\s+)?(?:re)?(?:ajustei|ajust[áa]mos|alterei|alter[áa]mos|mudei|mud[áa]mos|reorganizei|reorganiz[áa]mos|reformulei|reformul[áa]mos|reprogramei|redistribu[íi]|atualizei|adaptei|adapt[áa]mos|reestruturei|troquei|mexi)(?:-te|-lhe)?(?:\s+(?:j[áa]|agora|hoje|aqui|tamb[ée]m|ligeiramente|um\s+pouco|n?[oa]s?|em|teus?|tuas?|pr[óo]xim[oa]s?|restantes?|seguintes?|[úu]ltim[oa]s?|dois|duas|tr[êe]s))*\s+(?:plano|dias|semana|treinos?|sess[õo]es|o\s+que\s+(?:foi|era)\s+preciso)(?![a-zà-ú])/i;
 /** «O plano já está ajustado», «os treinos foram reorganizados». */
 const PLAN_CHANGED_PASSIVE_RE = /(?<![a-zà-ú])(?:plano|semana|dias|treinos?|sess[õo]es)\s+(?:j[áa]\s+)?(?:est[áa]|est[ãa]o|foi|foram|ficou|ficaram)\s+(?:j[áa]\s+)?(?:re)?(?:ajustad|alterad|atualizad|reorganizad|adaptad|reformulad|reprogramad)[oa]s?(?![a-zà-ú])/i;
 /** «O plano que ajustei para ti», «dizer que reajustei os dias foi uma
@@ -318,13 +320,23 @@ function proposalClaimKind(sentence: string): "proposal" | "plan_change" | null 
 /** Onde se corta uma frase — o mesmo para detetar e para tirar. */
 const CLAIM_SENTENCE_SPLIT = /(?<=[.!?;])[ \t]+/;
 
-/** O que ela diz que enviou: uma proposta de plano e/ou de objetivos. */
-export function claimedProposals(text: string | null | undefined): { plan: boolean; goals: boolean } {
-  const out = { plan: false, goals: false };
+/** O que ela diz que fez. `plan`: alguma frase do plano — `sent` (enviou uma
+ *  proposta, #112) e/ou `change` (alterou o plano, #115); `goals`: enviou uma
+ *  proposta de objetivos. As isenções de uma alteração que existiu (outra
+ *  ferramenta de escrita, um plano aceite há pouco) só valem para `change`
+ *  (seguimento da revisão de 8a5f2044). */
+export type ClaimedProposals = { plan: boolean; goals: boolean; sent: boolean; change: boolean };
+export function claimedProposals(text: string | null | undefined): ClaimedProposals {
+  const out = { plan: false, goals: false, sent: false, change: false };
   for (const sentence of String(text ?? "").split("\n").flatMap((line) => line.split(CLAIM_SENTENCE_SPLIT))) {
-    if (!isProposalClaim(sentence)) continue;
+    const kind = proposalClaimKind(sentence);
+    if (!kind) continue;
     if (claimIsGoals(sentence)) out.goals = true;
-    else out.plan = true;
+    else {
+      out.plan = true;
+      if (kind === "plan_change") out.change = true;
+      else out.sent = true;
+    }
   }
   return out;
 }
@@ -332,12 +344,16 @@ export function claimedProposals(text: string | null | undefined): { plan: boole
 /** O texto sem as frases que dizem que enviou o que não enviou. Linha a
  *  linha (revisão do lote f6b4053b): as quebras de linha ficam (listas), uma
  *  linha sem pontuação no fim não vai com a frase seguinte, e só sai a linha
- *  que esvazia. Fica pelo menos uma frase. */
-export function stripProposalClaims(text: string, kinds: { plan: boolean; goals: boolean }): string {
-  if (!kinds.plan && !kinds.goals) return text;
+ *  que esvazia. Fica pelo menos uma frase. `plan` tira as frases do plano;
+ *  com `change` dado, as de alteração seguem `change` e `plan` só as de envio. */
+export function stripProposalClaims(text: string, kinds: { plan: boolean; goals: boolean; change?: boolean }): string {
+  const change = kinds.change ?? kinds.plan;
+  if (!kinds.plan && !kinds.goals && !change) return text;
   const drop = (sentence: string) => {
-    if (!isProposalClaim(sentence)) return false;
-    return claimIsGoals(sentence) ? kinds.goals : kinds.plan;
+    const kind = proposalClaimKind(sentence);
+    if (!kind) return false;
+    if (claimIsGoals(sentence)) return kinds.goals;
+    return kind === "plan_change" ? change : kinds.plan;
   };
   const out: string[] = [];
   for (const line of text.split("\n")) {
@@ -349,29 +365,40 @@ export function stripProposalClaims(text: string, kinds: { plan: boolean; goals:
   return result ? result : text;
 }
 
+/** Um plano aceite há menos disto ainda é «o plano ajustado» de que ela fala. */
+export const RECENT_PLAN_ACCEPT_MS = 48 * 3600 * 1000;
+
 /** As propostas por decidir que já estão na BD: a frase «enviei-te a
  *  proposta» de um turno sem a ferramenta pode ser verdade se há uma de
- *  antes (revisão do lote f6b4053b). Uma falha a ler conta como nenhuma — a
- *  guarda do #112 continua de pé. */
+ *  antes (revisão do lote f6b4053b). E um plano aceite nas últimas 48 h
+ *  (`recentPlan`): «o plano já está ajustado» é verdade (revisão do lote
+ *  42dec7e2) — mas «enviei-te a proposta» não. Uma falha a ler conta como
+ *  nenhuma — a guarda do #112 continua de pé. */
 // deno-lint-ignore no-explicit-any
-export async function pendingProposalKinds(sb: any, userId: string): Promise<{ plan: boolean; goals: boolean }> {
+export async function pendingProposalKinds(sb: any, userId: string, nowMs = Date.now()): Promise<{ plan: boolean; goals: boolean; recentPlan: boolean }> {
   // Um plano só conta com treino real (corrida/ginásio) — a regra de
   // stalePendingIds: uma proposta de só-refeições não é a proposta de plano.
   // deno-lint-ignore no-explicit-any
   const hasTraining = (p: any) => (p?.coach_plan_items || []).some((i: any) => i?.kind === "corrida" || i?.kind === "ginasio");
-  const read = async (table: string, select: string, ok: (row: unknown) => boolean) => {
+  // deno-lint-ignore no-explicit-any
+  const read = async (table: string, select: string, ok: (row: unknown) => boolean, narrow: (q: any) => any = (q) => q.eq("status", "proposto")) => {
     try {
-      const { data, error } = await sb.from(table).select(select).eq("user_id", userId).eq("status", "proposto");
+      const { data, error } = await narrow(sb.from(table).select(select).eq("user_id", userId));
       return !error && Array.isArray(data) && data.some(ok);
     } catch {
       return false;
     }
   };
-  const [plan, goals] = await Promise.all([
+  const since = new Date(nowMs - RECENT_PLAN_ACCEPT_MS).toISOString();
+  const [pendingPlan, recentPlan, goals] = await Promise.all([
     read("coach_plans", "id, coach_plan_items(kind)", hasTraining),
+    // deno-lint-ignore no-explicit-any
+    read("coach_plans", "id, accepted_at, coach_plan_items(kind)", hasTraining, (q: any) => q.eq("status", "aceite").gte("accepted_at", since)),
     read("coach_goal_proposals", "id", () => true),
   ]);
-  return { plan, goals };
+  // `plan`: uma proposta por decidir (vale para as duas frases); `recentPlan`:
+  // um plano aceite há menos de 48 h (só torna verdade uma alteração).
+  return { plan: pendingPlan, goals, recentPlan };
 }
 
 /** A correção que vai ao modelo quando disse que enviou sem enviar. */
@@ -9201,8 +9228,12 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
     let truncatedRetried = false;
     // A correção de uma proposta dita e não enviada (bug #112), uma vez.
     let proposalClaimRetried = false;
+    // Outra ferramenta de escrita correu neste pedido (a prova, as metas, o
+    // aviso, a competição): «atualizei…» pode ser ela — a guarda do #115 não
+    // desdiz uma alteração que existiu (revisão do lote 42dec7e2).
+    const otherWriteRan = () => raceWasUpdated || goalsWereUpdated || goalWasProposed || interventionWasResolved || cupWasUpdated;
     // As propostas por decidir de antes (lidas só se houver uma frase a corrigir).
-    let pendingProposals: { plan: boolean; goals: boolean } | null = null;
+    let pendingProposals: { plan: boolean; goals: boolean; recentPlan: boolean } | null = null;
     // Quando começou a ronda em curso (o log mede cada uma).
     let roundStartedAt = Date.now();
     // Rondas 0..MAX_TOOL_ROUNDS-1 podem executar ferramentas; a ronda
@@ -9344,16 +9375,21 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
         // O campo reply já parseado: no JSON cru, «\\n» antes de um parágrafo
         // colava um «n» ao verbo e a frase escapava (bug #115).
         const claim = claimedProposals(replyFieldText(extractReplyText(parsedRes)));
-        const missing = {
-          plan: claim.plan && !planWasProposed && toolNamesSent.includes("propose_training_plan"),
-          goals: claim.goals && !goalWasProposed && !goalsWereUpdated && toolNamesSent.includes("update_goals"),
-        };
+        const planToolOn = !planWasProposed && toolNamesSent.includes("propose_training_plan");
+        // As isenções de uma alteração que existiu (outra escrita, plano aceite
+        // há pouco) só valem para as frases de alteração: «enviei-te a
+        // proposta» continua a ser corrigida (seguimento da revisão de 8a5f2044).
+        let sentMissing = claim.sent && planToolOn;
+        let changeMissing = claim.change && planToolOn && !otherWriteRan();
+        const missing = { plan: false, goals: claim.goals && !goalWasProposed && !goalsWereUpdated && toolNamesSent.includes("update_goals") };
         // Uma proposta de antes ainda por decidir: a frase pode ser verdade.
-        if (missing.plan || missing.goals) {
+        if (sentMissing || changeMissing || missing.goals) {
           pendingProposals ??= await pendingProposalKinds(sb, userId);
-          missing.plan = missing.plan && !pendingProposals.plan;
+          sentMissing = sentMissing && !pendingProposals.plan;
+          changeMissing = changeMissing && !pendingProposals.plan && !pendingProposals.recentPlan;
           missing.goals = missing.goals && !pendingProposals.goals;
         }
+        missing.plan = sentMissing || changeMissing;
         if (missing.plan || missing.goals) {
           proposalClaimRetried = true;
           console.error("coach-chat: disse que enviou uma proposta sem chamar a ferramenta — a corrigir", JSON.stringify({ round, turnCase, ...missing }));
@@ -9523,13 +9559,19 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
     // procurar uma proposta que não existe.
     {
       const claim = claimedProposals(replyText);
-      const unsent = { plan: claim.plan && !planWasProposed, goals: claim.goals && !goalWasProposed && !goalsWereUpdated };
-      if (unsent.plan || unsent.goals) {
+      // `plan`: as frases de envio; `change`: as de alteração (com as isenções delas).
+      const unsent = {
+        plan: claim.sent && !planWasProposed,
+        change: claim.change && !planWasProposed && !otherWriteRan(),
+        goals: claim.goals && !goalWasProposed && !goalsWereUpdated,
+      };
+      if (unsent.plan || unsent.change || unsent.goals) {
         pendingProposals ??= await pendingProposalKinds(sb, userId);
         unsent.plan = unsent.plan && !pendingProposals.plan;
+        unsent.change = unsent.change && !pendingProposals.plan && !pendingProposals.recentPlan;
         unsent.goals = unsent.goals && !pendingProposals.goals;
       }
-      if (unsent.plan || unsent.goals) {
+      if (unsent.plan || unsent.change || unsent.goals) {
         const stripped = stripProposalClaims(replyText, unsent);
         console.error(stripped !== replyText
           ? "coach-chat: a frase da proposta não enviada saiu da resposta"
