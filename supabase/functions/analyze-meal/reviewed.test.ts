@@ -104,6 +104,7 @@ Deno.test("gravar com reviewed e respostas: grava os revistos sem reler as fotos
   assertEquals([q.answer, typeof q.answered_at], ["2 fatias (~40 g)", "string"]);
   assertEquals(seen.comments!.length, 1);
   assertEquals(seen.comments![0].ctx.questions[0].answer, "2 fatias (~40 g)");
+  assertEquals(r.unapplied_question_ids, []);
   // A despensa aprende: o rótulo lido no preview entra.
   assertEquals(r.pantry_added, ["Iogurte grego"]);
 });
@@ -126,6 +127,8 @@ Deno.test("gravar com reviewed sem respostas: comenta com as perguntas por confi
   const qs = db2.tables.meals[0].carol_questions as CarolQuestion[];
   assertEquals(qs.find((q) => q.id === "q2")!.answer, null);
   assertEquals(qs.find((q) => q.id === "q3")!.answer, "200 g");
+  // E o cliente fica a saber qual ficou por aplicar (seguimento de 8a5f2044).
+  assertEquals(r2.unapplied_question_ids, ["q2"]);
   // E os alimentos devolvidos são os da BD, já com a quantidade aplicada.
   assertEquals(r2.items.find((i) => i.name === "Iogurte grego")!.quantity_grams, 200);
   assertEquals((db2.tables.meal_items as { name: string; quantity_grams: number }[]).find((i) => i.name === "Iogurte grego")!.quantity_grams, 200);
@@ -205,4 +208,5 @@ Deno.test("o handler: preview antes da idempotência, reviewed depois dela, e o 
   assert(iPreview > 0 && iPreview < iIdem && iIdem < iReviewed && iReviewed < iDirect);
   assertStringIncludes(src, "({ items, usage, facts, questions } = await readMealPhotos(");
   assertStringIncludes(src, "const r = await applyMealAnswers(sb, userId, meal, body.answers, await pantryPromise, mealDeps);");
+  assertStringIncludes(src, "unapplied_question_ids: r.unapplied_question_ids,");
 });
