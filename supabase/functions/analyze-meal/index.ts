@@ -28,7 +28,7 @@ import { addUsage, emptyUsage, type GeminiUsage, usageFromGemini } from "../_sha
 import { withUsageRecording } from "../_shared/usageRecorder.ts";
 import { findByClientRequestId, insertOnce, parseClientRequestId, settleReplay, STILL_SAVING_MESSAGE } from "../_shared/idempotency.ts";
 import {
-  applyPantry, type CarolQuestion, type CookingFact, EMPTY_PANTRY, fetchPantry, knowledgeSection, learnFromMeal, learnRules,
+  applyPantry, type CarolQuestion, type CookingFact, EMPTY_PANTRY, NUTRIENT_COLUMNS, type Pantry, fetchPantry, knowledgeSection, learnFromMeal, learnRules,
   isMicroColumn, microFromModel, optionGrams, parseCookingFacts, portionFacts, quantityAnswerGrams, parseQuestions, pickMealItem, remapQuestionItems, splitKnownWritten,
   withPantryValues, withWrittenFoods,
 } from "./pantry.ts";
@@ -1491,6 +1491,421 @@ async function attachMealCoachNotes(
 /** A resposta de uma tentativa repetida: a mesma forma das duas respostas
  *  de registo — `meal.meal_items` (manual) e `items` (fotos). */
 // deno-lint-ignore no-explicit-any
+/** O que o tratamento das respostas e o registo revisto pedem ao Gemini —
+ *  injetado, para os testes correrem sem a rede. */
+export type MealDeps = {
+  analyzePhotos: (images: string[], mime: string, written: { name: string; grams: number | null }[], notes: string | null, knowledge: string) =>
+    // deno-lint-ignore no-explicit-any
+    Promise<{ items: any[]; usage: GeminiUsage; facts: CookingFact[]; questions: unknown }>;
+  estimateManual: (written: { name: string; grams: number | null }[], notes: string | null, knowledge: string) =>
+    // deno-lint-ignore no-explicit-any
+    Promise<{ items: any[]; usage: GeminiUsage }>;
+  // deno-lint-ignore no-explicit-any
+  attachComment: (meal: any, ctx: Parameters<typeof attachMealCoachNotes>[3]) => Promise<GeminiUsage | null>;
+};
+
+// deno-lint-ignore no-explicit-any
+export type MealAnswersResult = { ok: true; meal: any; items: any[]; learned: unknown; usage: GeminiUsage } | { ok: false; status: number; error: string };
+
+/**
+ * As respostas do atleta às perguntas da Carol numa refeição gravada (o modo
+ * "answer", e o registo revisto — #106 nas refeições, 2026-11-07). Uma
+ * resposta igual à que ela assumiu só confirma; uma diferente volta a estimar
+ * o alimento a que se refere (com a resposta no nome) e refaz o comentário.
+ * `meal` traz meal_items. `forceComment`: o comentário faz-se sempre (o
+ * registo revisto ainda não tem nenhum).
+ */
+export async function applyMealAnswers(
+  // deno-lint-ignore no-explicit-any
+  sb: any, userId: string, meal: any, rawAnswers: unknown, pantry: Pantry, deps: Pick<MealDeps, "estimateManual" | "attachComment">,
+  opts: { forceComment?: boolean } = {},
+): Promise<MealAnswersResult> {
+  const questions: CarolQuestion[] = Array.isArray(meal.carol_questions) ? meal.carol_questions : [];
+  const wanted = new Map<string, string>(
+    (Array.isArray(rawAnswers) ? rawAnswers : [])
+      // deno-lint-ignore no-explicit-any
+      .map((a: any) => [String(a?.id ?? ""), String(a?.answer ?? "").trim().slice(0, 60)] as [string, string])
+      .filter(([id, answer]: [string, string]) => id && answer),
+  );
+  const answered = questions.filter((q) => !q.answer && wanted.has(q.id)).map((q) => ({ ...q, answer: wanted.get(q.id)! }));
+  if (!answered.length) return { ok: false, status: 400, error: "Não há perguntas por responder nesta refeição." };
+
+  // Os alimentos a mexer: só onde a resposta não é a assumida. Uma
+  // resposta de quantidade com gramas (fase B dos #58/#66, 2026-10-17)
+  // troca só as gramas do alimento — os valores por 100 g ficam, sem
+  // chamada ao modelo. Uma de preparação, ou uma quantidade escrita à mão
+  // sem gramas ("Outro…"), volta a estimar o alimento no modelo.
+  // deno-lint-ignore no-explicit-any
+  const mealItems: any[] = meal.meal_items || [];
+  // deno-lint-ignore no-explicit-any
+  type Change = {
+    item: any; answers: string[]; facts: string[]; grams: number | null; reestimate: boolean; estimateGrams: boolean;
+    // Bug #87: a variante escolhida (com a linha dela, se já tem valores) e o nome novo do alimento.
+    // deno-lint-ignore no-explicit-any
+    variant?: { generic: string; label: string; stored: any | null }; rename?: string;
+  };
+  const changes = new Map<string, Change>();
+  for (const q of answered) {
+    if (foodKey(q.answer) === foodKey(q.assumed)) continue;
+    const item = mealItems.find((it) => foodKey(it.name) === foodKey(q.item_name));
+    if (!item) continue;
+    const c = changes.get(item.id) ?? { item, answers: [], facts: [], grams: null, reestimate: false, estimateGrams: false };
+    const answerGrams = q.kind === "quantidade" ? optionGrams(q.answer) : null;
+    if (q.kind === "variante") {
+      // Bug #87: os valores da variante escolhida vêm da base de dados, sem o
+      // modelo. Só uma variante sem valores guardados («Outro…») vai ao modelo.
+      const { generic, label, stored, rename } = variantAnswer(q.topic, q.answer, pantry.variants);
+      c.variant = { generic, label, stored };
+      c.rename = rename;
+      if (!stored) {
+        c.reestimate = true;
+        c.facts.push(`${q.topic}: ${q.answer}`);
+      }
+    } else if (answerGrams != null) {
+      // Aplica-se a DIFERENÇA entre a resposta e o que ela assumiu, não as
+      // gramas da resposta: num prato que veio num só item ("Tosta mista",
+      // 120 g) a pergunta "quanto fiambre?" mexe só na parte do fiambre —
+      // trocar pelas gramas da opção (35 g) punha a tosta toda a 35 g
+      // (revisão pré-master de 2026-10-17). Sem gramas na assumida, troca.
+      c.grams = quantityAnswerGrams(c.grams ?? (Number(item.quantity_grams) || 0), q.answer, q.assumed);
+    } else {
+      c.answers.push(q.answer);
+      c.facts.push(`${q.topic}: ${q.answer}`);
+      c.reestimate = true;
+      if (q.kind === "quantidade") c.estimateGrams = true;
+    }
+    changes.set(item.id, c);
+  }
+
+  // O nome com que o alimento fica: o da variante, e as respostas de preparação entre parênteses.
+  const newName = (c: Change) => {
+    const base = c.rename ?? c.item.name;
+    return (c.answers.length ? `${base} (${c.answers.join(", ")})` : base).slice(0, 120);
+  };
+  // deno-lint-ignore no-explicit-any
+  const variantLearn: any[] = [];
+  for (const c of changes.values()) {
+    if (c.reestimate || (c.grams == null && !c.variant?.stored)) continue;
+    // Uma variante guardada: os valores dela, sem o modelo (e as gramas, se também mudaram).
+    const next = c.variant?.stored
+      ? withPantryValues({ ...c.item, quantity_grams: c.grams ?? c.item.quantity_grams }, c.variant.stored)
+      : null;
+    const patch = next ? pickMealItem({ ...next, name: newName(c) }) : { quantity_grams: c.grams };
+    const { error: upErr } = await sb.from("meal_items").update(patch).eq("id", c.item.id);
+    if (upErr) return { ok: false, status: 500, error: `Falha a gravar o alimento: ${upErr.message}` };
+    if (next && c.variant) variantLearn.push({ ...next, name: c.variant.stored.name, variant_of: c.variant.generic, variant_label: c.variant.label });
+  }
+
+  let usage: GeminiUsage = emptyUsage();
+  const list = [...changes.values()].filter((c) => c.reestimate);
+  if (list.length) {
+    
+    const written = list.map((c) => ({
+      name: c.variant ? variantName(c.variant.generic, c.variant.label) : `${c.item.name} (${c.answers.join(", ")})`.slice(0, 120),
+      // Sem gramas na resposta ("Outro…" numa quantidade), o modelo estima a porção.
+      grams: c.estimateGrams ? null : (c.grams ?? (Number(c.item.quantity_grams) || null)),
+    }));
+    const answersNote = `Respostas do atleta: ${list.flatMap((c) => c.facts).join("; ")}.`;
+    let est;
+    try {
+      est = await deps.estimateManual(
+        written, [meal.notes, answersNote].filter(Boolean).join("\n"), knowledgeSection(pantry.foods, pantry.rules, pantry.variants),
+      );
+    } catch (e) {
+      return { ok: false, status: 502, error: e instanceof Error ? e.message : "Falha na estimativa." };
+    }
+    usage = est.usage;
+    for (let i = 0; i < list.length; i++) {
+      const grams = list[i].estimateGrams ? est.items[i].quantity_grams : (list[i].grams ?? list[i].item.quantity_grams);
+      const c = list[i];
+      const { error: upErr } = await sb.from("meal_items")
+        .update(pickMealItem({ ...est.items[i], quantity_grams: grams, ...(c.variant ? { name: newName(c) } : {}) }))
+        .eq("id", c.item.id);
+      if (upErr) return { ok: false, status: 500, error: `Falha a gravar o alimento: ${upErr.message}` };
+      // Uma variante nova: os valores estimados agora ficam guardados nela.
+      if (c.variant) {
+        variantLearn.push({
+          ...est.items[i], quantity_grams: grams, name: variantName(c.variant.generic, c.variant.label),
+          variant_of: c.variant.generic, variant_label: c.variant.label,
+        });
+      }
+    }
+  }
+
+  const nowISO = new Date().toISOString();
+  const byId = new Map(answered.map((q) => [q.id, q]));
+  // Um alimento reestimado ganhou a resposta no nome: uma pergunta ainda
+  // por responder sobre ele passa a apontar para o nome novo — senão,
+  // respondida mais tarde, já não o encontrava (revisão pré-master).
+  const renamed = new Map(
+    [...changes.values()].filter((c) => c.reestimate || c.variant?.stored).map((c) => [foodKey(c.item.name), newName(c)]),
+  );
+  const updatedQuestions = questions.map((q) => {
+    if (byId.has(q.id)) return { ...q, answer: byId.get(q.id)!.answer, answered_at: nowISO };
+    const to = !q.answer ? renamed.get(foodKey(q.item_name)) : undefined;
+    return to ? { ...q, item_name: to } : q;
+  });
+  const { error: qErr } = await sb.from("meals").update({ carol_questions: updatedQuestions }).eq("id", meal.id);
+  if (qErr) return { ok: false, status: 500, error: `Falha a gravar as respostas: ${qErr.message}` };
+
+  const { data: freshItems } = await sb.from("meal_items").select("*").eq("meal_id", meal.id);
+  const [coachUsage, learned] = await Promise.all([
+    // Também quando a resposta só confirma mas o comentário falava de uma
+    // suposição (bug #102). As perguntas vão todas: as respondidas são factos.
+    opts.forceComment || shouldRefreshMealComment(changes.size, meal.coach_notes)
+      ? deps.attachComment(meal, {
+        date: meal.date, meal_type: meal.meal_type, meal_time: meal.meal_time ?? null, notes: meal.notes ?? null,
+        totals: totalsFromItems(freshItems || []), items: freshItems || [],
+        questions: updatedQuestions,
+      })
+      : Promise.resolve(null),
+    // A variante pergunta-se sempre: a resposta não vira regra (uma regra por
+    // confirmar sobre o genérico mandava-o ao modelo em todos os registos).
+    learnRules(sb, userId, answered.filter((q) => q.kind !== "variante").map((q) => ({ topic: q.topic, value: q.answer })), "resposta", nowISO),
+    // Bug #87: a variante escolhida fica na despensa, ligada ao genérico.
+    Promise.all(variantLearn.map((it) => learnVariantFood(sb, userId, it, nowISO, { countSeen: false }))),
+  ]);
+  const { data: freshMeal } = await sb.from("meals").select("*").eq("id", meal.id).maybeSingle();
+  return {
+    ok: true,
+    meal: { ...(freshMeal ?? { ...meal, carol_questions: updatedQuestions }), meal_items: freshItems || mealItems },
+    items: freshItems || mealItems,
+    learned,
+    usage: addUsage(usage, coachUsage),
+  };
+}
+
+// ─── O registo revisto das fotos (#106 nas refeições, 2026-11-07) ──────────
+// Como no ginásio, na corrida e na avaliação: «Ler e preencher» (mode
+// "preview") lê as fotos e devolve os alimentos e as perguntas, sem gravar;
+// o atleta revê, responde, e «Gravar e analisar» (reviewed: true) grava os
+// alimentos revistos sem voltar a ler as fotos, com as respostas como factos.
+// O caminho de antes (fotos → grava logo) fica para as apps antigas.
+
+/** A leitura das fotos (com os alimentos escritos, se os há), tal como o
+ *  registo direto a faz: as variantes, a despensa, as perguntas. */
+export async function readMealPhotos(
+  args: { images: string[]; mime: string; written: { name: string; grams: number | null }[]; notes: string | null; pantry: Pantry },
+  deps: Pick<MealDeps, "analyzePhotos">,
+  // deno-lint-ignore no-explicit-any
+): Promise<{ items: any[]; questions: CarolQuestion[]; facts: CookingFact[]; usage: GeminiUsage }> {
+  const { pantry, notes } = args;
+  const knowledge = knowledgeSection(pantry.foods, pantry.rules, pantry.variants);
+  const read = await deps.analyzePhotos(args.images, args.mime, args.written, notes, knowledge);
+  // Bug #87: as variantes primeiro — uma variante nova fica com os valores
+  // que o modelo estimou para ela, não com os do genérico da despensa.
+  const variantsOut = resolveVariants(read.items, pantry.variants);
+  const items = applyPantry(variantsOut.items, pantry.byKey, pantry.rules);
+  // A pergunta da variante faz-se sempre e não conta para as 5 do modelo.
+  // Bug #109: e a manteiga no pão, se o modelo não perguntou.
+  const questions = withButterQuestions(
+    mergeVariantQuestions(
+      parseQuestions(renameQuestionItems(read.questions, variantsOut.renames), items, pantry.rules),
+      variantsOut.questions,
+      variantsOut.renames,
+    ),
+    items, notes,
+  );
+  return { items, questions, facts: read.facts || [], usage: read.usage };
+}
+
+/** Um alimento do preview, para o cliente: o que se grava, mais o from_label. */
+// deno-lint-ignore no-explicit-any
+export function previewMealItem(it: any): Record<string, unknown> {
+  return { ...pickMealItem(it), from_label: it?.from_label === true };
+}
+
+const REVIEWED_MAX_GRAMS = 5000;
+/** Por 100 g: macros e fibra/açúcar em g (≤ 100), energia em kcal (≤ 950). */
+const REVIEWED_PER100_MAX: Record<string, number> = {
+  calories_per_100g: 950, protein_per_100g: 100, carbs_per_100g: 100, fat_per_100g: 100, fiber_per_100g: 100, sugar_per_100g: 100,
+};
+
+/** Os alimentos revistos que voltam do cliente: o que vem de lá não se confia.
+ *  Nome e gramas obrigatórios; valores por 100 g não negativos (os micros em
+ *  falta ficam null, como no resto). Fora dos limites → null (a lista toda é
+ *  recusada: um valor impossível é um erro do cliente, não do atleta). */
+// deno-lint-ignore no-explicit-any
+export function parseReviewedMealItems(raw: unknown): any[] | null {
+  if (!Array.isArray(raw) || raw.length === 0 || raw.length > MAX_WRITTEN_ITEMS) return null;
+  // deno-lint-ignore no-explicit-any
+  const out: any[] = [];
+  // deno-lint-ignore no-explicit-any
+  for (const it of raw as any[]) {
+    const name = typeof it?.name === "string" ? it.name.trim().slice(0, 120) : "";
+    const grams = Number(it?.quantity_grams);
+    if (!name || !Number.isFinite(grams) || grams <= 0 || grams > REVIEWED_MAX_GRAMS) return null;
+    const row: Record<string, unknown> = { name, quantity_grams: Math.round(grams * 10) / 10, from_label: it?.from_label === true };
+    for (const k of NUTRIENT_COLUMNS) {
+      const v = it?.[k];
+      if (v == null || v === "") {
+        if (!isMicroColumn(k)) return null;
+        row[k] = null;
+        continue;
+      }
+      const n = Number(v);
+      if (!Number.isFinite(n) || n < 0 || n > (REVIEWED_PER100_MAX[k] ?? 100000)) return null;
+      row[k] = n;
+    }
+    out.push(row);
+  }
+  return out;
+}
+
+const QUESTION_KINDS = new Set(["preparacao", "quantidade", "variante"]);
+const qText = (v: unknown, max: number) => (typeof v === "string" ? v.trim().slice(0, max) : "");
+
+/** As perguntas do preview que voltam com as respostas (`carol_questions`):
+ *  limpas, e separadas em perguntas (sem resposta — é como se gravam antes de
+ *  as aplicar) e respostas {id, answer}. */
+export function parseReviewedMealQuestions(raw: unknown): { questions: CarolQuestion[]; answers: { id: string; answer: string }[] } {
+  const questions: CarolQuestion[] = [];
+  const answers: { id: string; answer: string }[] = [];
+  // deno-lint-ignore no-explicit-any
+  for (const q of (Array.isArray(raw) ? raw.slice(0, 12) : []) as any[]) {
+    const id = qText(q?.id, 64);
+    const topic = qText(q?.topic, 60);
+    const question = qText(q?.question, 200);
+    const options = (Array.isArray(q?.options) ? q.options : []).map((o: unknown) => qText(o, 60)).filter(Boolean).slice(0, 8);
+    if (!id || !topic || !question || options.length < 2 || questions.some((x) => x.id === id)) continue;
+    questions.push({
+      id, kind: QUESTION_KINDS.has(q?.kind) ? q.kind : "preparacao", topic, item_name: qText(q?.item_name, 120) || topic,
+      question, options, assumed: qText(q?.assumed, 60),
+      impact_kcal: Number.isFinite(Number(q?.impact_kcal)) ? Number(q.impact_kcal) : 0,
+      impact_protein_g: Number.isFinite(Number(q?.impact_protein_g)) ? Number(q.impact_protein_g) : 0,
+      answer: null, answered_at: null,
+    });
+    const answer = qText(q?.answer, 60);
+    if (answer) answers.push({ id, answer });
+  }
+  return { questions, answers };
+}
+
+/** Os factos de como ele cozinha que o preview leu (voltam para a despensa aprender). */
+export function parseReviewedFacts(raw: unknown): CookingFact[] {
+  // deno-lint-ignore no-explicit-any
+  return (Array.isArray(raw) ? raw.slice(0, 10) : []).map((f: any) => ({ topic: qText(f?.topic, 60), value: qText(f?.value, 80) }))
+    .filter((f: CookingFact) => f.topic && f.value);
+}
+
+export type ReviewedMealInput = {
+  date: unknown; meal_type: unknown; notes: string | null; mealTimeField: Record<string, unknown>;
+  images: string[]; mime: string; items: unknown; carol_questions: unknown; facts: unknown;
+  written: { name: string; grams: number | null }[]; clientRequestId: string | null;
+};
+
+// deno-lint-ignore no-explicit-any
+export type ReviewedMealResult = { ok: true; meal: any; items: any[]; usage: GeminiUsage; pantry_added: string[] } | { ok: false; status: number; error: string } | { existing: any };
+
+/**
+ * Grava o registo revisto: as fotos sobem para o storage como no registo
+ * direto, os alimentos são os que o atleta reviu (não se voltam a ler as
+ * fotos) e as respostas aplicam-se como no modo "answer" — uma resposta
+ * diferente da assumida acerta o alimento — com o comentário feito com elas
+ * como factos. `{ existing }` quando outra tentativa com o mesmo
+ * client_request_id já a gravou (as fotos desta saem).
+ */
+export async function saveReviewedMeal(
+  // deno-lint-ignore no-explicit-any
+  sb: any, userId: string, input: ReviewedMealInput, pantry: Pantry, deps: Pick<MealDeps, "estimateManual" | "attachComment">,
+): Promise<ReviewedMealResult> {
+  const { date, meal_type, notes } = input;
+  if (!MEAL_TYPES.includes(meal_type as string)) return { ok: false, status: 400, error: "Tipo de refeição inválido" };
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(typeof date === "string" ? date : "")) return { ok: false, status: 400, error: "Data inválida (esperado YYYY-MM-DD)" };
+  if (input.images.length === 0) return { ok: false, status: 400, error: "Nenhuma imagem recebida" };
+  if (input.images.length > MAX_PHOTOS) return { ok: false, status: 400, error: `Máximo de ${MAX_PHOTOS} fotos por refeição` };
+  const items = parseReviewedMealItems(input.items);
+  if (!items) return { ok: false, status: 400, error: "Os alimentos revistos não são válidos — volta a ler as fotos." };
+  const { questions, answers } = parseReviewedMealQuestions(input.carol_questions);
+
+  // As fotos sobem como no registo direto.
+  const ext = input.mime === "image/png" ? "png" : input.mime === "image/webp" ? "webp" : "jpg";
+  const photoPaths: string[] = [];
+  for (const b64 of input.images) {
+    const path = `${userId}/${crypto.randomUUID()}.${ext}`;
+    const { error: uploadError } = await sb.storage.from("meal-photos").upload(path, base64ToBytes(b64), { contentType: input.mime });
+    if (uploadError) {
+      if (photoPaths.length) await sb.storage.from("meal-photos").remove(photoPaths);
+      return { ok: false, status: 500, error: `Falha no upload da foto: ${uploadError.message}` };
+    }
+    photoPaths.push(path);
+  }
+
+  const { data: meal, existing, error: mealError } = await insertOnce(sb, "meals", userId, {
+    user_id: userId, date, meal_type, photo_paths: photoPaths, status: "ready", notes, ...input.mealTimeField,
+    carol_questions: questions.length ? questions : null,
+  }, input.clientRequestId);
+  if (existing) {
+    await sb.storage.from("meal-photos").remove(photoPaths);
+    return { existing };
+  }
+  if (mealError) {
+    await sb.storage.from("meal-photos").remove(photoPaths);
+    return { ok: false, status: 500, error: `Falha a gravar refeição: ${mealError.message}` };
+  }
+  const { data: savedItems, error: itemsError } = await sb.from("meal_items")
+    .insert(items.map((it) => ({ ...pickMealItem(it), meal_id: meal.id, user_id: userId })))
+    .select();
+  if (itemsError) {
+    await sb.from("meals").delete().eq("id", meal.id);
+    await sb.storage.from("meal-photos").remove(photoPaths);
+    return { ok: false, status: 500, error: `Falha a gravar itens: ${itemsError.message}` };
+  }
+
+  // As respostas: como no modo "answer", com o comentário sempre (ainda não há).
+  // Sem respostas, ou se aplicá-las falhar, o comentário faz-se com as
+  // perguntas como estão — as respondidas como factos.
+  let finalMeal = { ...meal, meal_items: savedItems || [] };
+  let finalItems = savedItems || [];
+  let usage: GeminiUsage = emptyUsage();
+  let applied = false;
+  if (answers.length) {
+    const r = await applyMealAnswers(sb, userId, finalMeal, answers, pantry, deps, { forceComment: true });
+    if (r.ok) {
+      finalMeal = r.meal;
+      finalItems = r.items;
+      usage = r.usage;
+      applied = true;
+    } else {
+      console.warn("analyze-meal: as respostas do registo revisto não se aplicaram — ficam como factos do comentário:", r.error);
+    }
+  }
+  if (!applied) {
+    const nowISO = new Date().toISOString();
+    const byId = new Map(answers.map((a) => [a.id, a.answer]));
+    const withAnswers = questions.map((q) => (byId.has(q.id) ? { ...q, answer: byId.get(q.id)!, answered_at: nowISO } : q));
+    if (answers.length) {
+      const { error: qErr } = await sb.from("meals").update({ carol_questions: withAnswers }).eq("id", meal.id);
+      if (!qErr) finalMeal = { ...finalMeal, carol_questions: withAnswers };
+    }
+    const coachUsage = await deps.attachComment(meal, {
+      date: meal.date ?? date, meal_type: meal.meal_type ?? meal_type, meal_time: meal.meal_time ?? null, notes,
+      totals: totalsFromItems(finalItems), items: finalItems, questions: withAnswers,
+    });
+    usage = addUsage(usage, coachUsage);
+    const { data: fresh } = await sb.from("meals").select("*").eq("id", meal.id).maybeSingle();
+    if (fresh) finalMeal = { ...fresh, meal_items: finalItems };
+  }
+
+  // A despensa aprende com os alimentos revistos (com o from_label do preview)
+  // e com os factos que o preview leu.
+  const learned = await learnFromMeal(sb, userId, items, [...parseReviewedFacts(input.facts), ...portionFacts(input.written, pantry.byKey, pantry.rules)]);
+  return { ok: true, meal: finalMeal, items: finalItems, usage, pantry_added: learned.fromLabel };
+}
+
+/** As fotos do pedido: `images` (array) ou `image_base64` (formato antigo, 1 foto). */
+// deno-lint-ignore no-explicit-any
+export function parseMealImages(body: any): string[] {
+  if (Array.isArray(body?.images)) return body.images.filter((x: unknown) => typeof x === "string" && x.length > 0);
+  if (typeof body?.image_base64 === "string" && body.image_base64) return [body.image_base64];
+  return [];
+}
+
+export function mealImageMime(mime: unknown): string {
+  return ["image/jpeg", "image/png", "image/webp", "image/heic", "image/heif"].includes(mime as string) ? mime as string : "image/jpeg";
+}
+
+// deno-lint-ignore no-explicit-any
 export function mealReplayBody(meal: any, items: any[] | null | undefined) {
   return { meal: { ...meal, meal_items: items ?? [] }, items: items ?? [], replayed: true };
 }
@@ -1527,6 +1942,15 @@ Deno.serve(withUsageRecording("analyze-meal", async (req) => {
       return jsonResponse({ error: "Sessão inválida" }, 401);
     }
     const userId = userData.user.id;
+    // O que se pede ao Gemini fora da leitura direta (applyMealAnswers, o registo revisto).
+    const mealDeps: MealDeps = {
+      analyzePhotos: (images, mime, written, notes, knowledge) => written.length
+        ? analyzePhotosWithItems(images, mime, written, notes, geminiKey, extractionDeadline, knowledge, (m) => logItemsMismatch(sb, userId, m))
+        : analyzeWithGemini(images, mime, notes, geminiKey, extractionDeadline, knowledge),
+      estimateManual: (written, notes, knowledge) =>
+        analyzeManualItems(written, notes, geminiKey, extractionDeadline, knowledge, (m) => logItemsMismatch(sb, userId, m)),
+      attachComment: (meal, ctx) => attachMealCoachNotes(sb, userId, meal, ctx, geminiKey, coachDeadline),
+    };
 
     const body = await req.json();
     const rawNotes = typeof body.notes === "string" ? body.notes.slice(0, MAX_NOTES_LENGTH) : null;
@@ -1584,158 +2008,34 @@ Deno.serve(withUsageRecording("analyze-meal", async (req) => {
       if (mealErr) return jsonResponse({ error: `Falha a procurar refeição: ${mealErr.message}` }, 500);
       if (!meal) return jsonResponse({ error: "Refeição não encontrada" }, 404);
 
-      const questions: CarolQuestion[] = Array.isArray(meal.carol_questions) ? meal.carol_questions : [];
-      const wanted = new Map<string, string>(
-        (Array.isArray(body.answers) ? body.answers : [])
-          // deno-lint-ignore no-explicit-any
-          .map((a: any) => [String(a?.id ?? ""), String(a?.answer ?? "").trim().slice(0, 60)] as [string, string])
-          .filter(([id, answer]: [string, string]) => id && answer),
-      );
-      const answered = questions.filter((q) => !q.answer && wanted.has(q.id)).map((q) => ({ ...q, answer: wanted.get(q.id)! }));
-      if (!answered.length) return jsonResponse({ error: "Não há perguntas por responder nesta refeição." }, 400);
+      const r = await applyMealAnswers(sb, userId, meal, body.answers, await pantryPromise, mealDeps);
+      if (!r.ok) return jsonResponse({ error: r.error }, r.status);
+      return jsonResponse({ meal: r.meal, learned: r.learned, usage: r.usage });
+    }
 
-      // Os alimentos a mexer: só onde a resposta não é a assumida. Uma
-      // resposta de quantidade com gramas (fase B dos #58/#66, 2026-10-17)
-      // troca só as gramas do alimento — os valores por 100 g ficam, sem
-      // chamada ao modelo. Uma de preparação, ou uma quantidade escrita à mão
-      // sem gramas ("Outro…"), volta a estimar o alimento no modelo.
-      // deno-lint-ignore no-explicit-any
-      const mealItems: any[] = meal.meal_items || [];
-      // deno-lint-ignore no-explicit-any
-      type Change = {
-        item: any; answers: string[]; facts: string[]; grams: number | null; reestimate: boolean; estimateGrams: boolean;
-        // Bug #87: a variante escolhida (com a linha dela, se já tem valores) e o nome novo do alimento.
-        // deno-lint-ignore no-explicit-any
-        variant?: { generic: string; label: string; stored: any | null }; rename?: string;
-      };
-      const changes = new Map<string, Change>();
-      for (const q of answered) {
-        if (foodKey(q.answer) === foodKey(q.assumed)) continue;
-        const item = mealItems.find((it) => foodKey(it.name) === foodKey(q.item_name));
-        if (!item) continue;
-        const c = changes.get(item.id) ?? { item, answers: [], facts: [], grams: null, reestimate: false, estimateGrams: false };
-        const answerGrams = q.kind === "quantidade" ? optionGrams(q.answer) : null;
-        if (q.kind === "variante") {
-          // Bug #87: os valores da variante escolhida vêm da base de dados, sem o
-          // modelo. Só uma variante sem valores guardados («Outro…») vai ao modelo.
-          const { generic, label, stored, rename } = variantAnswer(q.topic, q.answer, (await pantryPromise).variants);
-          c.variant = { generic, label, stored };
-          c.rename = rename;
-          if (!stored) {
-            c.reestimate = true;
-            c.facts.push(`${q.topic}: ${q.answer}`);
-          }
-        } else if (answerGrams != null) {
-          // Aplica-se a DIFERENÇA entre a resposta e o que ela assumiu, não as
-          // gramas da resposta: num prato que veio num só item ("Tosta mista",
-          // 120 g) a pergunta "quanto fiambre?" mexe só na parte do fiambre —
-          // trocar pelas gramas da opção (35 g) punha a tosta toda a 35 g
-          // (revisão pré-master de 2026-10-17). Sem gramas na assumida, troca.
-          c.grams = quantityAnswerGrams(c.grams ?? (Number(item.quantity_grams) || 0), q.answer, q.assumed);
-        } else {
-          c.answers.push(q.answer);
-          c.facts.push(`${q.topic}: ${q.answer}`);
-          c.reestimate = true;
-          if (q.kind === "quantidade") c.estimateGrams = true;
-        }
-        changes.set(item.id, c);
+    // ── Modo "preview": «Ler e preencher» com fotos (#106 nas refeições) ──
+    // Lê as fotos (e os alimentos escritos e as observações) como o registo
+    // direto, mas não grava: devolve os alimentos e as perguntas, para o
+    // atleta rever e responder antes de «Gravar e analisar» (reviewed).
+    if (body.mode === "preview") {
+      const images = parseMealImages(body);
+      if (images.length === 0) return jsonResponse({ error: "Nenhuma imagem recebida" }, 400);
+      if (images.length > MAX_PHOTOS) return jsonResponse({ error: `Máximo de ${MAX_PHOTOS} fotos por refeição` }, 400);
+      const written = parseWrittenItems(body.items);
+      if (written.length > MAX_WRITTEN_ITEMS) return jsonResponse({ error: `Máximo de ${MAX_WRITTEN_ITEMS} alimentos por refeição.` }, 400);
+      const pantry = await withWrittenFoods(sb, userId, await pantryPromise, written.map((w) => w.name));
+      try {
+        const read = await readMealPhotos({ images, mime: mealImageMime(body.mime_type), written, notes: rawNotes, pantry }, mealDeps);
+        return jsonResponse({
+          items: read.items.map(previewMealItem),
+          questions: read.questions,
+          facts: read.facts,
+          readable: read.items.length > 0,
+          usage: read.usage,
+        });
+      } catch (e) {
+        return jsonResponse({ error: e instanceof Error ? e.message : "Falha na leitura." }, 502);
       }
-
-      // O nome com que o alimento fica: o da variante, e as respostas de preparação entre parênteses.
-      const newName = (c: Change) => {
-        const base = c.rename ?? c.item.name;
-        return (c.answers.length ? `${base} (${c.answers.join(", ")})` : base).slice(0, 120);
-      };
-      // deno-lint-ignore no-explicit-any
-      const variantLearn: any[] = [];
-      for (const c of changes.values()) {
-        if (c.reestimate || (c.grams == null && !c.variant?.stored)) continue;
-        // Uma variante guardada: os valores dela, sem o modelo (e as gramas, se também mudaram).
-        const next = c.variant?.stored
-          ? withPantryValues({ ...c.item, quantity_grams: c.grams ?? c.item.quantity_grams }, c.variant.stored)
-          : null;
-        const patch = next ? pickMealItem({ ...next, name: newName(c) }) : { quantity_grams: c.grams };
-        const { error: upErr } = await sb.from("meal_items").update(patch).eq("id", c.item.id);
-        if (upErr) return jsonResponse({ error: `Falha a gravar o alimento: ${upErr.message}` }, 500);
-        if (next && c.variant) variantLearn.push({ ...next, name: c.variant.stored.name, variant_of: c.variant.generic, variant_label: c.variant.label });
-      }
-
-      let usage: GeminiUsage = emptyUsage();
-      const list = [...changes.values()].filter((c) => c.reestimate);
-      if (list.length) {
-        const pantry = await pantryPromise;
-        const written = list.map((c) => ({
-          name: c.variant ? variantName(c.variant.generic, c.variant.label) : `${c.item.name} (${c.answers.join(", ")})`.slice(0, 120),
-          // Sem gramas na resposta ("Outro…" numa quantidade), o modelo estima a porção.
-          grams: c.estimateGrams ? null : (c.grams ?? (Number(c.item.quantity_grams) || null)),
-        }));
-        const answersNote = `Respostas do atleta: ${list.flatMap((c) => c.facts).join("; ")}.`;
-        let est;
-        try {
-          est = await analyzeManualItems(
-            written, [meal.notes, answersNote].filter(Boolean).join("\n"), geminiKey, extractionDeadline,
-            knowledgeSection(pantry.foods, pantry.rules, pantry.variants), (m) => logItemsMismatch(sb, userId, m),
-          );
-        } catch (e) {
-          return jsonResponse({ error: e instanceof Error ? e.message : "Falha na estimativa." }, 502);
-        }
-        usage = est.usage;
-        for (let i = 0; i < list.length; i++) {
-          const grams = list[i].estimateGrams ? est.items[i].quantity_grams : (list[i].grams ?? list[i].item.quantity_grams);
-          const c = list[i];
-          const { error: upErr } = await sb.from("meal_items")
-            .update(pickMealItem({ ...est.items[i], quantity_grams: grams, ...(c.variant ? { name: newName(c) } : {}) }))
-            .eq("id", c.item.id);
-          if (upErr) return jsonResponse({ error: `Falha a gravar o alimento: ${upErr.message}` }, 500);
-          // Uma variante nova: os valores estimados agora ficam guardados nela.
-          if (c.variant) {
-            variantLearn.push({
-              ...est.items[i], quantity_grams: grams, name: variantName(c.variant.generic, c.variant.label),
-              variant_of: c.variant.generic, variant_label: c.variant.label,
-            });
-          }
-        }
-      }
-
-      const nowISO = new Date().toISOString();
-      const byId = new Map(answered.map((q) => [q.id, q]));
-      // Um alimento reestimado ganhou a resposta no nome: uma pergunta ainda
-      // por responder sobre ele passa a apontar para o nome novo — senão,
-      // respondida mais tarde, já não o encontrava (revisão pré-master).
-      const renamed = new Map(
-        [...changes.values()].filter((c) => c.reestimate || c.variant?.stored).map((c) => [foodKey(c.item.name), newName(c)]),
-      );
-      const updatedQuestions = questions.map((q) => {
-        if (byId.has(q.id)) return { ...q, answer: byId.get(q.id)!.answer, answered_at: nowISO };
-        const to = !q.answer ? renamed.get(foodKey(q.item_name)) : undefined;
-        return to ? { ...q, item_name: to } : q;
-      });
-      const { error: qErr } = await sb.from("meals").update({ carol_questions: updatedQuestions }).eq("id", meal.id);
-      if (qErr) return jsonResponse({ error: `Falha a gravar as respostas: ${qErr.message}` }, 500);
-
-      const { data: freshItems } = await sb.from("meal_items").select("*").eq("meal_id", meal.id);
-      const [coachUsage, learned] = await Promise.all([
-        // Também quando a resposta só confirma mas o comentário falava de uma
-        // suposição (bug #102). As perguntas vão todas: as respondidas são factos.
-        shouldRefreshMealComment(changes.size, meal.coach_notes)
-          ? attachMealCoachNotes(sb, userId, meal, {
-            date: meal.date, meal_type: meal.meal_type, meal_time: meal.meal_time ?? null, notes: meal.notes ?? null,
-            totals: totalsFromItems(freshItems || []), items: freshItems || [],
-            questions: updatedQuestions,
-          }, geminiKey, coachDeadline)
-          : Promise.resolve(null),
-        // A variante pergunta-se sempre: a resposta não vira regra (uma regra por
-        // confirmar sobre o genérico mandava-o ao modelo em todos os registos).
-        learnRules(sb, userId, answered.filter((q) => q.kind !== "variante").map((q) => ({ topic: q.topic, value: q.answer })), "resposta", nowISO),
-        // Bug #87: a variante escolhida fica na despensa, ligada ao genérico.
-        Promise.all(variantLearn.map((it) => learnVariantFood(sb, userId, it, nowISO, { countSeen: false }))),
-      ]);
-      const { data: freshMeal } = await sb.from("meals").select("*").eq("id", meal.id).maybeSingle();
-      return jsonResponse({
-        meal: { ...(freshMeal ?? { ...meal, carol_questions: updatedQuestions }), meal_items: freshItems || mealItems },
-        learned,
-        usage: addUsage(usage, coachUsage),
-      });
     }
 
     // Idempotência (incidente de 2026-10-31, _shared/idempotency.ts): a mesma
@@ -1759,6 +2059,24 @@ Deno.serve(withUsageRecording("analyze-meal", async (req) => {
     // Desfeita entretanto: este pedido grava-a de novo, como se fosse o primeiro.
     const alreadyReply = alreadySaved ? await settled(alreadySaved) : null;
     if (alreadyReply) return alreadyReply;
+
+    // ── Registo revisto: fotos + alimentos revistos + respostas (#106) ──
+    // Não volta a ler as fotos: grava o que o atleta reviu no preview.
+    if (body.reviewed === true && !body.mode && !body.meal_id) {
+      const written = parseWrittenItems(body.items_written);
+      const pantry = await withWrittenFoods(sb, userId, await pantryPromise, written.map((w) => w.name));
+      const r = await saveReviewedMeal(sb, userId, {
+        date: body.date, meal_type: body.meal_type, notes: rawNotes, mealTimeField,
+        images: parseMealImages(body), mime: mealImageMime(body.mime_type),
+        items: body.items, carol_questions: body.carol_questions, facts: body.facts, written, clientRequestId,
+      }, pantry, mealDeps);
+      if ("existing" in r) return await replay(r.existing);
+      if (!r.ok) return jsonResponse({ error: r.error }, r.status);
+      return jsonResponse({
+        meal: r.meal, items: r.items, usage: r.usage,
+        ...(r.pantry_added.length ? { pantry_added: r.pantry_added } : {}),
+      });
+    }
 
     // ── Modo manual: registo sem fotos, todos os alimentos duma vez ────
     // O cliente só acumula {name, grams} localmente ao "Adicionar alimento"
@@ -1986,12 +2304,7 @@ Deno.serve(withUsageRecording("analyze-meal", async (req) => {
     const { mime_type, date, meal_type } = body;
 
     // Aceita `images` (array) ou `image_base64` (formato antigo, 1 foto)
-    let images: string[] = [];
-    if (Array.isArray(body.images)) {
-      images = body.images.filter((s: unknown) => typeof s === "string" && s.length > 0);
-    } else if (typeof body.image_base64 === "string" && body.image_base64) {
-      images = [body.image_base64];
-    }
+    const images = parseMealImages(body);
 
     if (images.length === 0) {
       return jsonResponse({ error: "Nenhuma imagem recebida" }, 400);
@@ -2011,10 +2324,7 @@ Deno.serve(withUsageRecording("analyze-meal", async (req) => {
     if (written.length > MAX_WRITTEN_ITEMS) {
       return jsonResponse({ error: `Máximo de ${MAX_WRITTEN_ITEMS} alimentos por refeição.` }, 400);
     }
-    const mime = ["image/jpeg", "image/png", "image/webp", "image/heic", "image/heif"]
-        .includes(mime_type)
-      ? mime_type
-      : "image/jpeg";
+    const mime = mealImageMime(mime_type);
     const ext = mime === "image/png" ? "png" : mime === "image/webp" ? "webp" : "jpg";
 
     // 1. Upload de todas as fotos para o bucket privado, pasta do próprio utilizador
@@ -2037,34 +2347,17 @@ Deno.serve(withUsageRecording("analyze-meal", async (req) => {
     // alimento que reconhece da despensa fica com os valores dela, e um
     // rótulo lido nas fotos entra logo na despensa.
     const pantry = await withWrittenFoods(sb, userId, await pantryPromise, written.map((w) => w.name));
-    const knowledge = knowledgeSection(pantry.foods, pantry.rules, pantry.variants);
     // deno-lint-ignore no-explicit-any
-    let items: any[], usage: GeminiUsage, facts: CookingFact[], rawQuestions: unknown;
-    let variantsOut: ReturnType<typeof resolveVariants> = { items: [], questions: [], renames: [] };
+    let items: any[], usage: GeminiUsage, facts: CookingFact[], questions: CarolQuestion[];
     try {
-      ({ items, usage, facts, questions: rawQuestions } = written.length
-        ? await analyzePhotosWithItems(images, mime, written, rawNotes, geminiKey, extractionDeadline, knowledge, (m) => logItemsMismatch(sb, userId, m))
-        : await analyzeWithGemini(images, mime, rawNotes, geminiKey, extractionDeadline, knowledge));
-      // Bug #87: as variantes primeiro — uma variante nova fica com os valores
-      // que o modelo estimou para ela, não com os do genérico da despensa.
-      variantsOut = resolveVariants(items, pantry.variants);
-      items = applyPantry(variantsOut.items, pantry.byKey, pantry.rules);
+      // A mesma leitura do preview (readMealPhotos): variantes, despensa, perguntas.
+      ({ items, usage, facts, questions } = await readMealPhotos({ images, mime, written, notes: rawNotes, pantry }, mealDeps));
     } catch (e) {
       await sb.storage.from("meal-photos").remove(photoPaths);
       return jsonResponse({ error: e instanceof Error ? e.message : "Falha na análise." }, 502);
     }
 
     // 3. Gravar refeição + itens
-    // A pergunta da variante faz-se sempre e não conta para as 5 do modelo.
-    // Bug #109: e a manteiga no pão, se o modelo não perguntou.
-    const questions = withButterQuestions(
-      mergeVariantQuestions(
-        parseQuestions(renameQuestionItems(rawQuestions, variantsOut.renames), items, pantry.rules),
-        variantsOut.questions,
-        variantsOut.renames,
-      ),
-      items, rawNotes,
-    );
     const { data: meal, existing: savedMeanwhile, error: mealError } = await insertOnce(sb, "meals", userId, {
       user_id: userId, date, meal_type, photo_paths: photoPaths, status: "ready", notes: rawNotes, ...mealTimeField,
       carol_questions: questions.length ? questions : null,
