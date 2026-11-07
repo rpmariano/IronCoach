@@ -1506,6 +1506,18 @@ describe('MealRegistration — #106: ler as fotos antes de gravar', () => {
     expect(mocks.preview).toHaveBeenCalledTimes(1);
   });
 
+  it('dev-back 33fccf8a: as respostas por aplicar (unapplied_question_ids) seguem para o Registo Guardado', async () => {
+    mocks.preview.mockResolvedValue(PREVIEW_OK);
+    mocks.invoke.mockResolvedValue({ data: { meal: { id: 'meal-u', carol_questions: [] }, items: [], unapplied_question_ids: ['q1'] }, error: null });
+    render(<MealRegistration onClose={onClose} />);
+    await addPhoto();
+    await readPhotos();
+    fireEvent.click(screen.getByRole('button', { name: '2 fatias (~40 g)' }));
+    fireEvent.click(analyzeBtn());
+    await dispensarConfirmacao();
+    await waitFor(() => expect(useAppStore.getState().newlyCreatedRecord?.unappliedQuestionIds).toEqual(['q1']));
+  });
+
   it('gramas inválidas num alimento lido: não grava e diz qual', async () => {
     mocks.preview.mockResolvedValue(PREVIEW_OK);
     render(<MealRegistration onClose={onClose} />);

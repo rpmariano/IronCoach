@@ -502,7 +502,13 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
     requestId.renew();
     // A refeição ensinou a despensa (fase A): as sugestões seguintes já a contam.
     useAppStore.getState().loadPantry?.();
-    finishCreateAndGoToCalendar(mealWithItems, 'Refeição registada', data.pantry_added?.length ? { pantryAdded: data.pantry_added } : {});
+    // dev-back 33fccf8a: as respostas que a Carol não conseguiu aplicar ao gravar (a reestimativa
+    // falhou) — as perguntas ficam por responder, e o Registo Guardado pede-as de novo.
+    const unapplied = Array.isArray(data.unapplied_question_ids) ? data.unapplied_question_ids.filter(Boolean) : [];
+    finishCreateAndGoToCalendar(mealWithItems, 'Refeição registada', {
+      ...(data.pantry_added?.length ? { pantryAdded: data.pantry_added } : {}),
+      ...(unapplied.length ? { unappliedQuestionIds: unapplied } : {}),
+    });
   };
 
   // ----------------------------------
