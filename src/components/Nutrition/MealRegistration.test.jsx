@@ -14,7 +14,13 @@ vi.mock('../../utils/firstRecord', () => ({ firstRecordMoment: () => null }));
 // servidor), só "Analisar refeição" toca no Gemini, seja por foto ou manual.
 // Editar passa pelo Gemini quando os dados analíticos mudam (alimentos ou
 // observações); mudar só a data/tipo é update direto de meals.
-const mocks = vi.hoisted(() => ({ invoke: vi.fn(), updateMeal: vi.fn(), updateItem: vi.fn(), deleteItem: vi.fn() }));
+const mocks = vi.hoisted(() => ({
+  invoke: vi.fn(), updateMeal: vi.fn(), updateItem: vi.fn(), deleteItem: vi.fn(),
+  // #106: a leitura das fotos (mode "preview") à parte — por omissão falha, e o gravar abre-se no
+  // caminho de antes (a Carol lê as fotos ao gravar), que é o que os testes mais antigos verificam.
+  preview: vi.fn(),
+}));
+const PREVIEW_FAILS = { data: null, error: 'Não consegui ler as fotos.', serverText: 'Não consegui ler as fotos.', status: 502, isNetwork: false };
 vi.mock('../../lib/supabase', () => ({
   supabase: {
     from: (table) => {
@@ -30,7 +36,7 @@ vi.mock('../../lib/supabase', () => ({
       return {};
     },
   },
-  invokeEdgeFunctionWithTimeout: (...args) => mocks.invoke(...args),
+  invokeEdgeFunctionWithTimeout: (...args) => (args[1]?.body?.mode === 'preview' ? mocks.preview(...args) : mocks.invoke(...args)),
 }));
 
 // Evita FileReader/Image/canvas do jsdom — a compressão em si já está fora
@@ -41,11 +47,24 @@ vi.mock('../../lib/image', () => ({
 
 const PROFILE = { id: 'user-1' };
 
-const selectPhoto = async () => {
+const addPhoto = async () => {
   const input = document.querySelector('input[type="file"]');
   const file = new File(['conteudo'], 'refeicao.jpg', { type: 'image/jpeg' });
   await fireEvent.change(input, { target: { files: [file] } });
   await screen.findByAltText('Foto da refeição 1');
+};
+/** «Ler e preencher» (#106) e espera pelo resultado. */
+const readPhotos = async () => {
+  const before = mocks.preview.mock.calls.length;
+  fireEvent.click(screen.getByRole('button', { name: /Ler e preencher/ }));
+  await waitFor(() => expect(mocks.preview.mock.calls.length).toBe(before + 1));
+  await waitFor(() => expect(screen.getByRole('button', { name: /Ler e preencher/ })).not.toBeDisabled());
+};
+/** Junta uma foto e lê-a (por omissão a leitura falha: o gravar segue o caminho de antes). */
+const selectPhoto = async () => {
+  if (!mocks.preview.getMockImplementation()) mocks.preview.mockResolvedValue(PREVIEW_FAILS);
+  await addPhoto();
+  await readPhotos();
 };
 
 describe('MealRegistration — Analisar refeição por foto (analyze-meal)', () => {
@@ -198,12 +217,16 @@ describe('MealRegistration — um só ecrã: fotos e alimentos juntos', () => {
   it('fotos + alimentos escritos + observações vão no mesmo pedido', async () => {
     mocks.invoke.mockResolvedValue({ data: { meal: { id: 'meal-1' }, items: [{ id: 'i1' }] }, error: null });
     render(<MealRegistration onClose={onClose} />);
-    await selectPhoto();
+    mocks.preview.mockResolvedValue(PREVIEW_FAILS);
+    await addPhoto();
     // Com foto, a ajuda do campo diz que é para o que ela não mostra.
     expect(screen.getByText(/Junta o que a foto não mostra/)).toBeInTheDocument();
     addItem('café com açúcar');
     addItem('Arroz', 150);
     fireEvent.change(screen.getByPlaceholderText(/Detalhes que mudam os valores/), { target: { value: 'frito em azeite' } });
+    // #106: a leitura vem depois dos escritos (juntar um escrito depois dela volta a pedi-la).
+    await readPhotos();
+    expect(mocks.preview.mock.calls.at(-1)[1].body.items).toEqual([{ name: 'café com açúcar', grams: null }, { name: 'Arroz', grams: 150 }]);
 
     fireEvent.click(screen.getByRole('button', { name: /Analisar refeição/i }));
 
@@ -1384,5 +1407,171 @@ describe('MealRegistration — as gramas com decimais não se juntam (revisão d
     // Colado com texto à volta.
     fireEvent.change(gramas, { target: { value: '12,5 g' } });
     expect(gramas).toHaveValue('12.5');
+  });
+});
+
+/* #106 nas refeições (2026-11-07, pedido do Rui; dev-back 8aaa3eb9): com fotos, primeiro «Ler e
+   preencher» — enche os alimentos e faz as perguntas (podem ser mais de 3) — e só depois se grava,
+   com reviewed: true e os alimentos revistos. Mexer nas fotos ou nos escritos volta a pedir a leitura. */
+describe('MealRegistration — #106: ler as fotos antes de gravar', () => {
+  const onClose = vi.fn();
+  const ITEM = (name, grams, kcal) => ({ name, quantity_grams: grams, calories_per_100g: kcal, protein_per_100g: 10, carbs_per_100g: 20, fat_per_100g: 5, fiber_per_100g: 1, sugar_per_100g: 1, sodium_per_100g: 100, iron_mg_per_100g: null, calcium_mg_per_100g: null, vitamin_c_mg_per_100g: null, potassium_mg_per_100g: null, from_label: false });
+  const Q = (id, question, options) => ({ id, kind: 'quantidade', topic: id, item_name: 'Tosta mista', question, options, assumed: options[0], impact_kcal: 40, impact_protein_g: 4, answer: null, answered_at: null });
+  const PREVIEW_OK = {
+    data: {
+      items: [ITEM('Tosta mista', 120, 260), ITEM('Sumo de laranja', 200, 45)],
+      questions: [
+        Q('q1', 'Quanto fiambre levou a tosta?', ['1 fatia (~20 g)', '2 fatias (~40 g)']),
+        Q('q2', 'O pão era de forma?', ['De forma', 'Caseiro']),
+        Q('q3', 'Levou manteiga?', ['Sim', 'Não']),
+        Q('q4', 'O sumo era natural?', ['Natural', 'De pacote']),
+      ],
+      facts: [{ topic: 'pão', value: 'de forma' }],
+      readable: true,
+    },
+    error: null,
+  };
+  const addItem = (name, grams) => {
+    fireEvent.change(screen.getByPlaceholderText(/peito de frango grelhado/), { target: { value: name } });
+    if (grams != null) fireEvent.change(screen.getByLabelText('Gramas do alimento a adicionar (opcional)'), { target: { value: String(grams) } });
+    fireEvent.click(screen.getByRole('button', { name: /Adicionar alimento/i }));
+  };
+  const analyzeBtn = () => screen.getByRole('button', { name: /Analisar refeição/ });
+
+  beforeEach(() => {
+    mocks.invoke.mockReset();
+    mocks.preview.mockReset();
+    mocks.updateMeal.mockReset().mockResolvedValue({ error: null });
+    onClose.mockClear();
+    useAppStore.setState({ profile: PROFILE, meals: [] });
+  });
+
+  it('gate: com fotos por ler, «Analisar refeição» fica desativado e a leitura está junto das fotos', async () => {
+    render(<MealRegistration onClose={onClose} />);
+    await addPhoto();
+    expect(analyzeBtn()).toBeDisabled();
+    expect(screen.getByText(/Primeiro lê as fotos/)).toBeInTheDocument();
+    expect(within(screen.getByTestId('meal-photos')).getByRole('button', { name: /Ler e preencher/ })).toBeEnabled();
+    expect(mocks.invoke).not.toHaveBeenCalled();
+  });
+
+  it('a leitura preenche os alimentos e faz as perguntas (mais de 3); o pedido é um preview com fotos, escritos e notas', async () => {
+    mocks.preview.mockResolvedValue(PREVIEW_OK);
+    render(<MealRegistration onClose={onClose} />);
+    await addPhoto();
+    addItem('Iogurte natural', 150);
+    fireEvent.change(screen.getByPlaceholderText(/Detalhes que mudam os valores/), { target: { value: 'sem açúcar' } });
+    await readPhotos();
+
+    const [, { body }] = mocks.preview.mock.calls[0];
+    expect(body).toMatchObject({ mode: 'preview', images: ['AAA'], mime_type: 'image/jpeg', items: [{ name: 'Iogurte natural', grams: 150 }], notes: 'sem açúcar' });
+    const lidos = screen.getByTestId('meal-read-items');
+    expect(within(lidos).getByText('Tosta mista')).toBeInTheDocument();
+    expect(within(lidos).getByLabelText('Gramas de Tosta mista')).toHaveValue('120');
+    expect(screen.queryByTestId('meal-items')).toBeNull(); // os escritos já vêm na lista lida
+    const perguntas = screen.getByTestId('meal-read-questions');
+    expect(within(perguntas).getAllByRole('group')).toHaveLength(4);
+    expect(screen.getByTestId('meal-read-note')).toHaveTextContent('Li 2 alimentos. Revê as quantidades e responde ao que souberes antes de gravar.');
+    expect(analyzeBtn()).toBeEnabled();
+  });
+
+  it('gravar com reviewed: os alimentos revistos, as respostas, os facts e os escritos — sem voltar a ler', async () => {
+    mocks.preview.mockResolvedValue(PREVIEW_OK);
+    mocks.invoke.mockResolvedValue({ data: { meal: { id: 'meal-r' }, items: [] }, error: null });
+    render(<MealRegistration onClose={onClose} />);
+    await addPhoto();
+    addItem('Iogurte natural', 150);
+    await readPhotos();
+    fireEvent.change(screen.getByLabelText('Gramas de Tosta mista'), { target: { value: '150' } });
+    fireEvent.click(screen.getByRole('button', { name: /Tirar Sumo de laranja/ }));
+    fireEvent.click(screen.getByRole('button', { name: '2 fatias (~40 g)' }));
+
+    fireEvent.click(analyzeBtn());
+    await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(1));
+    const [fnName, { body }] = mocks.invoke.mock.calls[0];
+    expect(fnName).toBe('analyze-meal');
+    expect(body.mode).toBeUndefined();
+    expect(body.reviewed).toBe(true);
+    expect(body.client_request_id).toBeTruthy();
+    expect(body.images).toEqual(['AAA']);
+    expect(body.items).toEqual([{ ...ITEM('Tosta mista', 150, 260) }]);
+    expect(body.carol_questions).toHaveLength(4);
+    expect(body.carol_questions[0]).toMatchObject({ id: 'q1', answer: '2 fatias (~40 g)' });
+    expect(body.carol_questions[0].answered_at).toBeTruthy();
+    expect(body.carol_questions[1]).toMatchObject({ id: 'q2', answer: null, answered_at: null });
+    expect(body.facts).toEqual([{ topic: 'pão', value: 'de forma' }]);
+    expect(body.items_written).toEqual([{ name: 'Iogurte natural', grams: 150 }]);
+    expect(mocks.preview).toHaveBeenCalledTimes(1);
+  });
+
+  it('gramas inválidas num alimento lido: não grava e diz qual', async () => {
+    mocks.preview.mockResolvedValue(PREVIEW_OK);
+    render(<MealRegistration onClose={onClose} />);
+    await addPhoto();
+    await readPhotos();
+    fireEvent.change(screen.getByLabelText('Gramas de Tosta mista'), { target: { value: '' } });
+    fireEvent.click(analyzeBtn());
+    expect(await screen.findByText(/Revê as gramas de «Tosta mista»/)).toBeInTheDocument();
+    expect(mocks.invoke).not.toHaveBeenCalled();
+  });
+
+  it('trocar as fotos ou os escritos depois da leitura volta a pedi-la', async () => {
+    mocks.preview.mockResolvedValue(PREVIEW_OK);
+    render(<MealRegistration onClose={onClose} />);
+    await addPhoto();
+    await readPhotos();
+    expect(analyzeBtn()).toBeEnabled();
+
+    // Um alimento escrito novo: a leitura já não vale.
+    addItem('Café', null);
+    expect(analyzeBtn()).toBeDisabled();
+    expect(screen.queryByTestId('meal-read-items')).toBeNull();
+    await readPhotos();
+    expect(analyzeBtn()).toBeEnabled();
+
+    // Tirar a foto e pôr outra (o mesmo número): volta a pedir.
+    fireEvent.click(screen.getByRole('button', { name: 'Remover foto 1' }));
+    await addPhoto();
+    expect(analyzeBtn()).toBeDisabled();
+    expect(screen.queryByTestId('meal-read-questions')).toBeNull();
+    expect(mocks.invoke).not.toHaveBeenCalled();
+  });
+
+  it('leitura falhada: diz porquê, abre o gravar, e grava pelo caminho de antes (a Carol lê ao gravar)', async () => {
+    mocks.preview.mockResolvedValue({ data: null, error: 'Não consegui ler as fotos.', serverText: 'Não consegui ler as fotos.', status: 502, isNetwork: false });
+    mocks.invoke.mockResolvedValue({ data: { meal: { id: 'meal-f' }, items: [] }, error: null });
+    render(<MealRegistration onClose={onClose} />);
+    await addPhoto();
+    await readPhotos();
+    expect(screen.getByTestId('meal-read-note')).toHaveTextContent('Não consegui ler as fotos. Podes tentar outra vez, ou gravar assim');
+    expect(screen.queryByTestId('meal-read-items')).toBeNull();
+    expect(analyzeBtn()).toBeEnabled();
+
+    fireEvent.click(analyzeBtn());
+    await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(1));
+    const { body } = mocks.invoke.mock.calls[0][1];
+    expect(body.reviewed).toBeUndefined();
+    expect(body.carol_questions).toBeUndefined();
+    expect(body.images).toEqual(['AAA']);
+  });
+
+  it('a rede a falhar na leitura nunca mostra «Edge Function»', async () => {
+    mocks.preview.mockResolvedValue({ data: null, error: 'Failed to send a request to the Edge Function', isNetwork: true });
+    render(<MealRegistration onClose={onClose} />);
+    await addPhoto();
+    await readPhotos();
+    expect(screen.getByTestId('meal-read-note')).toHaveTextContent(/^A ligação falhou\./);
+    expect(screen.queryByText(/Edge Function/)).toBeNull();
+  });
+
+  it('sem fotos, a gravação manual não muda (sem leitura)', async () => {
+    mocks.invoke.mockResolvedValue({ data: { meal: { id: 'meal-m' } }, error: null });
+    render(<MealRegistration onClose={onClose} />);
+    addItem('Banana', 120);
+    expect(screen.queryByRole('button', { name: /Ler e preencher/ })).toBeNull();
+    fireEvent.click(analyzeBtn());
+    await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(1));
+    expect(mocks.invoke.mock.calls[0][1].body.mode).toBe('manual');
+    expect(mocks.preview).not.toHaveBeenCalled();
   });
 });

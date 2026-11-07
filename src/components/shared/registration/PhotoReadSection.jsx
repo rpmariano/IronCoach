@@ -8,6 +8,24 @@ import { ImagePlus, Sparkles, X } from 'lucide-react';
    vivem em quem a usa. Extraído do GymRegistration; `accent` é a cor do
    módulo (Ginásio por omissão, Corpo, …) e `emptyExtra` uma linha a mais no
    vazio (ex.: o ecrã da Renpho que traz tudo). */
+/** O botão «Ler os prints e preencher» (#106): a Carol lê e preenche, sem gravar. Também nas
+    refeições, junto das fotos (com `label`/`busyLabel` próprios). A cor vem de --pr-accent, ou `accent`. */
+export function ReadPrintsButton({ onRead, reading = false, label = 'Ler os prints e preencher', busyLabel = 'A ler os prints…', accent = null }) {
+  return (
+    <button
+      type="button"
+      onClick={onRead}
+      disabled={reading}
+      aria-busy={reading || undefined}
+      className="w-full min-h-[44px] rounded-xl border text-[12px] font-bold flex items-center justify-center gap-2 transition active:scale-[0.99] disabled:opacity-60"
+      style={{ ...(accent ? { '--pr-accent': accent } : {}), borderColor: 'color-mix(in srgb, var(--pr-accent) 55%, transparent)', color: 'var(--pr-accent)', background: 'color-mix(in srgb, var(--pr-accent) 10%, transparent)' }}
+    >
+      <Sparkles size={14} />
+      {reading ? busyLabel : label}
+    </button>
+  );
+}
+
 export default function PhotoReadSection({
   photos, maxPhotos, onSelect, onRemove, onRead, reading = false, note = null,
   emptyTitle = 'Prints da app de treino (opcional)',
@@ -49,17 +67,7 @@ export default function PhotoReadSection({
             </label>
           )}
           {onRead ? (
-          <button
-            type="button"
-            onClick={onRead}
-            disabled={reading}
-            aria-busy={reading || undefined}
-            className="w-full min-h-[44px] rounded-xl border text-[12px] font-bold flex items-center justify-center gap-2 transition active:scale-[0.99] disabled:opacity-60"
-            style={{ borderColor: 'color-mix(in srgb, var(--pr-accent) 55%, transparent)', color: 'var(--pr-accent)', background: 'color-mix(in srgb, var(--pr-accent) 10%, transparent)' }}
-          >
-            <Sparkles size={14} />
-            {reading ? 'A ler os prints…' : 'Ler os prints e preencher'}
-          </button>
+            <ReadPrintsButton onRead={onRead} reading={reading} />
           ) : autoReadNote && (
             <p className="text-[11.5px] leading-relaxed text-[var(--text-2)]" data-testid="photo-auto-read-note">{autoReadNote}</p>
           )}
