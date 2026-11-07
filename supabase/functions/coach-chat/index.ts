@@ -276,11 +276,43 @@ function claimClause(sentence: string, m: RegExpExecArray): { before: string; af
  *  negação na mesma oração antes dele («não te preocupes que já te enviei…»
  *  é envio), e sem data no passado nem «de lado» colados a ele. */
 function isProposalClaim(sentence: string): boolean {
-  const m = PROPOSAL_CLAIM_RE.exec(sentence);
-  if (!m) return false;
-  const { before, after } = claimClause(sentence, m);
-  if (NEGATION_RE.test(before)) return false;
-  return !PROPOSAL_PAST_RE.test(before + " " + m[0] + " " + after);
+  return proposalClaimKind(sentence) !== null;
+}
+
+/** Uma frase de afirmação é de objetivos só se for uma proposta enviada que
+ *  fala de objetivos; uma alteração ao plano é sempre do plano. */
+function claimIsGoals(sentence: string): boolean {
+  return proposalClaimKind(sentence) === "proposal" && /\b(?:objetivos?|metas?)\b/i.test(sentence);
+}
+
+/** «Reajustei os próximos dias», «ajustámos o que foi preciso», «alterei o
+ *  plano» — uma alteração ao plano afirmada como feita (bug #115, 2026-11-07,
+ *  11:20: «Reajustei os próximos dias… e reorganizei as sessões falhadas»,
+ *  sem propose_training_plan). Só o pretérito: «vou ajustar» é uma promessa. */
+const PLAN_CHANGE_CLAIM_RE = /(?<![a-zà-ú])(?:j[áa]\s+)?(?:te\s+)?(?:re)?(?:ajustei|ajust[áa]mos|alterei|alter[áa]mos|mudei|mud[áa]mos|reorganizei|reorganiz[áa]mos|reformulei|reformul[áa]mos|reprogramei|redistribu[íi]|atualizei|adaptei|adapt[áa]mos|reestruturei|troquei|mexi)(?:-te|-lhe)?(?:\s+(?:j[áa]|agora|hoje|aqui|tamb[ée]m|ligeiramente|um\s+pouco|n?[oa]s?|em|teus?|tuas?|pr[óo]xim[oa]s?|restantes?|seguintes?|[úu]ltim[oa]s?|dois|duas|tr[êe]s))*\s+(?:plano|dias|semana|treinos?|sess[õo]es|calend[áa]rio|agenda|o\s+que\s+(?:foi|era)\s+preciso)(?![a-zà-ú])/i;
+/** «O plano já está ajustado», «os treinos foram reorganizados». */
+const PLAN_CHANGED_PASSIVE_RE = /(?<![a-zà-ú])(?:plano|semana|dias|treinos?|sess[õo]es)\s+(?:j[áa]\s+)?(?:est[áa]|est[ãa]o|foi|foram|ficou|ficaram)\s+(?:j[áa]\s+)?(?:re)?(?:ajustad|alterad|atualizad|reorganizad|adaptad|reformulad|reprogramad)[oa]s?(?![a-zà-ú])/i;
+/** «O plano que ajustei para ti», «dizer que reajustei os dias foi uma
+ *  imprecisão» — a referência e a retratação não são uma afirmação. */
+const PLAN_CHANGE_REFERENCE_RE = /(?:plano|semana|dias|treinos?|sess[õo]es|dizer|disse|afirmar|afirmei)\s+que\s+(?:te\s+)?$/i;
+
+/** O tipo de afirmação da frase: uma proposta enviada, uma alteração ao plano
+ *  feita, ou nenhuma. As mesmas exclusões para todas (a negação na oração do
+ *  verbo, a data no passado colada a ele). */
+function proposalClaimKind(sentence: string): "proposal" | "plan_change" | null {
+  for (const [re, kind] of [
+    [PROPOSAL_CLAIM_RE, "proposal"],
+    [PLAN_CHANGE_CLAIM_RE, "plan_change"],
+    [PLAN_CHANGED_PASSIVE_RE, "plan_change"],
+  ] as const) {
+    const m = re.exec(sentence);
+    if (!m) continue;
+    const { before, after } = claimClause(sentence, m);
+    if (NEGATION_RE.test(before) || PROPOSAL_PAST_RE.test(before + " " + m[0] + " " + after)) continue;
+    if (kind === "plan_change" && PLAN_CHANGE_REFERENCE_RE.test(sentence.slice(0, m.index))) continue;
+    return kind;
+  }
+  return null;
 }
 
 /** Onde se corta uma frase — o mesmo para detetar e para tirar. */
@@ -291,7 +323,7 @@ export function claimedProposals(text: string | null | undefined): { plan: boole
   const out = { plan: false, goals: false };
   for (const sentence of String(text ?? "").split("\n").flatMap((line) => line.split(CLAIM_SENTENCE_SPLIT))) {
     if (!isProposalClaim(sentence)) continue;
-    if (/\b(?:objetivos?|metas?)\b/i.test(sentence)) out.goals = true;
+    if (claimIsGoals(sentence)) out.goals = true;
     else out.plan = true;
   }
   return out;
@@ -305,8 +337,7 @@ export function stripProposalClaims(text: string, kinds: { plan: boolean; goals:
   if (!kinds.plan && !kinds.goals) return text;
   const drop = (sentence: string) => {
     if (!isProposalClaim(sentence)) return false;
-    const isGoals = /\b(?:objetivos?|metas?)\b/i.test(sentence);
-    return isGoals ? kinds.goals : kinds.plan;
+    return claimIsGoals(sentence) ? kinds.goals : kinds.plan;
   };
   const out: string[] = [];
   for (const line of text.split("\n")) {
@@ -347,9 +378,11 @@ export async function pendingProposalKinds(sb: any, userId: string): Promise<{ p
 export function proposalClaimCorrection(kinds: { plan: boolean; goals: boolean }): string {
   const what = [kinds.plan ? "uma proposta de plano" : null, kinds.goals ? "uma proposta de objetivos" : null].filter(Boolean).join(" e ");
   const tool = [kinds.plan ? "propose_training_plan" : null, kinds.goals ? "update_goals" : null].filter(Boolean).join(" / ");
-  return `[Nota do sistema, não do atleta] Na resposta anterior disseste que enviaste ${what}, mas não chamaste ` +
-    `${tool} — nada foi enviado e o atleta não tem nada para aceitar. Se a proposta é para fazer, chama ${tool} ` +
-    `agora; se não, responde de novo sem dizer que enviaste uma proposta.`;
+  return `[Nota do sistema, não do atleta] Na resposta anterior disseste que enviaste ${what}` +
+    `${kinds.plan ? " ou que ajustaste o plano" : ""}, mas não chamaste ${tool} — nada foi enviado nem mudou, e o ` +
+    `atleta não tem nada para aceitar. Se a alteração é para fazer, chama ${tool} agora; se não há nada a mudar, ` +
+    `responde de novo a dizer que o plano fica como está e porquê. Nunca digas que alteraste ou enviaste o que não ` +
+    `passou pela ferramenta.`;
 }
 // Uma tentativa ao Gemini pode demorar até isto: uma proposta de plano com as
 // refeições são milhares de tokens de saída. Eram 40 s com uma repetição a
@@ -3602,6 +3635,20 @@ export function extractReplyText(geminiJson: any): string | undefined {
     if (typeof p?.text === "string" && p.text.trim()) return p.text;
   }
   return undefined;
+}
+
+/** O campo `reply` do JSON da resposta (RESPONSE_SCHEMA), ou o texto tal como
+ *  veio se não for JSON. É o texto que a guarda do #112 tem de ler: no JSON
+ *  cru, o «\n» antes de um parágrafo deixa um «n» colado à primeira palavra
+ *  e a frase «Enviei a proposta» escapava à ronda de correção (bug #115). */
+export function replyFieldText(raw: string | undefined): string | undefined {
+  if (typeof raw !== "string") return raw;
+  try {
+    const parsed = JSON.parse(raw);
+    return typeof parsed?.reply === "string" && parsed.reply.trim() ? parsed.reply : raw;
+  } catch {
+    return raw;
+  }
 }
 
 // Máximo de treinos por proposta — um plano semanal razoável não passa daqui,
@@ -8866,9 +8913,11 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
 
     const planCheckinPrompt = targetsReviewPrompt ? targetsReviewPrompt : planContinuationIn ? buildPlanContinuationTurn(planContinuationIn) : onboardingStartPrompt ? onboardingStartPrompt : raceConflictPrompt ? raceConflictPrompt : cupMapPrompt ? cupMapPrompt : planDivergence.length > 0
       ? `A app detetou que o plano já não bate certo com a realidade e chamou-te — o atleta abriu o chat a partir desse aviso. ` +
-        `Motivos: ${planDivergence.map((t) => `"${t}"`).join("; ")}. Começa por estes pontos, por ordem de gravidade: explica em duas frases o que muda e porquê, ` +
-        `e propõe já o plano ajustado com propose_training_plan (replace_active_plan=true se houver plano aceite) — o dia da prova como prova, a véspera leve, ` +
-        `as sessões falhadas reorganizadas sem as empilhar. Pergunta-lhe só o que os dados não dizem (como se sente, se houve algum motivo).` :
+        `Motivos: ${planDivergence.map((t) => `"${t}"`).join("; ")}. Começa por estes pontos, por ordem de gravidade. Se o plano tem de mudar, ` +
+        `chama já propose_training_plan com o plano ajustado (replace_active_plan=true se houver plano aceite) — o dia da prova como prova, a véspera leve, ` +
+        `as sessões falhadas reorganizadas sem as empilhar — e diz em duas frases o que a proposta muda e porquê, para ele rever e aceitar. ` +
+        `Se não há nada a mudar (ex.: só faltam a véspera e a prova), diz-lhe que o plano fica como está e porquê. Nunca digas que ajustaste, ` +
+        `reorganizaste ou alteraste o plano sem a chamada: sem ela nada mudou. Pergunta-lhe só o que os dados não dizem (como se sente, se houve algum motivo).` :
       `O atleta abriu propositadamente o chat ao clicar no botão "Adaptar Plano" — foi ele que veio ter ` +
       `contigo, não surgiu nenhum alerta automático a chamar-te. ` +
       (alreadyTalkedToday
@@ -9292,7 +9341,9 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
          nas ferramentas e tempo para mais uma ronda, devolve-se-lhe a resposta
          com a correção, uma vez: chama-a agora, ou responde sem o dizer. */
       if (functionCalls.length === 0 && !isFinalRound && !proposalClaimRetried && hasTimeFor(chatDeadline)) {
-        const claim = claimedProposals(extractReplyText(parsedRes));
+        // O campo reply já parseado: no JSON cru, «\\n» antes de um parágrafo
+        // colava um «n» ao verbo e a frase escapava (bug #115).
+        const claim = claimedProposals(replyFieldText(extractReplyText(parsedRes)));
         const missing = {
           plan: claim.plan && !planWasProposed && toolNamesSent.includes("propose_training_plan"),
           goals: claim.goals && !goalWasProposed && !goalsWereUpdated && toolNamesSent.includes("update_goals"),
