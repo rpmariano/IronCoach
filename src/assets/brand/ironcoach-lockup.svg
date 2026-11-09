@@ -1,0 +1,105 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 600" width="100%" height="100%">
+  <defs>
+    <!-- Background Radial Gradient -->
+    <radialGradient id="bgGrad_gc" cx="50%" cy="34%" r="75%">
+      <stop offset="0%" stop-color="#161f28" stop-opacity="0.95"/>
+      <stop offset="55%" stop-color="#0b1120" stop-opacity="1"/>
+      <stop offset="100%" stop-color="#020611" stop-opacity="1"/>
+    </radialGradient>
+
+    <!-- Chevron 1: Ouro de Prova (token race #fbbf24) -->
+    <linearGradient id="c1Grad_gc" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#fde68a"/>
+      <stop offset="50%" stop-color="#fbbf24"/>
+      <stop offset="100%" stop-color="#d97706"/>
+    </linearGradient>
+
+    <!-- Chevron 2: Ciano da Carol (token coach #22d3ee) -->
+    <linearGradient id="c2Grad_gc" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#a5f3fc"/>
+      <stop offset="45%" stop-color="#22d3ee"/>
+      <stop offset="100%" stop-color="#0891b2"/>
+    </linearGradient>
+
+    <!-- Titanium Frame Stroke -->
+    <linearGradient id="tiStroke_gc" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#475569"/>
+      <stop offset="50%" stop-color="#1e293b"/>
+      <stop offset="100%" stop-color="#0f172a"/>
+    </linearGradient>
+
+    <!-- Neon Glow Filter -->
+    <filter id="glow_gc" x="-25%" y="-25%" width="150%" height="150%">
+      <feGaussianBlur stdDeviation="9" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- Background Canvas -->
+  <rect width="800" height="600" rx="24" fill="url(#bgGrad_gc)"/>
+
+  <!-- Speed Track Ambient Lines -->
+  <g opacity="0.04" stroke="#ffffff" stroke-width="1.5">
+    <line x1="80" y1="210" x2="720" y2="210" />
+    <line x1="120" y1="155" x2="680" y2="155" />
+    <line x1="120" y1="265" x2="680" y2="265" />
+  </g>
+
+  <!-- Main Insignia Group -->
+  <g transform="translate(400, 208)">
+    <!-- Ambient Neon Outer Shield Aura (Ciano + Ouro) -->
+    <polygon points="0,-115 100,-58 100,58 0,115 -100,58 -100,-58" 
+             fill="none" stroke="#22d3ee" stroke-width="14" stroke-linejoin="round"
+             filter="url(#glow_gc)" opacity="0.22"/>
+
+    <!-- Dark Titanium Hexagonal Shield -->
+    <polygon points="0,-115 100,-58 100,58 0,115 -100,58 -100,-58" 
+             fill="#080e1a" stroke="url(#tiStroke_gc)" stroke-width="5" 
+             stroke-linejoin="round"/>
+
+    <!-- Inner Neon Accent Perimeter (Ouro) -->
+    <polygon points="0,-104 88,-50 88,50 0,104 -88,50 -88,-50" 
+             fill="none" stroke="#fbbf24" stroke-width="2" 
+             stroke-linejoin="round" opacity="0.6"/>
+
+    <!-- CHEVRON 1: Ouro de Prova (#fbbf24) -->
+    <path d="M -56,-52 L -12,0 L -56,52 L -32,52 L 12,0 L -32,-52 Z" 
+          fill="none" stroke="url(#c1Grad_gc)" stroke-width="6" stroke-linejoin="round"
+          filter="url(#glow_gc)" opacity="0.45"/>
+    <path d="M -56,-52 L -12,0 L -56,52 L -32,52 L 12,0 L -32,-52 Z" 
+          fill="url(#c1Grad_gc)" stroke="#f59e0b" stroke-width="1.5" stroke-linejoin="round"/>
+
+    <!-- CHEVRON 2: Ciano da Carol (#22d3ee) -->
+    <path d="M -12,-52 L 32,0 L -12,52 L 12,52 L 56,0 L 12,-52 Z" 
+          fill="none" stroke="url(#c2Grad_gc)" stroke-width="6" stroke-linejoin="round"
+          filter="url(#glow_gc)" opacity="0.45"/>
+    <path d="M -12,-52 L 32,0 L -12,52 L 12,52 L 56,0 L 12,-52 Z" 
+          fill="url(#c2Grad_gc)" stroke="#38bdf8" stroke-width="1.5" stroke-linejoin="round"/>
+  </g>
+
+  <!-- Typography: IRON (Branco/Ouro) + COACH (Ciano Carol #22d3ee) -->
+  <text x="400" y="420" 
+        text-anchor="middle" 
+        font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif" 
+        font-size="46" 
+        font-weight="900" 
+        letter-spacing="6" 
+        fill="#f8fafc">
+    IRON<tspan fill="url(#c2Grad_gc)">COACH</tspan>
+  </text>
+
+  <!-- Subtitle: Exclusively AI-POWERED em Ouro (#fbbf24) -->
+  <text x="400" y="468" 
+        text-anchor="middle" 
+        font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" 
+        font-size="14.5" 
+        font-weight="800" 
+        letter-spacing="10" 
+        fill="#fbbf24"
+        opacity="0.95">
+    AI-POWERED
+  </text>
+</svg>
