@@ -383,3 +383,49 @@ describe('Calendário — apagar uma corrida recarrega o plano e as provas', () 
     }
   });
 });
+
+/* Bug #117 (2026-11-09, o Rui): «Porque aparece duas vezes a mesma prova?» — no dia de uma prova
+   concluída, o cartão da prova e o da corrida que a registou (kind 'competicao', race_id da prova).
+   Agora é um cartão só (com o resultado) e uma marca só no dia. */
+describe('Calendário — a prova aparece uma vez só (#117)', () => {
+  const ONTEM = new Date(HOJE); ONTEM.setDate(HOJE.getDate() - 1);
+  const DIA = iso(HOJE);
+  const CONCLUIDA = { ...PROVA, id: 'race-cascais', name: 'Cascais Oeiras Lisboa', distance_km: 10, status: 'concluida' };
+  const CORRIDA_DA_PROVA = { id: 'run-prova', date: DIA, name: 'Cascais Oeiras Lisboa', kind: 'competicao', race_id: 'race-cascais', distance_km: 10, duration_seconds: 2832, details: { official_time_seconds: 2830 } };
+  const AQUECIMENTO = { id: 'run-aquec', date: DIA, name: 'Aquecimento', kind: 'treino', training_type: 'recuperacao', distance_km: 2, duration_seconds: 720 };
+
+  beforeEach(() => {
+    useAppStore.setState({ gymSessions: [], meals: [], bodyAssessments: [], pendingCalendarDate: null, calendarView: null });
+  });
+
+  it('a corrida ligada vai no cartão da prova (com o resultado), não num cartão à parte; a grelha tem uma marca de prova', () => {
+    useAppStore.setState({ runs: [CORRIDA_DA_PROVA], raceEvents: [CONCLUIDA] });
+    renderCalendario();
+    expect(screen.getAllByText('Cascais Oeiras Lisboa')).toHaveLength(1);
+    expect(screen.getByTestId('race-card-result')).toHaveTextContent(/^Resultado: 47:10 · /);
+    const dia = screen.getByTestId(`calendar-day-${DIA}`);
+    expect(dia.querySelectorAll('span.flex-1')).toHaveLength(1);
+  });
+
+  it('uma corrida desse dia que não é a da prova continua com o seu cartão e a sua marca', () => {
+    useAppStore.setState({ runs: [CORRIDA_DA_PROVA, AQUECIMENTO], raceEvents: [CONCLUIDA] });
+    renderCalendario();
+    expect(screen.getByText('Aquecimento')).toBeInTheDocument();
+    expect(screen.getAllByText('Cascais Oeiras Lisboa')).toHaveLength(1);
+    expect(screen.getByTestId(`calendar-day-${DIA}`).querySelectorAll('span.flex-1')).toHaveLength(2);
+  });
+
+  it('no filtro «Corrida» (a prova escondida) a corrida da prova volta a aparecer', () => {
+    useAppStore.setState({ runs: [CORRIDA_DA_PROVA], raceEvents: [CONCLUIDA] });
+    renderCalendario();
+    fireEvent.click(screen.getByRole('button', { name: /^Corrida$/ }));
+    expect(screen.getAllByText('Cascais Oeiras Lisboa')).toHaveLength(1);
+    expect(screen.queryByTestId('race-card-result')).toBeNull();
+  });
+
+  it('noutro dia que não o da prova, a corrida tem o seu cartão', () => {
+    useAppStore.setState({ runs: [{ ...CORRIDA_DA_PROVA, date: iso(ONTEM) }], raceEvents: [CONCLUIDA] });
+    renderCalendario();
+    expect(screen.getByTestId(`calendar-day-${iso(ONTEM)}`).querySelectorAll('span.flex-1').length).toBeGreaterThan(0);
+  });
+});
