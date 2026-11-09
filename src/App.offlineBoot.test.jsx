@@ -40,6 +40,7 @@ vi.mock('./lib/supabase', () => {
 });
 
 import App from './App';
+import { logAppEvent } from './lib/supabase';
 import { useAppStore } from './store';
 
 function retryableFetchError() {
@@ -135,6 +136,20 @@ describe('App — arranque sem rede com a sessão guardada', () => {
     expect(screenOff).toHaveTextContent('O servidor não está a responder');
   });
 
+  it('servidor em baixo (5xx): o «Tentar agora» respeita o cooldown do auth-js (não esquece o refresh falhado)', async () => {
+    storeSession();
+    const e503 = Object.assign(new Error('Service Unavailable'), { name: 'AuthRetryableFetchError', status: 503 });
+    mocks.getSession.mockResolvedValue({ data: { session: null }, error: e503 });
+    render(<App />);
+    await screen.findByTestId('boot-offline', {}, waitLong);
+    const cached = { refreshToken: 'rt-1', result: {}, expiresAt: Date.now() + 60000 };
+    mocks.auth.lastRefreshFailure = cached;
+    const calls = mocks.getSession.mock.calls.length;
+    await act(async () => { screen.getByRole('button', { name: 'Tentar agora' }).click(); });
+    await waitFor(() => expect(mocks.getSession.mock.calls.length).toBe(calls + 1));
+    expect(mocks.auth.lastRefreshFailure).toBe(cached);
+  });
+
   it('uma exceção do código do arranque (não da rede) não liga o ecrã sem ligação', async () => {
     const original = useAppStore.getState().loadInitialData;
     useAppStore.setState({ loadInitialData: () => { throw new TypeError("Cannot read properties of undefined (reading 'x')"); } });
@@ -146,6 +161,9 @@ describe('App — arranque sem rede com a sessão guardada', () => {
       await waitFor(() => expect(errSpy.mock.calls.some((c) => c[0] === '[arranque]')).toBe(true), waitLong);
       expect(screen.queryByTestId('boot-offline')).toBeNull();
       expect(mocks.getSession).toHaveBeenCalledTimes(1);
+      // Revisão do ff955623: não fica preso no logo, e a exceção fica em app_logs.
+      await waitFor(() => expect(screen.queryByTestId('boot-splash')).toBeNull(), waitLong);
+      expect(logAppEvent).toHaveBeenCalledWith('error', 'boot_exception', expect.stringContaining('Cannot read properties'), expect.anything());
     } finally {
       errSpy.mockRestore();
       useAppStore.setState({ loadInitialData: original });

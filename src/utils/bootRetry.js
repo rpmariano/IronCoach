@@ -37,25 +37,34 @@ export function clearRefreshFailureCache(auth) {
   return false;
 }
 
+/** Quanto se espera por uma tentativa antes de largar a guarda (o botão não fica em «A tentar»). */
+export const BOOT_ATTEMPT_TIMEOUT_MS = 20000;
+
 /**
  * Uma tentativa de arranque de cada vez.
- * @param {{ probe: () => Promise<boolean>, clearCooldown: () => void, attempt: () => Promise<unknown>, onBusy?: (busy: boolean) => void }} deps
- * @returns {{ run: () => Promise<'offline'|'attempted'>, isBusy: () => boolean }}
+ * - `canClearCooldown`: com o Supabase em baixo (5xx) não se esquece o refresh falhado — o probe vai
+ *   ao GitHub Pages, não ao Supabase, e cada cliente pediria o /token a cada tentativa (revisão do
+ *   ff955623). Aí a tentativa respeita o cooldown do auth-js.
+ * - `timeoutMs`: a tentativa que não responde larga a guarda ao fim deste tempo.
+ * @returns {{ run: () => Promise<'offline'|'attempted'|'timeout'>, isBusy: () => boolean }}
  */
-export function createBootRetry({ probe, clearCooldown, attempt, onBusy = () => {} }) {
+export function createBootRetry({ probe, clearCooldown, attempt, onBusy = () => {}, canClearCooldown = () => true, timeoutMs = BOOT_ATTEMPT_TIMEOUT_MS }) {
   let inFlight = null;
   const run = () => {
     if (inFlight) return inFlight;
     onBusy(true);
     inFlight = (async () => {
+      let timer = null;
       try {
         if (!(await probe())) return 'offline';
-        clearCooldown();
-        await attempt();
-        return 'attempted';
+        if (canClearCooldown()) clearCooldown();
+        const timedOut = new Promise((resolve) => { timer = setTimeout(() => resolve('timeout'), timeoutMs); });
+        const outcome = await Promise.race([Promise.resolve(attempt()).then(() => 'attempted'), timedOut]);
+        return outcome;
       } catch {
         return 'attempted';
       } finally {
+        if (timer) clearTimeout(timer);
         inFlight = null;
         onBusy(false);
       }
