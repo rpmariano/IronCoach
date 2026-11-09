@@ -630,10 +630,14 @@ export default function App() {
      (utils/bootRetry.js): confirma a rede (version.json), esquece o refresh falhado que o auth-js
      guarda 60 s, e só então volta ao getSession. */
   const bootRetryRef = useRef(null);
+  const bootOfflineRef = useRef(null);
+  bootOfflineRef.current = bootOffline;
   if (!bootRetryRef.current) {
     bootRetryRef.current = createBootRetry({
       probe: () => probeNetwork(),
       clearCooldown: () => clearRefreshFailureCache(supabase.auth),
+      // Com o Supabase em baixo (5xx), respeita-se o cooldown do auth-js (o botão também).
+      canClearCooldown: () => bootOfflineRef.current !== 'server',
       attempt: () => (retryBootRef.current ? retryBootRef.current() : Promise.resolve()),
       onBusy: setBootRetrying,
     });
@@ -642,7 +646,8 @@ export default function App() {
     if (!bootOffline) return undefined;
     const retry = () => { bootRetryRef.current.run(); };
     window.addEventListener('online', retry);
-    const timer = setInterval(retry, 15000);
+    // Sem rede, de 15 em 15 s; com o servidor em baixo, de minuto a minuto (o cooldown do auth-js).
+    const timer = setInterval(retry, bootOffline === 'server' ? 60000 : 15000);
     return () => { window.removeEventListener('online', retry); clearInterval(timer); };
   }, [bootOffline]);
   useEffect(() => (navigationDecided ? startNavigationPersistence(useAppStore) : undefined), [navigationDecided]);
@@ -1165,8 +1170,13 @@ export default function App() {
         setIsInitializing(false);
       }
     }).catch((err) => {
-      // Uma exceção do arranque (não da rede): regista-se e não liga o ecrã sem ligação.
+      /* Uma exceção do arranque (não da rede): não liga o ecrã sem ligação, mas também não deixa a
+         app presa no logo — sai dele (com a sessão, a app; sem ela, o login) e fica em app_logs
+         (revisão do ff955623). */
       console.error('[arranque]', err);
+      setNavigationDecided(true);
+      setIsInitializing(false);
+      logAppEvent('error', 'boot_exception', String(err?.message || err || 'Exceção no arranque').slice(0, 200), { errorName: err?.name || null });
     });
     retryBootRef.current = startBoot;
     startBoot();

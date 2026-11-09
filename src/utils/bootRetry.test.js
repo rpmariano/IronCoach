@@ -44,6 +44,30 @@ describe('createBootRetry', () => {
     expect(busy).toEqual([true, false, true, false]);
   });
 
+  it('com o servidor em baixo (5xx) não esquece o refresh falhado: respeita o cooldown do auth-js', async () => {
+    const clearCooldown = vi.fn();
+    const attempt = vi.fn(async () => {});
+    const r = createBootRetry({ probe: async () => true, clearCooldown, attempt, canClearCooldown: () => false });
+    expect(await r.run()).toBe('attempted');
+    expect(clearCooldown).not.toHaveBeenCalled();
+    expect(attempt).toHaveBeenCalledTimes(1);
+  });
+
+  it('uma tentativa que não responde larga a guarda ao fim do prazo', async () => {
+    vi.useFakeTimers();
+    try {
+      const busy = [];
+      const r = createBootRetry({ probe: async () => true, clearCooldown: () => {}, attempt: () => new Promise(() => {}), onBusy: (b) => busy.push(b), timeoutMs: 20000 });
+      const p = r.run();
+      await vi.advanceTimersByTimeAsync(20001);
+      expect(await p).toBe('timeout');
+      expect(r.isBusy()).toBe(false);
+      expect(busy).toEqual([true, false]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('uma só tentativa de cada vez: o botão, o online e o temporizador partilham-na', async () => {
     let release;
     const probe = vi.fn(() => new Promise((r) => { release = r; }));
