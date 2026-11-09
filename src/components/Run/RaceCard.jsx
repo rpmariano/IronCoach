@@ -31,6 +31,7 @@ import {
 import { calculateRaceTrainingPlan } from '../../utils/racePlanEngine';
 import { todayISO } from '../../lib/utils';
 import { startTimeInputValue } from '../../utils/startTime';
+import { raceResultLine } from '../../utils/raceDay';
 
 function formatDatePT(isoStr) {
   if (!isoStr) return '';
@@ -115,6 +116,13 @@ export default function RaceCard({ ev, onEdit, onToggleStatus, onDelete, onRegis
             {isPast && !done ? ' · já passou' : ''}
             {ev.location ? ` · ${ev.location}` : ''}
           </p>
+          {/* Bug #117: o resultado da corrida ligada fica aqui — no Calendário ela já não tem
+              cartão à parte (a mesma prova aparecia duas vezes). */}
+          {raceRun && raceResultLine(raceRun) && (
+            <p data-testid="race-card-result" className="text-[12px] font-bold mt-1" style={{ color: 'var(--text-1)' }}>
+              {raceResultLine(raceRun)}
+            </p>
+          )}
         </div>
         <div className="flex items-start justify-end shrink-0">
           <button

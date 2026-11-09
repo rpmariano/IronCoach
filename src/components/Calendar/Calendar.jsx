@@ -21,6 +21,7 @@ import CreatedRecordModal from '../shared/CreatedRecordModal';
 import CoachInsightsDock from '../BI/CoachInsightsDock';
 import { Dialog } from '../shared/Sheet';
 import { orderDayRecords } from '../../utils/dayOrder';
+import { runsWithoutRaceRuns } from '../../utils/raceDay';
 import { scrollToTop } from '../../utils/scrollToTop';
 import {
   CALENDAR_ALL,
@@ -329,8 +330,9 @@ export default function Calendar() {
   const firstWeekday = (startOfMonth(currentDate).getDay() + 6) % 7;
   const selectedDayStr = format(selectedDate, 'yyyy-MM-dd');
 
-  const selectedRuns = runsByDay.get(selectedDayStr) || [];
   const selectedRaces = racesByDay.get(selectedDayStr) || [];
+  // Bug #117: a corrida que registou uma prova deste dia vai no cartão da prova, não à parte.
+  const selectedRuns = runsWithoutRaceRuns(runsByDay.get(selectedDayStr) || [], selectedRaces);
   const selectedGym = gymByDay.get(selectedDayStr) || [];
   const selectedMeals = mealsByDay.get(selectedDayStr) || [];
   const selectedBody = bodyByDay.get(selectedDayStr) || [];
@@ -372,8 +374,9 @@ export default function Calendar() {
             const dayStr = format(date, 'yyyy-MM-dd');
             const isSelected = isSameDay(date, selectedDate);
             
-            const dayRuns = runsByDay.get(dayStr) || [];
             const dayRaces = racesByDay.get(dayStr) || [];
+            // Bug #117: a prova é uma marca só — a corrida que a registou não acende outra.
+            const dayRuns = runsWithoutRaceRuns(runsByDay.get(dayStr) || [], dayRaces);
             const dayGym = gymByDay.get(dayStr) || [];
             const dayMeals = mealsByDay.get(dayStr) || [];
             const dayBody = bodyByDay.get(dayStr) || [];
