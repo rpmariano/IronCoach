@@ -31,7 +31,8 @@ import { cupPushRoute } from './utils/cupPushRoute';
 // dinâmico — ver o bloco a seguir.
 import Home from './components/Home/Home';
 import LogoLoader from './components/shared/LogoLoader';
-import { bootSessionState, readStoredAuthSession } from './utils/authNetwork';
+import { bootSessionState, isServerDownAuthError, readStoredAuthSession } from './utils/authNetwork';
+import { clearRefreshFailureCache, createBootRetry, probeNetwork } from './utils/bootRetry';
 import { adoptBootSplash, holdForLogo, logoIntroMs, registerSkeletonLogo, releaseBootSplash, useHeldWhile, SKELETON_DELAY_MS } from './utils/logoIntro';
 import { DASHBOARD_TABS } from './utils/scrollToTop';
 
@@ -311,16 +312,19 @@ function FullScreenLoader({ still = false, decorative = false }) {
 /* Sem rede no arranque, com a sessão guardada (2026-11-09, a Patty): nunca o login. O logo, a
    frase, e a app volta a tentar sozinha quando a rede voltar (evento online e de 15 em 15 s) —
    ou já, no botão. utils/authNetwork.js explica a causa. */
-function OfflineBootScreen({ onRetry, retrying = false }) {
+function OfflineBootScreen({ onRetry, retrying = false, reason = 'network' }) {
+  const server = reason === 'server';
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-transparent px-6 text-center" data-testid="boot-offline" style={{ gap: 20 }}>
+    <div className="min-h-screen flex flex-col items-center justify-center bg-transparent px-6 text-center" data-testid="boot-offline" data-reason={reason} style={{ gap: 20 }}>
       <LogoLoader size={112} label={null} still />
       <div className="flex flex-col items-center" style={{ gap: 8 }}>
         <p role="status" aria-live="polite" className="text-[15px] font-bold" style={{ color: 'var(--text-1)' }}>
-          Sem ligação à internet
+          {retrying ? 'A ligar…' : server ? 'O servidor não está a responder' : 'Sem ligação à internet'}
         </p>
         <p className="text-[13px] leading-relaxed max-w-[280px]" style={{ color: 'var(--text-2)' }}>
-          A tua sessão está guardada. Entro assim que a rede voltar.
+          {server
+            ? 'A tua sessão está guardada. Tenta daqui a pouco — eu também volto a tentar.'
+            : 'A tua sessão está guardada. Entro assim que a rede voltar.'}
         </p>
       </div>
       <button
@@ -618,18 +622,25 @@ export default function App() {
      por cima o estado de partida e o ecrã perdia-se. */
   const [navigationDecided, setNavigationDecided] = useState(false);
   // Sem rede no arranque, com a sessão guardada: o ecrã «sem ligação», nunca o login (2026-11-09).
-  const [bootOffline, setBootOffline] = useState(false);
+  // null | 'network' | 'server' (um 5xx do auth: «o servidor não está a responder»).
+  const [bootOffline, setBootOffline] = useState(null);
   const [bootRetrying, setBootRetrying] = useState(false);
   const retryBootRef = useRef(null);
+  /* Uma só tentativa de cada vez, partilhada pelo botão, pelo evento online e pelo temporizador
+     (utils/bootRetry.js): confirma a rede (version.json), esquece o refresh falhado que o auth-js
+     guarda 60 s, e só então volta ao getSession. */
+  const bootRetryRef = useRef(null);
+  if (!bootRetryRef.current) {
+    bootRetryRef.current = createBootRetry({
+      probe: () => probeNetwork(),
+      clearCooldown: () => clearRefreshFailureCache(supabase.auth),
+      attempt: () => (retryBootRef.current ? retryBootRef.current() : Promise.resolve()),
+      onBusy: setBootRetrying,
+    });
+  }
   useEffect(() => {
     if (!bootOffline) return undefined;
-    let busy = false;
-    const retry = () => {
-      if (busy || !retryBootRef.current) return;
-      busy = true;
-      setBootRetrying(true);
-      Promise.resolve(retryBootRef.current()).finally(() => { busy = false; setBootRetrying(false); });
-    };
+    const retry = () => { bootRetryRef.current.run(); };
     window.addEventListener('online', retry);
     const timer = setInterval(retry, 15000);
     return () => { window.removeEventListener('online', retry); clearInterval(timer); };
@@ -1052,15 +1063,27 @@ export default function App() {
       useAppStore.getState().setOnboardingOpen(true);
     }
 
-    const startBoot = () => supabase.auth.getSession().then(({ data: { session: existingSession }, error: sessionError }) => {
+    /* Só o erro que vem do getSession (resolvido com error, ou rejeitado) decide «sem ligação» —
+       nunca uma exceção do código que corre depois (revisão do 0c1a88af: um TypeError de código
+       ligava o ecrã sem ligação e o temporizador repetia o arranque em ciclo). */
+    const startBoot = () => supabase.auth.getSession().then(
+      (res) => ({ session: res?.data?.session ?? null, error: res?.error ?? null }),
+      (err) => ({ session: null, error: err, rejected: true }),
+    ).then(({ session: existingSession, error: sessionError, rejected }) => {
       /* Sem rede, com o access token expirado, o getSession devolve session null e um erro de
          rede — com a sessão ainda guardada. Isso não é «sem sessão» (utils/authNetwork.js). */
       if (!isDemo && bootSessionState({ session: existingSession, error: sessionError, storedSession: readStoredAuthSession() }) === 'offline') {
-        setBootOffline(true);
+        setBootOffline(isServerDownAuthError(sessionError) ? 'server' : 'network');
         setIsInitializing(false);
         return;
       }
-      setBootOffline(false);
+      setBootOffline(null);
+      if (rejected && !isDemo) {
+        setSession(null);
+        setNavigationDecided(true);
+        setIsInitializing(false);
+        return;
+      }
       if (isDemo) {
         const demoSession = { user: { id: 'demo-user', email: 'atleta@ironcoach.app' } };
         setSession(demoSession);
@@ -1142,14 +1165,8 @@ export default function App() {
         setIsInitializing(false);
       }
     }).catch((err) => {
-      // getSession não devia rejeitar; se rejeitar por rede com a sessão guardada, é o mesmo caso.
-      if (!isDemo && bootSessionState({ session: null, error: err, storedSession: readStoredAuthSession() }) === 'offline') {
-        setBootOffline(true);
-      } else {
-        setSession(null);
-        setNavigationDecided(true);
-      }
-      setIsInitializing(false);
+      // Uma exceção do arranque (não da rede): regista-se e não liga o ecrã sem ligação.
+      console.error('[arranque]', err);
     });
     retryBootRef.current = startBoot;
     startBoot();
@@ -1168,7 +1185,7 @@ export default function App() {
       });
       if (action === 'signed-out') {
         // Um SIGNED_OUT real (refresh recusado, logout): aí sim, o login.
-        setBootOffline(false);
+        setBootOffline(null);
         loadedUserIdRef.current = null;
         /* A sessão pode ter acabado fora do Perfil (logout global a partir de
            outro dispositivo, refresh recusado): as notificações de quem saiu
@@ -1186,7 +1203,7 @@ export default function App() {
       }
       if (action === 'ignore') return;
       // A rede voltou e o auth-js renovou a sessão sozinho: sai do ecrã «sem ligação».
-      setBootOffline(false);
+      setBootOffline(null);
       setSession(newSession);
       if (action === 'session-only') return;
       loadedUserIdRef.current = userId;
@@ -1244,11 +1261,8 @@ export default function App() {
     return (
       <OfflineBootScreen
         retrying={bootRetrying}
-        onRetry={() => {
-          if (!retryBootRef.current || bootRetrying) return;
-          setBootRetrying(true);
-          Promise.resolve(retryBootRef.current()).finally(() => setBootRetrying(false));
-        }}
+        reason={bootOffline}
+        onRetry={() => { bootRetryRef.current.run(); }}
       />
     );
   }

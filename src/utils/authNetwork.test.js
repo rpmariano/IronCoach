@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { AUTH_OFFLINE_TEXT, authErrorText, bootSessionState, isNetworkAuthError, readStoredAuthSession } from './authNetwork';
+import { AUTH_OFFLINE_TEXT, AUTH_SERVER_DOWN_TEXT, authErrorText, bootSessionState, isNetworkAuthError, isServerDownAuthError, readStoredAuthSession } from './authNetwork';
 
 /* 2026-11-09: sem rede, a autenticação não pode parecer «sessão acabada» nem mostrar «Failed to fetch». */
 const named = (name, message, status) => Object.assign(new Error(message), { name, ...(status != null ? { status } : {}) });
@@ -18,6 +18,23 @@ describe('isNetworkAuthError / authErrorText', () => {
     expect(authErrorText(bad)).toBe('Invalid login credentials');
     expect(isNetworkAuthError(named('AuthApiError', 'Failed to fetch', 401))).toBe(false);
     expect(authErrorText(null, 'X')).toBe('X');
+  });
+});
+
+describe('revisão do 0c1a88af', () => {
+  it('um TypeError de código não é rede; o do fetch é', () => {
+    expect(isNetworkAuthError(new TypeError("Cannot read properties of undefined (reading 'id')"))).toBe(false);
+    expect(isNetworkAuthError(new TypeError('x is not a function'))).toBe(false);
+    expect(isNetworkAuthError(new TypeError('Failed to fetch'))).toBe(true);
+    expect(bootSessionState({ session: null, error: new TypeError('x is not a function'), storedSession: { refresh_token: 'rt' } })).toBe('signed-out');
+  });
+  it('um 5xx do auth: «o servidor não está a responder» (e continua a não ser o login)', () => {
+    const e503 = named('AuthRetryableFetchError', 'Service Unavailable', 503);
+    expect(isServerDownAuthError(e503)).toBe(true);
+    expect(isServerDownAuthError(named('AuthRetryableFetchError', 'Failed to fetch', 0))).toBe(false);
+    expect(authErrorText(e503)).toBe(AUTH_SERVER_DOWN_TEXT);
+    expect(AUTH_SERVER_DOWN_TEXT).toBe('O servidor não está a responder — tenta daqui a pouco.');
+    expect(bootSessionState({ session: null, error: e503, storedSession: { refresh_token: 'rt' } })).toBe('offline');
   });
 });
 

@@ -11,6 +11,10 @@
 
 /** A frase do login quando o pedido nem chegou ao servidor. */
 export const AUTH_OFFLINE_TEXT = 'Sem ligação à internet — verifica a rede e tenta de novo.';
+/** A frase quando o servidor respondeu com um 5xx (o pedido chegou, mas ele não está bem). */
+export const AUTH_SERVER_DOWN_TEXT = 'O servidor não está a responder — tenta daqui a pouco.';
+
+const FETCH_FAILURE = /failed to fetch|networkerror|network request failed|load failed|fetch failed|err_internet_disconnected/i;
 
 /** A falha é de rede (o pedido não chegou, ou o servidor não respondeu), não uma recusa. */
 export function isNetworkAuthError(err) {
@@ -20,12 +24,20 @@ export function isNetworkAuthError(err) {
   // Uma recusa do servidor (credenciais, refresh token inválido) nunca é rede.
   if (status === 400 || status === 401 || status === 403 || status === 422) return false;
   if (name === 'AuthRetryableFetchError') return true;
-  if (name === 'TypeError') return true;
-  return /failed to fetch|networkerror|network request failed|load failed|fetch failed|err_internet_disconnected/i.test(String(err.message || ''));
+  // Um TypeError só é rede quando é o do fetch («Failed to fetch»…): um TypeError de código não
+  // é (revisão do 0c1a88af).
+  return FETCH_FAILURE.test(String(err.message || ''));
+}
+
+/** Um AuthRetryableFetchError com 5xx: o servidor respondeu, mas não está bem. */
+export function isServerDownAuthError(err) {
+  const status = Number(err?.status);
+  return String(err?.name || '') === 'AuthRetryableFetchError' && status >= 500 && status < 600;
 }
 
 /** A mensagem do login para um erro: a de rede numa frase clara; as outras como vêm. */
 export function authErrorText(err, fallback = 'Erro ao efetuar autenticação.') {
+  if (isServerDownAuthError(err)) return AUTH_SERVER_DOWN_TEXT;
   if (isNetworkAuthError(err)) return AUTH_OFFLINE_TEXT;
   return err?.message || fallback;
 }
