@@ -656,8 +656,19 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
     return () => obs.disconnect();
   }, []);
 
-  const habituals = habitualsForMealType({ meals, foods: pantryFoods, mealType, today: date })
-    .filter((f) => !manualItems.some((i) => isKnownFood(i.name, [f])));
+  // Fora o que já está na lista desta refeição (pedido do Rui, 2026-11-09); até 4.
+  const habituals = habitualsForMealType({ meals, foods: pantryFoods, mealType, today: date, exclude: manualItems.map((i) => i.name) });
+  /* Um habitual fora da despensa entra como um alimento escrito (o caminho normal da análise), com
+     as gramas da última vez. */
+  const addHabitual = (h) => {
+    if (!h?.fromHistory) { addPantryFood(h); return; }
+    setErrorMsg('');
+    setManualItems(prev => [...prev, { key: `${Date.now()}-${prev.length}`, name: h.name, grams: h.lastGrams ?? null }]);
+    setIsFormDirty(true);
+  };
+  const habitualLabel = (h) => (h?.fromHistory
+    ? (h.lastGrams ? `da última vez: ${h.lastGrams} g` : '')
+    : portionLabel(h));
 
   /* Uma refeição predefinida (bug #63, fase D, 2026-10-17): junta os
      alimentos dela que ainda não estão na lista, com as gramas dela — tudo
@@ -1067,11 +1078,11 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
                   <button
                     key={f.id ?? f.name_key}
                     type="button"
-                    onClick={() => addPantryFood(f)}
+                    onClick={() => addHabitual(f)}
                     className="min-h-[44px] px-3 rounded-full text-[12.5px] font-bold"
                     style={{ border: '1px solid var(--tint-nutrition-bd)', background: 'var(--tint-nutrition-bg)', color: 'var(--text-1)' }}
                   >
-                    + {f.name}{portionLabel(f) ? ` · ${portionLabel(f)}` : ''}
+                    + {f.name}{habitualLabel(f) ? ` · ${habitualLabel(f)}` : ''}
                   </button>
                 ))}
               </div>

@@ -177,33 +177,66 @@ export async function saveFoodVariant({ userId, parent, label, values, existing 
   return data;
 }
 
+/** Meia-vida do peso de uma refeição nas sugestões (pedido do Rui, 2026-11-09). */
+export const HABITUAL_HALF_LIFE_DAYS = 21;
+/** Quantas vezes um alimento FORA da despensa tem de aparecer para ser sugerido. */
+export const HABITUAL_MIN_OUTSIDE_PANTRY = 3;
+
+const daysBetween = (fromISO, toISO) => Math.max(0, Math.round((Date.parse(`${toISO}T00:00:00Z`) - Date.parse(`${fromISO}T00:00:00Z`)) / 86400000));
+
 /**
- * "O que costumas comer ao pequeno-almoço": os alimentos da despensa que
- * aparecem pelo menos 2 vezes nas refeições desse tipo dos últimos 90 dias.
+ * "O que costumas comer ao pequeno-almoço" (desde 2026-11-09, pedido do Rui):
+ * - cada refeição pesa pela idade, com meia-vida de HABITUAL_HALF_LIFE_DAYS (0,5^(dias/21)); ordena-se
+ *   pela soma dos pesos — o que comeste ontem vem antes do que comias há dois meses;
+ * - da despensa: pelo menos 2 refeições nos `days` dias (devolve o alimento da despensa);
+ * - fora da despensa: pelo menos 3 refeições — devolve { name, name_key, fromHistory: true, lastGrams }
+ *   com o nome e as gramas da última vez (entra na análise como um alimento escrito). No empate,
+ *   a despensa primeiro;
+ * - fora o que já está na lista desta refeição (`exclude`, nomes); até `limit` (4).
  */
-export function habitualsForMealType({ meals, foods, mealType, today, days = 90, limit = 3 }) {
+export function habitualsForMealType({ meals, foods, mealType, today, days = 90, limit = 4, exclude = [] }) {
   if (!mealType || !today) return [];
   const types = compatibleMealTypes(mealType);
   const since = new Date(`${today}T00:00:00Z`);
   since.setUTCDate(since.getUTCDate() - days);
   const sinceISO = since.toISOString().slice(0, 10);
   const byKey = new Map((foods || []).map((f) => [f.name_key, f]));
-  const counts = new Map();
+  const excluded = new Set((exclude || []).map((n) => foodKey(n)).filter(Boolean));
+  const stats = new Map(); // key → { count, weight, lastDate, lastName, lastGrams }
   for (const m of meals || []) {
     if (!types.includes(m?.meal_type) || !m.date || m.date < sinceISO || m.date > today) continue;
+    const w = 0.5 ** (daysBetween(m.date, today) / HABITUAL_HALF_LIFE_DAYS);
     const seen = new Set();
     for (const it of m.meal_items || []) {
       const k = foodKey(it?.name);
-      if (!byKey.has(k) || seen.has(k)) continue;
+      if (!k || seen.has(k) || excluded.has(k)) continue;
       seen.add(k);
-      counts.set(k, (counts.get(k) || 0) + 1);
+      const st = stats.get(k) || { count: 0, weight: 0, lastDate: '', lastName: null, lastGrams: null };
+      st.count += 1;
+      st.weight += w;
+      if (m.date >= st.lastDate) {
+        st.lastDate = m.date;
+        st.lastName = String(it.name).trim();
+        const g = Number(it.quantity_grams);
+        st.lastGrams = Number.isFinite(g) && g > 0 ? Math.round(g) : null;
+      }
+      stats.set(k, st);
     }
   }
-  return [...counts.entries()]
-    .filter(([, n]) => n >= 2)
-    .sort((a, b) => b[1] - a[1])
+  const out = [];
+  for (const [k, st] of stats) {
+    const food = byKey.get(k);
+    if (food) {
+      if (st.count >= 2) out.push({ weight: st.weight, inPantry: true, value: food });
+    } else if (st.count >= HABITUAL_MIN_OUTSIDE_PANTRY) {
+      out.push({ weight: st.weight, inPantry: false, value: { name: st.lastName, name_key: k, fromHistory: true, lastGrams: st.lastGrams } });
+    }
+  }
+  return out
+    // Pesos iguais (a menos de um arredondamento): a despensa primeiro.
+    .sort((a, b) => (Math.abs(b.weight - a.weight) > 1e-9 ? b.weight - a.weight : Number(b.inPantry) - Number(a.inPantry)))
     .slice(0, limit)
-    .map(([k]) => byKey.get(k));
+    .map((e) => e.value);
 }
 
 /** O que diz cada regra de cozinha, por baixo do valor. */

@@ -1248,6 +1248,26 @@ describe('MealRegistration — a despensa ao escrever', () => {
     // Vai com o nome da despensa: é por aí que o servidor o reconhece.
     expect(mocks.invoke.mock.calls[0][1].body.items).toEqual([{ name: 'Aveia em flocos', grams: 40 }]);
   });
+
+  /* Pedido do Rui (2026-11-09): um alimento fora da despensa com 3 refeições também aparece, com as
+     gramas da última vez, e entra como um alimento escrito; o que já está na lista sai das sugestões. */
+  it('fora da despensa: «da última vez: X g», entra como escrito, e sai das sugestões depois de entrar', async () => {
+    const tipo = 'almoco';
+    useAppStore.setState({
+      meals: [1, 2, 3].map((d) => ({ id: `m${d}`, date: ontem(d), meal_type: tipo, meal_items: [{ name: 'Salada de grão', quantity_grams: 180 + d }] })),
+    });
+    render(<MealRegistration onClose={onClose} />);
+    fireEvent.click(screen.getByRole('button', { name: /^Almoço$/i }));
+    // A mais recente (ontem(1)) dá as gramas.
+    fireEvent.click(within(screen.getByTestId('meal-habituals')).getByRole('button', { name: '+ Salada de grão · da última vez: 181 g' }));
+    expect(screen.getByLabelText('Gramas de Salada de grão')).toHaveValue('181');
+    expect(screen.queryByTestId('meal-habituals')).toBeNull();
+
+    mocks.invoke.mockResolvedValue({ data: { meal: { id: 'm9', meal_items: [] } }, error: null });
+    fireEvent.click(screen.getByRole('button', { name: /Analisar refeição/i }));
+    await waitFor(() => expect(mocks.invoke).toHaveBeenCalled());
+    expect(mocks.invoke.mock.calls[0][1].body).toMatchObject({ mode: 'manual', items: [{ name: 'Salada de grão', grams: 181 }] });
+  });
 });
 
 describe('MealRegistration — refeição só com observações (decisão 15)', () => {

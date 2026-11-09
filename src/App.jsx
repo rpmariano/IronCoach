@@ -31,6 +31,7 @@ import { cupPushRoute } from './utils/cupPushRoute';
 // dinâmico — ver o bloco a seguir.
 import Home from './components/Home/Home';
 import LogoLoader from './components/shared/LogoLoader';
+import { bootSessionState, readStoredAuthSession } from './utils/authNetwork';
 import { adoptBootSplash, holdForLogo, logoIntroMs, registerSkeletonLogo, releaseBootSplash, useHeldWhile, SKELETON_DELAY_MS } from './utils/logoIntro';
 import { DASHBOARD_TABS } from './utils/scrollToTop';
 
@@ -303,6 +304,34 @@ function FullScreenLoader({ still = false, decorative = false }) {
           AI-POWERED
         </span>
       </div>
+    </div>
+  );
+}
+
+/* Sem rede no arranque, com a sessão guardada (2026-11-09, a Patty): nunca o login. O logo, a
+   frase, e a app volta a tentar sozinha quando a rede voltar (evento online e de 15 em 15 s) —
+   ou já, no botão. utils/authNetwork.js explica a causa. */
+function OfflineBootScreen({ onRetry, retrying = false }) {
+  return (
+    <div className="min-h-screen flex flex-col items-center justify-center bg-transparent px-6 text-center" data-testid="boot-offline" style={{ gap: 20 }}>
+      <LogoLoader size={112} label={null} still />
+      <div className="flex flex-col items-center" style={{ gap: 8 }}>
+        <p role="status" aria-live="polite" className="text-[15px] font-bold" style={{ color: 'var(--text-1)' }}>
+          Sem ligação à internet
+        </p>
+        <p className="text-[13px] leading-relaxed max-w-[280px]" style={{ color: 'var(--text-2)' }}>
+          A tua sessão está guardada. Entro assim que a rede voltar.
+        </p>
+      </div>
+      <button
+        type="button"
+        onClick={onRetry}
+        disabled={retrying}
+        className="min-h-[44px] px-5 rounded-xl text-[13px] font-bold disabled:opacity-60"
+        style={{ border: '1px solid var(--border-glass-strong)', color: 'var(--text-1)', background: 'var(--surface-glass)' }}
+      >
+        {retrying ? 'A tentar…' : 'Tentar agora'}
+      </button>
     </div>
   );
 }
@@ -588,6 +617,23 @@ export default function App() {
      (a app escondida durante o arranque, uma recarga logo a seguir) punha
      por cima o estado de partida e o ecrã perdia-se. */
   const [navigationDecided, setNavigationDecided] = useState(false);
+  // Sem rede no arranque, com a sessão guardada: o ecrã «sem ligação», nunca o login (2026-11-09).
+  const [bootOffline, setBootOffline] = useState(false);
+  const [bootRetrying, setBootRetrying] = useState(false);
+  const retryBootRef = useRef(null);
+  useEffect(() => {
+    if (!bootOffline) return undefined;
+    let busy = false;
+    const retry = () => {
+      if (busy || !retryBootRef.current) return;
+      busy = true;
+      setBootRetrying(true);
+      Promise.resolve(retryBootRef.current()).finally(() => { busy = false; setBootRetrying(false); });
+    };
+    window.addEventListener('online', retry);
+    const timer = setInterval(retry, 15000);
+    return () => { window.removeEventListener('online', retry); clearInterval(timer); };
+  }, [bootOffline]);
   useEffect(() => (navigationDecided ? startNavigationPersistence(useAppStore) : undefined), [navigationDecided]);
 
   /* Onboarding (ponto 8 do redesenho 2026-09). Duas entradas distintas:
@@ -1006,7 +1052,15 @@ export default function App() {
       useAppStore.getState().setOnboardingOpen(true);
     }
 
-    supabase.auth.getSession().then(({ data: { session: existingSession } }) => {
+    const startBoot = () => supabase.auth.getSession().then(({ data: { session: existingSession }, error: sessionError }) => {
+      /* Sem rede, com o access token expirado, o getSession devolve session null e um erro de
+         rede — com a sessão ainda guardada. Isso não é «sem sessão» (utils/authNetwork.js). */
+      if (!isDemo && bootSessionState({ session: existingSession, error: sessionError, storedSession: readStoredAuthSession() }) === 'offline') {
+        setBootOffline(true);
+        setIsInitializing(false);
+        return;
+      }
+      setBootOffline(false);
       if (isDemo) {
         const demoSession = { user: { id: 'demo-user', email: 'atleta@ironcoach.app' } };
         setSession(demoSession);
@@ -1045,6 +1099,8 @@ export default function App() {
         setNavigationDecided(true);
         setIsInitializing(false);
       } else if (existingSession?.user) {
+        // Também ao voltar a rede depois do ecrã «sem ligação»: o logo enquanto os dados chegam.
+        setIsInitializing(true);
         setSession(existingSession);
         loadedUserIdRef.current = existingSession.user.id;
         if (forcarOnboarding) {
@@ -1085,7 +1141,18 @@ export default function App() {
         setNavigationDecided(true);
         setIsInitializing(false);
       }
+    }).catch((err) => {
+      // getSession não devia rejeitar; se rejeitar por rede com a sessão guardada, é o mesmo caso.
+      if (!isDemo && bootSessionState({ session: null, error: err, storedSession: readStoredAuthSession() }) === 'offline') {
+        setBootOffline(true);
+      } else {
+        setSession(null);
+        setNavigationDecided(true);
+      }
+      setIsInitializing(false);
     });
+    retryBootRef.current = startBoot;
+    startBoot();
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, newSession) => {
       if (isDemo) return;
@@ -1100,6 +1167,8 @@ export default function App() {
         sameUser: !!userId && loadedUserIdRef.current === userId,
       });
       if (action === 'signed-out') {
+        // Um SIGNED_OUT real (refresh recusado, logout): aí sim, o login.
+        setBootOffline(false);
         loadedUserIdRef.current = null;
         /* A sessão pode ter acabado fora do Perfil (logout global a partir de
            outro dispositivo, refresh recusado): as notificações de quem saiu
@@ -1116,6 +1185,8 @@ export default function App() {
         return;
       }
       if (action === 'ignore') return;
+      // A rede voltou e o auth-js renovou a sessão sozinho: sai do ecrã «sem ligação».
+      setBootOffline(false);
       setSession(newSession);
       if (action === 'session-only') return;
       loadedUserIdRef.current = userId;
@@ -1167,6 +1238,19 @@ export default function App() {
        tiver saído por outra razão (a rede de segurança dele). */
     // `decorative`: o anúncio "A carregar" é o do logo do HTML, por cima.
     return <FullScreenLoader still={!firstBootDone} decorative={!firstBootDone} />;
+  }
+
+  if (!session && bootOffline) {
+    return (
+      <OfflineBootScreen
+        retrying={bootRetrying}
+        onRetry={() => {
+          if (!retryBootRef.current || bootRetrying) return;
+          setBootRetrying(true);
+          Promise.resolve(retryBootRef.current()).finally(() => setBootRetrying(false));
+        }}
+      />
+    );
   }
 
   if (!session) {

@@ -68,6 +68,57 @@ describe('habitualsForMealType', () => {
   });
 });
 
+/* Pedido do Rui (2026-11-09): recência (meia-vida de 21 dias), alimentos fora da despensa com 3
+   ocorrências, nada do que já está na lista, e até 4 sugestões. */
+describe('habitualsForMealType — recência, fora da despensa, exclusão e limite', () => {
+  const meal = (date, type, items) => ({ date, meal_type: type, meal_items: items.map((it) => (typeof it === 'string' ? { name: it } : it)) });
+  const food = (name) => ({ id: name, name, name_key: foodKey(name) });
+  const TODAY = '2026-11-09';
+
+  it('recência: com as mesmas contagens, o de ontem ganha ao de há ~80 dias', () => {
+    const foods = [food('Aveia'), food('Granola')];
+    const meals = [
+      meal('2026-08-20', 'pequeno-almoco', ['Granola']),
+      meal('2026-08-21', 'pequeno-almoco', ['Granola']),
+      meal('2026-11-07', 'pequeno-almoco', ['Aveia']),
+      meal('2026-11-08', 'pequeno-almoco', ['Aveia']),
+    ];
+    expect(habitualsForMealType({ meals, foods, mealType: 'pequeno-almoco', today: TODAY }).map((f) => f.name)).toEqual(['Aveia', 'Granola']);
+    // A ordem é a do peso, não a da contagem: 3 antigas perdem para 2 recentes.
+    meals.push(meal('2026-08-22', 'pequeno-almoco', ['Granola']));
+    expect(habitualsForMealType({ meals, foods, mealType: 'pequeno-almoco', today: TODAY })[0].name).toBe('Aveia');
+  });
+
+  it('fora da despensa: entra com 3 ocorrências (2 não chegam), com o nome e as gramas da última vez', () => {
+    const meals = [
+      meal('2026-11-01', 'lanche', [{ name: 'pão com manteiga', quantity_grams: 60 }, 'Kiwi']),
+      meal('2026-11-03', 'lanche', [{ name: 'Pão com manteiga', quantity_grams: 70 }, 'Kiwi']),
+      meal('2026-11-05', 'lanche', [{ name: 'Pão com Manteiga', quantity_grams: 80.4 }]),
+    ];
+    const h = habitualsForMealType({ meals, foods: [], mealType: 'lanche', today: TODAY });
+    expect(h).toEqual([{ name: 'Pão com Manteiga', name_key: foodKey('pão com manteiga'), fromHistory: true, lastGrams: 80 }]);
+  });
+
+  it('no empate de peso, a despensa primeiro', () => {
+    const meals = [1, 3, 5].map((d) => meal(`2026-11-0${d}`, 'lanche', ['Kiwi', 'Iogurte']));
+    const h = habitualsForMealType({ meals, foods: [food('Iogurte')], mealType: 'lanche', today: TODAY });
+    expect(h.map((f) => f.name)).toEqual(['Iogurte', 'Kiwi']);
+    expect(h[1].fromHistory).toBe(true);
+  });
+
+  it('não sugere o que já está na lista desta refeição', () => {
+    const meals = [1, 2, 3].map((d) => meal(`2026-11-0${d}`, 'lanche', ['Iogurte', 'Kiwi']));
+    const h = habitualsForMealType({ meals, foods: [food('Iogurte')], mealType: 'lanche', today: TODAY, exclude: ['iogurte', ' KIWI '] });
+    expect(h).toEqual([]);
+  });
+
+  it('até 4 sugestões', () => {
+    const names = ['A1', 'B2', 'C3', 'D4', 'E5', 'F6'];
+    const meals = [1, 2].map((d) => meal(`2026-11-0${d}`, 'jantar', names));
+    expect(habitualsForMealType({ meals, foods: names.map(food), mealType: 'jantar', today: TODAY })).toHaveLength(4);
+  });
+});
+
 describe('habitualsForMealType — grupo almoço/jantar (bug #85)', () => {
   const meal = (date, type, names) => ({ date, meal_type: type, meal_items: names.map((name) => ({ name })) });
   const meals = [
