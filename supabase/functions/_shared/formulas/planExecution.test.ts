@@ -114,6 +114,10 @@ Deno.test("computePlanExecution: um bloco antigo «Prancha 3×30» em reps, regi
   const sets = [30, 30, 25].map((d, i) => ({ exercise_name: "Prancha", set_index: i + 1, reps: null, weight: null, duration_seconds: d }));
   const b = computePlanExecution({ prescription, sessionDate: "2026-11-10", sets })!.blocks[0];
   assertEquals([b.status, b.secondsTarget, b.repsTarget, b.secondsDone, b.setsFull], ["parcial", 30, null, [30, 30, 25], 2]);
+  // Só num isométrico (revisão de 0d76f4d4): uma remada registada só com tempo não vira segundos.
+  const row = { blocks: [{ type: "forca", name: "Remada", sets: 3, reps: 12, goal: null }] };
+  const rowTimed = computePlanExecution({ prescription: row, sessionDate: "2026-11-10", sets: [{ exercise_name: "Remada", set_index: 1, reps: null, weight: null, duration_seconds: 40 }] })!.blocks[0];
+  assertEquals([rowTimed.secondsTarget, rowTimed.repsTarget], [null, 12]);
   // Registado em reps, continua pelas reps.
   const byReps = computePlanExecution({ prescription, sessionDate: "2026-11-10", sets: [1, 2, 3].map((i) => ({ exercise_name: "Prancha", set_index: i, reps: 30, weight: null })) })!.blocks[0];
   assertEquals([byReps.status, byReps.repsTarget, byReps.secondsTarget], ["cumprido", 30, null]);

@@ -45,7 +45,9 @@ export type CardioBlock = {
 export type PrescriptionBlock = StrengthBlock | CardioBlock;
 export type Prescription = { blocks: PrescriptionBlock[] };
 
-export type PrescriptionResult = { prescription: Prescription | null; issue: string | null };
+/** `adjusted`: os blocos cuja unidade se acertou (reps ↔ segundos) ou que
+ *  saíram sozinhos por ela — o resto da prescrição fica (revisão de 0d76f4d4). */
+export type PrescriptionResult = { prescription: Prescription | null; issue: string | null; adjusted?: string[] };
 
 // Decisão 5: a Carol não prescreve carga. O schema não tem campo de peso, mas
 // o modelo pode escrevê-la no objetivo ("3×10 a 40 kg", "a 80% 1RM"): esse
@@ -105,6 +107,7 @@ export function buildPrescription(rawBlocks: any): PrescriptionResult {
   }
 
   const blocks: PrescriptionBlock[] = [];
+  const adjusted: string[] = [];
   for (const [i, b] of rawBlocks.entries()) {
     const n = i + 1;
     if (!b || typeof b !== "object") return { prescription: null, issue: `exercício ${n} sem forma de objeto` };
@@ -115,25 +118,37 @@ export function buildPrescription(rawBlocks: any): PrescriptionResult {
 
     if (b.type === "forca") {
       const sets = intIn(b.sets, 1, MAX_SETS);
-      // Revisão de 2b51cca7: os segundos só num isométrico (isometric.ts). Num
-      // exercício de reps, um seconds que viesse (0, ou outro) ignora-se —
-      // nunca recusa o plano.
-      const isometric = isIsometricExercise(name);
-      const secondsGiven = typeof b.seconds === "number" && Number.isFinite(b.seconds) && b.seconds > 0;
-      const seconds = isometric && secondsGiven ? intIn(b.seconds, MIN_SECONDS, MAX_SECONDS) : null;
-      if (isometric && secondsGiven && seconds == null) {
-        return { prescription: null, issue: `"${name}": seconds por série tem de ser ${MIN_SECONDS}-${MAX_SECONDS}` };
-      }
-      if (isometric && seconds == null) {
-        return { prescription: null, issue: `"${name}" é isométrico: prescreve-se em segundos (seconds por série), não em reps` };
-      }
-      // Um isométrico em segundos; os segundos mandam sobre umas reps que viessem com eles.
-      const reps = seconds != null ? null : intIn(b.reps, 1, MAX_REPS);
-      if (sets == null || (reps == null && seconds == null)) {
+      if (sets == null) {
         return { prescription: null, issue: `"${name}": séries (1-${MAX_SETS}) e reps (1-${MAX_REPS}) são obrigatórias na força` };
       }
-      // `seconds` só nos isométricos: os blocos de reps gravam-se como sempre.
-      blocks.push(seconds != null ? { type: "forca", name, sets, reps: null, seconds, goal } : { type: "forca", name, sets, reps, goal });
+      // A unidade (#118 e revisões): um isométrico (isometric.ts) em segundos;
+      // um bloco com a unidade trocada converte-se (reps ↔ segundos) ou sai
+      // sozinho, e o resto da prescrição fica — um classificador enganado não
+      // deita fora o treino inteiro (revisão de 0d76f4d4).
+      const isometric = isIsometricExercise(name);
+      const secondsGiven = typeof b.seconds === "number" && Number.isFinite(b.seconds) && b.seconds > 0;
+      const secs = secondsGiven ? intIn(b.seconds, MIN_SECONDS, MAX_SECONDS) : null;
+      const reps = intIn(b.reps, 1, MAX_REPS);
+      if (isometric) {
+        // Em reps: as reps eram os segundos («Hollow hold 3×30»).
+        const asSeconds = secs ?? (typeof b.reps === "number" ? intIn(b.reps, MIN_SECONDS, MAX_SECONDS) : null);
+        if (asSeconds == null) {
+          adjusted.push(`"${name}" é isométrico e não trouxe segundos (${MIN_SECONDS}-${MAX_SECONDS}) por série: saiu`);
+          continue;
+        }
+        if (secs == null) adjusted.push(`"${name}" é isométrico: ${b.reps} reps passaram a ${asSeconds} s por série`);
+        blocks.push({ type: "forca", name, sets, reps: null, seconds: asSeconds, goal });
+      } else if (reps != null) {
+        // Num exercício de reps, um seconds que viesse (0, ou outro) ignora-se.
+        blocks.push({ type: "forca", name, sets, reps, goal });
+      } else if (secs != null && b.reps == null) {
+        // Só segundos num exercício que o classificador não conhece como
+        // isométrico («Bird dog 3×20 s»): fica em segundos.
+        adjusted.push(`"${name}": em segundos, sem reps — ficou em ${secs} s por série`);
+        blocks.push({ type: "forca", name, sets, reps: null, seconds: secs, goal });
+      } else {
+        return { prescription: null, issue: `"${name}": séries (1-${MAX_SETS}) e reps (1-${MAX_REPS}) são obrigatórias na força` };
+      }
     } else if (b.type === "cardio") {
       const duration_min = positiveOrNull(b.duration_min, 300);
       const distance_km = positiveOrNull(b.distance_km, 100);
@@ -152,7 +167,8 @@ export function buildPrescription(rawBlocks: any): PrescriptionResult {
       return { prescription: null, issue: `"${name}": type tem de ser "forca" ou "cardio"` };
     }
   }
-  return { prescription: { blocks }, issue: null };
+  if (!blocks.length) return { prescription: null, issue: adjusted.join("; ") || "sem exercícios válidos", ...(adjusted.length ? { adjusted } : {}) };
+  return { prescription: { blocks }, issue: null, ...(adjusted.length ? { adjusted } : {}) };
 }
 
 /**
