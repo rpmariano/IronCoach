@@ -93,3 +93,28 @@ Deno.test("sameExercise — parêntesis de um lado só juntam; diferentes dos do
   assertEquals(sameExercise("Supino (barra)", "supino (Barra)"), true);
   assertEquals(sameExercise("", "Supino"), false);
 });
+
+// #118 (2026-11-10): um isométrico do plano compara-se pelos segundos de cada série (duration_seconds).
+Deno.test("computePlanExecution: o isométrico em segundos — feito, em parte, e a linha para a Carol", () => {
+  const prescription = { blocks: [{ type: "forca", name: "Hollow hold", sets: 3, reps: null, seconds: 30, goal: null }] };
+  const held = (secs: number[]) => secs.map((d, i) => ({ exercise_name: "Hollow hold", set_index: i + 1, reps: null, weight: null, duration_seconds: d }));
+  const full = computePlanExecution({ prescription, sessionDate: "2026-11-10", sets: held([30, 35, 30]) })!;
+  assertEquals([full.blocks[0].status, full.blocks[0].secondsTarget, full.blocks[0].secondsDone, full.blocks[0].compliance, full.blocks[0].repsTarget], ["cumprido", 30, [30, 35, 30], 1, null]);
+  const part = computePlanExecution({ prescription, sessionDate: "2026-11-10", sets: held([30, 20]) })!;
+  assertEquals([part.blocks[0].status, part.blocks[0].setsFull, part.blocks[0].compliance], ["parcial", 1, 0.56]);
+  const text = describePlanExecution(part)!;
+  assertStringIncludes(text, "Hollow hold — planeado 3×30 s, feito 2 série(s) de 30/20 s");
+  assertEquals(text.includes("reps"), false);
+  // Não entra na conta das reps da sessão.
+  assertEquals(part.strengthRepsCompliance, null);
+});
+
+Deno.test("computePlanExecution: um bloco antigo «Prancha 3×30» em reps, registado em segundos, compara-se pelos segundos", () => {
+  const prescription = { blocks: [{ type: "forca", name: "Prancha", sets: 3, reps: 30, goal: null }] };
+  const sets = [30, 30, 25].map((d, i) => ({ exercise_name: "Prancha", set_index: i + 1, reps: null, weight: null, duration_seconds: d }));
+  const b = computePlanExecution({ prescription, sessionDate: "2026-11-10", sets })!.blocks[0];
+  assertEquals([b.status, b.secondsTarget, b.repsTarget, b.secondsDone, b.setsFull], ["parcial", 30, null, [30, 30, 25], 2]);
+  // Registado em reps, continua pelas reps.
+  const byReps = computePlanExecution({ prescription, sessionDate: "2026-11-10", sets: [1, 2, 3].map((i) => ({ exercise_name: "Prancha", set_index: i, reps: 30, weight: null })) })!.blocks[0];
+  assertEquals([byReps.status, byReps.repsTarget, byReps.secondsTarget], ["cumprido", 30, null]);
+});

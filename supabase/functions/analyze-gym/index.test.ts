@@ -129,3 +129,41 @@ Deno.test("activityFacts (bug #94): só o que existe — nunca «0m» nem «unde
   assertEquals(activityFacts(["8km", null, "esforço 6/10"]), " - 8km, esforço 6/10");
   assertEquals(activityFacts([null, null]), "");
 });
+
+// #118 (2026-11-10): o isométrico chega à Carol em segundos por série, não somado como cardio.
+Deno.test("formatExerciseLines: um isométrico em segundos por série; o cardio continua somado", () => {
+  assertEquals(
+    formatExerciseLines([
+      { exercise_name: "Hollow hold", set_index: 1, reps: null, weight: null, duration_seconds: 30 },
+      { exercise_name: "Hollow hold", set_index: 2, reps: null, weight: null, duration_seconds: 30 },
+      { exercise_name: "Prancha", set_index: 1, reps: null, weight: null, duration_seconds: 45 },
+      { exercise_name: "Prancha", set_index: 2, reps: null, weight: null, duration_seconds: 40 },
+      { exercise_name: "Bicicleta", set_index: 1, reps: null, weight: null, duration_seconds: 1200, distance_km: 8 },
+    ] as never),
+    ["Hollow hold — 2 séries de 30 s", "Prancha — 2 séries de 45/40 s", "Bicicleta — 20 min, 8 km"],
+  );
+  // Revisão de 2b51cca7: a prancha com carga em segundos, nunca «? reps».
+  assertEquals(
+    formatExerciseLines([
+      { exercise_name: "Prancha com disco", set_index: 1, reps: null, weight: 10, duration_seconds: 45 },
+      { exercise_name: "Prancha com disco", set_index: 2, reps: null, weight: 10, duration_seconds: 40 },
+      { exercise_name: "Prancha lateral", set_index: 1, reps: null, weight: 5, duration_seconds: 30 },
+      { exercise_name: "Prancha lateral", set_index: 2, reps: null, weight: 7.5, duration_seconds: 30 },
+    ] as never),
+    ["Prancha com disco — 2 séries de 45/40 s a 10 kg", "Prancha lateral — 2 séries: 30 s a 5 kg, 30 s a 7,5 kg"],
+  );
+});
+
+// Revisão de 2b51cca7: um cardio fora do catálogo só com tempo continua somado;
+// um bloco de força (exercises_meta) só com tempo vai por séries.
+Deno.test("formatExerciseLines: cardio fora do catálogo só com tempo — somado, não «1 série de 1200 s»", () => {
+  const rows = [
+    { exercise_name: "Ski erg", set_index: 1, reps: null, weight: null, duration_seconds: 1200 },
+    { exercise_name: "Crosstrainer", set_index: 1, reps: null, weight: null, duration_seconds: 900 },
+    { exercise_name: "Bird dog", set_index: 1, reps: null, weight: null, duration_seconds: 20 },
+    { exercise_name: "Bird dog", set_index: 2, reps: null, weight: null, duration_seconds: 20 },
+  ] as never;
+  assertEquals(formatExerciseLines(rows), ["Ski erg — 20 min", "Crosstrainer — 15 min", "Bird dog — 0,7 min"]);
+  // O registo disse que o bird dog é força: séries em segundos.
+  assertEquals(formatExerciseLines(rows, 15, new Set(["bird dog"]))[2], "Bird dog — 2 séries de 20 s");
+});

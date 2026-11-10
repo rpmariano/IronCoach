@@ -743,7 +743,11 @@ const PROPOSE_PLAN_TOOL = {
                   type: { type: "STRING", enum: ["forca", "cardio"] },
                   name: { type: "STRING", description: "Nome do exercício em português, como o atleta o diria (\"Extensões de pernas\", \"Bicicleta\")." },
                   sets: { type: "NUMBER", description: "Só força. Número de séries (1-10)." },
-                  reps: { type: "NUMBER", description: "Só força. Repetições por série (1-50)." },
+                  reps: { type: "NUMBER", description: "Só força. Repetições por série (1-50). Num isométrico, omite e usa seconds." },
+                  seconds: {
+                    type: "NUMBER",
+                    description: "Só força isométrica (prancha, hollow hold, wall sit, dead hang). Segundos por série (5-600), em vez de reps.",
+                  },
                   goal: {
                     type: "STRING",
                     description:
@@ -4670,7 +4674,15 @@ export function loadProfileRequested(value: LoadProfile, userMessage: string | n
   const iMore = last.search(LOAD_PROFILE_TERMS.mais_volume);
   if (iPrud < 0 || iMore < 0 || /\?\s*$/.test(text.trim())) return false;
   const [first, second]: LoadProfile[] = iPrud < iMore ? ["prudente", "mais_volume"] : ["mais_volume", "prudente"];
-  const ord = /(?:^|[^a-zà-ú])(primeira|segunda|essa|esta)(?![a-zà-ú])/i.exec(text);
+  // Só «a primeira/segunda (opção)» — nunca «na segunda-feira» nem «esta semana»
+  // —, ou uma mensagem curta (≤ 6 palavras) que seja só a escolha («Essa.»,
+  // «Fico com a segunda»): revisão de 2b51cca7.
+  const explicit = /(?:^|[^a-zà-ú])a\s+(primeira|segunda)(?:\s+op[çc][ãa]o)?(?![a-zà-ú-])(?!\s*-?\s*feira)/i.exec(text);
+  const words = text.trim().split(/\s+/).filter(Boolean);
+  const short = words.length <= 6 && !/semana|feira|vez|dia|hora/i.test(text)
+    ? /(?:^|[^a-zà-ú])(primeira|segunda|essa|esta)(?![a-zà-ú-])/i.exec(text)
+    : null;
+  const ord = explicit ?? short;
   if (!ord || LOAD_PROFILE_NEGATION_RE.test(lastClauseOf(text.slice(0, ord.index + 1)))) return false;
   return (ord[1].toLowerCase() === "primeira" ? first : second) === value;
 }
@@ -6555,6 +6567,8 @@ function planDoctrineDetail(): string {
       `  • Corredor: pernas a 3-6 reps pesadas ou 6-12 controladas, sempre a RPE 6-8 — nunca até à ` +
       `falha; séries de 15+ reps nas pernas não (Bloco 3 #10/#11). Tronco superior em hipertrofia: 6-12 reps a RPE 7-9.\n` +
       `  • Cardio no ginásio (bicicleta, remo, passadeira, piscina): duração/distância/voltas alvo e o objetivo (zona, cadência).\n` +
+      `  • Exercícios isométricos — prancha, prancha lateral, hollow hold, wall sit, dead hang — prescrevem-se em segundos: ` +
+      `séries × seconds por série (ex.: 3 × 30 s), nunca em reps. O servidor recusa um isométrico em reps.\n` +
       `  • ESCOLHA DOS EXERCÍCIOS: o histórico de ginásio do atleta é preferência e referência de carga, NÃO o limite. ` +
       `Escolhe pelo objetivo de um catálogo completo, mesmo exercícios que ele nunca fez (máquina, peso livre e peso do corpo):\n` +
       `    – Pernas: quadríceps (leg press, agachamento, step-up, cadeira extensora), posterior (peso morto romeno, cadeira ` +

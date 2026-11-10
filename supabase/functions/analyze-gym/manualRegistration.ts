@@ -29,6 +29,9 @@ export type ExerciseMeta = {
   goal_met: boolean | null;
   // A afinação da máquina escrita neste registo (decisão 10); ausente = não mexeu.
   machine_settings?: string;
+  // A unidade das séries de força (#118): «s» nos isométricos (segundos), «reps»
+  // no resto; ausente = cliente antigo (reps).
+  rep_unit?: "reps" | "s";
 };
 
 const finiteOrNull = (v: unknown): number | null => {
@@ -102,6 +105,8 @@ export function parseExercisesMeta(raw: any): ExerciseMeta[] | null {
       plan_block_index: m?.plan_block_index != null && Number.isInteger(idx) && idx >= 0 && idx < 50 ? idx : null,
       goal_met: typeof m?.goal_met === "boolean" ? m.goal_met : null,
       ...(typeof m?.machine_settings === "string" ? { machine_settings: m.machine_settings.trim().slice(0, 120) } : {}),
+      // #118: a unidade que o registo mostrou (Frontend ab3ac282); outra coisa cai.
+      ...(m?.rep_unit === "s" || m?.rep_unit === "reps" ? { rep_unit: m.rep_unit } : {}),
     });
   }
   return out.length ? out : null;

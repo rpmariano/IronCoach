@@ -119,6 +119,9 @@ export interface BlockExecution {
   // Força
   setsTarget: number | null;
   repsTarget: number | null;
+  /** Isométricos (#118): segundos por série prescritos e os feitos (duration_seconds). */
+  secondsTarget: number | null;
+  secondsDone: number[];
   setsDone: number;
   setsFull: number;
   repsDone: number[];
@@ -227,7 +230,8 @@ function lastTopBefore(name: string, sessionDate: string, history: HistorySessio
   return null;
 }
 
-function emptyBlock(b: { index: number; label: string; kind: "forca" | "cardio"; goal?: string | null; sets?: number | null; reps?: number | null; duration_min?: number | null; distance_km?: number | null; laps?: number | null }): BlockExecution {
+function emptyBlock(b: { index: number; label: string; kind: "forca" | "cardio"; goal?: string | null; sets?: number | null; reps?: number | null; seconds?: number | null; duration_min?: number | null; distance_km?: number | null; laps?: number | null }): BlockExecution {
+  const secondsTarget = b.kind === "forca" ? posInt(b.seconds) : null;
   return {
     index: b.index,
     name: b.label,
@@ -238,7 +242,9 @@ function emptyBlock(b: { index: number; label: string; kind: "forca" | "cardio";
     goalMet: null,
     compliance: 0,
     setsTarget: b.kind === "forca" ? posInt(b.sets) : null,
-    repsTarget: b.kind === "forca" ? posInt(b.reps) : null,
+    repsTarget: b.kind === "forca" && secondsTarget === null ? posInt(b.reps) : null,
+    secondsTarget,
+    secondsDone: [],
     setsDone: 0,
     setsFull: 0,
     repsDone: [],
@@ -256,6 +262,30 @@ function emptyBlock(b: { index: number; label: string; kind: "forca" | "cardio";
 }
 
 function fillStrength(block: BlockExecution, done: DoneExercise, sessionDate: string, history: HistorySession[]) {
+  // Um bloco antigo «Prancha 3×30» em reps, registado em segundos (só
+  // duration_seconds, sem reps): as reps eram os segundos (revisão de 2b51cca7).
+  if (!block.secondsTarget && block.repsTarget && done.sets.every((s) => posNum(s.reps) === null) &&
+    done.sets.some((s) => posNum(s.duration_seconds) !== null)) {
+    block.secondsTarget = block.repsTarget;
+    block.repsTarget = null;
+  }
+  // Um isométrico (#118): conta-se em segundos por série (duration_seconds).
+  if (block.secondsTarget) {
+    const held = done.sets.filter((s) => posNum(s.duration_seconds) !== null);
+    block.setsDone = held.length;
+    block.secondsDone = held.map((s) => posInt(s.duration_seconds) ?? 0);
+    const target = block.secondsTarget;
+    const nSets = block.setsTarget;
+    if (nSets) {
+      const counted = block.secondsDone.slice(0, nSets);
+      block.setsFull = counted.filter((t) => t >= target).length;
+      block.compliance = round2(counted.reduce((t, x) => t + Math.min(x, target), 0) / (nSets * target));
+    } else {
+      block.setsFull = held.length;
+      block.compliance = held.length ? 1 : 0;
+    }
+    return;
+  }
   const performed = done.sets.filter((s) => posNum(s.reps) !== null || posNum(s.weight) !== null);
   block.setsDone = performed.length;
   block.repsDone = performed.map((s) => posInt(s.reps) ?? 0);
@@ -345,7 +375,7 @@ export function computePlanExecution(input: {
   for (const r of results) {
     if (r.doneName === null || r.status === "trocado") continue;
     if (r.type === "forca") {
-      r.status = r.setsTarget && r.repsTarget
+      r.status = r.setsTarget && (r.repsTarget || r.secondsTarget)
         ? (r.setsFull >= r.setsTarget ? "cumprido" : r.setsDone > 0 ? "parcial" : "em_falta")
         : (r.setsDone > 0 ? "cumprido" : "em_falta");
     } else {
@@ -384,7 +414,12 @@ function blockLine(r: BlockExecution): string {
   if (r.status === "em_falta") return `${r.name} — ficou de fora`;
   const swap = r.status === "trocado" ? ` (trocado por ${r.doneName})` : "";
   let what: string;
-  if (r.type === "forca") {
+  if (r.type === "forca" && r.secondsTarget) {
+    // Um isométrico (#118): segundos por série, nunca reps.
+    const planned = r.setsTarget ? `${r.setsTarget}×${r.secondsTarget} s` : `${r.secondsTarget} s`;
+    const held = r.secondsDone.length ? r.secondsDone.join("/") : "0";
+    what = `planeado ${planned}, feito ${r.setsDone} série(s) de ${held} s`;
+  } else if (r.type === "forca") {
     const planned = r.setsTarget && r.repsTarget ? `${r.setsTarget}×${r.repsTarget}` : "sem números";
     const reps = r.repsDone.length ? r.repsDone.join("/") : "0";
     const load = r.topSet ? ` a ${kg(r.topSet.weight)}` : "";

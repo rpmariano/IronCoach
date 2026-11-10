@@ -12,7 +12,7 @@ export const LOAD_PROFILE_RACE_COLUMNS =
   "id, name, date, distance_km, experience_level, race_priority, status, load_profile, load_profile_at, load_profile_reverted_at, load_profile_revert_reason";
 
 /** As provas de `fromISO` em diante com o perfil de carga. [] numa falha —
- *  e enquanto a migration 20261109120000 não estiver aplicada (a coluna não
+ *  e enquanto a migration 20261110150630_race_load_profile não estiver aplicada (a coluna não
  *  existe): aí tudo fica Prudente, como antes. */
 // deno-lint-ignore no-explicit-any
 export async function fetchLoadProfileRaces(sb: any, userId: string, fromISO: string): Promise<ProfileRace[]> {
