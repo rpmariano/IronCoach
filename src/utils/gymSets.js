@@ -54,8 +54,17 @@ export const exerciseType = (ex) => (ex?.type === 'cardio' ? 'cardio' : 'forca')
    grava-se em workout_session_sets.duration_seconds, com reps a null — a coluna já existe e a
    analyze-gym já a aceita numa série de força (parseManualSets). */
 const fold = (v) => String(v || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
-const ISOMETRIC_RE = /\b(hollow|prancha|plank|wall ?sit|agachamento (na parede|isometrico)|cadeirinha|dead ?hang|suspensao|l[- ]?sit|isometric\w*|isometri\w*|estatic\w*|holds?|superman|copenhag\w*)\b/;
-export const isIsometricName = (name) => ISOMETRIC_RE.test(fold(name));
+/* Revisão do c4fa1fa9: «estático» saiu — «Bicicleta estática» e «Remo estático» são cardio, não
+   isometria; e «suspensão» só sozinha (a suspensão na barra), nunca «Elevação de pernas em
+   suspensão» nem «Remada em suspensão», que são de reps. */
+const ISOMETRIC_RE = /\b(hollow|prancha|plank|wall ?sit|agachamento (na parede|isometrico)|cadeirinha|dead ?hang|l[- ]?sit|isometric\w*|isometri\w*|holds?|superman|copenhag\w*)\b/;
+const HANG_RE = /\bsuspensao\b/;
+const NOT_HANG_RE = /\b(elevac\w*|remada|joelhos?|pernas?|flexo\w*|trx)\b/;
+export function isIsometricName(name) {
+  const f = fold(name);
+  if (ISOMETRIC_RE.test(f)) return true;
+  return HANG_RE.test(f) && !NOT_HANG_RE.test(f);
+}
 /** A unidade das séries de um exercício de força: a escolhida, senão a do nome. */
 export const repUnitOf = (ex) => (ex?.repUnit === 's' || ex?.repUnit === 'reps' ? ex.repUnit : (isIsometricName(ex?.name) ? 's' : 'reps'));
 /** Os segundos escritos num objetivo («30 s», «45 segundos», «hold 20s»), ou null. */
@@ -278,6 +287,9 @@ export function buildExercisesMeta(exercises) {
       name,
       goal: (ex.goal || '').trim() || null,
       block_type: exerciseType(ex),
+      // #118: a unidade das séries de força, para um exercício em segundos gravado só com peso
+      // reabrir em segundos (o servidor tem de a guardar em parseExercisesMeta).
+      ...(exerciseType(ex) === 'forca' ? { rep_unit: repUnitOf(ex) } : {}),
       plan_block_index: Number.isInteger(ex.planBlockIndex) ? ex.planBlockIndex : null,
       // Decisão 9: o que se mede (reps, minutos, km, ritmo) a Carol julga pelos
       // números; só o qualitativo ("descida em 3 s") leva o que ele confirmou.
@@ -304,11 +316,16 @@ export function exercisesFromSession(session) {
   return Array.from(grouped.entries()).map(([name, rows], i) => {
     const meta = metaByKey.get(foodKey(name));
     const isCardioRow = (r) => (r.duration_seconds || r.distance_km || r.laps) && !r.reps && !r.weight;
-    // #118: um isométrico gravado só com tempo (sem meta antiga) é força em segundos, não cardio.
+    // #118: um isométrico gravado só com tempo (sem meta, antes de 17-10) é força em segundos — mas
+    // um cardio que o catálogo conhece (a bicicleta estática) é sempre cardio: lê-lo como força
+    // perdia a distância e as voltas ao regravar (revisão do c4fa1fa9).
     const type = meta?.block_type === 'cardio' || meta?.block_type === 'forca'
       ? meta.block_type
-      : (rows.every(isCardioRow) && !isIsometricName(name) ? 'cardio' : 'forca');
-    const inSeconds = type === 'forca' && rows.some(r => Number(r.duration_seconds) > 0) && rows.every(r => r.reps == null || r.reps === '');
+      : (rows.every(isCardioRow) && (cardioSpecFor(name) || !isIsometricName(name)) ? 'cardio' : 'forca');
+    // A unidade gravada no meta (rep_unit) manda; sem ela, só tempo e nenhuma rep é em segundos.
+    const inSeconds = type === 'forca' && (meta?.rep_unit === 's' || meta?.rep_unit === 'reps'
+      ? meta.rep_unit === 's'
+      : rows.some(r => Number(r.duration_seconds) > 0) && rows.every(r => r.reps == null || r.reps === ''));
     const metres = cardioSpecFor(name)?.distanceUnit === 'm';
     const sorted = rows.slice().sort((a, b) => (a.set_index ?? 0) - (b.set_index ?? 0));
     const fields = type === 'cardio'

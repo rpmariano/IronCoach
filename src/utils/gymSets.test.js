@@ -67,7 +67,7 @@ describe('registo unificado — exercícios', async () => {
 
   it('buildExercisesMeta: um por nome, sem vazios', () => {
     const meta = buildExercisesMeta([newExercise({ name: 'Supino', type: 'forca', goal: ' RIR 2 ' }), newExercise({ name: 'supino' }), newExercise({ name: '' })]);
-    expect(meta).toEqual([{ name: 'Supino', goal: 'RIR 2', block_type: 'forca', plan_block_index: null, goal_met: null }]);
+    expect(meta).toEqual([{ name: 'Supino', goal: 'RIR 2', block_type: 'forca', rep_unit: 'reps', plan_block_index: null, goal_met: null }]);
   });
 });
 
@@ -258,5 +258,50 @@ describe('gymSets — isométricos em segundos (#118)', () => {
     const { exercisesFromPreview } = await import('./gymSets');
     const [ex] = exercisesFromPreview({ exercises: [{ name: 'Hollow hold', type: 'forca', sets: [{ duration_seconds: 30 }, { duration_seconds: 30 }] }] });
     expect([ex.repUnit, ex.sets.map((s) => s.reps)]).toEqual(['s', ['30', '30']]);
+  });
+});
+
+/* Revisão do c4fa1fa9 (#118): os falsos isométricos e a perda de dados ao editar uma sessão antiga. */
+describe('gymSets — revisão do #118', () => {
+  it('«estático» não é isometria; «suspensão» só sozinha', async () => {
+    const { isIsometricName } = await import('./gymSets');
+    for (const n of ['Bicicleta estática', 'Bike estática', 'Remo estático', 'Elevação de pernas em suspensão', 'Remada em suspensão', 'Elevação de joelhos em suspensão']) {
+      expect([n, isIsometricName(n)]).toEqual([n, false]);
+    }
+    expect(isIsometricName('Suspensão na barra')).toBe(true);
+    expect(isIsometricName('Dead hang')).toBe(true);
+  });
+
+  it('uma Bicicleta estática antiga (sem exercises_meta) editada continua cardio e não perde a distância', async () => {
+    const { exercisesFromSession, flattenExercises } = await import('./gymSets');
+    const rows = [{ id: 'a', exercise_name: 'Bicicleta estática', set_index: 0, duration_seconds: 1200, distance_km: 8.5, laps: null }];
+    const [ex] = exercisesFromSession({ workout_session_sets: rows });
+    expect(ex.type).toBe('cardio');
+    expect(ex.repUnit).toBeUndefined();
+    expect(flattenExercises([ex])).toEqual([{ exercise_name: 'Bicicleta estática', set_index: 0, reps: null, weight: null, duration_seconds: 1200, distance_km: 8.5, laps: null }]);
+    const [remo] = exercisesFromSession({ workout_session_sets: [{ id: 'b', exercise_name: 'Remo estático', set_index: 0, duration_seconds: 600, distance_km: 2 }] });
+    expect(remo.type).toBe('cardio');
+  });
+
+  it('Elevação de pernas em suspensão fica em reps: grava reps 12, nunca 12 s', async () => {
+    const { newExercise, newSet, flattenExercises, repUnitOf } = await import('./gymSets');
+    const ex = newExercise({ name: 'Elevação de pernas em suspensão', sets: [newSet({ reps: '12' })] });
+    expect(repUnitOf(ex)).toBe('reps');
+    expect(flattenExercises([ex])).toEqual([{ exercise_name: 'Elevação de pernas em suspensão', set_index: 0, reps: 12, weight: null }]);
+  });
+
+  it('a unidade vai no exercises_meta (rep_unit) e manda ao reabrir — em segundos só com peso', async () => {
+    const { newExercise, newSet, buildExercisesMeta, exercisesFromSession } = await import('./gymSets');
+    const meta = buildExercisesMeta([
+      newExercise({ name: 'Prancha com peso', repUnit: 's', sets: [newSet({ weight: '10' })] }),
+      newExercise({ name: 'Supino', sets: [newSet({ reps: '10' })] }),
+      newExercise({ name: 'Bicicleta', type: 'cardio' }),
+    ]);
+    expect(meta.map((m) => m.rep_unit)).toEqual(['s', 'reps', undefined]);
+    const [ex] = exercisesFromSession({
+      exercises_meta: [meta[0]],
+      workout_session_sets: [{ id: 'p', exercise_name: 'Prancha com peso', set_index: 0, reps: null, weight: 10, duration_seconds: null }],
+    });
+    expect([ex.repUnit, ex.sets[0].weight]).toEqual(['s', 10]);
   });
 });

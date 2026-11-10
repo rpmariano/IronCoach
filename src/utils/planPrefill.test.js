@@ -147,3 +147,12 @@ describe('exercisesFromPrescription — bloco com seconds', () => {
     expect([ponte.repUnit, ponte.sets.length, ponte.sets[0].plan.reps]).toEqual(['s', 2, '45']);
   });
 });
+
+/* Revisão do c4fa1fa9: «Elevação de pernas em suspensão 3×12» é de reps — nunca «12 s». */
+describe('exercisesFromPrescription — falso isométrico', () => {
+  it('Elevação de pernas em suspensão 3×12 fica em reps', async () => {
+    const { exercisesFromPrescription } = await import('./planPrefill');
+    const [ex] = exercisesFromPrescription({ blocks: [{ type: 'forca', name: 'Elevação de pernas em suspensão', sets: 3, reps: 12 }] });
+    expect([ex.repUnit, ex.sets[0].plan.reps]).toEqual([undefined, '12']);
+  });
+});

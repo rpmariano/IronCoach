@@ -131,7 +131,7 @@ describe('GymRegistration — formulário único (registo unificado, F1)', () =>
     const { body } = mocks.invoke.mock.calls[0][1];
     expect(body.mode).toBe('manual');
     expect(body.sets).toEqual([{ exercise_name: 'Extensões de pernas', set_index: 0, reps: 12, weight: 40 }]);
-    expect(body.exercises_meta).toEqual([{ name: 'Extensões de pernas', goal: 'chegar às 12', block_type: 'forca', plan_block_index: null, goal_met: null }]);
+    expect(body.exercises_meta).toEqual([{ name: 'Extensões de pernas', goal: 'chegar às 12', block_type: 'forca', rep_unit: 'reps', plan_block_index: null, goal_met: null }]);
   });
 
   it('modo Live: o ✓ de uma série vazia confirma a sugestão da série anterior', () => {
@@ -1109,7 +1109,7 @@ describe('GymRegistration — pré-preenchimento pelo plano (F3)', () => {
     // A análise recebe o treino do plano e a origem, para comparar o planeado com o feito.
     expect(body).toMatchObject({ plan_item_id: 'item-1', completion_source: 'plano' });
     expect(body.exercises_meta).toEqual([
-      { name: 'Extensões de pernas', goal: 'chegar às 12 sem falhar', block_type: 'forca', plan_block_index: 0, goal_met: null },
+      { name: 'Extensões de pernas', goal: 'chegar às 12 sem falhar', block_type: 'forca', rep_unit: 'reps', plan_block_index: 0, goal_met: null },
       { name: 'Bicicleta', goal: 'Z2', block_type: 'cardio', plan_block_index: 1, goal_met: null },
     ]);
   });
