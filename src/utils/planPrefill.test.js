@@ -134,3 +134,16 @@ describe('exercisesFromPrescription — isométricos em segundos (#118)', () => 
     expect([supino.repUnit, supino.sets[0].plan.reps]).toEqual([undefined, '10']);
   });
 });
+
+/* Seguimento do #118: o plano traz `seconds` nos blocos de força isométricos (sem reps). */
+describe('exercisesFromPrescription — bloco com seconds', () => {
+  it('abre em segundos com o alvo do bloco, mesmo com um nome que não parece isométrico', async () => {
+    const { exercisesFromPrescription } = await import('./planPrefill');
+    const [hollow, ponte] = exercisesFromPrescription({ blocks: [
+      { type: 'forca', name: 'Hollow hold', sets: 3, seconds: 30, goal: 'hold 20 s' },
+      { type: 'forca', name: 'Ponte de glúteos', sets: 2, seconds: 45 },
+    ] });
+    expect([hollow.repUnit, hollow.sets.length, hollow.sets[0].plan.reps]).toEqual(['s', 3, '30']);
+    expect([ponte.repUnit, ponte.sets.length, ponte.sets[0].plan.reps]).toEqual(['s', 2, '45']);
+  });
+});

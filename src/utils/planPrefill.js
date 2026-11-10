@@ -56,11 +56,13 @@ export function exercisesFromPrescription(prescription) {
       });
     }
     const n = Math.min(Math.max(parseInt(b.sets) || 1, 1), 10);
-    /* #118: um isométrico (hollow, prancha…) conta-se em segundos. A prescrição só tem `reps`: o
-       alvo em segundos é o do objetivo («hold 30 s»), senão o número das reps (o «30» do hollow
-       eram segundos). */
-    if (isIsometricName(name)) {
-      const secs = secondsFromGoal(goal) ?? (Number(b.reps) > 0 ? Number(b.reps) : null);
+    /* #118: um isométrico conta-se em segundos. O bloco traz `seconds` por série (dev-back, o
+       seguimento do #118) — esse manda. Num plano antigo, só com `reps`: num nome isométrico
+       (hollow, prancha…), o alvo é o do objetivo («hold 30 s»), senão o número das reps (o «30»
+       do hollow eram segundos). */
+    const blockSeconds = Number(b.seconds) > 0 ? Math.round(Number(b.seconds)) : null;
+    if (blockSeconds || isIsometricName(name)) {
+      const secs = blockSeconds ?? secondsFromGoal(goal) ?? (Number(b.reps) > 0 ? Number(b.reps) : null);
       return newExercise({
         name, type: 'forca', goal, planBlockIndex: index, repUnit: 's',
         sets: Array.from({ length: n }, () => newSet({ plan: { reps: asString(secs), weight: '' } })),

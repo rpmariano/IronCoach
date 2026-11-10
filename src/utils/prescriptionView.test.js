@@ -43,3 +43,14 @@ describe('prescriptionView', () => {
     expect(exercisesSummary([n('A'), n('B'), n('C'), n('D'), n('E')])).toBe('5 exercícios: A, B, C e mais 2');
   });
 });
+
+/* Seguimento do #118: um isométrico traz `seconds` por série — «3×30 s», como o servidor. */
+describe('blockTarget — isométricos em segundos', () => {
+  it('séries×seconds s; seconds ganha às reps; fora do teto, não é alvo', () => {
+    expect(blockTarget({ type: 'forca', name: 'Hollow hold', sets: 3, seconds: 30 })).toBe('3×30 s');
+    expect(blockTarget({ type: 'forca', name: 'Prancha', sets: 2, seconds: 45, reps: 1 })).toBe('2×45 s');
+    expect(blockTarget({ type: 'forca', name: 'Prancha', sets: 2, seconds: 5000 })).toBe('2 séries');
+    expect(prescriptionExercises({ blocks: [{ type: 'forca', name: 'Wall sit', sets: 3, seconds: 40, goal: 'joelhos a 90°' }] }))
+      .toEqual([{ name: 'Wall sit', target: '3×40 s', goal: 'joelhos a 90°' }]);
+  });
+});
