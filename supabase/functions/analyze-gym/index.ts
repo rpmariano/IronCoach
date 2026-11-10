@@ -726,11 +726,15 @@ export function formatExerciseLines(rows: SetRow[] | null | undefined, maxExerci
       continue;
     }
     const count = ordered.length === 1 ? "1 série" : `${ordered.length} séries`;
+    // Um isométrico com carga (prancha com disco, #118): segundos, não «? reps».
+    const timed = ordered.every((s) => !s.reps) && ordered.some((s) => s.duration_seconds);
+    const value = timed ? (s: SetRow) => (s.duration_seconds ? fmtNum(s.duration_seconds) : "?") : reps;
+    const unit = timed ? "s" : "reps";
     if (ordered.every((s) => s.weight === ordered[0].weight)) {
-      const r = ordered.map(reps);
-      lines.push(`${name} — ${count} de ${r.every((x) => x === r[0]) ? r[0] : r.join("/")} reps${load(ordered[0].weight)}`);
+      const r = ordered.map(value);
+      lines.push(`${name} — ${count} de ${r.every((x) => x === r[0]) ? r[0] : r.join("/")} ${unit}${load(ordered[0].weight)}`);
     } else {
-      lines.push(`${name} — ${count}: ${ordered.map((s) => `${reps(s)} reps${load(s.weight)}`).join(", ")}`);
+      lines.push(`${name} — ${count}: ${ordered.map((s) => `${value(s)} ${unit}${load(s.weight)}`).join(", ")}`);
     }
   }
   return lines;

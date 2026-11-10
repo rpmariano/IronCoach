@@ -142,4 +142,14 @@ Deno.test("formatExerciseLines: um isométrico em segundos por série; o cardio 
     ] as never),
     ["Hollow hold — 2 séries de 30 s", "Prancha — 2 séries de 45/40 s", "Bicicleta — 20 min, 8 km"],
   );
+  // Revisão de 2b51cca7: a prancha com carga em segundos, nunca «? reps».
+  assertEquals(
+    formatExerciseLines([
+      { exercise_name: "Prancha com disco", set_index: 1, reps: null, weight: 10, duration_seconds: 45 },
+      { exercise_name: "Prancha com disco", set_index: 2, reps: null, weight: 10, duration_seconds: 40 },
+      { exercise_name: "Prancha lateral", set_index: 1, reps: null, weight: 5, duration_seconds: 30 },
+      { exercise_name: "Prancha lateral", set_index: 2, reps: null, weight: 7.5, duration_seconds: 30 },
+    ] as never),
+    ["Prancha com disco — 2 séries de 45/40 s a 10 kg", "Prancha lateral — 2 séries: 30 s a 5 kg, 30 s a 7,5 kg"],
+  );
 });

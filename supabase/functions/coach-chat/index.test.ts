@@ -4208,6 +4208,14 @@ Deno.test("loadProfileRequested (revisão de 5fea1e4e): o termo do perfil escolh
   assertEquals(loadProfileRequested("mais_volume", "Não quero a segunda.", both), false);
   assertEquals(loadProfileRequested("mais_volume", "A segunda?", both), false);
   assertEquals(loadProfileRequested("mais_volume", "A segunda opção.", "Como te sentes?"), false);
+  // Revisão de 2b51cca7: «esta semana», «na segunda-feira» não são escolhas.
+  assertEquals(loadProfileRequested("mais_volume", "Esta semana corri pouco por causa do trabalho.", both), false);
+  assertEquals(loadProfileRequested("mais_volume", "Na segunda-feira não consigo treinar.", both), false);
+  assertEquals(loadProfileRequested("mais_volume", "Posso correr na segunda feira de manhã?", both), false);
+  assertEquals(loadProfileRequested("mais_volume", "Ok, na segunda corro 6 km e depois falamos disso com calma.", both), false);
+  // Curta e só a escolha, ou «a segunda opção» numa frase maior.
+  assertEquals(loadProfileRequested("mais_volume", "Fico com a segunda.", both), true);
+  assertEquals(loadProfileRequested("mais_volume", "Pensei bem e acho que vou mesmo pela a segunda opção, obrigado.", both), true);
 });
 
 Deno.test("update_race_event: ritmo, hora, prioridade e nível; recusa o que não faz sentido", async () => {

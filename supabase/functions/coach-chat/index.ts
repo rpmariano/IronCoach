@@ -4674,7 +4674,15 @@ export function loadProfileRequested(value: LoadProfile, userMessage: string | n
   const iMore = last.search(LOAD_PROFILE_TERMS.mais_volume);
   if (iPrud < 0 || iMore < 0 || /\?\s*$/.test(text.trim())) return false;
   const [first, second]: LoadProfile[] = iPrud < iMore ? ["prudente", "mais_volume"] : ["mais_volume", "prudente"];
-  const ord = /(?:^|[^a-zà-ú])(primeira|segunda|essa|esta)(?![a-zà-ú])/i.exec(text);
+  // Só «a primeira/segunda (opção)» — nunca «na segunda-feira» nem «esta semana»
+  // —, ou uma mensagem curta (≤ 6 palavras) que seja só a escolha («Essa.»,
+  // «Fico com a segunda»): revisão de 2b51cca7.
+  const explicit = /(?:^|[^a-zà-ú])a\s+(primeira|segunda)(?:\s+op[çc][ãa]o)?(?![a-zà-ú-])(?!\s*-?\s*feira)/i.exec(text);
+  const words = text.trim().split(/\s+/).filter(Boolean);
+  const short = words.length <= 6 && !/semana|feira|vez|dia|hora/i.test(text)
+    ? /(?:^|[^a-zà-ú])(primeira|segunda|essa|esta)(?![a-zà-ú-])/i.exec(text)
+    : null;
+  const ord = explicit ?? short;
   if (!ord || LOAD_PROFILE_NEGATION_RE.test(lastClauseOf(text.slice(0, ord.index + 1)))) return false;
   return (ord[1].toLowerCase() === "primeira" ? first : second) === value;
 }
