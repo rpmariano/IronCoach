@@ -1,5 +1,5 @@
 import { assert, assertEquals } from "jsr:@std/assert@1";
-import { governingRace, loadProfileChosen, loadProfileRedFlag, loadVolumeState, raceLoadProfile } from "./loadProfile.ts";
+import { governingRace, isLoadProfileRevertIntervention, loadProfileChosen, loadProfileRedFlag, loadVolumeState, raceLoadProfile } from "./loadProfile.ts";
 import { acuteLimitKm, planLoadViolations, runLoadReading } from "./runLoadAlert.ts";
 
 // O perfil de carga por prova (pedido do Rui, 2026-11-09). A Patty recebeu no
@@ -53,6 +53,11 @@ Deno.test("guarda do plano e alerta do dia-a-dia com Mais volume: abaixo do limi
   // O dia-a-dia: 20 km corridos sem plano em cima de 8 km/semana.
   const ran = [...base8, R("2026-11-02", 10, "continuo"), R("2026-11-04", 10, "continuo")];
   assertEquals(runLoadReading({ runs: ran, planItems: [], today: "2026-11-05" }).alert, true);
+  // Prudente com base baixa (revisão de 5fea1e4e): 17 km passam o ACWR 1,5 (1,66) mas
+  // não a subida de +10 km (18) que a guarda do plano deixa — sem assunto [carga].
+  const ran17 = [...base8, R("2026-11-02", 9, "continuo"), R("2026-11-04", 8, "continuo")];
+  const r17 = runLoadReading({ runs: ran17, planItems: [], today: "2026-11-05" });
+  assertEquals([r17.ratio! > 1.5, r17.lowBase, r17.limitKm, r17.alert], [true, true, 18, false]);
   const more = runLoadReading({ runs: ran, planItems: [], today: "2026-11-05", profile: "mais_volume" });
   assertEquals([more.alert, more.limitKm, more.lowBase], [false, 23, true]);
 });
@@ -86,7 +91,9 @@ Deno.test("loadVolumeState: com o perfil escolhido não há conflito — só o l
   // 23,1 km está abaixo do limite do Mais volume: sem aviso de carga.
   assertEquals(s.loadAlert, false);
   const prudente = loadVolumeState({ races: [{ ...MEIA, load_profile_at: "2026-11-09T12:00:00Z" }], runs: PATTY_RUNS, planItems: PATTY_PLAN, todayISO: "2026-11-09" });
-  assertEquals([prudente.state, prudente.loadAlert, prudente.volumeBelow], ["perfil", true, true]);
+  // Prudente escolhido (revisão de 5fea1e4e): também só acima do limite DELE — 23,1 km
+  // com «Prudente · até 28,4 km» não é aviso (o ACWR 1,31 só conta por escolher).
+  assertEquals([prudente.state, prudente.loadAlert, prudente.volumeBelow, prudente.safeLimitKm], ["perfil", false, true, 28.4]);
   // A 13 nov, sem carga a mais: só o volume.
   assertEquals(loadVolumeState({ races: [TRAIL, MEIA], runs: PATTY_RUNS, planItems: PATTY_PLAN, todayISO: "2026-11-13" }).state, "volume");
   assertEquals(loadVolumeState({ races: [], runs: PATTY_RUNS, todayISO: "2026-11-09" }).race, null);
@@ -94,6 +101,7 @@ Deno.test("loadVolumeState: com o perfil escolhido não há conflito — só o l
 
 Deno.test("loadProfileRedFlag: com Mais volume, dor, RPE ≥ 9 em 2 fáceis seguidas ou recuperação em crítico — só desde a escolha", () => {
   const race = { ...MEIA, load_profile: "mais_volume", load_profile_at: "2026-11-09T12:00:00Z" };
+  const nowISO = "2026-11-12T20:00:00Z";
   const ok = { date: "2026-11-10", sleep: 4, energy: 4, stress: 2, pain: 0 };
   assertEquals(loadProfileRedFlag({ race, runs: PATTY_RUNS, checkins: [ok] }), null);
   // Prudente: nunca.
@@ -106,6 +114,24 @@ Deno.test("loadProfileRedFlag: com Mais volume, dor, RPE ≥ 9 em 2 fáceis segu
   assertEquals(loadProfileRedFlag({ race, runs: hard, checkins: [] }), { reason: "rpe_alto", date: "2026-11-12" });
   assertEquals(loadProfileRedFlag({ race, runs: [R("2026-11-10", 6, "continuo", "treino", 9), R("2026-11-12", 6, "continuo", "treino", 6)], checkins: [] }), null);
   // Recuperação em crítico: o pilar «Como acordaste» do check-in mais recente abaixo de 25.
-  assertEquals(loadProfileRedFlag({ race, runs: [], checkins: [ok, { date: "2026-11-12", sleep: 1, energy: 2, stress: 5, pain: 0 }] }), { reason: "recuperacao_critica", date: "2026-11-12" });
-  assertEquals(loadProfileRedFlag({ race, runs: [], checkins: [{ date: "2026-11-11", sleep: 1, energy: 1, stress: 5, pain: 0 }, { ...ok, date: "2026-11-12" }] }), null);
+  assertEquals(loadProfileRedFlag({ race, runs: [], checkins: [ok, { date: "2026-11-12", sleep: 1, energy: 2, stress: 5, pain: 0 }], nowISO }), { reason: "recuperacao_critica", date: "2026-11-12" });
+  assertEquals(loadProfileRedFlag({ race, runs: [], checkins: [{ date: "2026-11-11", sleep: 1, energy: 1, stress: 5, pain: 0 }, { ...ok, date: "2026-11-12" }], nowISO }), null);
+});
+
+Deno.test("loadProfileRedFlag (revisão de 5fea1e4e): só o registado depois da escolha (created_at); a recuperação só com um check-in de 48 h", () => {
+  const race = { ...MEIA, load_profile: "mais_volume", load_profile_at: "2026-11-09T12:00:00Z" };
+  // A dor do check-in dessa manhã (gravado antes da escolha) não desfaz a escolha; a da noite, sim.
+  assertEquals(loadProfileRedFlag({ race, runs: [], checkins: [{ date: "2026-11-09", sleep: 4, energy: 4, stress: 2, pain: 6, created_at: "2026-11-09T07:30:00Z" }] }), null);
+  assertEquals(loadProfileRedFlag({ race, runs: [], checkins: [{ date: "2026-11-09", sleep: 4, energy: 4, stress: 2, pain: 6, created_at: "2026-11-09T21:00:00Z" }] }), { reason: "dor", date: "2026-11-09" });
+  // As corridas também: a de manhã não conta, a da tarde sim.
+  const am = { ...R("2026-11-09", 6, "continuo", "treino", 9), created_at: "2026-11-09T08:00:00Z" };
+  const pm = { ...R("2026-11-09", 6, "recuperacao", "treino", 9), created_at: "2026-11-09T18:00:00Z" };
+  const next = { ...R("2026-11-10", 6, "continuo", "treino", 9), created_at: "2026-11-10T18:00:00Z" };
+  assertEquals(loadProfileRedFlag({ race, runs: [am, next], checkins: [] }), null);
+  assertEquals(loadProfileRedFlag({ race, runs: [pm, next], checkins: [] }), { reason: "rpe_alto", date: "2026-11-10" });
+  // Um check-in em crítico de há 3 dias já não conta.
+  const critical = { date: "2026-11-10", sleep: 1, energy: 1, stress: 5, pain: 0, created_at: "2026-11-10T07:00:00Z" };
+  assertEquals(loadProfileRedFlag({ race, runs: [], checkins: [critical], nowISO: "2026-11-11T07:00:00Z" })?.reason, "recuperacao_critica");
+  assertEquals(loadProfileRedFlag({ race, runs: [], checkins: [critical], nowISO: "2026-11-13T08:00:00Z" }), null);
+  assertEquals([isLoadProfileRevertIntervention("[perfil] O perfil…"), isLoadProfileRevertIntervention("[carga] …")], [true, false]);
 });

@@ -89,14 +89,14 @@ Deno.test("corridas com data no futuro não entram", () => {
 });
 
 Deno.test("o motivo leva a etiqueta, os números e o tipo certo", () => {
-  const comPlano = runLoadInterventionReason({ ratio: 2.4, acuteKm: 30, chronicWeeklyKm: 12.5, prescribedKm: 16, planFrom: "2026-09-18", kmOnPlanDays: 30, hasPlan: true, historyWeeks: 4, enoughHistory: true, followsPlan: false, alert: true }, TODAY);
+  const comPlano = runLoadInterventionReason({ ratio: 2.4, acuteKm: 30, chronicWeeklyKm: 12.5, prescribedKm: 16, planFrom: "2026-09-18", kmOnPlanDays: 30, hasPlan: true, historyWeeks: 4, enoughHistory: true, followsPlan: false, alert: true, profile: "prudente", limitKm: 22.5, lowBase: false }, TODAY);
   assert(comPlano.startsWith(RUN_LOAD_INTERVENTION_TAG));
   assert(comPlano.includes("30 km nos últimos 7 dias"));
   assert(comPlano.includes("12,5 km/semana"));
   assert(comPlano.includes("ACWR 2,4"));
   assertEquals(runLoadInterventionKind(comPlano), "acima_do_plano");
 
-  const semPlano = runLoadInterventionReason({ ratio: 2.4, acuteKm: 30, chronicWeeklyKm: 12.5, prescribedKm: null, planFrom: "2026-09-18", kmOnPlanDays: 30, hasPlan: true, historyWeeks: 4, enoughHistory: true, followsPlan: false, alert: true }, TODAY);
+  const semPlano = runLoadInterventionReason({ ratio: 2.4, acuteKm: 30, chronicWeeklyKm: 12.5, prescribedKm: null, planFrom: "2026-09-18", kmOnPlanDays: 30, hasPlan: true, historyWeeks: 4, enoughHistory: true, followsPlan: false, alert: true, profile: "prudente", limitKm: 22.5, lowBase: false }, TODAY);
   assertEquals(runLoadInterventionKind(semPlano), "sem_plano");
 
   assertEquals(isRunLoadIntervention("Check-in de hoje: dor 7"), false);

@@ -88,10 +88,11 @@ export interface LoadVolumeState {
   /** O status do raceVolumeOutlook: «por_planear» quando há semanas antes da
    *  prova sem plano — aí o volume não é «abaixo» e não há conflito. */
   volumeStatus: RaceVolumeOutlook["status"] | null;
-  /** O aviso de carga que a app mostra no dia-a-dia: com Prudente, como
-   *  hoje — o ACWR acima de 1,30 (cautela ou perigo, com histórico; foi o
-   *  «estás a esforçar-te demasiado» da Patty, ACWR 1,31); com Mais volume,
-   *  só acima do limite desse perfil. */
+  /** O aviso de carga que a app mostra no dia-a-dia. Com o perfil escolhido
+   *  (qualquer um), só acima do limite desse perfil — o cartão diz «até X km»
+   *  e a regra é não contradizer (revisão de 5fea1e4e). Por escolher: como
+   *  hoje, o ACWR acima de 1,30 (cautela ou perigo, com histórico; foi o
+   *  «estás a esforçar-te demasiado» da Patty, ACWR 1,31). */
   loadAlert: boolean;
   volumeBelow: boolean;
   /** Um sinal vermelho voltou o Mais volume a Prudente (loadProfileRedFlag). */
@@ -128,7 +129,7 @@ export function loadVolumeState(
       runs: list, planItems: items, todayISO, plannedUntilISO,
     })
     : null;
-  const loadAlert = profile === "mais_volume"
+  const loadAlert = chosen || profile === "mais_volume"
     ? reading.enoughHistory && reading.acuteKm > reading.limitKm + 0.05
     : reading.enoughHistory && reading.ratio !== null && reading.ratio > ACWR_SAFE_MAX;
   // «por_planear» não é «abaixo»: as semanas sem plano ainda podem somar.
@@ -170,7 +171,12 @@ export const RECOVERY_CRITICAL_SCORE = 25;
 
 export interface RedFlagCheckin extends CheckinForReadiness {
   date: string;
+  /** Quando foi gravado (e corrigido): só conta o registado depois da escolha. */
+  created_at?: string | null;
+  updated_at?: string | null;
 }
+/** O check-in que serve para a recuperação em crítico: das últimas 48 h. */
+export const RECOVERY_CHECKIN_MAX_AGE_MS = 48 * 3600 * 1000;
 export interface RedFlagRun {
   date: string;
   kind?: string | null;
@@ -188,21 +194,35 @@ export interface RedFlagRun {
  *   - recuperacao_critica: o pilar «Como acordaste» do check-in mais recente
  *     (readinessIndex.ts, checkinPillar — sono, energia, stress e dor) abaixo
  *     de 25.
- * Só conta o que é do dia em que foi escolhido em diante: uma dor de antes
- * não desfaz a escolha que ele fez depois dela.
+ * Só conta o que foi registado DEPOIS da escolha (created_at, não a data do
+ * dia: uma dor de manhã não desfaz a escolha feita à tarde — revisão de
+ * 5fea1e4e); sem created_at, só o dos dias seguintes ao da escolha. A
+ * recuperação em crítico só com um check-in das últimas 48 h.
  */
 export function loadProfileRedFlag(
-  { race, runs, checkins }: { race: ProfileRace | null | undefined; runs: RedFlagRun[] | null | undefined; checkins: RedFlagCheckin[] | null | undefined },
+  { race, runs, checkins, nowISO = new Date().toISOString() }: {
+    race: ProfileRace | null | undefined;
+    runs: RedFlagRun[] | null | undefined;
+    checkins: RedFlagCheckin[] | null | undefined;
+    nowISO?: string;
+  },
 ): { reason: LoadProfileRedFlag; date: string } | null {
   if (raceLoadProfile(race) !== "mais_volume") return null;
-  const since = (race?.load_profile_at || "").slice(0, 10);
-  if (!since) return null;
-  const recent = (checkins || []).filter((c) => typeof c?.date === "string" && c.date >= since).sort((a, b) => a.date.localeCompare(b.date));
+  const chosenAt = race?.load_profile_at ?? "";
+  const chosenMs = Date.parse(chosenAt);
+  if (!Number.isFinite(chosenMs)) return null;
+  const chosenDay = chosenAt.slice(0, 10);
+  // Registado depois da escolha: pelo created_at; sem ele, só um dia seguinte.
+  const after = (r: { date: string; created_at?: string | null }) => {
+    const at = Date.parse(r.created_at ?? "");
+    return Number.isFinite(at) ? at > chosenMs : r.date.slice(0, 10) > chosenDay;
+  };
+  const recent = (checkins || []).filter((c) => typeof c?.date === "string" && after(c)).sort((a, b) => a.date.localeCompare(b.date));
   const pain = recent.find((c) => (Number(c.pain) || 0) >= PAIN_ALARM_THRESHOLD);
   if (pain) return { reason: "dor", date: pain.date };
 
   const easy = (runs || [])
-    .filter((r) => typeof r?.date === "string" && r.date.slice(0, 10) >= since && r.kind !== "competicao" && EASY_RUN_TYPES.has(r.training_type ?? ""))
+    .filter((r) => typeof r?.date === "string" && after(r) && r.kind !== "competicao" && EASY_RUN_TYPES.has(r.training_type ?? ""))
     .sort((a, b) => a.date.localeCompare(b.date) || String(a.created_at ?? "").localeCompare(String(b.created_at ?? "")));
   for (let i = 1; i < easy.length; i++) {
     if ((Number(easy[i - 1].effort_rpe) || 0) >= RED_FLAG_RPE && (Number(easy[i].effort_rpe) || 0) >= RED_FLAG_RPE) {
@@ -211,9 +231,19 @@ export function loadProfileRedFlag(
   }
 
   const last = recent.at(-1);
-  const pillar = last ? checkinPillar(last) : null;
+  const lastAt = Date.parse(last?.updated_at ?? last?.created_at ?? `${last?.date ?? ""}T12:00:00Z`);
+  const fresh = Number.isFinite(lastAt) && Date.parse(nowISO) - lastAt <= RECOVERY_CHECKIN_MAX_AGE_MS;
+  const pillar = last && fresh ? checkinPillar(last) : null;
   if (last && pillar && pillar.score < RECOVERY_CRITICAL_SCORE) return { reason: "recuperacao_critica", date: last.date };
   return null;
+}
+
+/** O assunto por resolver aberto quando um sinal vermelho volta o Mais
+ *  volume a Prudente (coach-daily-summary): a etiqueta no início do motivo,
+ *  como «[carga]» — para o Início (carolTopics.js) lhe dar a frase dele. */
+export const LOAD_PROFILE_REVERT_TAG = "[perfil]";
+export function isLoadProfileRevertIntervention(reason: string | null | undefined): boolean {
+  return typeof reason === "string" && reason.startsWith(LOAD_PROFILE_REVERT_TAG);
 }
 
 export const RED_FLAG_LABELS: Record<LoadProfileRedFlag, string> = {
