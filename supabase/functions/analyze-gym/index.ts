@@ -59,7 +59,8 @@ import { withUsageRecording } from "../_shared/usageRecorder.ts";
 import { findByClientRequestId, insertOnce, parseClientRequestId, settleReplay, STILL_SAVING_MESSAGE } from "../_shared/idempotency.ts";
 import { parseAnsweredQuestions, parseRecordQuestions, RECORD_QUESTIONS_SCHEMA, recordAnswersSection, recordQuestionsRule } from "../_shared/recordQuestions.ts";
 import { ACTIVITY_PERIODS_PROMPT, ACTIVITY_PERIODS_SCHEMA, durationBreakdown, sessionDurationSeconds } from "../_shared/formulas/sessionDuration.ts";
-import { cardioSpecFor } from "../_shared/formulas/cardioFields.ts";
+import { isIsometricExercise } from "../_shared/formulas/isometric.ts";
+import { foodKey } from "../_shared/formulas/foodKey.ts";
 
 const MAX_PHOTOS = 6;
 const MAX_NOTES_LENGTH = 500;
@@ -686,7 +687,12 @@ const fmtNum = (n: number) => String(Math.round(n * 10) / 10).replace(".", ",");
 
 /** As séries de uma sessão, uma linha por exercício pela ordem em que
  *  aparecem: "Peso morto — 3 séries de 10/10/8 reps a 20 kg". */
-export function formatExerciseLines(rows: SetRow[] | null | undefined, maxExercises = 15): string[] {
+export function formatExerciseLines(
+  rows: SetRow[] | null | undefined,
+  maxExercises = 15,
+  /** Os exercícios que o registo deu como força (exercises_meta, block_type). */
+  strengthNames: Set<string> | null = null,
+): string[] {
   const byName = new Map<string, SetRow[]>();
   for (const r of rows || []) {
     const name = typeof r?.exercise_name === "string" ? r.exercise_name.trim() : "";
@@ -706,8 +712,10 @@ export function formatExerciseLines(rows: SetRow[] | null | undefined, maxExerci
     const ordered = sets.slice().sort((a, b) => (a.set_index ?? 0) - (b.set_index ?? 0));
     // Um isométrico (#118, «30 reps» num hollow hold): segundos por série —
     // "Hollow hold — 3 séries de 30/30/25 s". Não se somam como cardio.
+    // Só um isométrico ou um bloco de força: um cardio fora do catálogo (corrida,
+    // ski erg) só com tempo continua somado (revisão de 2b51cca7).
     if (ordered.every((s) => !s.reps && !s.weight && !s.distance_km && !s.laps) && ordered.some((s) => s.duration_seconds) &&
-      !cardioSpecFor(name)) {
+      (isIsometricExercise(name) || !!strengthNames?.has(foodKey(name)))) {
       const secs = ordered.map((s) => (s.duration_seconds ? fmtNum(s.duration_seconds) : "?"));
       const count = ordered.length === 1 ? "1 série" : `${ordered.length} séries`;
       lines.push(`${name} — ${count} de ${secs.every((x) => x === secs[0]) ? secs[0] : secs.join("/")} s`);
@@ -856,6 +864,9 @@ async function generateGymCoachNotes(
     sets?: SetRow[];
     // As perguntas da leitura e as respostas dele (bug #106, recordAnswersSection).
     answers?: string;
+    // Os exercícios que o registo deu como força (exercises_meta): um bloco de
+    // força só com tempo é um isométrico, não cardio (#118).
+    strengthNames?: Set<string> | null;
   },
   // deno-lint-ignore no-explicit-any
   previousSessions: any[],
@@ -921,7 +932,7 @@ async function generateGymCoachNotes(
   ].filter(Boolean).join("\n");
 
   const answersBlock = session.answers ? `\n${session.answers}` : "";
-  const exerciseLines = formatExerciseLines(session.sets);
+  const exerciseLines = formatExerciseLines(session.sets, 15, session.strengthNames ?? null);
   const exercisesSection = exerciseLines.length
     ? `\nExercícios registados nesta sessão:\n${exerciseLines.map((l) => `- ${l}`).join("\n")}\n`
     : "";
@@ -1133,7 +1144,11 @@ async function attachGymCoachNotes(
     });
 
     const result = await generateGymCoachNotes(
-      { date: ctx.date, kind: ctx.kind, categories: ctx.categories, classTypes: ctx.classTypes, metrics: ctx.metrics, notes: ctx.notes, sets: ctx.sets, answers: ctx.answers },
+      {
+        date: ctx.date, kind: ctx.kind, categories: ctx.categories, classTypes: ctx.classTypes, metrics: ctx.metrics, notes: ctx.notes, sets: ctx.sets,
+        answers: ctx.answers,
+        strengthNames: new Set((ctx.meta || []).filter((m) => m.block_type === "forca").map((m) => foodKey(m.name))),
+      },
       previous || [],
       planItems,
       frameRace,
