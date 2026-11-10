@@ -4,7 +4,7 @@
 // formulas/loadProfile.ts.
 
 import {
-  LOAD_PROFILE_LABELS, RED_FLAG_LABELS, type LoadProfileRedFlag, type LoadVolumeState, type ProfileRace,
+  LOAD_PROFILE_LABELS, LOAD_PROFILE_REVERT_TAG, RED_FLAG_LABELS, type LoadProfileRedFlag, type LoadVolumeState, type ProfileRace,
 } from "./formulas/loadProfile.ts";
 import { LOW_BASE_RAMP_KM, LOW_BASE_RAMP_KM_MORE_VOLUME } from "./formulas/runLoadAlert.ts";
 
@@ -94,7 +94,7 @@ export function lowBaseRampKm(profile: string): number {
 
 /** O motivo do assunto aberto quando um sinal vermelho volta o Mais volume a
  *  Prudente (coach-daily-summary): a Carol diz-lho uma vez, no chat. */
-export const LOAD_PROFILE_REVERT_TAG = "[perfil]";
+export { LOAD_PROFILE_REVERT_TAG };
 export function loadProfileRevertReason(raceName: string | null | undefined, reason: LoadProfileRedFlag): string {
   return `${LOAD_PROFILE_REVERT_TAG} O perfil de carga de «${raceName ?? "a prova"}» voltou de Mais volume a Prudente sozinho: ` +
     `${RED_FLAG_LABELS[reason]}. Diz-lhe uma vez, sem alarme, que foi por segurança, que o limite volta a ser o do Prudente ` +

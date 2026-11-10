@@ -4635,11 +4635,48 @@ export function matchRaceByName<T extends { name?: any }>(races: T[], name: stri
 /** Grava na prova o que se acordou no chat. Devolve "Prova atualizada: …"
  *  em caso de sucesso (é o prefixo que o handler usa para avisar o cliente). */
 // deno-lint-ignore no-explicit-any
-/** O perfil de carga só muda a pedido dele: a mensagem tem de o dizer. */
-export const LOAD_PROFILE_REQUEST_RE = /(prudente|mais\s+volume|perfil\s+(de\s+)?carga)/i;
+/** O perfil de carga só muda a pedido dele (revisão de 5fea1e4e): a mensagem
+ *  tem de dizer o perfil escolhido — «mais volume» para mais_volume,
+ *  «prudente» para prudente —, sem o negar («não quero mais volume») nem o
+ *  perguntar («prudente ou mais volume?»). «A segunda opção», «a primeira» ou
+ *  «essa» valem quando a última mensagem dela apresentou as duas opções: pela
+ *  ordem em que as apresentou («essa» é a última que disse). */
+const LOAD_PROFILE_TERMS: Record<LoadProfile, RegExp> = { mais_volume: /mais\s+volume/i, prudente: /prudente/i };
+const LOAD_PROFILE_NEGATION_RE = /(?:^|[^a-zà-ú])(?:não|nao|nunca|nem)(?![a-zà-ú])/i;
+const LOAD_PROFILE_CLAUSE_RE = /[,;:—–]|(?:^|[^a-zà-ú])(?:mas|e|que|ou|porque|pois)(?![a-zà-ú])/gi;
+const lastClauseOf = (text: string) => {
+  let cut = 0;
+  for (const b of text.matchAll(LOAD_PROFILE_CLAUSE_RE)) cut = (b.index ?? 0) + b[0].length;
+  return text.slice(cut);
+};
+/** O termo aparece afirmado na frase: sem negação na oração antes dele. */
+const affirmedIn = (sentence: string, re: RegExp): boolean => {
+  const m = re.exec(sentence);
+  return !!m && !LOAD_PROFILE_NEGATION_RE.test(lastClauseOf(sentence.slice(0, m.index)));
+};
+export function loadProfileRequested(value: LoadProfile, userMessage: string | null, lastModelText: string | null = null): boolean {
+  const text = String(userMessage ?? "");
+  const other: LoadProfile = value === "mais_volume" ? "prudente" : "mais_volume";
+  for (const sentence of text.split(/(?<=[.!?])\s+|\n+/)) {
+    if (!LOAD_PROFILE_TERMS[value].test(sentence) || /\?\s*$/.test(sentence.trim())) continue;
+    if (!affirmedIn(sentence, LOAD_PROFILE_TERMS[value])) continue;
+    // Os dois afirmados na mesma frase («prudente ou mais volume») não é escolha.
+    if (affirmedIn(sentence, LOAD_PROFILE_TERMS[other])) continue;
+    return true;
+  }
+  // «A segunda opção», «essa»: só se a última mensagem dela deu as duas.
+  const last = String(lastModelText ?? "");
+  const iPrud = last.search(LOAD_PROFILE_TERMS.prudente);
+  const iMore = last.search(LOAD_PROFILE_TERMS.mais_volume);
+  if (iPrud < 0 || iMore < 0 || /\?\s*$/.test(text.trim())) return false;
+  const [first, second]: LoadProfile[] = iPrud < iMore ? ["prudente", "mais_volume"] : ["mais_volume", "prudente"];
+  const ord = /(?:^|[^a-zà-ú])(primeira|segunda|essa|esta)(?![a-zà-ú])/i.exec(text);
+  if (!ord || LOAD_PROFILE_NEGATION_RE.test(lastClauseOf(text.slice(0, ord.index + 1)))) return false;
+  return (ord[1].toLowerCase() === "primeira" ? first : second) === value;
+}
 
 // deno-lint-ignore no-explicit-any
-export async function runUpdateRaceEvent(sb: any, userId: string, args: any, userMessage: string | null = null): Promise<string> {
+export async function runUpdateRaceEvent(sb: any, userId: string, args: any, userMessage: string | null = null, lastModelText: string | null = null): Promise<string> {
   const raceId = typeof args?.race_id === "string" ? args.race_id.trim() : "";
   const raceName = typeof args?.race_name === "string" ? args.race_name.trim() : "";
   if (!raceId && !raceName) return "Erro: indica race_id ou race_name.";
@@ -4712,7 +4749,7 @@ export async function runUpdateRaceEvent(sb: any, userId: string, args: any, use
   }
   // O perfil de carga (2026-11-09): a escolha é dele — só com a mensagem dele a pedi-lo.
   if (args?.load_profile === "prudente" || args?.load_profile === "mais_volume") {
-    if (!LOAD_PROFILE_REQUEST_RE.test(userMessage ?? "")) {
+    if (!loadProfileRequested(args.load_profile as LoadProfile, userMessage, lastModelText)) {
       return "Erro: o perfil de carga só muda a pedido explícito do atleta, na mensagem dele. Explica-lhe as duas opções " +
         "(Prudente e Mais volume) e pergunta qual prefere; grava quando ele disser.";
     }
@@ -9491,7 +9528,7 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
           goalsWereUpdated = goalsWereUpdated || result.startsWith("Metas atualizadas");
             goalWasProposed = goalWasProposed || result.startsWith("Proposta de altera");
         } else if (name === "update_race_event") {
-          result = await runUpdateRaceEvent(sb, userId, args || {}, message);
+          result = await runUpdateRaceEvent(sb, userId, args || {}, message, lastModelText);
           raceWasUpdated = raceWasUpdated || result.startsWith("Prova atualizada");
         } else if (name === "save_coach_note") {
           result = await runSaveCoachNote(sb, userId, args || {});

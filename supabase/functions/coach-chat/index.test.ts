@@ -1,6 +1,6 @@
 import { assert, assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
 import { runSaveCoachNote, buildCoachNotesContext, classifyTurn, allowedToolsFor, buildTools, aggregateMealsByDate, runGetNutritionHistory, summariseSessions, formatSessionLine, bestLoadsLine, runGetGymHistory, runProposeTrainingPlan, runUpdateGoals, runSaveMealSuggestions, buildSystemInstruction, buildPlanContext, resolveCoachingMode, buildCoachingModeContext, computeACWR, computeGymMetrics, buildNutritionTargets, computeBodyMetrics, summariseRuns, firstNameOf, buildRaceEventsContext, computeMealHabits, buildSuggestionAdherencePanel, buildMealMacros, extractReplyText, buildProactiveInstruction, buildProactiveUserTurn, shouldSkipProactive, parseProactiveKey, wasProactiveDelivered, recordProactiveDelivered, PROACTIVE_TRIGGERS, PROACTIVE_QUIET_HOURS, parseRaceOutcome, buildRaceOutcomeContext, raceAfterInstruction, raceOutcomeNote, buildRacePlanContext, buildSplitsComparisonContext, buildRaceEveContext, hhmm, detectRaceFollowup, buildRaceFollowupContext, runUpdateRaceEvent, matchRaceByName, normalizeRaceName, buildRaceCaptionPrompt, computeMealTypicalTimes, buildGoalsInterventionInstruction, buildInterventionStartTurn, runResolveIntervention, closeInterventionOnTalk, readTalkedIntervention, buildTalkedInterventionInstruction, buildAdaptationInterventionInstruction, findAnsweredDuplicate, DUPLICATE_WINDOW_MS, type RaceOutcome, type BodyAssessmentRow, type TurnCase } from "./index.ts";
-import { buildAcwrLine, checkPlanLoad, loadPriorGym } from "./index.ts";
+import { buildAcwrLine, checkPlanLoad, loadPriorGym, loadProfileRequested } from "./index.ts";
 import { RESPONSE_SCHEMA, RESPONSE_SCHEMA_BASE, shouldRetryWithoutRecommendations, saveRecommendations } from "./index.ts";
 import { CHAT_OWN_FAILURE_TEXT, CHAT_SESSION_TEXT, CHAT_MESSAGE_NOT_SAVED_TEXT } from "./index.ts";
 import { failureReplyFor } from "./index.ts";
@@ -4184,6 +4184,30 @@ Deno.test("update_race_event: o perfil de carga só a pedido explícito dele, na
   assertEquals(c.updates[0].patch.load_profile, "prudente");
 });
 
+Deno.test("loadProfileRequested (revisão de 5fea1e4e): o termo do perfil escolhido, sem negação nem pergunta; «a segunda», «essa» pela última mensagem dela", () => {
+  assertEquals(loadProfileRequested("mais_volume", "Quero o mais volume."), true);
+  assertEquals(loadProfileRequested("mais_volume", "Não, quero mais volume"), true);
+  assertEquals(loadProfileRequested("mais_volume", "Não quero prudente, quero mais volume."), true);
+  // O termo do OUTRO perfil não serve.
+  assertEquals(loadProfileRequested("mais_volume", "Fica prudente."), false);
+  assertEquals(loadProfileRequested("prudente", "Fica prudente."), true);
+  // Negação e pergunta.
+  assertEquals(loadProfileRequested("mais_volume", "Não quero mais volume."), false);
+  assertEquals(loadProfileRequested("mais_volume", "Prudente ou mais volume?"), false);
+  assertEquals(loadProfileRequested("mais_volume", "O que é o mais volume?"), false);
+  assertEquals(loadProfileRequested("prudente", "prudente ou mais volume, não sei"), false);
+  assertEquals(loadProfileRequested("mais_volume", "Ajusta o plano para reforçar o volume."), false);
+  // «A segunda opção», «essa»: só com as duas opções na última mensagem dela, pela ordem dela.
+  const both = "Tens duas opções: Prudente, até 28,4 km, ou Mais volume, até 30,8 km. Qual preferes?";
+  assertEquals(loadProfileRequested("mais_volume", "A segunda opção.", both), true);
+  assertEquals(loadProfileRequested("prudente", "A segunda opção.", both), false);
+  assertEquals(loadProfileRequested("prudente", "A primeira.", both), true);
+  assertEquals(loadProfileRequested("mais_volume", "Essa.", both), true);
+  assertEquals(loadProfileRequested("mais_volume", "Não quero a segunda.", both), false);
+  assertEquals(loadProfileRequested("mais_volume", "A segunda?", both), false);
+  assertEquals(loadProfileRequested("mais_volume", "A segunda opção.", "Como te sentes?"), false);
+});
+
 Deno.test("update_race_event: ritmo, hora, prioridade e nível; recusa o que não faz sentido", async () => {
   const { sb, updates } = makeRaceSb([TEJO]);
   const result = await runUpdateRaceEvent(sb, "user-1", { race_id: "r1", target_pace_seconds_per_km: 330, start_time: "9:00", race_priority: "b", experience_level: "medio" });
@@ -4897,11 +4921,14 @@ Deno.test("perfil de carga: o chat e o plano leem o perfil da próxima prova pri
   assertStringIncludes(src, "const loadProfileNow = raceLoadProfile(governingRace(profileRaces, todayISO));");
   assertStringIncludes(src, "runLoadReading({ runs: recentRuns || [], planItems: loadPlanItems, today: todayISO, profile: loadProfileNow });");
   assertStringIncludes(src, "const loadProfile = raceLoadProfile(governingRace(await fetchLoadProfileRaces(sb, userId, period_start), period_start));");
-  assertStringIncludes(src, "result = await runUpdateRaceEvent(sb, userId, args || {}, message);");
+  assertStringIncludes(src, "result = await runUpdateRaceEvent(sb, userId, args || {}, message, lastModelText);");
   const summary = await Deno.readTextFile(new URL("../coach-daily-summary/index.ts", import.meta.url));
   assertStringIncludes(summary, "const redFlag = loadProfileRedFlag({ race: loadProfileRace, runs: loadRuns || [], checkins: profileCheckins || [] });");
   assertStringIncludes(summary, ".eq(\"load_profile\", \"mais_volume\")");
   assertStringIncludes(summary, "profile: loadProfile,");
+  // A volta a Prudente sem origem: o motivo pode ser uma dor, não a carga.
+  assertStringIncludes(summary, "coach_intervention_reason: reason, coach_intervention_origin: null })");
+  assertStringIncludes(summary, "\"date, sleep, energy, stress, pain, created_at, updated_at\""); 
   assertStringIncludes(summary, "perfil_de_carga: loadProfileLine");
 });
 

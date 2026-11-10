@@ -1168,7 +1168,7 @@ Deno.serve(withUsageRecording("coach-daily-summary", async (req) => {
     // diz-lho uma vez (o assunto por resolver, como o da carga).
     const [profileRaces, { data: profileCheckins }] = await Promise.all([
       fetchLoadProfileRaces(sb, userId, today),
-      sb.from("daily_checkins").select("date, sleep, energy, stress, pain")
+      sb.from("daily_checkins").select("date, sleep, energy, stress, pain, created_at, updated_at")
         .eq("user_id", userId).gte("date", addDaysISO(today, -14)).lte("date", today),
     ]);
     let loadProfileRace = governingRace(profileRaces, today);
@@ -1186,8 +1186,10 @@ Deno.serve(withUsageRecording("coach-daily-summary", async (req) => {
         const raceId = loadProfileRace.id;
         for (let i = 0; i < profileRaces.length; i++) if (profileRaces[i].id === raceId) profileRaces[i] = loadProfileRace;
         const reason = loadProfileRevertReason(loadProfileRace.name, redFlag.reason);
+        // Sem origem: o motivo pode ser uma dor ou o RPE, não a carga (revisão
+        // de 5fea1e4e). O Início reconhece-o pela etiqueta [perfil].
         const { data: opened, error: openError } = await sb.from("profiles")
-          .update({ coach_intervention_status: "needed", coach_intervention_reason: reason, coach_intervention_origin: INTERVENTION_ORIGIN.LOAD })
+          .update({ coach_intervention_status: "needed", coach_intervention_reason: reason, coach_intervention_origin: null })
           .eq("id", userId)
           .or("coach_intervention_status.is.null,coach_intervention_status.in.(none,resolved)")
           .select("id");
