@@ -259,3 +259,29 @@ describe('ExerciseEditor — o foco depois do ✓', () => {
     expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Série 1 de Prensa feita' }));
   });
 });
+
+/* #118 (2026-11-10, o Rui: «No hollow não são 30 reps mas sim segundos»). */
+describe('ExerciseEditor — isométricos em segundos (#118)', () => {
+  it('o hollow vem em «Segundos» (5 em 5); pode trocar para reps', () => {
+    render(<Harness initial={[newExercise({ name: 'Hollow hold', sets: [newSet()] })]} />);
+    abrir('Hollow hold');
+    expect(screen.getByRole('button', { name: 'Segundos' })).toHaveAttribute('aria-pressed', 'true');
+    const campo = screen.getByLabelText('Segundos da série 1 — Hollow hold');
+    fireEvent.change(campo, { target: { value: '30' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Mais 5 segundos da série 1 — Hollow hold' }));
+    expect(state()[0].sets[0].reps).toBe('35');
+    expect(screen.getByText(/1 série × 35 s/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Reps' }));
+    expect(state()[0].repUnit).toBe('reps');
+    expect(screen.getByLabelText('Repetições da série 1 — Hollow hold')).toBeTruthy();
+  });
+
+  it('um exercício de força normal vem em reps, e pode passar a segundos', () => {
+    render(<Harness initial={[newExercise({ name: 'Supino', sets: [newSet()] })]} />);
+    abrir('Supino');
+    expect(screen.getByRole('button', { name: 'Reps' })).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(screen.getByRole('button', { name: 'Segundos' }));
+    expect(state()[0].repUnit).toBe('s');
+    expect(screen.getByLabelText('Segundos da série 1 — Supino')).toBeTruthy();
+  });
+});

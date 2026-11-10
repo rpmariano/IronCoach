@@ -47,6 +47,23 @@ const num = (v) => {
 
 export const exerciseType = (ex) => (ex?.type === 'cardio' ? 'cardio' : 'forca');
 
+/* #118 (2026-11-10, o Rui: «No hollow não são 30 reps mas sim segundos»). Os isométricos (hollow,
+   prancha, wall sit, dead hang…) contam-se em segundos, não em repetições. Na força, cada exercício
+   tem a unidade da série — 'reps' ou 's' (`repUnit`); sem escolha, vem do nome. Em segundos, o
+   valor vive no mesmo campo da série (s.reps, para a sugestão, o ✓ e o − / + servirem iguais) e
+   grava-se em workout_session_sets.duration_seconds, com reps a null — a coluna já existe e a
+   analyze-gym já a aceita numa série de força (parseManualSets). */
+const fold = (v) => String(v || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+const ISOMETRIC_RE = /\b(hollow|prancha|plank|wall ?sit|agachamento (na parede|isometrico)|cadeirinha|dead ?hang|suspensao|l[- ]?sit|isometric\w*|isometri\w*|estatic\w*|holds?|superman|copenhag\w*)\b/;
+export const isIsometricName = (name) => ISOMETRIC_RE.test(fold(name));
+/** A unidade das séries de um exercício de força: a escolhida, senão a do nome. */
+export const repUnitOf = (ex) => (ex?.repUnit === 's' || ex?.repUnit === 'reps' ? ex.repUnit : (isIsometricName(ex?.name) ? 's' : 'reps'));
+/** Os segundos escritos num objetivo («30 s», «45 segundos», «hold 20s»), ou null. */
+export function secondsFromGoal(goal) {
+  const m = fold(goal).match(/(\d+)\s*(s|seg|segs|segundos?)\b/);
+  return m ? Number(m[1]) : null;
+}
+
 export function newSet(values = {}) {
   return { key: uid('s'), reps: '', weight: '', done: false, durationMin: '', distance: '', laps: '', ...values };
 }
@@ -62,7 +79,7 @@ export function distanceUnitOf(ex) {
   return ex?.distanceUnit || cardioSpecFor(ex?.name)?.distanceUnit || 'km';
 }
 
-export function newExercise({ name = '', type, goal = '', fields = null, distanceUnit = null, planBlockIndex = null, sets = null } = {}) {
+export function newExercise({ name = '', type, goal = '', fields = null, distanceUnit = null, planBlockIndex = null, sets = null, repUnit = null } = {}) {
   const t = type || (cardioSpecFor(name) ? 'cardio' : 'forca');
   return {
     key: uid('e'),
@@ -72,6 +89,7 @@ export function newExercise({ name = '', type, goal = '', fields = null, distanc
     fields,
     distanceUnit,
     planBlockIndex,
+    ...(repUnit ? { repUnit } : {}),
     sets: sets ?? (t === 'cardio' ? [newSet()] : [newSet()]),
   };
 }
@@ -231,10 +249,17 @@ export function flattenExercises(exercises) {
         rows.push(row);
         return;
       }
-      const reps = blank(s.reps) ? null : parseInt(s.reps);
+      const value = blank(s.reps) ? null : parseInt(s.reps);
       const weight = blank(s.weight) ? null : parseFloat(String(s.weight).replace(',', '.'));
-      if (reps === null && weight === null) return;
-      rows.push({ exercise_name: name, set_index: i, reps, weight });
+      // #118: em segundos, o valor vai para duration_seconds e as reps ficam vazias.
+      if (repUnitOf(ex) === 's') {
+        const secs = value && value > 0 ? value : null;
+        if (secs === null && weight === null) return;
+        rows.push({ exercise_name: name, set_index: i, reps: null, weight, duration_seconds: secs });
+        return;
+      }
+      if (value === null && weight === null) return;
+      rows.push({ exercise_name: name, set_index: i, reps: value, weight });
     });
   }
   return rows;
@@ -279,9 +304,11 @@ export function exercisesFromSession(session) {
   return Array.from(grouped.entries()).map(([name, rows], i) => {
     const meta = metaByKey.get(foodKey(name));
     const isCardioRow = (r) => (r.duration_seconds || r.distance_km || r.laps) && !r.reps && !r.weight;
+    // #118: um isométrico gravado só com tempo (sem meta antiga) é força em segundos, não cardio.
     const type = meta?.block_type === 'cardio' || meta?.block_type === 'forca'
       ? meta.block_type
-      : (rows.every(isCardioRow) ? 'cardio' : 'forca');
+      : (rows.every(isCardioRow) && !isIsometricName(name) ? 'cardio' : 'forca');
+    const inSeconds = type === 'forca' && rows.some(r => Number(r.duration_seconds) > 0) && rows.every(r => r.reps == null || r.reps === '');
     const metres = cardioSpecFor(name)?.distanceUnit === 'm';
     const sorted = rows.slice().sort((a, b) => (a.set_index ?? 0) - (b.set_index ?? 0));
     const fields = type === 'cardio'
@@ -296,9 +323,10 @@ export function exercisesFromSession(session) {
       fields: fields && fields.length ? fields : null,
       distanceUnit: null,
       planBlockIndex: Number.isInteger(meta?.plan_block_index) ? meta.plan_block_index : null,
+      ...(type === 'forca' ? { repUnit: inSeconds ? 's' : 'reps' } : {}),
       sets: sorted.map((r, j) => ({
         key: r.id || `s-${i}-${j}`,
-        reps: r.reps ?? '',
+        reps: inSeconds ? (r.duration_seconds ? String(r.duration_seconds) : '') : (r.reps ?? ''),
         weight: r.weight ?? '',
         done: false,
         durationMin: r.duration_seconds ? String(Math.round((r.duration_seconds / 60) * 10) / 10) : '',
@@ -359,13 +387,18 @@ export function exercisesFromPreview(preview, planBlocks = []) {
         })],
       });
     }
+    // #118: as séries lidas só com tempo (o hollow do Hevy, «0:30») são segundos.
+    const timed = (pe.sets || []).length > 0 && pe.sets.some(s => Number(s.duration_seconds) > 0) && pe.sets.every(s => !s.reps);
     return newExercise({
       name: pe.name,
       type: 'forca',
       goal,
       planBlockIndex: idx,
+      ...(timed ? { repUnit: 's' } : {}),
       // Nomeado sem números (bug #67): uma série vazia para ele preencher.
-      sets: (pe.sets || []).length ? pe.sets.map(s => newSet({ reps: s.reps ?? '', weight: s.weight ?? '' })) : null,
+      sets: (pe.sets || []).length
+        ? pe.sets.map(s => newSet({ reps: timed ? (s.duration_seconds ? String(Math.round(s.duration_seconds)) : '') : (s.reps ?? ''), weight: s.weight ?? '' }))
+        : null,
     });
   });
 }

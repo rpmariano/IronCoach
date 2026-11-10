@@ -119,3 +119,18 @@ describe('mealSuggestionsFor — a refeição sugerida no plano (Refeição, §1
     expect(mealSuggestionsFor(DAY, PLANS, [dia({ plan_id: 'p2' })], [], 'almoco')).toEqual([]);
   });
 });
+
+/* #118: o plano só tem reps; num isométrico, o alvo vem em segundos — o do objetivo, senão o número. */
+describe('exercisesFromPrescription — isométricos em segundos (#118)', () => {
+  it('hollow 3×30 → 3 séries com alvo de 30 s; prancha com «hold 45 s» no objetivo → 45 s', async () => {
+    const { exercisesFromPrescription } = await import('./planPrefill');
+    const [hollow, prancha, supino] = exercisesFromPrescription({ blocks: [
+      { type: 'forca', name: 'Hollow hold', sets: 3, reps: 30, goal: 'lombar colada ao chão' },
+      { type: 'forca', name: 'Prancha', sets: 2, reps: 1, goal: 'hold 45 s' },
+      { type: 'forca', name: 'Supino', sets: 3, reps: 10 },
+    ] });
+    expect([hollow.repUnit, hollow.sets.length, hollow.sets[0].plan.reps]).toEqual(['s', 3, '30']);
+    expect([prancha.repUnit, prancha.sets[0].plan.reps]).toEqual(['s', '45']);
+    expect([supino.repUnit, supino.sets[0].plan.reps]).toEqual([undefined, '10']);
+  });
+});
