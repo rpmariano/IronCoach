@@ -1,5 +1,6 @@
 import React from 'react';
-import { ImagePlus, Sparkles, X } from 'lucide-react';
+import { ImagePlus, Loader2, Sparkles, X } from 'lucide-react';
+import Button from '../Button';
 
 /* Os prints de um registo, opcionais — escolher, ver, tirar e "Ler os prints":
    a Carol lê-os e preenche o formulário SEM gravar; o atleta revê e só
@@ -9,20 +10,23 @@ import { ImagePlus, Sparkles, X } from 'lucide-react';
    módulo (Ginásio por omissão, Corpo, …) e `emptyExtra` uma linha a mais no
    vazio (ex.: o ecrã da Renpho que traz tudo). */
 /** O botão «Ler os prints e preencher» (#106): a Carol lê e preenche, sem gravar. Também nas
-    refeições, junto das fotos (com `label`/`busyLabel` próprios). A cor vem de --pr-accent, ou `accent`. */
+    refeições, junto das fotos (com `label`/`busyLabel` próprios).
+    #119 (2026-11-10, o Rui: «tem de ter muito mais destaque»): botão principal — cheio na cor do
+    módulo (`accent`), largo, 14 px e com ícone; o mesmo Button do «Analisar» da barra. */
 export function ReadPrintsButton({ onRead, reading = false, label = 'Ler os prints e preencher', busyLabel = 'A ler os prints…', accent = null }) {
   return (
-    <button
-      type="button"
+    <Button
+      variant="module"
+      moduleColor={accent || 'var(--pr-accent)'}
       onClick={onRead}
       disabled={reading}
       aria-busy={reading || undefined}
-      className="w-full min-h-[44px] rounded-xl border text-[12px] font-bold flex items-center justify-center gap-2 transition active:scale-[0.99] disabled:opacity-60"
-      style={{ ...(accent ? { '--pr-accent': accent } : {}), borderColor: 'color-mix(in srgb, var(--pr-accent) 55%, transparent)', color: 'var(--pr-accent)', background: 'color-mix(in srgb, var(--pr-accent) 10%, transparent)' }}
+      data-testid="read-prints-button"
+      className="w-full min-h-[52px] text-[14px]"
+      icon={reading ? <Loader2 size={18} className="animate-spin" aria-hidden="true" /> : <Sparkles size={18} aria-hidden="true" />}
     >
-      <Sparkles size={14} />
-      {reading ? busyLabel : label}
-    </button>
+      <span>{reading ? busyLabel : label}</span>
+    </Button>
   );
 }
 
@@ -67,7 +71,7 @@ export default function PhotoReadSection({
             </label>
           )}
           {onRead ? (
-            <ReadPrintsButton onRead={onRead} reading={reading} />
+            <ReadPrintsButton onRead={onRead} reading={reading} accent={accent} />
           ) : autoReadNote && (
             <p className="text-[11.5px] leading-relaxed text-[var(--text-2)]" data-testid="photo-auto-read-note">{autoReadNote}</p>
           )}

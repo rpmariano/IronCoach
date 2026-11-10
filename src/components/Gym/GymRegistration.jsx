@@ -572,8 +572,11 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
       if (!Array.isArray(analysed.workout_session_sets) || analysed.workout_session_sets.length === 0) {
         console.warn('Aviso: análise retornou 0 séries', data);
       }
+      /* #121 (2026-11-10): a lista de AGORA, não a do render em que se tocou em gravar. A análise
+         demora; se as sessões chegaram ao store entretanto (a app acabada de abrir), a lista do clique
+         era [] — gravava-se [esta] por cima das 16 e a Carol dizia «O primeiro treino de ginásio». */
       const sessionWithSets = await persistSessionStartTime(analysed);
-      setGymSessions(upsertById(gymSessions, sessionWithSets));
+      setGymSessions(upsertById(useAppStore.getState().gymSessions, sessionWithSets));
       requestId.renew();
       await completePlanItemForSession(sessionWithSets);
       useAppStore.getState().loadExerciseLocker?.();
@@ -620,7 +623,7 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
         console.warn('Aviso: análise retornou 0 séries', data);
       }
       const sessionWithSets = await persistSessionStartTime(analysed);
-      setGymSessions(upsertById(gymSessions, sessionWithSets));
+      setGymSessions(upsertById(useAppStore.getState().gymSessions, sessionWithSets));
       requestId.renew();
 
       // Se esta sessão vem do plano (ou bate com um treino de ginásio
@@ -1006,7 +1009,30 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
         />
       </RegistrationSection>
 
-      <RegistrationSection step={3} title="Como correu" optional className="[&>*]:mb-0!">
+      {/* #120 (2026-11-10, o Rui: «As fotos têm de estar antes do ponto 3»): os prints da app de
+          treino vêm a seguir aos exercícios e antes de «Como correu» (eram o passo 4, desde o #98) —
+          tiram-se depois de registar os exercícios, e a leitura preenche também as métricas do 4.
+          Escondido a editar: editar é sempre pelos campos, sem foto nova (mesmo
+          padrão da Corrida/Refeição). #106: com prints, o primeiro passo é «Ler os prints e
+          preencher» (desfaz o bug #72); o «Analisar treino» só vem depois da leitura. */}
+      {!isEditing && (
+        <RegistrationSection step={3} title="Prints da sessão" optional done={photos.length > 0} className="[&>*]:mb-0!">
+          <PhotoReadSection
+            photos={photos}
+            maxPhotos={MAX_PHOTOS}
+            onSelect={handlePhotoSelect}
+            onRemove={removePhoto}
+            // #110: a leitura faz-se sempre aqui, junto das fotos (por ler, o «Analisar» da barra fica desativado); depois de lidos, este deixa reler.
+            onRead={handleRead}
+            reading={reading}
+            note={readNote}
+          />
+          <PrintQuestions questions={printQuestions} answers={printAnswers} onChange={setPrintAnswers} />
+        </RegistrationSection>
+      )}
+
+      {/* A editar não há prints: «Como correu» é o passo 3. */}
+      <RegistrationSection step={isEditing ? 3 : 4} title="Como correu" optional className="[&>*]:mb-0!">
         <div>
           <label className="text-[11px] text-[var(--text-3)] mb-1.5 block font-semibold">Métricas do relógio (opcional)</label>
           <div className="grid grid-cols-2 gap-2.5">
@@ -1097,26 +1123,6 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
               registo e a Carol lê-as ao analisar. */}
         </div>
       </RegistrationSection>
-
-      {/* #98: os prints da app de treino vêm no fim — tiram-se depois de registar os exercícios,
-          antes de gravar. Escondido a editar: editar é sempre pelos campos, sem foto nova (mesmo
-          padrão da Corrida/Refeição). #106: com prints, o primeiro passo é «Ler os prints e
-          preencher» (desfaz o bug #72); o «Analisar treino» só vem depois da leitura. */}
-      {!isEditing && (
-        <RegistrationSection step={4} title="Prints da sessão" optional done={photos.length > 0} className="[&>*]:mb-0!">
-          <PhotoReadSection
-            photos={photos}
-            maxPhotos={MAX_PHOTOS}
-            onSelect={handlePhotoSelect}
-            onRemove={removePhoto}
-            // #110: a leitura faz-se sempre aqui, junto das fotos (por ler, o «Analisar» da barra fica desativado); depois de lidos, este deixa reler.
-            onRead={handleRead}
-            reading={reading}
-            note={readNote}
-          />
-          <PrintQuestions questions={printQuestions} answers={printAnswers} onChange={setPrintAnswers} />
-        </RegistrationSection>
-      )}
 
         {/* A intervenção da Carol neste registo — o mesmo componente do cartão
             e do "Registo Guardado" (2026-10-05): "Falar com a Carol" não

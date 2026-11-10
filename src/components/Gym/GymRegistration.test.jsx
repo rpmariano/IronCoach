@@ -302,6 +302,25 @@ describe('GymRegistration — registo manual também passa pelo Coach (analyze-g
     expect(useAppStore.getState().gymSessions).toEqual([{ ...newSession, workout_session_sets: sets }]);
   });
 
+  /* #121 (2026-11-10, o Rui: «Primeiro treino?»): a app acabada de abrir, o registo aberto antes de
+     as sessões chegarem. Chegaram durante a análise — e a gravação punha [esta] por cima delas. */
+  it('#121: as sessões que chegam durante a gravação ficam — a nova junta-se a elas', async () => {
+    let resolve;
+    mocks.invoke.mockReturnValue(new Promise((r) => { resolve = r; }));
+    render(<GymRegistration onClose={onClose} />);
+    fireEvent.click(screen.getByRole('button', { name: /Analisar treino/i }));
+    gravarAssimSeHouver();
+    await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(1));
+    const antigas = Array.from({ length: 16 }, (_, i) => ({ id: `antiga-${i}`, date: '2026-10-06' }));
+    act(() => { useAppStore.setState({ gymSessions: antigas }); });
+    await act(async () => { resolve({ data: { session: { id: 'passadeira', name: 'Passadeira' }, sets: [] }, error: null }); });
+    await dispensarConfirmacao();
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+    const ids = useAppStore.getState().gymSessions.map((x) => x.id);
+    expect(ids).toHaveLength(17);
+    expect(ids[0]).toBe('passadeira');
+  });
+
   it('mostra o erro da Edge Function e não fecha o formulário', async () => {
     mocks.invoke.mockResolvedValue({ data: null, error: 'Falha a gravar treino.' });
     render(<GymRegistration onClose={onClose} />);
@@ -1393,11 +1412,15 @@ describe('GymRegistration — bugs de 2026-10-29/31', () => {
     expect(screen.getByText(/Escolheste 7/)).toBeInTheDocument();
   });
 
-  it('#98: os prints vêm depois dos exercícios (último passo)', () => {
+  /* #120 (2026-11-10, o Rui: «As fotos têm de estar antes do ponto 3»): os prints continuam depois
+     dos exercícios (#98), mas passam a ser o passo 3 — antes de «Como correu». */
+  it('#120: os prints são o passo 3, entre os exercícios e «Como correu»', () => {
     render(<GymRegistration onClose={onClose} />);
     const titulos = screen.getAllByRole('heading', { level: 3 }).map(h => h.textContent);
-    expect(titulos.indexOf('Prints da sessão')).toBeGreaterThan(titulos.indexOf('Exercícios'));
-    expect(titulos[titulos.length - 1]).toBe('Prints da sessão');
+    expect(titulos).toEqual(['Que treino foi', 'Exercícios', 'Prints da sessão', 'Como correu']);
+    const passo = (titulo) => screen.getByRole('heading', { level: 3, name: titulo }).parentElement.textContent;
+    expect(passo('Prints da sessão')).toMatch(/^3/);
+    expect(passo('Como correu')).toMatch(/^4/);
   });
 });
 

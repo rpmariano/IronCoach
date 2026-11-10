@@ -14,6 +14,9 @@ import {
    dela a 9 nov (src/test/pattyLoad.js). */
 import { TODAY, PATTY_RUNS, PATTY_PLAN_ITEMS, PATTY_PLANS, TRAIL, MEIA } from '../test/pattyLoad';
 
+// Mais 8 km hoje: os 7 dias passam o limite do Prudente (28,4).
+const R_EXTRA = { date: TODAY, distance_km: 8, training_type: 'continuo', kind: 'treino', effort_rpe: 5, duration_seconds: 2720 };
+
 const stateWith = (races, today = TODAY) => loadStateFor({ raceEvents: races, runs: PATTY_RUNS, coachPlans: PATTY_PLANS, coachPlanItems: PATTY_PLAN_ITEMS, profile: null, todayISO: today });
 
 const ACWR = { id: 'acwr_caution', severity: 'warning' };
@@ -39,6 +42,16 @@ describe('loadStateFor — a Patty a 9 nov', () => {
     expect(proposto.projectedWeeklyKm).not.toBe(stateWith([MEIA]).projectedWeeklyKm);
   });
 
+  it('um plano que não chega à prova: as semanas por planear não dão «abaixo» — nem conflito, nem aviso de volume', () => {
+    const curto = [{ id: 'p2', status: 'aceite', period_end: '2026-11-15' }];
+    const items = PATTY_PLAN_ITEMS.filter((i) => i.planned_date <= '2026-11-15');
+    const s = loadStateFor({ raceEvents: [TRAIL, MEIA], runs: PATTY_RUNS, coachPlans: curto, coachPlanItems: items, todayISO: TODAY });
+    expect(s.volumeBelow).toBe(false);
+    expect(s.state).not.toBe('conflito');
+    expect(s.state).toBe('carga');
+    expect(filterLoadInsights([ACWR, VOLUME], s).map((i) => i.id)).toEqual(['acwr_caution']);
+  });
+
   it('sem a migration (as provas chegam sem load_profile): tudo Prudente, por escolher', () => {
     const s = stateWith([{ ...MEIA }]);
     expect([s.profile, s.chosen, s.safeLimitKm]).toEqual(['prudente', false, 28.4]);
@@ -49,7 +62,10 @@ describe('loadStateFor — a Patty a 9 nov', () => {
     expect([mais.state, mais.profile, mais.safeLimitKm, mais.loadAlert]).toEqual(['perfil', 'mais_volume', 30.8, false]);
     expect(profileLimitText(mais)).toBe('Mais volume · até 30,8 km nestes 7 dias (corridos: 23,1).');
     const prud = stateWith([{ ...MEIA, load_profile: 'prudente', load_profile_at: '2026-11-09T12:00:00Z' }]);
-    expect([prud.state, prud.loadAlert]).toEqual(['perfil', true]);
+    // 510e6310: com o perfil escolhido (também Prudente), a carga só avisa acima do limite dele.
+    expect([prud.state, prud.loadAlert]).toEqual(['perfil', false]);
+    const prudAcima = loadStateFor({ raceEvents: [{ ...MEIA, load_profile_at: '2026-11-09T12:00:00Z' }], runs: [...PATTY_RUNS, R_EXTRA], coachPlans: PATTY_PLANS, coachPlanItems: PATTY_PLAN_ITEMS, todayISO: TODAY });
+    expect([prudAcima.state, prudAcima.loadAlert]).toEqual(['perfil', true]);
     expect(profileLimitText(prud)).toBe('Prudente · até 28,4 km nestes 7 dias (corridos: 23,1).');
   });
 
@@ -71,11 +87,13 @@ describe('filterLoadInsights — a carga e o volume nunca juntos', () => {
   it('conflito: nem um nem outro (o cartão diz tudo)', () => {
     expect(filterLoadInsights(all, stateWith([TRAIL, MEIA])).map((i) => i.id)).toEqual(['bf_low']);
   });
-  it('perfil Mais volume abaixo do limite: nenhum; Prudente acima: só a carga', () => {
+  it('perfil escolhido abaixo do limite: nenhum; Prudente acima do limite: só a carga', () => {
     const mais = stateWith([{ ...MEIA, load_profile: 'mais_volume', load_profile_at: '2026-11-09T12:00:00Z' }]);
     expect(filterLoadInsights(all, mais).map((i) => i.id)).toEqual(['bf_low']);
     const prud = stateWith([{ ...MEIA, load_profile_at: '2026-11-09T12:00:00Z' }]);
-    expect(filterLoadInsights(all, prud).map((i) => i.id)).toEqual(['acwr_caution', 'bf_low']);
+    expect(filterLoadInsights(all, prud).map((i) => i.id)).toEqual(['bf_low']);
+    const acima = loadStateFor({ raceEvents: [{ ...MEIA, load_profile_at: '2026-11-09T12:00:00Z' }], runs: [...PATTY_RUNS, R_EXTRA], coachPlans: PATTY_PLANS, coachPlanItems: PATTY_PLAN_ITEMS, todayISO: TODAY });
+    expect(filterLoadInsights(all, acima).map((i) => i.id)).toEqual(['acwr_caution', 'bf_low']);
   });
   it('a 13 nov, sem carga a mais: só o volume', () => {
     const s = stateWith([TRAIL, MEIA], '2026-11-13');
@@ -98,7 +116,7 @@ describe('loadProfileUpdate', () => {
 });
 
 describe('detectCoachInsights com os dados da Patty a 9 nov', () => {
-  it('antes eram os dois avisos; em conflito, nenhum — e com Prudente escolhido, só a carga', async () => {
+  it('antes eram os dois avisos; em conflito, nenhum — e com Prudente escolhido abaixo do limite, nenhum', async () => {
     const { vi } = await import('vitest');
     const { detectCoachInsights } = await import('./biEngine');
     vi.useFakeTimers({ toFake: ['Date'] });
@@ -109,8 +127,7 @@ describe('detectCoachInsights com os dados da Patty a 9 nov', () => {
       const conflito = ids([TRAIL, MEIA]);
       expect(conflito.filter((id) => id.startsWith('acwr_') || id === 'race_volume')).toEqual([]);
       const prudente = ids([TRAIL, { ...MEIA, load_profile_at: '2026-11-09T09:00:00Z' }]);
-      expect(prudente.some((id) => id.startsWith('acwr_'))).toBe(true);
-      expect(prudente).not.toContain('race_volume');
+      expect(prudente.filter((id) => id.startsWith('acwr_') || id === 'race_volume')).toEqual([]);
     } finally {
       vi.useRealTimers();
     }

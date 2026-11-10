@@ -16,7 +16,14 @@ export { LOAD_PROFILE_LABELS };
 
 /** O estado da carga e do volume, com os dados do store (só os itens dos planos aceites). */
 export function loadStateFor({ raceEvents, runs, coachPlans, coachPlanItems, profile, todayISO }) {
-  const accepted = new Set((coachPlans || []).filter((p) => p?.status === 'aceite').map((p) => p.id));
+  const acceptedPlans = (coachPlans || []).filter((p) => p?.status === 'aceite');
+  const accepted = new Set(acceptedPlans.map((p) => p.id));
+  // O horizonte do plano (dev-back 9befd682), como no raceVolumeText.js: as semanas depois do
+  // period_end mais tardio estão por planear — «por_planear», nem «abaixo» nem conflito.
+  const plannedUntilISO = acceptedPlans.reduce((m, p) => {
+    const end = String(p?.period_end || '').slice(0, 10);
+    return end && (!m || end > m) ? end : m;
+  }, null);
   const planItems = (coachPlanItems || []).filter((i) => accepted.has(i?.plan_id));
   try {
     return loadVolumeState({
@@ -25,6 +32,7 @@ export function loadStateFor({ raceEvents, runs, coachPlans, coachPlanItems, pro
       planItems,
       todayISO,
       profileLevel: profile?.experience_level || null,
+      plannedUntilISO,
     });
   } catch (err) {
     console.warn('[perfil de carga]', err);

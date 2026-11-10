@@ -217,3 +217,46 @@ describe('exercisesFromPreview — nomeado sem números (bug #67)', () => {
     expect(ex.sets[0]).toMatchObject({ reps: '', weight: '' });
   });
 });
+
+/* #118 (2026-11-10, o Rui: «No hollow não são 30 reps mas sim segundos»): os isométricos contam-se
+   em segundos — gravados em duration_seconds, com reps a null. */
+describe('gymSets — isométricos em segundos (#118)', () => {
+  it('pelo nome: hollow, prancha, wall sit, dead hang… sim; agachamento e supino não', async () => {
+    const { isIsometricName, repUnitOf, secondsFromGoal } = await import('./gymSets');
+    for (const n of ['Hollow hold', 'Hollow body', 'Prancha lateral', 'Plank', 'Wall sit', 'Agachamento na parede', 'Dead hang', 'Suspensão na barra', 'L-sit', 'Isométrico de glúteo']) {
+      expect(isIsometricName(n)).toBe(true);
+    }
+    for (const n of ['Agachamento', 'Supino', 'Leg press', 'Remo', 'Elevação de gémeos']) expect(isIsometricName(n)).toBe(false);
+    expect(repUnitOf({ name: 'Hollow hold' })).toBe('s');
+    expect(repUnitOf({ name: 'Hollow hold', repUnit: 'reps' })).toBe('reps');
+    expect(repUnitOf({ name: 'Supino', repUnit: 's' })).toBe('s');
+    expect([secondsFromGoal('hold 30 s'), secondsFromGoal('45 segundos de cada lado'), secondsFromGoal('3 séries')]).toEqual([30, 45, null]);
+  });
+
+  it('grava em duration_seconds (reps null); relê-se em segundos ao editar', async () => {
+    const { newExercise, newSet, flattenExercises, exercisesFromSession } = await import('./gymSets');
+    const hollow = newExercise({ name: 'Hollow hold', sets: [newSet({ reps: '30' }), newSet({ reps: '25' }), newSet()] });
+    const rows = flattenExercises([hollow, newExercise({ name: 'Supino', sets: [newSet({ reps: '10', weight: '40' })] })]);
+    expect(rows).toEqual([
+      { exercise_name: 'Hollow hold', set_index: 0, reps: null, weight: null, duration_seconds: 30 },
+      { exercise_name: 'Hollow hold', set_index: 1, reps: null, weight: null, duration_seconds: 25 },
+      { exercise_name: 'Supino', set_index: 0, reps: 10, weight: 40 },
+    ]);
+    const [ex] = exercisesFromSession({
+      exercises_meta: [{ name: 'Hollow hold', block_type: 'forca' }],
+      workout_session_sets: rows.slice(0, 2).map((r, i) => ({ ...r, id: `x${i}` })),
+    });
+    expect([ex.type, ex.repUnit, ex.sets.map((s) => s.reps)]).toEqual(['forca', 's', ['30', '25']]);
+    // Sem meta (gravado antes): um isométrico só com tempo é força em segundos, não cardio.
+    const [antigo] = exercisesFromSession({ workout_session_sets: [{ exercise_name: 'Prancha', set_index: 0, duration_seconds: 60 }] });
+    expect([antigo.type, antigo.repUnit, antigo.sets[0].reps]).toEqual(['forca', 's', '60']);
+    // Trocado para reps à mão: grava reps.
+    expect(flattenExercises([{ ...hollow, repUnit: 'reps' }])[0]).toEqual({ exercise_name: 'Hollow hold', set_index: 0, reps: 30, weight: null });
+  });
+
+  it('a leitura dos prints: séries só com tempo vêm em segundos', async () => {
+    const { exercisesFromPreview } = await import('./gymSets');
+    const [ex] = exercisesFromPreview({ exercises: [{ name: 'Hollow hold', type: 'forca', sets: [{ duration_seconds: 30 }, { duration_seconds: 30 }] }] });
+    expect([ex.repUnit, ex.sets.map((s) => s.reps)]).toEqual(['s', ['30', '30']]);
+  });
+});

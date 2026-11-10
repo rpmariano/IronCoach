@@ -1,7 +1,7 @@
 import { describePrescription } from '@formulas/planPrescription.ts';
 import { cardioSpecFor } from '@formulas/cardioFields.ts';
 import { foodKey } from '@formulas/foodKey.ts';
-import { newExercise, newSet } from './gymSets';
+import { newExercise, newSet, isIsometricName, secondsFromGoal } from './gymSets';
 import { mealsForDay } from './homeModels';
 
 /* O registo a partir do plano da Carol (registo unificado, F3 —
@@ -56,6 +56,16 @@ export function exercisesFromPrescription(prescription) {
       });
     }
     const n = Math.min(Math.max(parseInt(b.sets) || 1, 1), 10);
+    /* #118: um isométrico (hollow, prancha…) conta-se em segundos. A prescrição só tem `reps`: o
+       alvo em segundos é o do objetivo («hold 30 s»), senão o número das reps (o «30» do hollow
+       eram segundos). */
+    if (isIsometricName(name)) {
+      const secs = secondsFromGoal(goal) ?? (Number(b.reps) > 0 ? Number(b.reps) : null);
+      return newExercise({
+        name, type: 'forca', goal, planBlockIndex: index, repUnit: 's',
+        sets: Array.from({ length: n }, () => newSet({ plan: { reps: asString(secs), weight: '' } })),
+      });
+    }
     return newExercise({
       name, type: 'forca', goal, planBlockIndex: index,
       sets: Array.from({ length: n }, () => newSet({ plan: { reps: asString(b.reps), weight: '' } })),

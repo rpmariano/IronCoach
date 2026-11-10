@@ -498,7 +498,7 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
     if (!Array.isArray(mealWithItems.meal_items) || mealWithItems.meal_items.length === 0) {
       console.warn('Aviso: análise retornou 0 itens', data);
     }
-    setMeals(upsertById(meals, mealWithItems));
+    setMeals(upsertById(useAppStore.getState().meals, mealWithItems));
     requestId.renew();
     // A refeição ensinou a despensa (fase A): as sugestões seguintes já a contam.
     useAppStore.getState().loadPantry?.();
@@ -737,7 +737,7 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
     if (data?.error) throw saveRefusal(data.error);
 
     const savedMeal = await persistMealTime(data.meal);
-    setMeals(upsertById(meals, savedMeal));
+    setMeals(upsertById(useAppStore.getState().meals, savedMeal));
     requestId.renew();
     useAppStore.getState().loadPantry?.();
     finishCreateAndGoToCalendar(savedMeal, 'Refeição registada');

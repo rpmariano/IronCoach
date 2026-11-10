@@ -86,6 +86,17 @@ describe('LoadProfileCard — Início', () => {
     expect(useAppStore.getState().raceEvents.find((r) => r.id === 'meia').load_profile).toBeUndefined();
   });
 
+  it('plano que não chega à prova (por planear): nenhum cartão de conflito', () => {
+    seed([TRAIL, MEIA]);
+    useAppStore.setState({
+      coachPlans: [{ id: 'p2', status: 'aceite', period_end: '2026-11-15' }],
+      coachPlanItems: PATTY_PLAN_ITEMS.filter((i) => i.planned_date <= '2026-11-15'),
+    });
+    const { container } = render(<LoadProfileCard />);
+    expect(screen.queryByTestId('load-profile-conflict')).toBeNull();
+    expect(container).toBeEmptyDOMElement();
+  });
+
   it('perfil escolhido: o perfil e o limite; «mudar» abre as duas opções', () => {
     seed([TRAIL, { ...MEIA, load_profile: 'prudente', load_profile_at: '2026-11-09T09:00:00Z' }]);
     render(<LoadProfileCard />);

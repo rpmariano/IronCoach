@@ -8,6 +8,7 @@ import { isMeasurableGoal } from '@formulas/goalCheck.ts';
 import {
   cardioFieldsOf, describeLast, distanceUnitOf, exerciseType, hasUnconfirmedPlanSets, lockerEntryFor, markAllDone,
   newExercise, newSet, nudgeSet, renameExercise, setSuggestion, toggleSetDone,
+  repUnitOf,
 } from '../../../utils/gymSets';
 
 /* Os exercícios de uma sessão de ginásio — registo unificado, F1
@@ -32,6 +33,8 @@ const quietBtn = 'tap-44 text-[var(--text-3)] hover:text-[var(--danger)] shrink-
 /** O passo do peso: 2,5 kg (a menor anilha comum). As reps andam de 1 em 1. */
 export const WEIGHT_STEP = 2.5;
 export const REPS_STEP = 1;
+/** #118: os segundos de um isométrico andam de 5 em 5. */
+export const SECONDS_STEP = 5;
 
 const label = (ex) => (ex.name || '').trim() || 'exercício';
 const numOr = (v) => { const n = parseFloat(String(v).replace(',', '.')); return Number.isFinite(n) ? n : null; };
@@ -58,7 +61,8 @@ export function exerciseSummary(ex) {
   const reps = range(ex.sets.map((s) => numOr(s.reps) ?? numOr(s.plan?.reps)));
   const kg = range(ex.sets.map((s) => numOr(s.weight) ?? numOr(s.plan?.weight)));
   const n = ex.sets.length;
-  return [n ? `${n} ${n === 1 ? 'série' : 'séries'}` : null, reps ? `${reps} reps` : null, kg ? `${kg} kg` : null].filter(Boolean).join(' × ');
+  const unit = repUnitOf(ex) === 's' ? 's' : 'reps';
+  return [n ? `${n} ${n === 1 ? 'série' : 'séries'}` : null, reps ? `${reps} ${unit}` : null, kg ? `${kg} kg` : null].filter(Boolean).join(' × ');
 }
 
 /* O ✓: feito = círculo cheio na cor do módulo com o ícone escuro; por fazer =
@@ -107,9 +111,37 @@ function Stepper({ text, inputLabel, value, placeholder, step, inputMode, onType
   );
 }
 
+/* #118: «Reps» ou «Segundos» — os isométricos vêm em segundos pelo nome; o atleta pode trocar. */
+function RepUnitToggle({ ex, onExercise, name }) {
+  const unit = repUnitOf(ex);
+  const opt = (value, text) => (
+    <button
+      type="button"
+      onClick={() => onExercise({ ...ex, repUnit: value })}
+      aria-pressed={unit === value}
+      className="tap-44 px-3 rounded-lg text-[12px] font-bold transition"
+      style={unit === value
+        ? { background: 'var(--mod-ginasio-to)', color: 'var(--gym-ink)' }
+        : { background: 'transparent', color: 'var(--text-3)' }}
+    >
+      {text}
+    </button>
+  );
+  return (
+    <div className="flex items-center justify-between gap-2" data-testid="rep-unit-toggle">
+      <span className="text-[11px] text-[var(--text-3)]">Contar em</span>
+      <div role="group" aria-label={`Unidade das séries — ${name}`} className="flex rounded-xl border p-0.5" style={{ borderColor: 'var(--border-glass)' }}>
+        {opt('reps', 'Reps')}
+        {opt('s', 'Segundos')}
+      </div>
+    </div>
+  );
+}
+
 function StrengthSets({ ex, last, onExercise }) {
   const patchSet = (key, patch) => onExercise({ ...ex, sets: ex.sets.map(s => (s.key === key ? { ...s, ...patch } : s)) });
   const name = label(ex);
+  const seconds = repUnitOf(ex) === 's';
   /* Ao marcar ou desmarcar o ✓ a série troca de forma (linha verde ↔ campos) e o botão onde
      estava o foco desaparece: o foco segue para o ✓ da mesma série na forma nova, em vez de cair
      no body (leitores de ecrã e teclado perdiam o sítio). */
@@ -124,6 +156,7 @@ function StrengthSets({ ex, last, onExercise }) {
   const toggle = (key) => { onExercise(toggleSetDone(ex, key, last)); setFocusSet(key); };
   return (
     <div className="space-y-2">
+      <RepUnitToggle ex={ex} onExercise={onExercise} name={name} />
       {ex.sets.map((s, idx) => {
         const sug = setSuggestion(ex, idx, last);
         const ph = (v, fallback) => (v !== '' && v != null ? String(v) : fallback);
@@ -132,7 +165,7 @@ function StrengthSets({ ex, last, onExercise }) {
         if (s.done) {
           const reps = s.reps !== '' && s.reps != null ? s.reps : sug?.reps;
           const kg = s.weight !== '' && s.weight != null ? s.weight : sug?.weight;
-          const txt = [reps ? `${reps} reps` : null, kg ? `${String(kg).replace('.', ',')} kg` : null].filter(Boolean).join(' × ');
+          const txt = [reps ? `${reps} ${seconds ? 's' : 'reps'}` : null, kg ? `${String(kg).replace('.', ',')} kg` : null].filter(Boolean).join(' × ');
           return (
             <div
               key={s.key}
@@ -174,18 +207,33 @@ function StrengthSets({ ex, last, onExercise }) {
               </div>
             </div>
             <div className="flex flex-col gap-2">
-              <Stepper
-                text="Repetições"
-                inputLabel={`Repetições da série ${idx + 1} — ${name}`}
-                value={s.reps}
-                placeholder={ph(sug?.reps, 'Reps')}
-                step={REPS_STEP}
-                inputMode="numeric"
-                onType={(v) => patchSet(s.key, { reps: v })}
-                onNudge={(d) => onExercise(nudgeSet(ex, s.key, 'reps', d, last))}
-                minusLabel={`Menos 1 repetição da série ${idx + 1} — ${name}`}
-                plusLabel={`Mais 1 repetição da série ${idx + 1} — ${name}`}
-              />
+              {seconds ? (
+                <Stepper
+                  text="Segundos"
+                  inputLabel={`Segundos da série ${idx + 1} — ${name}`}
+                  value={s.reps}
+                  placeholder={ph(sug?.reps, 's')}
+                  step={SECONDS_STEP}
+                  inputMode="numeric"
+                  onType={(v) => patchSet(s.key, { reps: v })}
+                  onNudge={(d) => onExercise(nudgeSet(ex, s.key, 'reps', d, last))}
+                  minusLabel={`Menos ${SECONDS_STEP} segundos da série ${idx + 1} — ${name}`}
+                  plusLabel={`Mais ${SECONDS_STEP} segundos da série ${idx + 1} — ${name}`}
+                />
+              ) : (
+                <Stepper
+                  text="Repetições"
+                  inputLabel={`Repetições da série ${idx + 1} — ${name}`}
+                  value={s.reps}
+                  placeholder={ph(sug?.reps, 'Reps')}
+                  step={REPS_STEP}
+                  inputMode="numeric"
+                  onType={(v) => patchSet(s.key, { reps: v })}
+                  onNudge={(d) => onExercise(nudgeSet(ex, s.key, 'reps', d, last))}
+                  minusLabel={`Menos 1 repetição da série ${idx + 1} — ${name}`}
+                  plusLabel={`Mais 1 repetição da série ${idx + 1} — ${name}`}
+                />
+              )}
               <Stepper
                 text="Peso (kg)"
                 inputLabel={`Peso da série ${idx + 1} (kg) — ${name}`}
