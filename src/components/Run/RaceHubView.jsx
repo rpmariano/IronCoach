@@ -53,6 +53,7 @@ import { achievementsForRace, missedInRace, describeMissedInRace } from '../../u
 import { badgesForRace } from '../../utils/badges';
 import { todayISO } from '../../lib/utils';
 import { outlookForRace, volumeReadingNote, volumeReadingText } from '../../utils/raceVolumeText';
+import LoadProfileCard, { useLoadState } from './LoadProfileCard';
 import { experienceLevelLabel } from '../../utils/experience';
 import { normalizeStartTime } from '../../utils/startTime';
 import './RaceHubView.css';
@@ -95,8 +96,14 @@ export default function RaceHubView({
     () => outlookForRace({ race, profile, runs, coachPlans: storePlans, coachPlanItems: storePlanItems, todayISO: todayISO() }),
     [race, profile, runs, storePlans, storePlanItems],
   );
-  const volumeLine = volumeReadingText(volumeOutlook);
-  const volumeNote = volumeReadingNote(volumeOutlook);
+  /* Perfil de carga (2026-11-09): em conflito (carga a pedir cautela e volume abaixo, perfil por
+     escolher), o cartão das duas opções toma o lugar da leitura do volume — nunca os dois avisos. */
+  const loadState = useLoadState();
+  const loadConflictHere = loadState?.state === 'conflito' && loadState?.race?.id && loadState.race.id === race?.id;
+  const volumeLine = loadConflictHere ? null : volumeReadingText(volumeOutlook);
+  // Com Mais volume escolhido para esta prova, «a prova é para completar» contradizia a escolha dele.
+  const moreVolumeHere = loadState?.profile === 'mais_volume' && loadState?.race?.id === race?.id;
+  const volumeNote = moreVolumeHere ? null : volumeReadingNote(volumeOutlook);
   // Os outros alertas de viabilidade ficam; o do volume passa à leitura acima.
   const viabilityAlerts = plan.viability.flags.filter((f) => f !== 'volume_insuficiente');
 
@@ -957,6 +964,7 @@ export default function RaceHubView({
             {volumeNote && <p className="text-[12px] mt-1 text-[var(--text-2)]" data-testid="volume-outlook-note">{volumeNote}</p>}
           </div>
         )}
+        {race?.id && <LoadProfileCard variant="hub" raceId={race.id} />}
 
         {/* Os alertas de viabilidade eram âmbar dentro do ecrã da prova, onde
             tudo o resto também é âmbar — não se distinguiam do cenário. Coral

@@ -35,6 +35,7 @@ import { computeCrossMetrics } from '@formulas/crossMetrics.ts';
 import { computeReadinessIndex as sharedComputeReadinessIndex } from '@formulas/readinessIndex.ts';
 import { calorieGoalResolver } from '@formulas/goalHistory.ts';
 import { runsOnly } from '@formulas/runKinds.ts';
+import { loadStateFor, filterLoadInsights } from './loadProfileState';
 
 /**
  * Filtra dados por um intervalo de datas relativo à data atual.
@@ -837,7 +838,7 @@ export function detectCoachInsights(dataIn, profile) {
               id: 'race_volume', severity: 'warning',
               title: `Volume de Treino Insuficiente: ${raceName}`,
               message: `O teu volume semanal médio (${weeklyVol} km) não suporta em segurança a distância de ${dist}km. Recomendo-te aumentar a carga gradualmente (regra dos 10%/semana) ou rever a distância.`,
-              metric: 'Volume', value: weeklyVol, threshold: 0, module: 'corrida'
+              metric: 'Volume', value: weeklyVol, threshold: 0, module: 'corrida', raceId: next.id || null
             });
           } else if (targetPace && predictedPaceReal > 0) {
             const paceDiffPct = (predictedPaceReal - targetPace) / targetPace;
@@ -879,6 +880,12 @@ export function detectCoachInsights(dataIn, profile) {
 
     // Ordenar por severidade: critical > warning > info
     const severityOrder = { critical: 0, warning: 1, info: 2 };
+    // Perfil de carga (2026-11-09): os avisos de carga e de volume da prova que manda seguem um só
+    // estado (utils/loadProfileState.js) — nunca os dois juntos; em conflito, o cartão das duas opções.
+    const loadState = loadStateFor({ raceEvents: dataIn?.raceEvents, runs: allRuns, coachPlans: dataIn?.coachPlans, coachPlanItems: dataIn?.coachPlanItems, profile, todayISO: todayISO() });
+    const shown = [...filterLoadInsights(insights, loadState)];
+    insights.length = 0;
+    insights.push(...shown);
     insights.sort((a, b) => (severityOrder[a.severity] ?? 3) - (severityOrder[b.severity] ?? 3));
 
     return insights;
