@@ -68,6 +68,17 @@ Deno.test("loadVolumeState: a Patty a 9 nov — um só estado «conflito», com 
   assertEquals(s.safeLimitKm, 28.4);
 });
 
+Deno.test("loadVolumeState: um plano que não chega à prova — por planear, não «abaixo», e sem conflito", () => {
+  // O plano aceite acaba a 15 nov (period_end); a meia é a 29. Sem os itens da
+  // prova de 22 e 29, as semanas de 16 a 28 estão por planear.
+  const plan = PATTY_PLAN.filter((i) => i.planned_date <= "2026-11-15");
+  const s = loadVolumeState({ races: [TRAIL, MEIA], runs: PATTY_RUNS, planItems: plan, todayISO: "2026-11-09", plannedUntilISO: "2026-11-15" });
+  assertEquals([s.volumeStatus, s.volumeBelow, s.loadAlert, s.state], ["por_planear", false, true, "carga"]);
+  // Com o plano até à prova, o mesmo dia dá conflito (como acima).
+  const full = loadVolumeState({ races: [TRAIL, MEIA], runs: PATTY_RUNS, planItems: PATTY_PLAN, todayISO: "2026-11-09", plannedUntilISO: "2026-11-29" });
+  assertEquals([full.volumeStatus, full.state], ["abaixo", "conflito"]);
+});
+
 Deno.test("loadVolumeState: com o perfil escolhido não há conflito — só o limite dele", () => {
   const chosen = { ...MEIA, load_profile: "mais_volume", load_profile_at: "2026-11-09T12:00:00Z" };
   const s = loadVolumeState({ races: [TRAIL, chosen], runs: PATTY_RUNS, planItems: PATTY_PLAN, todayISO: "2026-11-09" });

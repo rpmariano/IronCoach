@@ -1201,9 +1201,16 @@ Deno.serve(withUsageRecording("coach-daily-summary", async (req) => {
     const acwr        = computeACWR(recentRuns || [], today);
     // O ACWR lido com o plano, o histórico e o perfil de carga (runLoadAlert.ts).
     const load        = runLoadReading({ runs: recentRuns, planItems: loadPlanItems, today, profile: loadProfile });
+    // Até onde os planos aceites vão (o period_end mais tardio): depois disso,
+    // as semanas estão por planear e não contam como zero.
+    // deno-lint-ignore no-explicit-any
+    const plannedUntilISO = (acceptedPlans || []).reduce((m: string | null, p: any) => {
+      const end = String(p?.period_end ?? "").slice(0, 10);
+      return /^\d{4}-\d{2}-\d{2}$/.test(end) && (!m || end > m) ? end : m;
+    }, null);
     const loadProfileLine = loadProfileContextLine(loadVolumeState({
       races: profileRaces, runs: recentRuns || [], planItems: loadPlanItems, todayISO: today,
-      profileLevel: (profile?.experience_level as string | null) ?? null,
+      profileLevel: (profile?.experience_level as string | null) ?? null, plannedUntilISO,
     }), today);
     const bodyMetrics = computeBodyMetrics(bodyAssessments || [], profile?.gender ?? null, profile?.experience_level ?? null, today);
     // acute_km_per_day × 7 = km dos últimos 7 dias, para o TDEE somar o
