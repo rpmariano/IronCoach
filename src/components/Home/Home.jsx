@@ -20,6 +20,7 @@ import BadgeMoment from '../shared/BadgeMoment';
 import useBadgeMoment from '../../utils/useBadgeMoment';
 import { eventoDaVida } from '../../utils/carolVida';
 import { lisbonParts } from '../../utils/carolWelcome';
+import LoadProfileCard from '../Run/LoadProfileCard';
 
 /* O Início (redesenho 2026-09, ponto 5 — mock "Início"): o cartão da
    Carol, "O que faço hoje" (plano do dia), "Como estou" (a órbita, só
@@ -199,6 +200,8 @@ export default function Home() {
   return (
     <div className="flex flex-col gap-2 fade-in pb-2">
       <CarolCard onOpenRace={setEditingRaceId} onOpenCoach={notices.openCoach} />
+      {/* Perfil de carga (2026-11-09): o conflito carga × volume num só cartão, ou o perfil escolhido. */}
+      <LoadProfileCard />
       <GettingStartedCard onAction={handleGettingStarted} />
 
       <SectionLabel>O que faço hoje</SectionLabel>

@@ -557,6 +557,44 @@ function buildProvasDemoData() {
   };
 }
 
+/* Variante de ?demo=true&carga=1 — o conflito do perfil de carga (2026-11-09): as corridas e o
+   plano reais da Patty a 9 nov, com hoje no lugar de 9 nov. A carga destes 7 dias pede cautela
+   (ACWR 1,31) e o volume fica abaixo do que a meia pede: um só cartão, Prudente ou Mais volume. */
+function buildCargaDemoData() {
+  const base = buildDemoData();
+  const today = new Date();
+  const inDays = (n) => {
+    const d = new Date(today);
+    d.setDate(d.getDate() + n);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  };
+  const R = (n, km, training_type, kind = 'treino', effort_rpe = 5) => ({
+    id: `demo-carga-run${n}`, date: inDays(n), distance_km: km, duration_seconds: Math.round(km * 340), kind, training_type, effort_rpe,
+  });
+  const I = (n, km, training_type, kind = 'corrida', status = 'pendente') => ({
+    id: `demo-carga-item${n}`, plan_id: 'demo-carga-plan', planned_date: inDays(n), kind, training_type, status, target_distance_km: km,
+  });
+  return {
+    ...base,
+    raceEvents: [
+      { id: 'demo-carga-trail', date: inDays(6), name: 'Atlantic Cliff Adventure', location: 'Ericeira', race_type: 'trail', distance_km: 10, race_priority: 'b', status: 'agendada', experience_level: 'basico' },
+      { id: 'demo-carga-meia', date: inDays(20), name: 'Meia dos Descobrimentos', location: 'Lisboa', race_type: '21k', distance_km: 21.0975, race_priority: 'a', status: 'agendada', experience_level: 'basico' },
+    ],
+    runs: [
+      R(-27, 5.01, 'continuo'), R(-24, 6.04, 'continuo'), R(-23, 18.38, 'caminhada', 'treino', 6),
+      R(-20, 5.02, 'continuo'), R(-17, 4, 'recuperacao'), R(-15, 10.12, null, 'competicao', 8),
+      R(-13, 4.03, 'recuperacao', 'treino', null), R(-10, 5.04, 'continuo'), R(-8, 8.01, 'longo'),
+      R(-6, 8.01, 'longo'), R(-4, 5.18, 'continuo', 'treino', 6), R(-1, 9.95, null, 'competicao', 7),
+    ],
+    coachPlans: [{ id: 'demo-carga-plan', status: 'aceite', period_start: inDays(-6), period_end: inDays(20), summary: 'Até à meia.' }],
+    coachPlanItems: [
+      I(-6, 8, 'longo', 'corrida', 'concluido'), I(-4, 5, 'continuo', 'corrida', 'concluido'), I(-1, 10, 'prova', 'corrida', 'concluido'),
+      I(1, 6, 'continuo'), I(2, null, null, 'ginasio'), I(3, 6, 'continuo'), I(4, 4, 'ativacao'),
+      I(6, 10, 'prova'), I(13, 3, 'prova'), I(20, 21.0975, 'prova'),
+    ],
+  };
+}
+
 // Variante de ?demo=true&onboarding=1: um atleta mesmo acabado de chegar —
 // sem registos e sem provas. É a segunda metade da regra de arranque (a
 // primeira é onboarding_done a false, posto no perfil demo).
@@ -1115,9 +1153,11 @@ export default function App() {
         // ?demo=true&provas=1 — provas já corridas e nenhuma marcada: o
         // dia a seguir no Início, o hub com conquistas e a Vitrina cheia.
         const verProvas = params.get('provas') === '1';
+        const verCarga = params.get('carga') === '1';
         useAppStore.setState(
           forcarOnboarding ? buildEmptyDemoData()
             : verProvas ? buildProvasDemoData()
+              : verCarga ? buildCargaDemoData()
               : buildDemoData(),
         );
         // Também em demo, como com sessão: é onde isto se consegue ver sem conta.

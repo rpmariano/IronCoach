@@ -9,6 +9,7 @@ import { RACE_BALANCE_CACHE_PREFIX } from '../utils/coachProactive';
 import { isGoalsIntervention } from '@formulas/goalsIntervention.ts';
 import { INTERVENTION_OUTCOME, INTERVENTION_ORIGIN } from '@formulas/interventionOutcomes.ts';
 import { createCupSlice, CUP_EMPTY } from './cupSlice';
+import { loadProfileUpdate } from '../utils/loadProfileState';
 
 const getInitialDashboardTab = () => {
   try {
@@ -619,6 +620,30 @@ export const useAppStore = create((set, get) => ({
       }
     }
     set({ raceEvents: data });
+  },
+
+  /* Perfil de carga por prova (2026-11-09): Prudente ou Mais volume (utils/loadProfileState.js).
+     Update direto da prova do próprio (RLS «own rows»), que limpa a volta sozinha a Prudente. Sem
+     a migration, a coluna não existe e o pedido falha: devolve o erro e a prova fica como estava.
+     Em demo não há BD — muda só aqui. */
+  setRaceLoadProfile: async (raceId, profile) => {
+    const userId = get().session?.user?.id || get().profile?.id;
+    if (!userId || !raceId) return { ok: false, error: { message: 'Sem sessão' } };
+    const patch = loadProfileUpdate(profile);
+    const apply = (row) => set((state) => ({ raceEvents: (state.raceEvents || []).map((r) => (r?.id === raceId ? { ...r, ...row } : r)) }));
+    if (userId === 'demo-user') { apply(patch); return { ok: true }; }
+    let res;
+    try {
+      res = await supabase.from('race_events').update(patch).eq('id', raceId).eq('user_id', userId).select().maybeSingle();
+    } catch (err) {
+      return { ok: false, error: err };
+    }
+    if (res?.error || !res?.data) {
+      console.warn('[perfil de carga] gravar:', res?.error?.message || 'sem linha');
+      return { ok: false, error: res?.error || { message: 'Não encontrei a prova.' } };
+    }
+    if ((get().session?.user?.id || get().profile?.id) === userId) apply(res.data);
+    return { ok: true, data: res.data };
   },
 
   // ── Armário de sapatilhas (tabela shoes) ───────────────────────────────
