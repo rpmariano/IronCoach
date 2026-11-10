@@ -85,6 +85,9 @@ export interface LoadVolumeState {
   currentWeeklyKm: number | null;
   recommendedWeeklyKm: number | null;
   projectedWeeklyKm: number | null;
+  /** O status do raceVolumeOutlook: «por_planear» quando há semanas antes da
+   *  prova sem plano — aí o volume não é «abaixo» e não há conflito. */
+  volumeStatus: RaceVolumeOutlook["status"] | null;
   /** O aviso de carga que a app mostra no dia-a-dia: com Prudente, como
    *  hoje — o ACWR acima de 1,30 (cautela ou perigo, com histórico; foi o
    *  «estás a esforçar-te demasiado» da Patty, ACWR 1,31); com Mais volume,
@@ -98,14 +101,18 @@ export interface LoadVolumeState {
 /**
  * O estado da carga e do volume para a próxima prova principal. `profileLevel`:
  * o nível do perfil, quando a prova não tem um (como raceVolumeText.js).
+ * `plannedUntilISO`: o period_end mais tardio dos planos aceites (como
+ * raceVolumeText.js) — as semanas depois dele estão por planear e não
+ * contam como zero; sem ele, o último dia com itens do plano.
  */
 export function loadVolumeState(
-  { races, runs, planItems, todayISO, profileLevel = null }: {
+  { races, runs, planItems, todayISO, profileLevel = null, plannedUntilISO = null }: {
     races: ProfileRace[] | null | undefined;
     runs: (LoadRun & OutlookRun)[] | null | undefined;
     planItems?: (LoadPlanItem & OutlookPlanItem)[] | null;
     todayISO: string;
     profileLevel?: string | null;
+    plannedUntilISO?: string | null;
   },
 ): LoadVolumeState {
   const race = governingRace(races, todayISO);
@@ -118,12 +125,13 @@ export function loadVolumeState(
   const outlook: RaceVolumeOutlook | null = race
     ? raceVolumeOutlook({
       race: { ...race, experience_level: race.experience_level || profileLevel },
-      runs: list, planItems: items, todayISO,
+      runs: list, planItems: items, todayISO, plannedUntilISO,
     })
     : null;
   const loadAlert = profile === "mais_volume"
     ? reading.enoughHistory && reading.acuteKm > reading.limitKm + 0.05
     : reading.enoughHistory && reading.ratio !== null && reading.ratio > ACWR_SAFE_MAX;
+  // «por_planear» não é «abaixo»: as semanas sem plano ainda podem somar.
   const volumeBelow = outlook?.status === "abaixo";
   const state: LoadVolumeStateName = chosen
     ? "perfil"
@@ -142,6 +150,7 @@ export function loadVolumeState(
     currentWeeklyKm: outlook?.currentWeeklyKm ?? null,
     recommendedWeeklyKm: outlook?.recommendedWeeklyKm ?? null,
     projectedWeeklyKm: outlook?.projectedWeeklyKm ?? null,
+    volumeStatus: outlook?.status ?? null,
     loadAlert,
     volumeBelow,
     reverted: race?.load_profile_reverted_at ? { at: race.load_profile_reverted_at, reason: race.load_profile_revert_reason ?? null } : null,
