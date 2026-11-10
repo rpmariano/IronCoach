@@ -448,7 +448,7 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
     if (data?.error) throw saveRefusal(data.error);
 
     const saved = await persistAssessmentTime(data.assessment);
-    setBodyAssessments(upsertById(bodyAssessments, saved));
+    setBodyAssessments(upsertById(useAppStore.getState().bodyAssessments, saved));
     requestId.renew();
     finishCreateAndGoToCalendar(saved, 'Avaliação registada');
   };
@@ -467,7 +467,7 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
       if (data?.error) throw saveRefusal(data.error);
 
       const saved = await persistAssessmentTime(data.assessment);
-      setBodyAssessments(upsertById(bodyAssessments, saved));
+      setBodyAssessments(upsertById(useAppStore.getState().bodyAssessments, saved));
       requestId.renew();
       finishCreateAndGoToCalendar(saved, 'Avaliação registada');
     } catch (err) {

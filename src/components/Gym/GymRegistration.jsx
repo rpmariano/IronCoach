@@ -572,8 +572,11 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
       if (!Array.isArray(analysed.workout_session_sets) || analysed.workout_session_sets.length === 0) {
         console.warn('Aviso: análise retornou 0 séries', data);
       }
+      /* #121 (2026-11-10): a lista de AGORA, não a do render em que se tocou em gravar. A análise
+         demora; se as sessões chegaram ao store entretanto (a app acabada de abrir), a lista do clique
+         era [] — gravava-se [esta] por cima das 16 e a Carol dizia «O primeiro treino de ginásio». */
       const sessionWithSets = await persistSessionStartTime(analysed);
-      setGymSessions(upsertById(gymSessions, sessionWithSets));
+      setGymSessions(upsertById(useAppStore.getState().gymSessions, sessionWithSets));
       requestId.renew();
       await completePlanItemForSession(sessionWithSets);
       useAppStore.getState().loadExerciseLocker?.();
@@ -620,7 +623,7 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
         console.warn('Aviso: análise retornou 0 séries', data);
       }
       const sessionWithSets = await persistSessionStartTime(analysed);
-      setGymSessions(upsertById(gymSessions, sessionWithSets));
+      setGymSessions(upsertById(useAppStore.getState().gymSessions, sessionWithSets));
       requestId.renew();
 
       // Se esta sessão vem do plano (ou bate com um treino de ginásio
