@@ -191,3 +191,12 @@ Deno.test("buildPrescription (revisão de fa7e1a66): nunca inventa a unidade", (
   // Séries inválidas anulam, como sempre.
   assertEquals(buildPrescription([{ type: "forca", name: "Prancha", sets: 0, seconds: 30 }]).prescription, null);
 });
+
+Deno.test("buildPrescription (revisão de 1a481508): «com pausa isométrica» é de reps; «Remada isométrica» em reps não converte", () => {
+  assertEquals(buildPrescription([{ type: "forca", name: "Agachamento com pausa isométrica", sets: 3, reps: 8 }]).prescription!.blocks[0],
+    { type: "forca", name: "Agachamento com pausa isométrica", sets: 3, reps: 8, goal: null });
+  assertEquals(buildPrescription([{ type: "forca", name: "Remada isométrica", sets: 3, reps: 10 }]).prescription!.blocks[0],
+    { type: "forca", name: "Remada isométrica", sets: 3, reps: 10, goal: null });
+  assertEquals(buildPrescription([{ type: "forca", name: "Agachamento isométrico", sets: 3, reps: 30 }]).prescription!.blocks[0],
+    { type: "forca", name: "Agachamento isométrico", sets: 3, reps: null, seconds: 30, goal: null });
+});

@@ -122,3 +122,9 @@ Deno.test("computePlanExecution: um bloco antigo «Prancha 3×30» em reps, regi
   const byReps = computePlanExecution({ prescription, sessionDate: "2026-11-10", sets: [1, 2, 3].map((i) => ({ exercise_name: "Prancha", set_index: i, reps: 30, weight: null })) })!.blocks[0];
   assertEquals([byReps.status, byReps.repsTarget, byReps.secondsTarget], ["cumprido", 30, null]);
 });
+
+Deno.test("computePlanExecution (revisão de 1a481508): a leitura em segundos só num isométrico forte", () => {
+  const sets = [1, 2, 3].map((i) => ({ exercise_name: "Pallof hold", set_index: i, reps: null, weight: null, duration_seconds: 20 }));
+  const b = computePlanExecution({ prescription: { blocks: [{ type: "forca", name: "Pallof hold", sets: 3, reps: 10, goal: null }] }, sessionDate: "2026-11-10", sets })!.blocks[0];
+  assertEquals([b.secondsTarget, b.repsTarget], [null, 10]);
+});
