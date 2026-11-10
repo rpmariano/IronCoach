@@ -1,5 +1,6 @@
 import { foodKey } from '@formulas/foodKey.ts';
 import { cardioSpecFor } from '@formulas/cardioFields.ts';
+import { isIsometricExercise } from '@formulas/isometric.ts';
 import { isMeasurableGoal } from '@formulas/goalCheck.ts';
 
 /* O registo de ginásio no cliente: duração escrita ↔ segundos, o modelo de um
@@ -54,17 +55,11 @@ export const exerciseType = (ex) => (ex?.type === 'cardio' ? 'cardio' : 'forca')
    grava-se em workout_session_sets.duration_seconds, com reps a null — a coluna já existe e a
    analyze-gym já a aceita numa série de força (parseManualSets). */
 const fold = (v) => String(v || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
-/* Revisão do c4fa1fa9: «estático» saiu — «Bicicleta estática» e «Remo estático» são cardio, não
-   isometria; e «suspensão» só sozinha (a suspensão na barra), nunca «Elevação de pernas em
-   suspensão» nem «Remada em suspensão», que são de reps. */
-const ISOMETRIC_RE = /\b(hollow|prancha|plank|wall ?sit|agachamento (na parede|isometrico)|cadeirinha|dead ?hang|l[- ]?sit|isometric\w*|isometri\w*|holds?|superman|copenhag\w*)\b/;
-const HANG_RE = /\bsuspensao\b/;
-const NOT_HANG_RE = /\b(elevac\w*|remada|joelhos?|pernas?|flexo\w*|trx)\b/;
-export function isIsometricName(name) {
-  const f = fold(name);
-  if (ISOMETRIC_RE.test(f)) return true;
-  return HANG_RE.test(f) && !NOT_HANG_RE.test(f);
-}
+/* O classificador é o do servidor (@formulas/isometric.ts, dev-back 0d76f4d4): a app e o servidor
+   decidem igual — prancha, hollow, wall sit/cadeirinha/agachamento na parede, dead hang/suspensão na
+   barra, L-sit, superman hold, «isométrico»; fora os nomes com movimento (elevação, remada, pernas,
+   jacks, toques…). «Superman» sozinho é de reps. «Estático» não conta (a bicicleta estática). */
+export const isIsometricName = (name) => isIsometricExercise(name);
 /** A unidade das séries de um exercício de força: a escolhida, senão a do nome. */
 export const repUnitOf = (ex) => (ex?.repUnit === 's' || ex?.repUnit === 'reps' ? ex.repUnit : (isIsometricName(ex?.name) ? 's' : 'reps'));
 /** Os segundos escritos num objetivo («30 s», «45 segundos», «hold 20s»), ou null. */
