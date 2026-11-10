@@ -15,6 +15,9 @@
 // passaria por completa no registo. O plano grava-se na mesma, com as notes.
 
 import { cardioSpecFor, normalizeCardioFields, type CardioField } from "./cardioFields.ts";
+import { isIsometricExercise } from "./isometric.ts";
+
+export { isIsometricExercise };
 
 export const MAX_PRESCRIPTION_BLOCKS = 12;
 export const MAX_SETS = 10;
@@ -29,10 +32,7 @@ export const MAX_SECONDS = 600;
  *  «30 reps» num hollow hold). Um dos dois, nunca os dois. */
 export type StrengthBlock = { type: "forca"; name: string; sets: number; reps: number | null; seconds?: number; goal: string | null };
 
-/** Os isométricos: prescrevem-se em segundos (#118). «Ponte» sozinha é a
- *  ponte de glúteos, com reps — só a «ponte isométrica» conta. */
-export const ISOMETRIC_RE = /prancha|\bplank|hollow|wall\s*sit|cadeira\s+(na\s+)?parede|dead\s*hang|suspens[ãa]o\s+na\s+barra|\bl[\s-]?sit\b|isom[ée]tric|superman\s+hold|\bhold\b/i;
-export const isIsometricExercise = (name: unknown): boolean => typeof name === "string" && ISOMETRIC_RE.test(name);
+// Os isométricos (o classificador único, isometric.ts) prescrevem-se em segundos.
 export type CardioBlock = {
   type: "cardio";
   name: string;
@@ -115,20 +115,22 @@ export function buildPrescription(rawBlocks: any): PrescriptionResult {
 
     if (b.type === "forca") {
       const sets = intIn(b.sets, 1, MAX_SETS);
-      const seconds = b.seconds == null ? null : intIn(b.seconds, MIN_SECONDS, MAX_SECONDS);
-      if (b.seconds != null && seconds == null) {
+      // Revisão de 2b51cca7: os segundos só num isométrico (isometric.ts). Num
+      // exercício de reps, um seconds que viesse (0, ou outro) ignora-se —
+      // nunca recusa o plano.
+      const isometric = isIsometricExercise(name);
+      const secondsGiven = typeof b.seconds === "number" && Number.isFinite(b.seconds) && b.seconds > 0;
+      const seconds = isometric && secondsGiven ? intIn(b.seconds, MIN_SECONDS, MAX_SECONDS) : null;
+      if (isometric && secondsGiven && seconds == null) {
         return { prescription: null, issue: `"${name}": seconds por série tem de ser ${MIN_SECONDS}-${MAX_SECONDS}` };
+      }
+      if (isometric && seconds == null) {
+        return { prescription: null, issue: `"${name}" é isométrico: prescreve-se em segundos (seconds por série), não em reps` };
       }
       // Um isométrico em segundos; os segundos mandam sobre umas reps que viessem com eles.
       const reps = seconds != null ? null : intIn(b.reps, 1, MAX_REPS);
       if (sets == null || (reps == null && seconds == null)) {
-        return {
-          prescription: null,
-          issue: `"${name}": séries (1-${MAX_SETS}) e reps (1-${MAX_REPS}) — ou, num isométrico, seconds por série — são obrigatórias na força`,
-        };
-      }
-      if (seconds == null && isIsometricExercise(name)) {
-        return { prescription: null, issue: `"${name}" é isométrico: prescreve-se em segundos (seconds por série), não em reps` };
+        return { prescription: null, issue: `"${name}": séries (1-${MAX_SETS}) e reps (1-${MAX_REPS}) são obrigatórias na força` };
       }
       // `seconds` só nos isométricos: os blocos de reps gravam-se como sempre.
       blocks.push(seconds != null ? { type: "forca", name, sets, reps: null, seconds, goal } : { type: "forca", name, sets, reps, goal });

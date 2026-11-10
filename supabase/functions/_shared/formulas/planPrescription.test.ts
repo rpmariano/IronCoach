@@ -142,3 +142,14 @@ Deno.test("buildPrescription: isométricos em segundos (seconds por série); em 
   assertEquals(describePrescription(ok.prescription), "Hollow hold 3×30 s (lombar colada ao chão); Agachamento 3×10");
   assertEquals(prescriptionBlockTarget({ sets: 3, seconds: 30 }), "3×30 s");
 });
+
+Deno.test("buildPrescription (revisão de 2b51cca7): seconds só num isométrico; num exercício de reps ignora-se, nunca recusa", () => {
+  // seconds: 0 (ou outro) num exercício de reps: ignorado.
+  assertEquals(buildPrescription([{ type: "forca", name: "Agachamento", sets: 3, reps: 10, seconds: 0 }]).prescription!.blocks[0], { type: "forca", name: "Agachamento", sets: 3, reps: 10, goal: null });
+  assertEquals(buildPrescription([{ type: "forca", name: "Remada", sets: 3, reps: 12, seconds: 45 }]).prescription!.blocks[0], { type: "forca", name: "Remada", sets: 3, reps: 12, goal: null });
+  // Um não-isométrico só com seconds: faltam as reps.
+  assertStringIncludes(buildPrescription([{ type: "forca", name: "Remada", sets: 3, seconds: 45 }]).issue!, "reps (1-50) são obrigatórias");
+  // As exclusões do classificador: a prancha com toque nos ombros tem reps.
+  assertEquals(buildPrescription([{ type: "forca", name: "Prancha com toque nos ombros", sets: 3, reps: 12 }]).issue, null);
+  assertEquals(buildPrescription([{ type: "forca", name: "Elevação de pernas em suspensão na barra", sets: 3, reps: 10 }]).issue, null);
+});

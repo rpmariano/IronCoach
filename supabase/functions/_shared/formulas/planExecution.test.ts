@@ -108,3 +108,13 @@ Deno.test("computePlanExecution: o isométrico em segundos — feito, em parte, 
   // Não entra na conta das reps da sessão.
   assertEquals(part.strengthRepsCompliance, null);
 });
+
+Deno.test("computePlanExecution: um bloco antigo «Prancha 3×30» em reps, registado em segundos, compara-se pelos segundos", () => {
+  const prescription = { blocks: [{ type: "forca", name: "Prancha", sets: 3, reps: 30, goal: null }] };
+  const sets = [30, 30, 25].map((d, i) => ({ exercise_name: "Prancha", set_index: i + 1, reps: null, weight: null, duration_seconds: d }));
+  const b = computePlanExecution({ prescription, sessionDate: "2026-11-10", sets })!.blocks[0];
+  assertEquals([b.status, b.secondsTarget, b.repsTarget, b.secondsDone, b.setsFull], ["parcial", 30, null, [30, 30, 25], 2]);
+  // Registado em reps, continua pelas reps.
+  const byReps = computePlanExecution({ prescription, sessionDate: "2026-11-10", sets: [1, 2, 3].map((i) => ({ exercise_name: "Prancha", set_index: i, reps: 30, weight: null })) })!.blocks[0];
+  assertEquals([byReps.status, byReps.repsTarget, byReps.secondsTarget], ["cumprido", 30, null]);
+});

@@ -262,6 +262,13 @@ function emptyBlock(b: { index: number; label: string; kind: "forca" | "cardio";
 }
 
 function fillStrength(block: BlockExecution, done: DoneExercise, sessionDate: string, history: HistorySession[]) {
+  // Um bloco antigo «Prancha 3×30» em reps, registado em segundos (só
+  // duration_seconds, sem reps): as reps eram os segundos (revisão de 2b51cca7).
+  if (!block.secondsTarget && block.repsTarget && done.sets.every((s) => posNum(s.reps) === null) &&
+    done.sets.some((s) => posNum(s.duration_seconds) !== null)) {
+    block.secondsTarget = block.repsTarget;
+    block.repsTarget = null;
+  }
   // Um isométrico (#118): conta-se em segundos por série (duration_seconds).
   if (block.secondsTarget) {
     const held = done.sets.filter((s) => posNum(s.duration_seconds) !== null);

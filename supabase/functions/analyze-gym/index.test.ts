@@ -153,3 +153,17 @@ Deno.test("formatExerciseLines: um isométrico em segundos por série; o cardio 
     ["Prancha com disco — 2 séries de 45/40 s a 10 kg", "Prancha lateral — 2 séries: 30 s a 5 kg, 30 s a 7,5 kg"],
   );
 });
+
+// Revisão de 2b51cca7: um cardio fora do catálogo só com tempo continua somado;
+// um bloco de força (exercises_meta) só com tempo vai por séries.
+Deno.test("formatExerciseLines: cardio fora do catálogo só com tempo — somado, não «1 série de 1200 s»", () => {
+  const rows = [
+    { exercise_name: "Ski erg", set_index: 1, reps: null, weight: null, duration_seconds: 1200 },
+    { exercise_name: "Crosstrainer", set_index: 1, reps: null, weight: null, duration_seconds: 900 },
+    { exercise_name: "Bird dog", set_index: 1, reps: null, weight: null, duration_seconds: 20 },
+    { exercise_name: "Bird dog", set_index: 2, reps: null, weight: null, duration_seconds: 20 },
+  ] as never;
+  assertEquals(formatExerciseLines(rows), ["Ski erg — 20 min", "Crosstrainer — 15 min", "Bird dog — 0,7 min"]);
+  // O registo disse que o bird dog é força: séries em segundos.
+  assertEquals(formatExerciseLines(rows, 15, new Set(["bird dog"]))[2], "Bird dog — 2 séries de 20 s");
+});
