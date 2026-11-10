@@ -39,6 +39,16 @@ describe('loadStateFor — a Patty a 9 nov', () => {
     expect(proposto.projectedWeeklyKm).not.toBe(stateWith([MEIA]).projectedWeeklyKm);
   });
 
+  it('um plano que não chega à prova: as semanas por planear não dão «abaixo» — nem conflito, nem aviso de volume', () => {
+    const curto = [{ id: 'p2', status: 'aceite', period_end: '2026-11-15' }];
+    const items = PATTY_PLAN_ITEMS.filter((i) => i.planned_date <= '2026-11-15');
+    const s = loadStateFor({ raceEvents: [TRAIL, MEIA], runs: PATTY_RUNS, coachPlans: curto, coachPlanItems: items, todayISO: TODAY });
+    expect(s.volumeBelow).toBe(false);
+    expect(s.state).not.toBe('conflito');
+    expect(s.state).toBe('carga');
+    expect(filterLoadInsights([ACWR, VOLUME], s).map((i) => i.id)).toEqual(['acwr_caution']);
+  });
+
   it('sem a migration (as provas chegam sem load_profile): tudo Prudente, por escolher', () => {
     const s = stateWith([{ ...MEIA }]);
     expect([s.profile, s.chosen, s.safeLimitKm]).toEqual(['prudente', false, 28.4]);
