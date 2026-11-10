@@ -134,6 +134,26 @@ Deno.test("gravar com reviewed sem respostas: comenta com as perguntas por confi
   assertEquals((db2.tables.meal_items as { name: string; quantity_grams: number }[]).find((i) => i.name === "Iogurte grego")!.quantity_grams, 200);
 });
 
+Deno.test("reviewed: falha da BD a meio — a resposta que já mexeu no alimento fica respondida, só a outra fica por aplicar", async () => {
+  const db = new FakeFoodsDb();
+  // A gravação do iogurte falha; a da tosta (primeiro) já ficou feita.
+  db.updateError = (row) => (row.name === "Iogurte grego" ? "falha da BD" : null);
+  const tostaQ = previewQuestion("2 fatias (~40 g)");
+  const iogurteQ = { ...previewQuestion("200 g"), id: "q3", topic: "Iogurte grego · quantidade", item_name: "Iogurte grego", options: ["150 g", "200 g"], assumed: "150 g" };
+  const confirm = { ...previewQuestion("com flamengo"), id: "q4", kind: "preparacao", topic: "tosta", options: ["com flamengo", "com queijo da serra"], assumed: "com flamengo" };
+  const seen: { comments?: { ctx: { questions: CarolQuestion[] } }[] } = {};
+  const r = await saveReviewedMeal(db, USER, input({ carol_questions: [tostaQ, iogurteQ, confirm] }), EMPTY_PANTRY, fakeDeps(seen as never));
+  assert("ok" in r && r.ok);
+  // A tosta mudou (+20 g) e a confirmação não mexia em nada: respondidas. O iogurte não mudou: por aplicar.
+  assertEquals(r.unapplied_question_ids, ["q3"]);
+  const qs = db.tables.meals[0].carol_questions as CarolQuestion[];
+  assertEquals([qs.find((q) => q.id === "q1")!.answer, qs.find((q) => q.id === "q3")!.answer, qs.find((q) => q.id === "q4")!.answer], ["2 fatias (~40 g)", null, "com flamengo"]);
+  assertEquals(r.items.find((i) => i.name === "Tosta mista")!.quantity_grams, 140);
+  assertEquals(r.items.find((i) => i.name === "Iogurte grego")!.quantity_grams, 150);
+  // O comentário vê as respondidas como factos.
+  assertEquals(seen.comments![0].ctx.questions.find((q) => q.id === "q1")!.answer, "2 fatias (~40 g)");
+});
+
 Deno.test("reviewed: gramas editadas por ele + resposta de quantidade — a edição manda, a resposta fica como facto (não se soma duas vezes)", async () => {
   const db = new FakeFoodsDb();
   const seen: { comments?: { ctx: { questions: CarolQuestion[] } }[] } = {};
