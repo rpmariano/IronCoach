@@ -4171,8 +4171,9 @@ export async function runProposeTrainingPlan(
       ? buildPrescription(item.prescription_blocks)
       : { prescription: null, issue: null, adjusted: undefined };
     if (prescriptionIssue) console.warn(`propose_training_plan: prescrição do treino ${n} descartada — ${prescriptionIssue}`);
-    // Uma unidade acertada (reps ↔ segundos) ou um bloco que saiu: o resto fica.
-    if (prescriptionAdjusted?.length) console.warn(`propose_training_plan: prescrição do treino ${n} acertada — ${prescriptionAdjusted.join("; ")}`);
+    // Uma unidade acertada (reps → segundos) ou um bloco que saiu: o resto fica.
+    // Com a prescrição descartada, o aviso de cima já os diz (uma vez só).
+    else if (prescriptionAdjusted?.length) console.warn(`propose_training_plan: prescrição do treino ${n} acertada — ${prescriptionAdjusted.join("; ")}`);
     // A restrição de membros superiores da memória cumpre-se à letra: nada
     // que carregue braços, ombros ou mãos (bug do Rui, 2026-10-27). Vê-se o
     // que o atleta vai ler: os nomes dos exercícios (também os de uma

@@ -134,10 +134,11 @@ Deno.test("buildPrescription: isométricos em segundos (seconds por série); em 
   assertEquals(hollow.issue, null);
   assertEquals(hollow.prescription!.blocks[0], { type: "forca", name: "Hollow hold", sets: 3, reps: null, seconds: 30, goal: null });
   assertStringIncludes(hollow.adjusted![0], "30 reps passaram a 30 s por série");
-  // Sem segundos possíveis (5 reps, 2 s, nada): o bloco sai sozinho; os outros ficam.
+  // Revisão de fa7e1a66: seconds inválido tira o bloco; sem unidade nenhuma sai;
+  // reps que não podem ser segundos (3) ficam como vieram. Os outros ficam.
   const out = buildPrescription([{ type: "forca", name: "Dead hang", sets: 2, reps: 3 }, { type: "forca", name: "Prancha", sets: 3, seconds: 2 }, { type: "forca", name: "Prancha lateral", sets: 3 }, { type: "forca", name: "Agachamento", sets: 3, reps: 10 }]);
-  assertEquals(out.prescription!.blocks.map((b) => b.name), ["Agachamento"]);
-  assertEquals(out.adjusted!.length, 3);
+  assertEquals(out.prescription!.blocks.map((b) => [b.name, b.type === "forca" ? (b.seconds ?? `${b.reps} reps`) : null]), [["Dead hang", "3 reps"], ["Agachamento", "10 reps"]]);
+  assertEquals(out.adjusted!.length, 2);
   // Só isométricos sem segundos: nada fica.
   assertEquals(buildPrescription([{ type: "forca", name: "Prancha", sets: 3 }]).prescription, null);
   // A ponte de glúteos não é isométrica.
@@ -156,4 +157,37 @@ Deno.test("buildPrescription (revisão de 2b51cca7): seconds só num isométrico
   // As exclusões do classificador: a prancha com toque nos ombros tem reps.
   assertEquals(buildPrescription([{ type: "forca", name: "Prancha com toque nos ombros", sets: 3, reps: 12 }]).issue, null);
   assertEquals(buildPrescription([{ type: "forca", name: "Elevação de pernas em suspensão na barra", sets: 3, reps: 10 }]).issue, null);
+});
+
+// Revisão de fa7e1a66: os casos do script dela.
+Deno.test("buildPrescription (revisão de fa7e1a66): nunca inventa a unidade", () => {
+  const one = (b: Record<string, unknown>) => buildPrescription([{ type: "forca", sets: 3, ...b }]);
+  const block = (b: Record<string, unknown>) => one(b).prescription?.blocks[0] ?? null;
+  // Forte em reps: passa a segundos.
+  assertEquals(block({ name: "Prancha", reps: 30 }), { type: "forca", name: "Prancha", sets: 3, reps: null, seconds: 30, goal: null });
+  // Reps que não podem ser segundos: ficam.
+  assertEquals(block({ name: "Prancha", reps: 3 }), { type: "forca", name: "Prancha", sets: 3, reps: 3, goal: null });
+  // Seconds inválido (2, 900): sai — nunca cai para as reps.
+  assertEquals(one({ name: "Prancha", seconds: 2, reps: 30 }).prescription, null);
+  assertEquals(one({ name: "Prancha", seconds: 900, reps: 12 }).prescription, null);
+  assertStringIncludes(one({ name: "Prancha", seconds: 900, reps: 12 }).issue!, "900 s por série fora de 5-600");
+  assertEquals(block({ name: "Prancha", seconds: 45, reps: 12 }), { type: "forca", name: "Prancha", sets: 3, reps: null, seconds: 45, goal: null });
+  assertEquals(one({ name: "Prancha" }).prescription, null);
+  assertEquals(one({ name: "Prancha", reps: "30" }).prescription, null);
+  // Isométrico ambíguo em reps: fica em reps, sem recusa e sem perda.
+  assertEquals(block({ name: "Pallof hold", reps: 10 }), { type: "forca", name: "Pallof hold", sets: 3, reps: 10, goal: null });
+  assertEquals(block({ name: "Prancha com joelhos apoiados", reps: 30 }), { type: "forca", name: "Prancha com joelhos apoiados", sets: 3, reps: 30, goal: null });
+  // Com movimento: reps, como veio.
+  assertEquals(block({ name: "Copenhagen adductor raise", reps: 12 }), { type: "forca", name: "Copenhagen adductor raise", sets: 3, reps: 12, goal: null });
+  assertEquals(block({ name: "Plank walk", reps: 8 }), { type: "forca", name: "Plank walk", sets: 3, reps: 8, goal: null });
+  // Desconhecido em segundos (reps 0 ou nenhumas): segundos.
+  assertEquals(block({ name: "Bird dog", seconds: 20 }), { type: "forca", name: "Bird dog", sets: 3, reps: null, seconds: 20, goal: null });
+  assertEquals(block({ name: "Bird dog", seconds: 20, reps: 0 }), { type: "forca", name: "Bird dog", sets: 3, reps: null, seconds: 20, goal: null });
+  assertEquals(one({ name: "Bird dog", reps: 0 }).prescription, null);
+  // De reps com seconds: o seconds ignora-se.
+  assertEquals(block({ name: "Agachamento", reps: 10, seconds: 30 }), { type: "forca", name: "Agachamento", sets: 3, reps: 10, goal: null });
+  // Um bloco que sai não leva os outros.
+  assertEquals(buildPrescription([{ type: "forca", name: "Agachamento", sets: 3, reps: 10 }, { type: "forca", name: "Prancha", sets: 3, seconds: 2 }]).prescription!.blocks.length, 1);
+  // Séries inválidas anulam, como sempre.
+  assertEquals(buildPrescription([{ type: "forca", name: "Prancha", sets: 0, seconds: 30 }]).prescription, null);
 });
