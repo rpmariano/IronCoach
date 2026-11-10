@@ -4,29 +4,41 @@
 // planExecution) e para a app (@formulas/isometric.ts, em vez das regex do
 // gymSets.js): um isométrico prescreve-se e regista-se em SEGUNDOS por série.
 //
-// Positivos: prancha (e prancha lateral), plank, hollow hold, wall sit /
-// cadeirinha / agachamento na parede, dead hang / suspensão na barra (só ela),
-// L-sit, superman hold e tudo o que se diga «isométrico/a».
-// Exclusões — a mesma palavra num exercício com movimento: elevação, remada,
-// joelhos, pernas, flexão, TRX, jacks, toque(s), rocks («Elevação de pernas em
-// suspensão na barra», «Prancha com toque nos ombros», «Plank jacks», «Hollow
-// body rocks»).
-// «Superman» sozinho é o exercício com repetições (estender e voltar): só
-// «superman hold» é isométrico.
+// Testa-se o nome normalizado (foodKey: minúsculas, sem acentos, hífens e
+// pontuação a espaços — «Wall-sit» é «wall sit»).
+//   1. «isometric…»/«isometria» escrito passa à frente de tudo («Remada
+//      isométrica», «Flexão isométrica», «Isometria de glúteo»).
+//   2. Positivos: prancha (e lateral, nos joelhos), plank, hollow, wall sit /
+//      cadeirinha / agachamento na parede, dead hang / suspensão (passiva) na
+//      barra, L-sit, copenhagen e qualquer «… hold» (superman, pallof, glute
+//      bridge).
+//   3. Exclusões — a mesma palavra num exercício com movimento: elevação,
+//      remada, flexão, TRX, jacks, toques/taps, rocks, push-up, dinâmica,
+//      rotação, saltos, up and down, dips (e plurais); «joelhos» e «pernas»
+//      excluem fora de uma prancha («Elevação de joelhos em suspensão»), mas
+//      não a «Prancha com joelhos apoiados».
+//   «Superman» sozinho tem repetições (estender e voltar): só «superman hold».
 
-const W = "(?:^|[^a-zà-ú])";
-const ISOMETRIC_RE = new RegExp(
-  `${W}(?:prancha|plank|hollow|wall\\s*sit|cadeirinha|agachamento\\s+(?:isom[ée]trico\\s+)?na\\s+parede|cadeira\\s+(?:na\\s+)?parede|` +
-    `dead\\s*hang|suspens[ãa]o\\s+na\\s+barra|l[\\s-]?sit|superman\\s+hold|isom[ée]tric)`,
-  "i",
+import { foodKey } from "./foodKey.ts";
+
+const EXPLICIT_RE = /(?:^| )isometri/;
+const POSITIVE_RE = new RegExp(
+  "(?:^| )(?:prancha|plank|hollow|wall sit|cadeirinha|agachamento na parede|cadeira (?:na )?parede|dead hang|" +
+    "suspensao (?:passiva )?na barra|l sit|copenhagen|hold)(?: |$)",
 );
 const MOVEMENT_RE = new RegExp(
-  `${W}(?:eleva[çc][ãa]o|elevac|remada|joelhos?|pernas?|flex[ãa]o|flexoes|trx|jacks?|toques?|rocks?)(?![a-zà-ú])`,
-  "i",
+  "(?:^| )(?:elevac(?:ao|oes)|remadas?|flex(?:ao|oes)|trx|jacks?|toques?|taps?|rocks?|push up|pushups?|dinamicas?|" +
+    "rotac(?:ao|oes)|saltos?|up and down|dips?)(?: |$)",
 );
+const LEGS_RE = /(?:^| )(?:joelhos?|pernas?)(?: |$)/;
+const PLANK_RE = /(?:^| )(?:prancha|plank)(?: |$)/;
 
 /** O exercício é isométrico: prescreve-se e regista-se em segundos por série. */
 export function isIsometricExercise(name: unknown): boolean {
-  if (typeof name !== "string" || !name.trim()) return false;
-  return ISOMETRIC_RE.test(name) && !MOVEMENT_RE.test(name);
+  if (typeof name !== "string") return false;
+  const key = foodKey(name);
+  if (!key) return false;
+  if (EXPLICIT_RE.test(key)) return true;
+  if (!POSITIVE_RE.test(key) || MOVEMENT_RE.test(key)) return false;
+  return !(LEGS_RE.test(key) && !PLANK_RE.test(key));
 }

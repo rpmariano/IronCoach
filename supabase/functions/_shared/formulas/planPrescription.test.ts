@@ -129,13 +129,17 @@ Deno.test("buildPrescription: isométricos em segundos (seconds por série); em 
   assertEquals(ok.prescription!.blocks[1], { type: "forca", name: "Agachamento", sets: 3, reps: 10, goal: null });
   // Os segundos mandam sobre umas reps que viessem com eles.
   assertEquals(buildPrescription([{ type: "forca", name: "Prancha", sets: 3, reps: 30, seconds: 45 }]).prescription!.blocks[0], { type: "forca", name: "Prancha", sets: 3, reps: null, seconds: 45, goal: null });
-  // Um isométrico em reps: recusado, com a instrução.
-  assertStringIncludes(buildPrescription([{ type: "forca", name: "Hollow hold", sets: 3, reps: 30 }]).issue!, "é isométrico: prescreve-se em segundos");
-  assertStringIncludes(buildPrescription([{ type: "forca", name: "Wall sit", sets: 2, reps: 10 }]).issue!, "isométrico");
-  assertStringIncludes(buildPrescription([{ type: "forca", name: "Dead hang", sets: 2, reps: 5 }]).issue!, "isométrico");
-  // Fora dos limites, ou sem nada.
-  assertStringIncludes(buildPrescription([{ type: "forca", name: "Prancha", sets: 3, seconds: 2 }]).issue!, "seconds por série tem de ser 5-600");
-  assertStringIncludes(buildPrescription([{ type: "forca", name: "Prancha", sets: 3 }]).issue!, "seconds por série");
+  // Um isométrico em reps (revisão de 0d76f4d4): as reps passam a segundos, e o resto fica.
+  const hollow = buildPrescription([{ type: "forca", name: "Hollow hold", sets: 3, reps: 30 }, { type: "forca", name: "Agachamento", sets: 3, reps: 10 }]);
+  assertEquals(hollow.issue, null);
+  assertEquals(hollow.prescription!.blocks[0], { type: "forca", name: "Hollow hold", sets: 3, reps: null, seconds: 30, goal: null });
+  assertStringIncludes(hollow.adjusted![0], "30 reps passaram a 30 s por série");
+  // Sem segundos possíveis (5 reps, 2 s, nada): o bloco sai sozinho; os outros ficam.
+  const out = buildPrescription([{ type: "forca", name: "Dead hang", sets: 2, reps: 3 }, { type: "forca", name: "Prancha", sets: 3, seconds: 2 }, { type: "forca", name: "Prancha lateral", sets: 3 }, { type: "forca", name: "Agachamento", sets: 3, reps: 10 }]);
+  assertEquals(out.prescription!.blocks.map((b) => b.name), ["Agachamento"]);
+  assertEquals(out.adjusted!.length, 3);
+  // Só isométricos sem segundos: nada fica.
+  assertEquals(buildPrescription([{ type: "forca", name: "Prancha", sets: 3 }]).prescription, null);
   // A ponte de glúteos não é isométrica.
   assertEquals(buildPrescription([{ type: "forca", name: "Ponte de glúteos", sets: 3, reps: 12 }]).issue, null);
   // A leitura: «3×30 s».
@@ -147,8 +151,8 @@ Deno.test("buildPrescription (revisão de 2b51cca7): seconds só num isométrico
   // seconds: 0 (ou outro) num exercício de reps: ignorado.
   assertEquals(buildPrescription([{ type: "forca", name: "Agachamento", sets: 3, reps: 10, seconds: 0 }]).prescription!.blocks[0], { type: "forca", name: "Agachamento", sets: 3, reps: 10, goal: null });
   assertEquals(buildPrescription([{ type: "forca", name: "Remada", sets: 3, reps: 12, seconds: 45 }]).prescription!.blocks[0], { type: "forca", name: "Remada", sets: 3, reps: 12, goal: null });
-  // Um não-isométrico só com seconds: faltam as reps.
-  assertStringIncludes(buildPrescription([{ type: "forca", name: "Remada", sets: 3, seconds: 45 }]).issue!, "reps (1-50) são obrigatórias");
+  // Um exercício que o classificador não conhece como isométrico, só com seconds: fica em segundos.
+  assertEquals(buildPrescription([{ type: "forca", name: "Bird dog", sets: 3, seconds: 20 }]).prescription!.blocks[0], { type: "forca", name: "Bird dog", sets: 3, reps: null, seconds: 20, goal: null });
   // As exclusões do classificador: a prancha com toque nos ombros tem reps.
   assertEquals(buildPrescription([{ type: "forca", name: "Prancha com toque nos ombros", sets: 3, reps: 12 }]).issue, null);
   assertEquals(buildPrescription([{ type: "forca", name: "Elevação de pernas em suspensão na barra", sets: 3, reps: 10 }]).issue, null);

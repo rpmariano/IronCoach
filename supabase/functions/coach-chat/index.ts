@@ -4192,10 +4192,12 @@ export async function runProposeTrainingPlan(
     const isTraining = item.kind === "corrida" || item.kind === "ginasio";
     // Só no ginásio. Uma prescrição inválida fica null — o treino grava-se na
     // mesma, descrito nas notes, como até aqui.
-    const { prescription, issue: prescriptionIssue } = item.kind === "ginasio"
+    const { prescription, issue: prescriptionIssue, adjusted: prescriptionAdjusted } = item.kind === "ginasio"
       ? buildPrescription(item.prescription_blocks)
-      : { prescription: null, issue: null };
+      : { prescription: null, issue: null, adjusted: undefined };
     if (prescriptionIssue) console.warn(`propose_training_plan: prescrição do treino ${n} descartada — ${prescriptionIssue}`);
+    // Uma unidade acertada (reps ↔ segundos) ou um bloco que saiu: o resto fica.
+    if (prescriptionAdjusted?.length) console.warn(`propose_training_plan: prescrição do treino ${n} acertada — ${prescriptionAdjusted.join("; ")}`);
     // A restrição de membros superiores da memória cumpre-se à letra: nada
     // que carregue braços, ombros ou mãos (bug do Rui, 2026-10-27). Vê-se o
     // que o atleta vai ler: os nomes dos exercícios (também os de uma
