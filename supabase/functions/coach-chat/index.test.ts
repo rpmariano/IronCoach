@@ -409,6 +409,8 @@ Deno.test("runProposeTrainingPlan: prescrição numa corrida é descartada", asy
 
 // ── Ginásio: restrição de braços e variedade (bug do Rui, 2026-10-27) ─────
 const forca = (name: string) => ({ type: "forca", name, sets: 3, reps: 10, goal: "descida controlada" });
+// Os isométricos em segundos (#118).
+const hold = (name: string) => ({ type: "forca", name, sets: 3, seconds: 30, goal: "lombar colada ao chão" });
 const RUI_SESSION = [
   { type: "cardio", name: "Bicicleta estacionária", duration_min: 10, goal: "aquecer em Z2" },
   forca("Cadeira extensora"), forca("Cadeira flexora"), forca("Gémeos na máquina"),
@@ -432,7 +434,7 @@ Deno.test("runProposeTrainingPlan: com a restrição, uma sessão só de pernas 
     ...VALID_PLAN,
     items: [
       gymDay("2026-08-11", [forca("Leg press"), forca("Hip thrust na máquina"), forca("Abdutora"), forca("Dead bug")]),
-      gymDay("2026-08-14", [forca("Búlgaro sem carga"), forca("Peso morto a uma perna sem carga"), forca("Elevação de gémeos"), forca("Hollow hold")]),
+      gymDay("2026-08-14", [forca("Búlgaro sem carga"), forca("Peso morto a uma perna sem carga"), forca("Elevação de gémeos"), hold("Hollow hold")]),
     ],
   }, null, null, { upperBodyRestricted: true });
   assertStringIncludes(result, "Plano criado com 2 treino(s)");
@@ -444,7 +446,7 @@ Deno.test("runProposeTrainingPlan: com a restrição, uma sessão só de pernas 
 
 Deno.test("runProposeTrainingPlan: sem a restrição, a prancha passa", async () => {
   const { sb } = makePlanSb();
-  const result = await runProposeTrainingPlan(sb, "user-1", { ...VALID_PLAN, items: [gymDay("2026-08-12", [forca("Leg press"), forca("Prancha")])] });
+  const result = await runProposeTrainingPlan(sb, "user-1", { ...VALID_PLAN, items: [gymDay("2026-08-12", [forca("Leg press"), hold("Prancha")])] });
   assertStringIncludes(result, "Plano criado");
 });
 
@@ -655,7 +657,7 @@ Deno.test("runProposeTrainingPlan: todos os conflitos de pernas pesadas numa só
     ...VALID_PLAN,
     items: [
       gymDay("2026-08-10", [reps("Agachamento", 5), reps("Dead bug", 10)]), run("2026-08-11", "intervalos"),
-      gymDay("2026-08-13", [reps("Peso morto romeno", 5), reps("Hollow hold", 10)]), run("2026-08-15", "longo"),
+      gymDay("2026-08-13", [reps("Peso morto romeno", 5), hold("Hollow hold")]), run("2026-08-15", "longo"),
     ],
   });
   assertStringIncludes(result, "2026-08-10 (Agachamento) está a menos de 48 h do intervalos de 2026-08-11");
@@ -6919,4 +6921,10 @@ Deno.test("bug #113: o nível medido pela Carol passa a disciplina e a distânci
   const src = await Deno.readTextFile(new URL("./index.ts", import.meta.url));
   assertStringIncludes(src, 'raceType: e.race_type ?? "estrada",');
   assertStringIncludes(src, "raceDistanceKm: Number(e.distance_km) || null,");
+});
+
+Deno.test("#118: a doutrina e o schema do plano prescrevem os isométricos em segundos", async () => {
+  const src = await Deno.readTextFile(new URL("./index.ts", import.meta.url));
+  assertStringIncludes(src, "Exercícios isométricos — prancha, prancha lateral, hollow hold, wall sit, dead hang — prescrevem-se em segundos");
+  assertStringIncludes(src, "Só força isométrica (prancha, hollow hold, wall sit, dead hang). Segundos por série (5-600), em vez de reps.");
 });

@@ -129,3 +129,17 @@ Deno.test("activityFacts (bug #94): só o que existe — nunca «0m» nem «unde
   assertEquals(activityFacts(["8km", null, "esforço 6/10"]), " - 8km, esforço 6/10");
   assertEquals(activityFacts([null, null]), "");
 });
+
+// #118 (2026-11-10): o isométrico chega à Carol em segundos por série, não somado como cardio.
+Deno.test("formatExerciseLines: um isométrico em segundos por série; o cardio continua somado", () => {
+  assertEquals(
+    formatExerciseLines([
+      { exercise_name: "Hollow hold", set_index: 1, reps: null, weight: null, duration_seconds: 30 },
+      { exercise_name: "Hollow hold", set_index: 2, reps: null, weight: null, duration_seconds: 30 },
+      { exercise_name: "Prancha", set_index: 1, reps: null, weight: null, duration_seconds: 45 },
+      { exercise_name: "Prancha", set_index: 2, reps: null, weight: null, duration_seconds: 40 },
+      { exercise_name: "Bicicleta", set_index: 1, reps: null, weight: null, duration_seconds: 1200, distance_km: 8 },
+    ] as never),
+    ["Hollow hold — 2 séries de 30 s", "Prancha — 2 séries de 45/40 s", "Bicicleta — 20 min, 8 km"],
+  );
+});

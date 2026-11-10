@@ -21,8 +21,18 @@ export const MAX_SETS = 10;
 export const MAX_REPS = 50;
 export const MAX_NAME_LENGTH = 80;
 export const MAX_GOAL_LENGTH = 200;
+/** Segundos por série num isométrico (#118): 5 s a 10 min. */
+export const MIN_SECONDS = 5;
+export const MAX_SECONDS = 600;
 
-export type StrengthBlock = { type: "forca"; name: string; sets: number; reps: number; goal: string | null };
+/** Força: séries × reps, ou séries × segundos nos isométricos (#118, 2026-11-10:
+ *  «30 reps» num hollow hold). Um dos dois, nunca os dois. */
+export type StrengthBlock = { type: "forca"; name: string; sets: number; reps: number | null; seconds?: number; goal: string | null };
+
+/** Os isométricos: prescrevem-se em segundos (#118). «Ponte» sozinha é a
+ *  ponte de glúteos, com reps — só a «ponte isométrica» conta. */
+export const ISOMETRIC_RE = /prancha|\bplank|hollow|wall\s*sit|cadeira\s+(na\s+)?parede|dead\s*hang|suspens[ãa]o\s+na\s+barra|\bl[\s-]?sit\b|isom[ée]tric|superman\s+hold|\bhold\b/i;
+export const isIsometricExercise = (name: unknown): boolean => typeof name === "string" && ISOMETRIC_RE.test(name);
 export type CardioBlock = {
   type: "cardio";
   name: string;
@@ -105,11 +115,23 @@ export function buildPrescription(rawBlocks: any): PrescriptionResult {
 
     if (b.type === "forca") {
       const sets = intIn(b.sets, 1, MAX_SETS);
-      const reps = intIn(b.reps, 1, MAX_REPS);
-      if (sets == null || reps == null) {
-        return { prescription: null, issue: `"${name}": séries (1-${MAX_SETS}) e reps (1-${MAX_REPS}) são obrigatórias na força` };
+      const seconds = b.seconds == null ? null : intIn(b.seconds, MIN_SECONDS, MAX_SECONDS);
+      if (b.seconds != null && seconds == null) {
+        return { prescription: null, issue: `"${name}": seconds por série tem de ser ${MIN_SECONDS}-${MAX_SECONDS}` };
       }
-      blocks.push({ type: "forca", name, sets, reps, goal });
+      // Um isométrico em segundos; os segundos mandam sobre umas reps que viessem com eles.
+      const reps = seconds != null ? null : intIn(b.reps, 1, MAX_REPS);
+      if (sets == null || (reps == null && seconds == null)) {
+        return {
+          prescription: null,
+          issue: `"${name}": séries (1-${MAX_SETS}) e reps (1-${MAX_REPS}) — ou, num isométrico, seconds por série — são obrigatórias na força`,
+        };
+      }
+      if (seconds == null && isIsometricExercise(name)) {
+        return { prescription: null, issue: `"${name}" é isométrico: prescreve-se em segundos (seconds por série), não em reps` };
+      }
+      // `seconds` só nos isométricos: os blocos de reps gravam-se como sempre.
+      blocks.push(seconds != null ? { type: "forca", name, sets, reps: null, seconds, goal } : { type: "forca", name, sets, reps, goal });
     } else if (b.type === "cardio") {
       const duration_min = positiveOrNull(b.duration_min, 300);
       const distance_km = positiveOrNull(b.distance_km, 100);
@@ -143,7 +165,8 @@ export function describePrescription(prescription: any): string | null {
   for (const b of blocks) {
     if (!b || typeof b.name !== "string" || !b.name.trim()) continue;
     let alvo = "";
-    if (b.type === "forca" && b.sets && b.reps) alvo = ` ${b.sets}×${b.reps}`;
+    if (b.type === "forca" && b.sets && b.seconds) alvo = ` ${b.sets}×${b.seconds} s`;
+    else if (b.type === "forca" && b.sets && b.reps) alvo = ` ${b.sets}×${b.reps}`;
     else if (b.type === "cardio") {
       alvo = [b.duration_min ? `${b.duration_min} min` : null, b.distance_km ? `${b.distance_km} km` : null, b.laps ? `${b.laps} voltas` : null]
         .filter(Boolean).map((s) => ` ${s}`).join("");
@@ -159,7 +182,7 @@ export function describePrescription(prescription: any): string | null {
    (src/utils/prescriptionView.js): lê o que está gravado sem confiar na forma;
    um bloco sem nome cai; um alvo fora dos tetos (com folga sobre os do
    servidor) não é alvo, fica de fora; no máximo MAX_PRESCRIPTION_BLOCKS. */
-const VIEW_MAX = { sets: 20, reps: 100, duration_min: 600, distance_km: 200, laps: 1000 };
+const VIEW_MAX = { sets: 20, reps: 100, seconds: 1200, duration_min: 600, distance_km: 200, laps: 1000 };
 const viewNum = (v: unknown, max: number): number | null =>
   typeof v === "number" && Number.isFinite(v) && v > 0 && v <= max ? v : null;
 const viewFmt = (n: number) => String(Math.round(n * 100) / 100).replace(".", ",");
@@ -168,6 +191,8 @@ const viewFmt = (n: number) => String(Math.round(n * 100) / 100).replace(".", ",
 export function prescriptionBlockTarget(b: any): string {
   const sets = viewNum(b?.sets, VIEW_MAX.sets);
   const reps = viewNum(b?.reps, VIEW_MAX.reps);
+  const seconds = viewNum(b?.seconds, VIEW_MAX.seconds);
+  if (sets && seconds) return `${viewFmt(sets)}×${viewFmt(seconds)} s`;
   if (sets && reps) return `${viewFmt(sets)}×${viewFmt(reps)}`;
   const parts: string[] = [];
   const dur = viewNum(b?.duration_min, VIEW_MAX.duration_min);
