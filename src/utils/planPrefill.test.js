@@ -156,3 +156,21 @@ describe('exercisesFromPrescription — falso isométrico', () => {
     expect([ex.repUnit, ex.sets[0].plan.reps]).toEqual([undefined, '12']);
   });
 });
+
+/* Seguimento do #118 (dev-back 1a481508): só um isométrico forte lê as reps como segundos. */
+describe('exercisesFromPrescription — isométrico ambíguo fica em reps', () => {
+  it('«Pallof hold 3×10» abre em reps (10 reps, não 10 s); com seconds no bloco, em segundos', async () => {
+    const { exercisesFromPrescription } = await import('./planPrefill');
+    const { repUnitOf } = await import('./gymSets');
+    const [pallof, ponte, pallofS, lateral] = exercisesFromPrescription({ blocks: [
+      { type: 'forca', name: 'Pallof hold', sets: 3, reps: 10 },
+      { type: 'forca', name: 'Glute bridge hold', sets: 2, reps: 12, goal: 'hold 30 s' },
+      { type: 'forca', name: 'Pallof hold', sets: 3, seconds: 20 },
+      { type: 'forca', name: 'Prancha lateral', sets: 2, reps: 30 },
+    ] });
+    expect([pallof.repUnit, repUnitOf(pallof), pallof.sets[0].plan.reps]).toEqual(['reps', 'reps', '10']);
+    expect([repUnitOf(ponte), ponte.sets[0].plan.reps]).toEqual(['reps', '12']);
+    expect([repUnitOf(pallofS), pallofS.sets[0].plan.reps]).toEqual(['s', '20']);
+    expect([repUnitOf(lateral), lateral.sets[0].plan.reps]).toEqual(['s', '30']);
+  });
+});

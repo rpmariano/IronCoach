@@ -1,6 +1,7 @@
 import { describePrescription } from '@formulas/planPrescription.ts';
 import { cardioSpecFor } from '@formulas/cardioFields.ts';
 import { foodKey } from '@formulas/foodKey.ts';
+import { isStrongIsometric } from '@formulas/isometric.ts';
 import { newExercise, newSet, isIsometricName, secondsFromGoal } from './gymSets';
 import { mealsForDay } from './homeModels';
 
@@ -57,11 +58,13 @@ export function exercisesFromPrescription(prescription) {
     }
     const n = Math.min(Math.max(parseInt(b.sets) || 1, 1), 10);
     /* #118: um isométrico conta-se em segundos. O bloco traz `seconds` por série (dev-back, o
-       seguimento do #118) — esse manda. Num plano antigo, só com `reps`: num nome isométrico
-       (hollow, prancha…), o alvo é o do objetivo («hold 30 s»), senão o número das reps (o «30»
-       do hollow eram segundos). */
+       seguimento do #118) — esse manda. Num plano antigo, só com `reps`, as reps só se leem como
+       segundos num isométrico FORTE (isStrongIsometric: prancha, hollow hold, wall sit, dead
+       hang, L-sit…), como no servidor (1a481508): o alvo é o do objetivo («hold 30 s»), senão o
+       número das reps. Num nome ambíguo («Pallof hold 3×10») ficam as reps, e em reps — uma
+       unidade inventada é pior; o atleta pode trocar no «Contar em». */
     const blockSeconds = Number(b.seconds) > 0 ? Math.round(Number(b.seconds)) : null;
-    if (blockSeconds || isIsometricName(name)) {
+    if (blockSeconds || isStrongIsometric(name)) {
       const secs = blockSeconds ?? secondsFromGoal(goal) ?? (Number(b.reps) > 0 ? Number(b.reps) : null);
       return newExercise({
         name, type: 'forca', goal, planBlockIndex: index, repUnit: 's',
@@ -70,6 +73,8 @@ export function exercisesFromPrescription(prescription) {
     }
     return newExercise({
       name, type: 'forca', goal, planBlockIndex: index,
+      // Sem isto, um isométrico ambíguo abria em segundos pelo nome (repUnitOf) com as reps lá dentro.
+      ...(isIsometricName(name) ? { repUnit: 'reps' } : {}),
       sets: Array.from({ length: n }, () => newSet({ plan: { reps: asString(b.reps), weight: '' } })),
     });
   }).filter(Boolean);
