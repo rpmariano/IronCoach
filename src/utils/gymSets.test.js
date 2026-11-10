@@ -227,6 +227,10 @@ describe('gymSets — isométricos em segundos (#118)', () => {
       expect(isIsometricName(n)).toBe(true);
     }
     for (const n of ['Agachamento', 'Supino', 'Leg press', 'Remo', 'Elevação de gémeos']) expect(isIsometricName(n)).toBe(false);
+    // O classificador do servidor (@formulas/isometric.ts): «Superman» sozinho é de reps; a cadeirinha
+    // e o superman hold são isométricos; com movimento (toques, jacks, rocks), não.
+    for (const n of ['Cadeirinha', 'Superman hold', 'Agachamento isométrico na parede']) expect([n, isIsometricName(n)]).toEqual([n, true]);
+    for (const n of ['Superman', 'Prancha com toque nos ombros', 'Plank jacks', 'Hollow body rocks']) expect([n, isIsometricName(n)]).toEqual([n, false]);
     expect(repUnitOf({ name: 'Hollow hold' })).toBe('s');
     expect(repUnitOf({ name: 'Hollow hold', repUnit: 'reps' })).toBe('reps');
     expect(repUnitOf({ name: 'Supino', repUnit: 's' })).toBe('s');
