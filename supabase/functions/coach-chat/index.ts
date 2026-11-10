@@ -49,7 +49,9 @@ import { micronutrientAverages } from "../_shared/formulas/nutritionPeriod.ts";
 import { classifyCalorieCompliance } from "../_shared/formulas/nutritionCompliance.ts";
 import { computeRunAcwr, RUN_ACWR_MIN_HISTORY_WEEKS } from "../_shared/formulas/runAcwr.ts";
 import { fetchGeminiWithTimeout, hasTimeFor } from "../_shared/geminiFetch.ts";
-import { planLoadViolations, runLoadReading, type LoadPlanItem, type RunLoadReading } from "../_shared/formulas/runLoadAlert.ts";
+import { planLoadViolations, runLoadReading, type LoadPlanItem, type LoadProfile, type RunLoadReading } from "../_shared/formulas/runLoadAlert.ts";
+import { governingRace, LOAD_PROFILE_LABELS, loadVolumeState, raceLoadProfile } from "../_shared/formulas/loadProfile.ts";
+import { fetchLoadProfileRaces, loadProfileContextLine, lowBaseRampKm } from "../_shared/loadProfileContext.ts";
 import { computeCrossMetrics } from "../_shared/formulas/crossMetrics.ts";
 import { computeReadinessIndex, READINESS_MIN_COMPLETE_DAYS_OCASIONAL, readinessMealsStartISO } from "../_shared/formulas/readinessIndex.ts";
 import { daysCompleteness, type MealLoggingProfile, mealLoggingProfile, mealsOfCompleteDays } from "../_shared/formulas/dayCompleteness.ts";
@@ -840,6 +842,13 @@ const UPDATE_RACE_EVENT_TOOL = {
           "para outra prova, ou fica de fora do plano). Marca a decisão como tomada e faz-te parar de " +
           "insistir nesta prova. Nunca o passes por iniciativa própria nem para encerrar o assunto: " +
           "só quando ele decidir.",
+      },
+      load_profile: {
+        type: "STRING",
+        enum: ["prudente", "mais_volume"],
+        description:
+          "Perfil de carga para esta prova (o limite seguro da semana). SÓ quando o atleta o escolher explicitamente " +
+          "na mensagem dele («quero mais volume», «fica prudente») — nunca por iniciativa tua nem para resolver um aviso.",
       },
       reason: { type: "STRING", description: "Uma frase com o porquê (ex.: 'objetivo revisto para realista face à previsão do treino')." },
     },
@@ -3514,7 +3523,12 @@ export function buildAcwrLine(
  *  dela, não conta), e as corridas da proposta. Devolve a mensagem de erro
  *  para o modelo, ou null. */
 // deno-lint-ignore no-explicit-any
-export async function checkPlanLoad(sb: any, userId: string, rows: any[], trainingPlans: any[], periodStart: string, todayISO: string): Promise<string | null> {
+export async function checkPlanLoad(
+  // deno-lint-ignore no-explicit-any
+  sb: any, userId: string, rows: any[], trainingPlans: any[], periodStart: string, todayISO: string,
+  /** O perfil de carga da próxima prova principal (loadProfile.ts, 2026-11-09). */
+  profile: LoadProfile = "prudente",
+): Promise<string | null> {
   try {
     // kind/training_type: a guarda tira as caminhadas da carga (runLoadAlert.ts).
     const { data: runs, error } = await sb.from("runs").select("date, kind, training_type, distance_km, duration_seconds")
@@ -3539,15 +3553,16 @@ export async function checkPlanLoad(sb: any, userId: string, rows: any[], traini
       fixedItems: before,
       proposedItems: rows.map((r) => ({ ...r, status: "pendente" })),
       today: todayISO,
+      profile,
     });
     if (!violations.length) return null;
     const fmt = (n: number) => String(n).replace(".", ",");
     const janelas = violations.map((v) =>
       `de ${v.from} a ${v.date}: ${fmt(v.doneKm)} km já corridos + ${fmt(v.fixedKm)} km do plano em curso + ${fmt(v.proposedKm)} km desta proposta ` +
-      `(limite ${fmt(v.limitKm)} km — ${v.lowBase ? "base baixa: a média das 3 semanas antes + 10 km" : `ACWR ${fmt(v.ratio)}, acima de 1,50`}) — ` +
+      `(limite ${fmt(v.limitKm)} km — ${v.lowBase ? `base baixa: a média das 3 semanas antes + ${lowBaseRampKm(profile)} km` : `ACWR ${fmt(v.ratio)}, acima de 1,50`}) — ` +
       `nesses dias a proposta pode ter no máximo ${fmt(v.maxProposedKm)} km`
     );
-    return `Erro: com este plano cumprido, a carga de corrida passa o limite seguro — ${janelas.join("; ")}. ` +
+    return `Erro: com este plano cumprido, a carga de corrida passa o limite seguro do perfil ${LOAD_PROFILE_LABELS[profile]} — ${janelas.join("; ")}. ` +
       `O plano NÃO foi gravado. Reduz os km da proposta nesses dias (menos km, ou uma corrida a menos) até caberem, e volta a propor. ` +
       `Se o que não cabe é o plano em curso, a proposta pode começar mais cedo e substituir esses dias. Não digas ao atleta que o plano está na Home.`;
   } catch (e) {
@@ -4446,7 +4461,9 @@ export async function runProposeTrainingPlan(
     const gapError = maintenanceGapError(rows, racesInPeriod,
       partWindow ?? { from: period_start, to: weekTo < period_end ? weekTo : period_end });
     if (gapError) return gapError;
-    const loadError = await checkPlanLoad(sb, userId, rows, trainingPlans, period_start, todayPlansISO);
+    // O perfil de carga da próxima prova principal a partir do início do plano.
+    const loadProfile = raceLoadProfile(governingRace(await fetchLoadProfileRaces(sb, userId, period_start), period_start));
+    const loadError = await checkPlanLoad(sb, userId, rows, trainingPlans, period_start, todayPlansISO, loadProfile);
     if (loadError) return loadError;
   }
 
@@ -4643,7 +4660,11 @@ export function matchRaceByName<T extends { name?: any }>(races: T[], name: stri
 /** Grava na prova o que se acordou no chat. Devolve "Prova atualizada: …"
  *  em caso de sucesso (é o prefixo que o handler usa para avisar o cliente). */
 // deno-lint-ignore no-explicit-any
-export async function runUpdateRaceEvent(sb: any, userId: string, args: any): Promise<string> {
+/** O perfil de carga só muda a pedido dele: a mensagem tem de o dizer. */
+export const LOAD_PROFILE_REQUEST_RE = /(prudente|mais\s+volume|perfil\s+(de\s+)?carga)/i;
+
+// deno-lint-ignore no-explicit-any
+export async function runUpdateRaceEvent(sb: any, userId: string, args: any, userMessage: string | null = null): Promise<string> {
   const raceId = typeof args?.race_id === "string" ? args.race_id.trim() : "";
   const raceName = typeof args?.race_name === "string" ? args.race_name.trim() : "";
   if (!raceId && !raceName) return "Erro: indica race_id ou race_name.";
@@ -4714,7 +4735,19 @@ export async function runUpdateRaceEvent(sb: any, userId: string, args: any): Pr
     patch.conflict_acknowledged_at = new Date().toISOString();
     changes.push("conflito com o plano dado por decidido (fica como está)");
   }
-  if (changes.length === 0) return "Erro: nada para mudar — passa pelo menos um campo (target_time_seconds, target_pace_seconds_per_km, start_time, race_priority, experience_level, conflict_acknowledged).";
+  // O perfil de carga (2026-11-09): a escolha é dele — só com a mensagem dele a pedi-lo.
+  if (args?.load_profile === "prudente" || args?.load_profile === "mais_volume") {
+    if (!LOAD_PROFILE_REQUEST_RE.test(userMessage ?? "")) {
+      return "Erro: o perfil de carga só muda a pedido explícito do atleta, na mensagem dele. Explica-lhe as duas opções " +
+        "(Prudente e Mais volume) e pergunta qual prefere; grava quando ele disser.";
+    }
+    patch.load_profile = args.load_profile;
+    patch.load_profile_at = new Date().toISOString();
+    patch.load_profile_reverted_at = null;
+    patch.load_profile_revert_reason = null;
+    changes.push(`perfil de carga ${LOAD_PROFILE_LABELS[args.load_profile as LoadProfile]}`);
+  }
+  if (changes.length === 0) return "Erro: nada para mudar — passa pelo menos um campo (target_time_seconds, target_pace_seconds_per_km, start_time, race_priority, experience_level, conflict_acknowledged, load_profile).";
 
   const { error: upErr } = await sb.from("race_events").update(patch).eq("id", race.id).eq("user_id", userId);
   if (upErr) return `Erro ao atualizar a prova: ${upErr.message}`;
@@ -8093,7 +8126,7 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
     // necessárias para a carga crónica). Incluído no contexto como valor pré-
     // calculado para o modelo não ter de o derivar a partir das linhas brutas.
     const acwr = computeACWR(recentRuns || [], todayISO);
-    const [loadPlanItems, nextRaceForLoad] = await Promise.all([
+    const [loadPlanItems, nextRaceForLoad, profileRaces] = await Promise.all([
       fetchLoadPlanItems(sb, userId, todayISO),
       // A prova-objetivo, para o volume a atingir: a principal mais próxima,
       // senão a próxima (uma de treino de 5 km antes da principal não é o alvo).
@@ -8101,8 +8134,11 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
         .neq("status", "concluida").order("date", { ascending: true }).limit(5)
         // deno-lint-ignore no-explicit-any
         .then((r: any) => { const list = r?.data || []; return list.find((x: any) => (x.race_priority || "a") === "a") ?? list[0] ?? null; }, () => null),
+      // O perfil de carga por prova (2026-11-09): manda o da próxima principal.
+      fetchLoadProfileRaces(sb, userId, todayISO),
     ]);
-    const loadReading = runLoadReading({ runs: recentRuns || [], planItems: loadPlanItems, today: todayISO });
+    const loadProfileNow = raceLoadProfile(governingRace(profileRaces, todayISO));
+    const loadReading = runLoadReading({ runs: recentRuns || [], planItems: loadPlanItems, today: todayISO, profile: loadProfileNow });
     const levelReference = !loadReading.enoughHistory
       ? (() => {
         const lvl = (profile?.experience_level as string | null) ?? null;
@@ -8116,7 +8152,14 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
     // evitava confundi-las no mesmo prompt (P0-3, Fase A). A Fase C unificou
     // os dois em km (specs/formulas-centralizacao.md §5.1) — já não há
     // ambiguidade a desfazer.
-    const acwrLine = buildAcwrLine(acwr, loadReading, (recentRuns || []).length > 0, todayISO, levelReference);
+    // O perfil de carga e o conflito carga/volume (loadProfile.ts): um só
+    // estado, e a Carol nunca contradiz a escolha dele.
+    const loadProfileLine = loadProfileContextLine(loadVolumeState({
+      races: profileRaces, runs: recentRuns || [], planItems: loadPlanItems, todayISO,
+      profileLevel: (profile?.experience_level as string | null) ?? null,
+    }), todayISO);
+    const acwrLine = buildAcwrLine(acwr, loadReading, (recentRuns || []).length > 0, todayISO, levelReference) +
+      (loadProfileLine ? `\n${loadProfileLine}` : "");
 
     // ── Armário de sapatilhas ────────────────────────────────────────────
     // O acumulado e o desgaste de cada par delegam em ../_shared/formulas/
@@ -9472,7 +9515,7 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
           goalsWereUpdated = goalsWereUpdated || result.startsWith("Metas atualizadas");
             goalWasProposed = goalWasProposed || result.startsWith("Proposta de altera");
         } else if (name === "update_race_event") {
-          result = await runUpdateRaceEvent(sb, userId, args || {});
+          result = await runUpdateRaceEvent(sb, userId, args || {}, message);
           raceWasUpdated = raceWasUpdated || result.startsWith("Prova atualizada");
         } else if (name === "save_coach_note") {
           result = await runSaveCoachNote(sb, userId, args || {});

@@ -4166,6 +4166,24 @@ Deno.test("update_race_event: pelo nome, o tempo novo grava tempo, texto e ritmo
   assertEquals(updates[0].patch, { target_time_seconds: 3420, target_time: "57:00", target_pace_seconds_per_km: 342 });
 });
 
+Deno.test("update_race_event: o perfil de carga só a pedido explícito dele, na mensagem (2026-11-09)", async () => {
+  // Sem a mensagem a pedi-lo: recusa, e manda explicar as duas opções.
+  const a = makeRaceSb([TEJO]);
+  const refused = await runUpdateRaceEvent(a.sb, "user-1", { race_id: "r1", load_profile: "mais_volume" }, "Ajusta o plano para reforçar o volume.");
+  assertStringIncludes(refused, "só muda a pedido explícito do atleta");
+  assertEquals(a.updates.length, 0);
+  // Com a mensagem a pedi-lo: grava o perfil, a hora da escolha, e limpa a volta a Prudente.
+  const b = makeRaceSb([TEJO]);
+  const ok = await runUpdateRaceEvent(b.sb, "user-1", { race_id: "r1", load_profile: "mais_volume" }, "Quero o Mais volume para a meia.");
+  assertStringIncludes(ok, "perfil de carga Mais volume");
+  assertEquals(b.updates[0].patch.load_profile, "mais_volume");
+  assertEquals(typeof b.updates[0].patch.load_profile_at, "string");
+  assertEquals([b.updates[0].patch.load_profile_reverted_at, b.updates[0].patch.load_profile_revert_reason], [null, null]);
+  const c = makeRaceSb([TEJO]);
+  await runUpdateRaceEvent(c.sb, "user-1", { race_id: "r1", load_profile: "prudente" }, "fica prudente");
+  assertEquals(c.updates[0].patch.load_profile, "prudente");
+});
+
 Deno.test("update_race_event: ritmo, hora, prioridade e nível; recusa o que não faz sentido", async () => {
   const { sb, updates } = makeRaceSb([TEJO]);
   const result = await runUpdateRaceEvent(sb, "user-1", { race_id: "r1", target_pace_seconds_per_km: 330, start_time: "9:00", race_priority: "b", experience_level: "medio" });
@@ -4860,6 +4878,31 @@ Deno.test("checkPlanLoad: a carga do plano em curso não cai em cima de uma prop
   // O plano em curso sozinho já passa de 1,50: uma rodagem de 1 km depois dele passa.
   const active = [planRow("2026-09-25", 12, { status: "pendente" }), planRow("2026-09-26", 12, { status: "pendente" })];
   assertEquals(await checkPlanLoad(loadSb(hist, active), "u1", [planRow("2026-09-28", 1)], [{ id: "p1" }], "2026-09-28", "2026-09-24"), null);
+});
+
+Deno.test("checkPlanLoad: com o perfil Mais volume, a base baixa sobe +15 km e a mensagem di-lo (2026-11-09)", async () => {
+  // 10 km/semana: Prudente 10 + 10 = 20; Mais volume 10 + 15 = 25.
+  const rows = [planRow("2026-09-25", 11), planRow("2026-09-27", 11)];
+  const prud = await checkPlanLoad(loadSb(hist), "u1", rows, [], "2026-09-25", "2026-09-24") ?? "";
+  assertStringIncludes(prud, "passa o limite seguro do perfil Prudente");
+  assertStringIncludes(prud, "base baixa: a média das 3 semanas antes + 10 km");
+  assertEquals(await checkPlanLoad(loadSb(hist), "u1", rows, [], "2026-09-25", "2026-09-24", "mais_volume"), null);
+  const more = await checkPlanLoad(loadSb(hist), "u1", [...rows, planRow("2026-09-26", 6)], [], "2026-09-25", "2026-09-24", "mais_volume") ?? "";
+  assertStringIncludes(more, "passa o limite seguro do perfil Mais volume");
+  assertStringIncludes(more, "base baixa: a média das 3 semanas antes + 15 km");
+});
+
+Deno.test("perfil de carga: o chat e o plano leem o perfil da próxima prova principal", async () => {
+  const src = await Deno.readTextFile(new URL("./index.ts", import.meta.url));
+  assertStringIncludes(src, "const loadProfileNow = raceLoadProfile(governingRace(profileRaces, todayISO));");
+  assertStringIncludes(src, "runLoadReading({ runs: recentRuns || [], planItems: loadPlanItems, today: todayISO, profile: loadProfileNow });");
+  assertStringIncludes(src, "const loadProfile = raceLoadProfile(governingRace(await fetchLoadProfileRaces(sb, userId, period_start), period_start));");
+  assertStringIncludes(src, "result = await runUpdateRaceEvent(sb, userId, args || {}, message);");
+  const summary = await Deno.readTextFile(new URL("../coach-daily-summary/index.ts", import.meta.url));
+  assertStringIncludes(summary, "const redFlag = loadProfileRedFlag({ race: loadProfileRace, runs: loadRuns || [], checkins: profileCheckins || [] });");
+  assertStringIncludes(summary, ".eq(\"load_profile\", \"mais_volume\")");
+  assertStringIncludes(summary, "profile: loadProfile,");
+  assertStringIncludes(summary, "perfil_de_carga: loadProfileLine");
 });
 
 Deno.test("checkPlanLoad: uma falha a ler deixa passar", async () => {
@@ -6867,8 +6910,8 @@ Deno.test("outlook no servidor (revisão do lote): o plano em curso que fica, o 
 
 Deno.test("guarda de carga: a mensagem diz o limite e se é o da base baixa", async () => {
   const src = await Deno.readTextFile(new URL("./index.ts", import.meta.url));
-  assertStringIncludes(src, "base baixa: a média das 3 semanas antes + 10 km");
-  assertStringIncludes(src, "a carga de corrida passa o limite seguro");
+  assertStringIncludes(src, "base baixa: a média das 3 semanas antes + ${lowBaseRampKm(profile)} km");
+  assertStringIncludes(src, "a carga de corrida passa o limite seguro do perfil ");
   assertStringIncludes(src, "const gapError = maintenanceGapError(rows, racesInPeriod,");
   assertStringIncludes(src, "volumeNote = raceVolumeNote(");
 });
