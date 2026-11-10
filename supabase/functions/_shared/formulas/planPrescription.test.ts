@@ -1,5 +1,5 @@
 import { assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
-import { buildPrescription, describePrescription, MAX_PRESCRIPTION_BLOCKS, stripPrescribedLoad } from "./planPrescription.ts";
+import { buildPrescription, describePrescription, MAX_PRESCRIPTION_BLOCKS, prescriptionBlockTarget, stripPrescribedLoad } from "./planPrescription.ts";
 import { cardioSpecFor, normalizeCardioFields } from "./cardioFields.ts";
 
 // specs/plano-registo-plano-coach.md §2.1 e §2.4 (decisões 1, 4 e 5).
@@ -116,4 +116,29 @@ Deno.test("stripPrescribedLoad: sem carga devolve o texto tal e qual; com carga 
   for (const ok of ["1 km de aquecimento", "Acaba a RPE 8", "3x10 controladas", "Trote a 5:30/km", "20 quilómetros esta semana"]) {
     assertEquals(stripPrescribedLoad(ok), ok);
   }
+});
+
+// #118 (2026-11-10): «30 reps» num hollow hold — os isométricos em segundos.
+Deno.test("buildPrescription: isométricos em segundos (seconds por série); em reps, recusado", () => {
+  const ok = buildPrescription([
+    { type: "forca", name: "Hollow hold", sets: 3, seconds: 30, goal: "lombar colada ao chão" },
+    { type: "forca", name: "Agachamento", sets: 3, reps: 10 },
+  ]);
+  assertEquals(ok.issue, null);
+  assertEquals(ok.prescription!.blocks[0], { type: "forca", name: "Hollow hold", sets: 3, reps: null, seconds: 30, goal: "lombar colada ao chão" });
+  assertEquals(ok.prescription!.blocks[1], { type: "forca", name: "Agachamento", sets: 3, reps: 10, goal: null });
+  // Os segundos mandam sobre umas reps que viessem com eles.
+  assertEquals(buildPrescription([{ type: "forca", name: "Prancha", sets: 3, reps: 30, seconds: 45 }]).prescription!.blocks[0], { type: "forca", name: "Prancha", sets: 3, reps: null, seconds: 45, goal: null });
+  // Um isométrico em reps: recusado, com a instrução.
+  assertStringIncludes(buildPrescription([{ type: "forca", name: "Hollow hold", sets: 3, reps: 30 }]).issue!, "é isométrico: prescreve-se em segundos");
+  assertStringIncludes(buildPrescription([{ type: "forca", name: "Wall sit", sets: 2, reps: 10 }]).issue!, "isométrico");
+  assertStringIncludes(buildPrescription([{ type: "forca", name: "Dead hang", sets: 2, reps: 5 }]).issue!, "isométrico");
+  // Fora dos limites, ou sem nada.
+  assertStringIncludes(buildPrescription([{ type: "forca", name: "Prancha", sets: 3, seconds: 2 }]).issue!, "seconds por série tem de ser 5-600");
+  assertStringIncludes(buildPrescription([{ type: "forca", name: "Prancha", sets: 3 }]).issue!, "seconds por série");
+  // A ponte de glúteos não é isométrica.
+  assertEquals(buildPrescription([{ type: "forca", name: "Ponte de glúteos", sets: 3, reps: 12 }]).issue, null);
+  // A leitura: «3×30 s».
+  assertEquals(describePrescription(ok.prescription), "Hollow hold 3×30 s (lombar colada ao chão); Agachamento 3×10");
+  assertEquals(prescriptionBlockTarget({ sets: 3, seconds: 30 }), "3×30 s");
 });

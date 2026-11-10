@@ -59,6 +59,7 @@ import { withUsageRecording } from "../_shared/usageRecorder.ts";
 import { findByClientRequestId, insertOnce, parseClientRequestId, settleReplay, STILL_SAVING_MESSAGE } from "../_shared/idempotency.ts";
 import { parseAnsweredQuestions, parseRecordQuestions, RECORD_QUESTIONS_SCHEMA, recordAnswersSection, recordQuestionsRule } from "../_shared/recordQuestions.ts";
 import { ACTIVITY_PERIODS_PROMPT, ACTIVITY_PERIODS_SCHEMA, durationBreakdown, sessionDurationSeconds } from "../_shared/formulas/sessionDuration.ts";
+import { cardioSpecFor } from "../_shared/formulas/cardioFields.ts";
 
 const MAX_PHOTOS = 6;
 const MAX_NOTES_LENGTH = 500;
@@ -703,6 +704,15 @@ export function formatExerciseLines(rows: SetRow[] | null | undefined, maxExerci
   for (const [name, sets] of byName) {
     if (lines.length >= maxExercises) break;
     const ordered = sets.slice().sort((a, b) => (a.set_index ?? 0) - (b.set_index ?? 0));
+    // Um isométrico (#118, «30 reps» num hollow hold): segundos por série —
+    // "Hollow hold — 3 séries de 30/30/25 s". Não se somam como cardio.
+    if (ordered.every((s) => !s.reps && !s.weight && !s.distance_km && !s.laps) && ordered.some((s) => s.duration_seconds) &&
+      !cardioSpecFor(name)) {
+      const secs = ordered.map((s) => (s.duration_seconds ? fmtNum(s.duration_seconds) : "?"));
+      const count = ordered.length === 1 ? "1 série" : `${ordered.length} séries`;
+      lines.push(`${name} — ${count} de ${secs.every((x) => x === secs[0]) ? secs[0] : secs.join("/")} s`);
+      continue;
+    }
     // Cardio (registo unificado, F1): tempo, distância e voltas, somados por
     // exercício — "Bicicleta — 20 min, 8 km".
     if (ordered.every((s) => !s.reps && !s.weight) && ordered.some((s) => s.duration_seconds || s.distance_km || s.laps)) {
@@ -716,11 +726,15 @@ export function formatExerciseLines(rows: SetRow[] | null | undefined, maxExerci
       continue;
     }
     const count = ordered.length === 1 ? "1 série" : `${ordered.length} séries`;
+    // Um isométrico com carga (prancha com disco, #118): segundos, não «? reps».
+    const timed = ordered.every((s) => !s.reps) && ordered.some((s) => s.duration_seconds);
+    const value = timed ? (s: SetRow) => (s.duration_seconds ? fmtNum(s.duration_seconds) : "?") : reps;
+    const unit = timed ? "s" : "reps";
     if (ordered.every((s) => s.weight === ordered[0].weight)) {
-      const r = ordered.map(reps);
-      lines.push(`${name} — ${count} de ${r.every((x) => x === r[0]) ? r[0] : r.join("/")} reps${load(ordered[0].weight)}`);
+      const r = ordered.map(value);
+      lines.push(`${name} — ${count} de ${r.every((x) => x === r[0]) ? r[0] : r.join("/")} ${unit}${load(ordered[0].weight)}`);
     } else {
-      lines.push(`${name} — ${count}: ${ordered.map((s) => `${reps(s)} reps${load(s.weight)}`).join(", ")}`);
+      lines.push(`${name} — ${count}: ${ordered.map((s) => `${value(s)} ${unit}${load(s.weight)}`).join(", ")}`);
     }
   }
   return lines;

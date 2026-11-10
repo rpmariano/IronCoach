@@ -36,6 +36,17 @@ Deno.test("parseExercisesMeta: valida, deduplica por chave e limpa índices", ()
   assertEquals(parseExercisesMeta(null), null);
 });
 
+Deno.test("parseExercisesMeta: guarda a rep_unit da força (#118) — só «s» ou «reps»", () => {
+  const meta = parseExercisesMeta([
+    { name: "Hollow hold", block_type: "forca", rep_unit: "s" },
+    { name: "Agachamento", block_type: "forca", rep_unit: "reps" },
+    { name: "Prancha", block_type: "forca", rep_unit: "min" },
+    { name: "Remada", block_type: "forca" },
+  ])!;
+  assertEquals(meta.map((m) => m.rep_unit), ["s", "reps", undefined, undefined]);
+  assertEquals("rep_unit" in meta[2], false);
+});
+
 Deno.test("formatExerciseLines: cardio em tempo/km/voltas, força como antes", () => {
   const lines = formatExerciseLines([
     { exercise_name: "Bicicleta", set_index: 0, reps: null, weight: null, duration_seconds: 1200, distance_km: 8 },
