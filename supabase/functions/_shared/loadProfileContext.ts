@@ -30,6 +30,21 @@ export async function fetchLoadProfileRaces(sb: any, userId: string, fromISO: st
   }
 }
 
+/** O period_end mais tardio dos planos aceites (o horizonte do que está
+ *  planeado, como raceVolumeText.js); null sem planos ou numa falha. */
+// deno-lint-ignore no-explicit-any
+export async function fetchAcceptedPlanUntil(sb: any, userId: string): Promise<string | null> {
+  try {
+    const { data, error } = await sb.from("coach_plans").select("period_end")
+      .eq("user_id", userId).eq("status", "aceite").order("period_end", { ascending: false }).limit(1);
+    if (error) return null;
+    const end = String(data?.[0]?.period_end ?? "").slice(0, 10);
+    return /^\d{4}-\d{2}-\d{2}$/.test(end) ? end : null;
+  } catch {
+    return null;
+  }
+}
+
 const MONTHS = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
 const dayMonth = (iso: string) => `${Number(iso.slice(8, 10))} ${MONTHS[Number(iso.slice(5, 7)) - 1]}`;
 const km = (n: number | null) => (n == null ? "—" : String(Math.round(n * 10) / 10).replace(".", ","));

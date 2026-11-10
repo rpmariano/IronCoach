@@ -1,11 +1,11 @@
 import { assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
-import { fetchLoadProfileRaces, loadProfileContextLine, loadProfileRevertReason } from "./loadProfileContext.ts";
+import { fetchAcceptedPlanUntil, fetchLoadProfileRaces, loadProfileContextLine, loadProfileRevertReason } from "./loadProfileContext.ts";
 import type { LoadVolumeState } from "./formulas/loadProfile.ts";
 
 const BASE: LoadVolumeState = {
   state: "conflito", race: { id: "meia", name: "Meia dos Descobrimentos", date: "2026-11-29" }, profile: "prudente", chosen: false,
   acuteKm: 23.1, ratio: 1.31, safeLimitKm: 28.4, limits: { prudente: 28.4, mais_volume: 30.8 },
-  currentWeeklyKm: 19.1, recommendedWeeklyKm: 35, projectedWeeklyKm: 21.2, loadAlert: true, volumeBelow: true, reverted: null,
+  currentWeeklyKm: 19.1, recommendedWeeklyKm: 35, projectedWeeklyKm: 21.2, volumeStatus: "abaixo", loadAlert: true, volumeBelow: true, reverted: null,
 };
 
 Deno.test("loadProfileContextLine: conflito por escolher — as duas opções, a pergunta, e só grava quando ele disser", () => {
@@ -45,4 +45,7 @@ Deno.test("fetchLoadProfileRaces: sem a migration (coluna em falta) ou numa falh
   assertEquals(await fetchLoadProfileRaces(sb({ data: null, error: { message: 'column race_events.load_profile does not exist' } }), "u1", "2026-11-09"), []);
   assertEquals(await fetchLoadProfileRaces(sb({ data: [{ id: "a", date: "2026-11-29", distance_km: 21 }], error: null }), "u1", "2026-11-09"), [{ id: "a", date: "2026-11-29", distance_km: 21 }]);
   assertEquals(await fetchLoadProfileRaces({ from: () => { throw new Error("rede"); } }, "u1", "2026-11-09"), []);
+  // O horizonte do plano: o period_end mais tardio dos aceites; null sem planos.
+  assertEquals(await fetchAcceptedPlanUntil(sb({ data: [{ period_end: "2026-11-29" }], error: null }), "u1"), "2026-11-29");
+  assertEquals(await fetchAcceptedPlanUntil(sb({ data: [], error: null }), "u1"), null);
 });

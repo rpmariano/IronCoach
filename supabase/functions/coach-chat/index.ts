@@ -51,7 +51,7 @@ import { computeRunAcwr, RUN_ACWR_MIN_HISTORY_WEEKS } from "../_shared/formulas/
 import { fetchGeminiWithTimeout, hasTimeFor } from "../_shared/geminiFetch.ts";
 import { planLoadViolations, runLoadReading, type LoadPlanItem, type LoadProfile, type RunLoadReading } from "../_shared/formulas/runLoadAlert.ts";
 import { governingRace, LOAD_PROFILE_LABELS, loadVolumeState, raceLoadProfile } from "../_shared/formulas/loadProfile.ts";
-import { fetchLoadProfileRaces, loadProfileContextLine, lowBaseRampKm } from "../_shared/loadProfileContext.ts";
+import { fetchAcceptedPlanUntil, fetchLoadProfileRaces, loadProfileContextLine, lowBaseRampKm } from "../_shared/loadProfileContext.ts";
 import { computeCrossMetrics } from "../_shared/formulas/crossMetrics.ts";
 import { computeReadinessIndex, READINESS_MIN_COMPLETE_DAYS_OCASIONAL, readinessMealsStartISO } from "../_shared/formulas/readinessIndex.ts";
 import { daysCompleteness, type MealLoggingProfile, mealLoggingProfile, mealsOfCompleteDays } from "../_shared/formulas/dayCompleteness.ts";
@@ -8126,7 +8126,7 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
     // necessárias para a carga crónica). Incluído no contexto como valor pré-
     // calculado para o modelo não ter de o derivar a partir das linhas brutas.
     const acwr = computeACWR(recentRuns || [], todayISO);
-    const [loadPlanItems, nextRaceForLoad, profileRaces] = await Promise.all([
+    const [loadPlanItems, nextRaceForLoad, profileRaces, plannedUntilISO] = await Promise.all([
       fetchLoadPlanItems(sb, userId, todayISO),
       // A prova-objetivo, para o volume a atingir: a principal mais próxima,
       // senão a próxima (uma de treino de 5 km antes da principal não é o alvo).
@@ -8136,6 +8136,8 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
         .then((r: any) => { const list = r?.data || []; return list.find((x: any) => (x.race_priority || "a") === "a") ?? list[0] ?? null; }, () => null),
       // O perfil de carga por prova (2026-11-09): manda o da próxima principal.
       fetchLoadProfileRaces(sb, userId, todayISO),
+      // Até onde o plano aceite vai: depois disso, por planear (não zero).
+      fetchAcceptedPlanUntil(sb, userId),
     ]);
     const loadProfileNow = raceLoadProfile(governingRace(profileRaces, todayISO));
     const loadReading = runLoadReading({ runs: recentRuns || [], planItems: loadPlanItems, today: todayISO, profile: loadProfileNow });
@@ -8156,7 +8158,7 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
     // estado, e a Carol nunca contradiz a escolha dele.
     const loadProfileLine = loadProfileContextLine(loadVolumeState({
       races: profileRaces, runs: recentRuns || [], planItems: loadPlanItems, todayISO,
-      profileLevel: (profile?.experience_level as string | null) ?? null,
+      profileLevel: (profile?.experience_level as string | null) ?? null, plannedUntilISO,
     }), todayISO);
     const acwrLine = buildAcwrLine(acwr, loadReading, (recentRuns || []).length > 0, todayISO, levelReference) +
       (loadProfileLine ? `\n${loadProfileLine}` : "");
