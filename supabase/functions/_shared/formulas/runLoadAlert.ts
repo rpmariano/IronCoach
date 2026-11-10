@@ -71,8 +71,16 @@ export interface RunLoadReading {
   historyWeeks: number;
   enoughHistory: boolean;
   followsPlan: boolean;
-  /** O rácio passa do perigo, há histórico e a carga não é a do plano. */
+  /** O rácio passa do perigo, há histórico e a carga não é a do plano.
+   *  Com o perfil Mais volume: a carga passa o limite DESSE perfil
+   *  (acuteLimitKm) — a base baixa sobe até +15 km sem alerta. */
   alert: boolean;
+  /** O perfil de carga com que se leu (o da próxima prova principal). */
+  profile: LoadProfile;
+  /** O limite seguro da janela de 7 dias, em km, para esse perfil, e se é o
+   *  da base baixa (acuteLimitKm). */
+  limitKm: number;
+  lowBase: boolean;
 }
 
 function addDaysISO(dateISO: string, days: number): string {
@@ -98,7 +106,7 @@ function athletePaceMinPerKm(runs: LoadRun[]): number {
 }
 
 export function runLoadReading(
-  { runs, planItems, today }: { runs: LoadRun[]; planItems: LoadPlanItem[]; today: string },
+  { runs, planItems, today, profile = "prudente" }: { runs: LoadRun[]; planItems: LoadPlanItem[]; today: string; profile?: LoadProfile },
 ): RunLoadReading {
   // Caminhadas fora — dos km feitos e dos previstos (runKinds.ts, 2026-10-05):
   // a carga de corrida é de corrida, e o ritmo de uma caminhada estragava a
@@ -143,6 +151,16 @@ export function runLoadReading(
     .filter((r) => r.date.slice(0, 10) >= planFrom)
     .reduce((sum, r) => sum + (Number(r.distance_km) || 0), 0);
   const followsPlan = prescribedKm !== null && prescribedKm > 0 && kmOnPlanDays <= prescribedKm * LOAD_PLAN_TOLERANCE;
+  // O limite do perfil: os km das 3 semanas antes da janela de 7 dias.
+  const olderKm = list
+    .filter((r) => r.date.slice(0, 10) >= addDaysISO(today, -27) && r.date.slice(0, 10) <= addDaysISO(today, -7))
+    .reduce((sum, r) => sum + (Number(r.distance_km) || 0), 0);
+  const { limitKm, lowBase } = acuteLimitKm(olderKm, profile);
+  // Prudente: como sempre, o ACWR 1,50. Mais volume: o limite dele — com base
+  // baixa, a subida de +15 km não é alerta (decisão do Rui, 2026-11-09).
+  const overLimit = profile === "mais_volume"
+    ? acwr.acuteKm > limitKm + 0.05
+    : ratio !== null && ratio > ACWR_DANGER;
 
   return {
     ratio: ratio !== null ? Math.round(ratio * 100) / 100 : null,
@@ -155,7 +173,10 @@ export function runLoadReading(
     historyWeeks,
     enoughHistory,
     followsPlan,
-    alert: ratio !== null && ratio > ACWR_DANGER && enoughHistory && !followsPlan,
+    alert: ratio !== null && overLimit && enoughHistory && !followsPlan,
+    profile,
+    limitKm: round1(limitKm),
+    lowBase,
   };
 }
 
@@ -197,12 +218,12 @@ export const LOAD_EPISODE_CALM_DAYS = 3;
 type RunWithCreated = LoadRun & { created_at?: string | null };
 
 /** A leitura tal como se via em `day`, com as corridas registadas até `cutoffMs`. */
-function readingAsOf(runs: RunWithCreated[], planItems: LoadPlanItem[], day: string, cutoffMs: number): RunLoadReading {
+function readingAsOf(runs: RunWithCreated[], planItems: LoadPlanItem[], day: string, cutoffMs: number, profile: LoadProfile): RunLoadReading {
   const known = (runs || []).filter((r) => {
     const at = r?.created_at ? Date.parse(r.created_at) : NaN;
     return Number.isFinite(at) && at <= cutoffMs;
   });
-  return runLoadReading({ runs: known, planItems, today: day });
+  return runLoadReading({ runs: known, planItems, today: day, profile });
 }
 
 /** Carga sem nada a dizer: zona segura, sem histórico, ou a do plano. */
@@ -233,23 +254,25 @@ function isCalm(r: RunLoadReading): boolean {
  *  O plano tem de cobrir 13 dias para trás (7 de janela + 7 de histórico).
  *  Devolve a leitura a usar no motivo, ou null. */
 export function runLoadInterventionToOpen(
-  { runs, planItems, today, previousSummaryAt, interventionStatus }: {
+  { runs, planItems, today, previousSummaryAt, interventionStatus, profile = "prudente" }: {
     runs: RunWithCreated[];
     planItems: LoadPlanItem[];
     today: string;
     previousSummaryAt: string | null | undefined;
     interventionStatus: string | null | undefined;
+    /** O perfil de carga da próxima prova principal (loadProfile.ts). */
+    profile?: LoadProfile;
   },
 ): RunLoadReading | null {
   if (interventionStatus && PENDING.includes(interventionStatus)) return null;
-  const now = runLoadReading({ runs, planItems, today });
+  const now = runLoadReading({ runs, planItems, today, profile });
   if (!now.alert || !now.hasPlan) return null;
 
   const since = previousSummaryAt ? Date.parse(previousSummaryAt) : NaN;
   if (Number.isFinite(since) && new Date(since).toISOString().slice(0, 10) >= addDaysISO(today, -1)) {
     // O resumo anterior pode ser de ontem ao fim do dia (em UTC); a janela é
     // a de hoje, o que conta é se as corridas de então já davam alerta.
-    const before = readingAsOf(runs, planItems, today, since);
+    const before = readingAsOf(runs, planItems, today, since, profile);
     // Um alerta sem plano nesse dia não conta: aí não se abre nada, e
     // contá-lo calava o assunto na semana em que o plano começa.
     if (before.alert && before.hasPlan) return null;
@@ -263,7 +286,7 @@ export function runLoadInterventionToOpen(
   let calmStreak = 0;
   for (let back = 1; back <= LOAD_ALERT_LOOKBACK_DAYS; back++) {
     const day = addDaysISO(today, -back);
-    const r = readingAsOf(runs, planItems, day, Date.parse(`${day}T23:59:59Z`));
+    const r = readingAsOf(runs, planItems, day, Date.parse(`${day}T23:59:59Z`), profile);
     if (r.alert && r.hasPlan) return null;
     calmStreak = isCalm(r) ? calmStreak + 1 : 0;
     if (calmStreak >= LOAD_EPISODE_CALM_DAYS) break;
@@ -307,6 +330,17 @@ export function runLoadInterventionToOpen(
 //   propósito: com tão pouca base, o rácio não diz nada de útil e só proibia
 //   as sessões úteis.
 
+//
+// - O perfil de carga (2026-11-09, loadProfile.ts): a decisão é do atleta, por
+//   prova. Prudente é tudo o que está acima. Mais volume: com base baixa a
+//   subida absoluta é LOW_BASE_RAMP_KM_MORE_VOLUME (+15 km); acima da base
+//   baixa, o ACWR 1,50 — que nunca se passa. Os 20% por semana do pedido são
+//   a progressão que a doutrina pede ao plano, não o limite: 20% sobre a
+//   média das 3 semanas (×1,2) é mais apertado do que o ACWR 1,50 (×1,8), e
+//   um limite de 20% deixava o Mais volume abaixo do Prudente.
+
+export type LoadProfile = "prudente" | "mais_volume";
+
 /** Abaixo disto (km/semana, média das 3 semanas antes da janela de 7 dias)
  *  é base baixa: o limite passa a ser uma subida absoluta. */
 export const LOW_BASE_WEEKLY_KM = 20;
@@ -315,19 +349,24 @@ export const LOW_BASE_WEEKLY_KM = 20;
  *  deixava duas sessões úteis a quem tem uma semana de 12 km; mais do que 10
  *  é mais do que dobrar a base de quem corre 8 km por semana. */
 export const LOW_BASE_RAMP_KM = 10;
+/** A mesma subida com o perfil Mais volume (2026-11-09). */
+export const LOW_BASE_RAMP_KM_MORE_VOLUME = 15;
+/** A progressão por semana que a doutrina pede com Mais volume acima da base
+ *  baixa (só no texto do plano; o limite é o ACWR 1,50). */
+export const MORE_VOLUME_WEEKLY_GROWTH = 0.2;
 
 /**
  * O máximo de km na janela aguda (7 dias): ACWR ≤ 1,50 dá
  *   aguda ≤ L × anterior ÷ (4 − L) = 0,6 × anterior
  * (anterior = os km dos 21 dias antes da janela); com base baixa (média
  * dessas 3 semanas < LOW_BASE_WEEKLY_KM), o maior entre esse e a média +
- * LOW_BASE_RAMP_KM.
+ * LOW_BASE_RAMP_KM (+15 km com o perfil Mais volume).
  */
-export function acuteLimitKm(olderKm: number): { limitKm: number; lowBase: boolean } {
+export function acuteLimitKm(olderKm: number, profile: LoadProfile = "prudente"): { limitKm: number; lowBase: boolean } {
   const byRatio = (ACWR_DANGER * olderKm) / (4 - ACWR_DANGER);
   const priorWeekly = olderKm / 3;
   if (priorWeekly >= LOW_BASE_WEEKLY_KM) return { limitKm: byRatio, lowBase: false };
-  const byRamp = priorWeekly + LOW_BASE_RAMP_KM;
+  const byRamp = priorWeekly + (profile === "mais_volume" ? LOW_BASE_RAMP_KM_MORE_VOLUME : LOW_BASE_RAMP_KM);
   return byRamp > byRatio ? { limitKm: byRamp, lowBase: true } : { limitKm: byRatio, lowBase: false };
 }
 
@@ -366,7 +405,11 @@ const kmIn = (list: DayKm[], from: string, to: string) =>
   list.filter((r) => r.date >= from && r.date <= to).reduce((sum, r) => sum + r.distance_km, 0);
 
 export function planLoadViolations(
-  { runs, fixedItems, proposedItems, today }: { runs: LoadRun[]; fixedItems: LoadPlanItem[]; proposedItems: LoadPlanItem[]; today: string },
+  { runs, fixedItems, proposedItems, today, profile = "prudente" }: {
+    runs: LoadRun[]; fixedItems: LoadPlanItem[]; proposedItems: LoadPlanItem[]; today: string;
+    /** O perfil de carga da próxima prova principal (loadProfile.ts). */
+    profile?: LoadProfile;
+  },
 ): PlanLoadViolation[] {
   const past: DayKm[] = runsOnly(runs)
     .filter((r) => r && typeof r.date === "string" && r.date.slice(0, 10) <= today)
@@ -391,12 +434,12 @@ export function planLoadViolations(
     // A janela aguda com a proposta, contra o limite (acuteLimitKm) dos 21
     // dias antes dela — o ACWR 1,50, ou com base baixa a subida absoluta.
     const olderKm = kmIn(projected, addDaysISO(d, -27), addDaysISO(d, -7));
-    const { limitKm, lowBase } = acuteLimitKm(olderKm);
+    const { limitKm, lowBase } = acuteLimitKm(olderKm, profile);
     const acuteWith = kmIn(projected, from, d);
     if (!(acuteWith > limitKm + EPS)) continue;
     // O que já vinha de trás (sem a proposta) não é da proposta.
     const olderWithout = kmIn(baseline, addDaysISO(d, -27), addDaysISO(d, -7));
-    if (kmIn(baseline, from, d) > acuteLimitKm(olderWithout).limitKm + EPS) continue;
+    if (kmIn(baseline, from, d) > acuteLimitKm(olderWithout, profile).limitKm + EPS) continue;
     const withPlan = computeRunAcwr(projected, d);
     const done = kmIn(past, from, d);
     const fixedKm = kmIn(fixed, from, d);

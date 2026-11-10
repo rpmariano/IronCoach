@@ -18,6 +18,8 @@ import { normalizeGender, categorizeDistance as sharedCategorizeDistance, MIN_PR
 import { computeRaceEve, describeRaceEveShort, type RaceEve } from "../_shared/formulas/raceEve.ts";
 import { computeAcwr as sharedComputeAcwr } from "../_shared/formulas/acwr.ts";
 import { runLoadReading, runLoadInterventionToOpen, runLoadInterventionReason, type LoadPlanItem } from "../_shared/formulas/runLoadAlert.ts";
+import { governingRace, loadProfileRedFlag, loadVolumeState, raceLoadProfile } from "../_shared/formulas/loadProfile.ts";
+import { fetchLoadProfileRaces, loadProfileContextLine, loadProfileRevertReason } from "../_shared/loadProfileContext.ts";
 import { computeWeightTrend, WEIGHT_TREND_WINDOW_DAYS } from "../_shared/formulas/weightTrend.ts";
 import { getTaperDays as sharedGetTaperDays, type SeriesIntent } from "../_shared/formulas/taper.ts";
 import { assessWeightLossRate as sharedAssessWeightLossRate } from "../_shared/formulas/weightLossRate.ts";
@@ -895,6 +897,9 @@ async function generateSummary(ctx: Record<string, unknown>, geminiKey: string, 
     `CARGA (ACWR): lê o bloco "acwr". Só é risco se "conta_como_risco" for true. Se "segue_o_plano" for true, a carga ` +
     `é a que tu prescreveste — não a trates como excesso. Se "ratio" for null, há poucos registos nas últimas 4 semanas ` +
     `("semanas_com_corridas_de_4") para o rácio dizer alguma coisa: não o cites nem tires conclusões dele. ` +
+    `PERFIL DE CARGA: se o bloco "acwr" tiver "perfil_de_carga", segue-o — a escolha do atleta manda e o cartão nunca a ` +
+    `contradiz. Se disser CONFLITO, o cartão não dá nenhum dos dois avisos (nem carga a mais, nem volume a menos): diz numa ` +
+    `frase que há uma escolha à espera dele no chat, entre Prudente e Mais volume. ` +
     WALKS_SUMMARY_RULE +
     `EXECUÇÃO DO PLANO: se existir "treinos_do_plano_feitos", é o planeado vs feito dos últimos dias, tal como a análise do treino o registou — ` +
     `usa-o para dizer o que ficou de fora ou foi trocado, sem sermão. Um treino livre contado como o do plano diz-se como tal. ` +
@@ -1156,10 +1161,50 @@ Deno.serve(withUsageRecording("coach-daily-summary", async (req) => {
     const tomorrowPlanItems = planItems.filter((i: any) => i.planned_date === tomorrow);
     const waterTotal = (todayWater || []).reduce((s: number, w: any) => s + (w.amount_ml || 0), 0);
 
+    // ── O perfil de carga (2026-11-09, loadProfile.ts) ─────────────────
+    // Manda o da próxima prova principal. Com Mais volume, um sinal vermelho
+    // desde a escolha (dor no check-in, RPE ≥ 9 em 2 corridas fáceis
+    // seguidas, recuperação em crítico) volta-o a Prudente sozinho, e a Carol
+    // diz-lho uma vez (o assunto por resolver, como o da carga).
+    const [profileRaces, { data: profileCheckins }] = await Promise.all([
+      fetchLoadProfileRaces(sb, userId, today),
+      sb.from("daily_checkins").select("date, sleep, energy, stress, pain")
+        .eq("user_id", userId).gte("date", addDaysISO(today, -14)).lte("date", today),
+    ]);
+    let loadProfileRace = governingRace(profileRaces, today);
+    let profileRevertOpened: { status: string; reason: string } | null = null;
+    const redFlag = loadProfileRedFlag({ race: loadProfileRace, runs: loadRuns || [], checkins: profileCheckins || [] });
+    if (redFlag && loadProfileRace?.id) {
+      const nowISO = new Date().toISOString();
+      const { data: reverted, error: revertError } = await sb.from("race_events")
+        .update({ load_profile: "prudente", load_profile_reverted_at: nowISO, load_profile_revert_reason: redFlag.reason })
+        .eq("id", loadProfileRace.id).eq("user_id", userId).eq("load_profile", "mais_volume")
+        .select("id");
+      if (revertError) console.warn("coach-daily-summary: falha a voltar o perfil de carga a Prudente:", revertError);
+      else if (reverted?.length) {
+        loadProfileRace = { ...loadProfileRace, load_profile: "prudente", load_profile_reverted_at: nowISO, load_profile_revert_reason: redFlag.reason };
+        const raceId = loadProfileRace.id;
+        for (let i = 0; i < profileRaces.length; i++) if (profileRaces[i].id === raceId) profileRaces[i] = loadProfileRace;
+        const reason = loadProfileRevertReason(loadProfileRace.name, redFlag.reason);
+        const { data: opened, error: openError } = await sb.from("profiles")
+          .update({ coach_intervention_status: "needed", coach_intervention_reason: reason, coach_intervention_origin: INTERVENTION_ORIGIN.LOAD })
+          .eq("id", userId)
+          .or("coach_intervention_status.is.null,coach_intervention_status.in.(none,resolved)")
+          .select("id");
+        if (openError) console.warn("coach-daily-summary: falha a abrir o aviso da volta a Prudente:", openError);
+        else if (opened?.length) profileRevertOpened = { status: "needed", reason };
+      }
+    }
+    const loadProfile = raceLoadProfile(loadProfileRace);
+
     // Métricas calculadas para alertas determinísticos e contexto do Gemini
     const acwr        = computeACWR(recentRuns || [], today);
-    // O ACWR lido com o plano e o histórico (runLoadAlert.ts).
-    const load        = runLoadReading({ runs: recentRuns, planItems: loadPlanItems, today });
+    // O ACWR lido com o plano, o histórico e o perfil de carga (runLoadAlert.ts).
+    const load        = runLoadReading({ runs: recentRuns, planItems: loadPlanItems, today, profile: loadProfile });
+    const loadProfileLine = loadProfileContextLine(loadVolumeState({
+      races: profileRaces, runs: recentRuns || [], planItems: loadPlanItems, todayISO: today,
+      profileLevel: (profile?.experience_level as string | null) ?? null,
+    }), today);
     const bodyMetrics = computeBodyMetrics(bodyAssessments || [], profile?.gender ?? null, profile?.experience_level ?? null, today);
     // acute_km_per_day × 7 = km dos últimos 7 dias, para o TDEE somar o
     // custo do treino (ver computeTDEE acima).
@@ -1228,6 +1273,8 @@ Deno.serve(withUsageRecording("coach-daily-summary", async (req) => {
         km_previstos_no_plano: load.prescribedKm,
         segue_o_plano: load.followsPlan,
         conta_como_risco: load.alert,
+        // O perfil de carga escolhido pelo atleta e o conflito carga/volume.
+        ...(loadProfileLine ? { perfil_de_carga: loadProfileLine } : {}),
       },
       tdee,
       // Calculado logo acima mas nunca passado: a regra de segunda-feira
@@ -1337,7 +1384,9 @@ Deno.serve(withUsageRecording("coach-daily-summary", async (req) => {
       planItems: loadPlanItems,
       today,
       previousSummaryAt: previousSummary?.generated_at ?? null,
-      interventionStatus: profile?.coach_intervention_status ?? null,
+      // Aberto agora o aviso da volta a Prudente: só há um assunto de cada vez.
+      interventionStatus: profileRevertOpened ? profileRevertOpened.status : profile?.coach_intervention_status ?? null,
+      profile: loadProfile,
     });
     if (loadToOpen) {
       const reason = runLoadInterventionReason(loadToOpen, today);
@@ -1358,7 +1407,7 @@ Deno.serve(withUsageRecording("coach-daily-summary", async (req) => {
       .single();
     if (saveError) return jsonResponse({ error: `Falha a gravar resumo: ${saveError.message}` }, 500);
 
-    return jsonResponse({ summary: saved, cached: false, usage, intervention: interventionOpened });
+    return jsonResponse({ summary: saved, cached: false, usage, intervention: interventionOpened ?? profileRevertOpened });
   } catch (e) {
     console.error("Erro inesperado:", e);
     return jsonResponse({ error: "Erro inesperado no servidor" }, 500);
