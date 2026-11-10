@@ -156,11 +156,12 @@ export function runLoadReading(
     .filter((r) => r.date.slice(0, 10) >= addDaysISO(today, -27) && r.date.slice(0, 10) <= addDaysISO(today, -7))
     .reduce((sum, r) => sum + (Number(r.distance_km) || 0), 0);
   const { limitKm, lowBase } = acuteLimitKm(olderKm, profile);
-  // Prudente: como sempre, o ACWR 1,50. Mais volume: o limite dele — com base
-  // baixa, a subida de +15 km não é alerta (decisão do Rui, 2026-11-09).
+  // Prudente: o ACWR 1,50 — e com base baixa, só acima da subida de +10 km
+  // (a mesma que a guarda do plano deixa: revisão de 5fea1e4e). Mais volume:
+  // o limite dele — com base baixa, a subida de +15 km não é alerta.
   const overLimit = profile === "mais_volume"
     ? acwr.acuteKm > limitKm + 0.05
-    : ratio !== null && ratio > ACWR_DANGER;
+    : ratio !== null && ratio > ACWR_DANGER && (!lowBase || acwr.acuteKm > limitKm + 0.05);
 
   return {
     ratio: ratio !== null ? Math.round(ratio * 100) / 100 : null,
