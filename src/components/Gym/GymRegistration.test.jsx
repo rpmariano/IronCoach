@@ -1412,11 +1412,15 @@ describe('GymRegistration — bugs de 2026-10-29/31', () => {
     expect(screen.getByText(/Escolheste 7/)).toBeInTheDocument();
   });
 
-  it('#98: os prints vêm depois dos exercícios (último passo)', () => {
+  /* #120 (2026-11-10, o Rui: «As fotos têm de estar antes do ponto 3»): os prints continuam depois
+     dos exercícios (#98), mas passam a ser o passo 3 — antes de «Como correu». */
+  it('#120: os prints são o passo 3, entre os exercícios e «Como correu»', () => {
     render(<GymRegistration onClose={onClose} />);
     const titulos = screen.getAllByRole('heading', { level: 3 }).map(h => h.textContent);
-    expect(titulos.indexOf('Prints da sessão')).toBeGreaterThan(titulos.indexOf('Exercícios'));
-    expect(titulos[titulos.length - 1]).toBe('Prints da sessão');
+    expect(titulos).toEqual(['Que treino foi', 'Exercícios', 'Prints da sessão', 'Como correu']);
+    const passo = (titulo) => screen.getByRole('heading', { level: 3, name: titulo }).parentElement.textContent;
+    expect(passo('Prints da sessão')).toMatch(/^3/);
+    expect(passo('Como correu')).toMatch(/^4/);
   });
 });
 
