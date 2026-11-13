@@ -16,6 +16,7 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 import webpush from "npm:web-push@3";
 import { raceDayWaterPhase, waterReminderMessage, type RaceForWater } from "./message.ts";
 import { carolQuietSince, usersQuietAfterCarol } from "./afterCarol.ts";
+import { timingSafeEqual } from "../_shared/timingSafeEqual.ts";
 
 const corsHeaders = { "Content-Type": "application/json" };
 
@@ -72,7 +73,8 @@ function isWithinReminderHours(hour: number, startHour: number | null, endHour: 
 async function handler(req: Request): Promise<Response> {
   const cronSecret = Deno.env.get("CRON_SECRET");
   const providedSecret = req.headers.get("x-cron-secret");
-  if (!cronSecret || providedSecret !== cronSecret) {
+  // Em tempo constante (auditoria de segurança, 2026-11-13).
+  if (!cronSecret || !timingSafeEqual(providedSecret, cronSecret)) {
     return jsonResponse({ error: "Não autorizado" }, 401);
   }
 

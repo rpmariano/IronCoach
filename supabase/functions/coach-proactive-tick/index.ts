@@ -34,6 +34,7 @@ import { loadCupNoticeState } from "./cupNoticeState.ts";
 import { claimWithCupFallback } from "./claim.ts";
 import { currentPlanResume } from "../_shared/planResumeData.ts";
 import type { ChooseCtx } from "./decide.ts";
+import { timingSafeEqual } from "../_shared/timingSafeEqual.ts";
 
 const corsHeaders = { "Content-Type": "application/json" };
 
@@ -84,7 +85,8 @@ async function weekRecordDates(sb: any, userId: string, week: { weekStart: strin
 
 async function handler(req: Request): Promise<Response> {
   const cronSecret = Deno.env.get("CRON_SECRET");
-  if (!cronSecret || req.headers.get("x-cron-secret") !== cronSecret) {
+  // Em tempo constante (auditoria de segurança, 2026-11-13).
+  if (!cronSecret || !timingSafeEqual(req.headers.get("x-cron-secret"), cronSecret)) {
     return jsonResponse({ error: "Não autorizado" }, 401);
   }
   const vapidPublicKey = Deno.env.get("VAPID_PUBLIC_KEY");
