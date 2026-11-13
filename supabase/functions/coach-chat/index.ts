@@ -87,6 +87,7 @@ import {
   isPlanRequest, PLAN_RESUME_LATER, PLAN_RESUME_LATER_REPLY, PLAN_RESUME_SEND, type PlanResumeCandidate, planResumeFacts,
 } from "../_shared/formulas/planResume.ts";
 import { currentPlanResume } from "../_shared/planResumeData.ts";
+import { checkGeminiQuota, geminiQuotaBody } from "../_shared/geminiQuota.ts";
 
 /* O modelo do chat: o fixo de _shared/geminiModel.ts (o mesmo das outras
    funções). Até 30-10-2026 era o alias "gemini-flash-latest", escolhido para
@@ -7760,6 +7761,10 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
     const { data: userData, error: userError } = await sb.auth.getUser();
     if (userError || !userData?.user) return jsonResponse({ error: CHAT_SESSION_TEXT, detail: "sessão inválida" }, 401);
     const userId = userData.user.id;
+    // A quota do Gemini por atleta (auditoria de segurança, 2026-11-13;
+    // _shared/geminiQuota.ts): passado o limite, 429 com a frase da Carol.
+    const geminiQuota = await checkGeminiQuota(userId);
+    if (!geminiQuota.ok) return jsonResponse(geminiQuotaBody(geminiQuota), 429);
 
     // ── Lock por utilizador ───────────────────────────────────────────────
     // Impede duas invocações concorrentes do coach-chat para o MESMO

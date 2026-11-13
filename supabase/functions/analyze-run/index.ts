@@ -59,6 +59,7 @@ import { findByClientRequestId, insertOnce, parseClientRequestId } from "../_sha
 import { durationBreakdown } from "../_shared/formulas/sessionDuration.ts";
 import { parseAnsweredQuestions, parseRecordQuestions, RECORD_QUESTIONS_SCHEMA, recordAnswersSection, recordQuestionsRule, type RecordQuestion } from "../_shared/recordQuestions.ts";
 import { geminiHeaders, geminiUrl, geminiWithFallback, thinkingConfig } from "../_shared/geminiModel.ts";
+import { checkGeminiQuota, geminiQuotaBody } from "../_shared/geminiQuota.ts";
 
 const MAX_PHOTOS = 6;
 const MAX_NOTES_LENGTH = 500;
@@ -1580,6 +1581,10 @@ Deno.serve(withUsageRecording("analyze-run", async (req) => {
       return jsonResponse({ error: "Sessão inválida" }, 401);
     }
     const userId = userData.user.id;
+    // A quota do Gemini por atleta (auditoria de segurança, 2026-11-13;
+    // _shared/geminiQuota.ts): passado o limite, 429 com a frase da Carol.
+    const geminiQuota = await checkGeminiQuota(userId);
+    if (!geminiQuota.ok) return jsonResponse(geminiQuotaBody(geminiQuota), 429);
 
     const body = await req.json();
     const rawNotes = typeof body.notes === "string" ? body.notes.slice(0, MAX_NOTES_LENGTH) : null;
