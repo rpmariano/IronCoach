@@ -15,7 +15,7 @@ O **IronHealth** é uma PWA (Progressive Web App) criada para monitorizar e otim
 - **Gestão de Estado**: Zustand (`src/store/index.js`).
 - **Testes**: Vitest + Testing Library.
 - **Backend**: Supabase (Google OAuth, Postgres, Edge Functions), partilhado por todos os ambientes — **não existe base de dados de desenvolvimento separada**.
-- `index_legacy.html` é um arquivo da app anterior em JavaScript vanilla. Não é servido nem mantido; existe como referência, a par da tag `backup/master-pre-react-merge`.
+- A app anterior, em JavaScript vanilla (`index_legacy.html`), saiu do repositório na auditoria de segurança de 2026-11-13. Fica como referência na tag `backup/master-pre-react-merge`.
 
 ### 2.3. Schema: a base de dados é a fonte de verdade, não o ficheiro
 `supabase_schema.sql` é um **registo** do schema, não o que o cria. Divergiu da produção sem que nada avisasse: faltavam-lhe 18 colunas e duas tabelas inteiras (`water_logs`, `push_subscriptions`), o que levou a concluir por leitura que campos existentes estavam em falta — e quase a criá-los outra vez.
