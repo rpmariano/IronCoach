@@ -144,7 +144,8 @@ export async function invokeEdgeFunctionWithTimeout(fnName, options = {}, timeou
       // a distinguia de um erro de rede e escondia-a atrás de "A tua mensagem
       // não saiu" (incidente 2026-09-12).
       let isBusy = false;
-      // O limite que o 429 bateu: 'hour' | 'day' (nome do campo por confirmar com o Backend).
+      // O limite que o 429 bateu: 'hour' | 'day' — o campo `scope` do Backend (formato confirmado a
+      // 2026-11-13: {error, scope, retry_after_minutes}; o `quota: 'hora'|'dia'` ignora-se).
       let quotaScope = null;
       /* O texto que o servidor escreveu para o atleta ler — só quando é mesmo
          dele, uma string no campo `error`. Um erro do gateway (546
