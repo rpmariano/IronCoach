@@ -23,6 +23,7 @@
 
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { icsFileName, raceCalendarEvent, raceIcs } from "../_shared/formulas/raceCalendar.ts";
+import { timingSafeEqual } from "../_shared/timingSafeEqual.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -75,15 +76,18 @@ async function hmacHex(secret: string, message: string): Promise<string> {
 // chave — uma assinatura de outro sítio nunca serve aqui.
 const signedMessage = (id: string, exp: number) => `race-calendar|${id}|${exp}`;
 
-export async function signRaceLink(secret: string, id: string, exp: number): Promise<string> {
-  return await hmacHex(secret, signedMessage(id, exp));
+/** A chave dos links, derivada da service role key (auditoria de segurança,
+ *  2026-11-13): HMAC(service_key, "race-calendar-v1"). A service role key
+ *  nunca assina nada diretamente, e mudar a versão invalida todos os links
+ *  sem mexer na chave. Os links de antes desta mudança deixam de valer (o
+ *  atleta toca outra vez em «Adicionar ao calendário»). */
+export const RACE_LINK_KEY_LABEL = "race-calendar-v1";
+async function raceLinkKey(serviceKey: string): Promise<string> {
+  return await hmacHex(serviceKey, RACE_LINK_KEY_LABEL);
 }
 
-function timingSafeEqual(a: string, b: string): boolean {
-  if (a.length !== b.length) return false;
-  let diff = 0;
-  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
-  return diff === 0;
+export async function signRaceLink(secret: string, id: string, exp: number): Promise<string> {
+  return await hmacHex(await raceLinkKey(secret), signedMessage(id, exp));
 }
 
 export async function verifyRaceLink(

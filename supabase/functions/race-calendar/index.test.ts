@@ -33,6 +33,19 @@ Deno.test("verifyRaceLink: parâmetros em falta ou malformados", async () => {
   assertEquals(await verifyRaceLink(SECRET, { id: ID, exp: "1", sig: null }, NOW), "invalid");
 });
 
+Deno.test("signRaceLink: assina com a chave derivada (HMAC(service_key, «race-calendar-v1»)), nunca com a service key", async () => {
+  const enc = new TextEncoder();
+  const hmac = async (k: string, m: string) => {
+    const key = await crypto.subtle.importKey("raw", enc.encode(k), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+    return Array.from(new Uint8Array(await crypto.subtle.sign("HMAC", key, enc.encode(m))), (b) => b.toString(16).padStart(2, "0")).join("");
+  };
+  const msg = `race-calendar|${ID}|${NOW + 60}`;
+  const derived = await hmac(await hmac(SECRET, "race-calendar-v1"), msg);
+  assertEquals(await signRaceLink(SECRET, ID, NOW + 60), derived);
+  // Uma assinatura feita com a service key diretamente (a de antes) já não vale.
+  assertEquals(await verifyRaceLink(SECRET, { id: ID, exp: String(NOW + 60), sig: await hmac(SECRET, msg) }, NOW), "invalid");
+});
+
 Deno.test("handler: GET sem assinatura é recusado antes de tocar na BD; POST sem sessão dá 401", async () => {
   Deno.env.set("SUPABASE_SERVICE_ROLE_KEY", SECRET);
   const get = await handler(new Request(`https://x.supabase.co/functions/v1/race-calendar?id=${ID}&exp=1&sig=00`));

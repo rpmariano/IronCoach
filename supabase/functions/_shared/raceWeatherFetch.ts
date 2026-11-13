@@ -11,6 +11,7 @@
 // simplesmente não fala do tempo.
 
 import { buildRaceWeatherContext, DEFAULT_START, expectedDurationMin, summarizeRaceWeather } from "./formulas/raceWeather.ts";
+import { asExternalData } from "./externalData.ts";
 
 export const WEATHER_WINDOW_DAYS = 7;
 const TIMEOUT_MS = 4000;
@@ -76,12 +77,13 @@ async function fetchRaceWeather(race: WeatherRace, todayISO: string, mode: "prev
     const start = race?.start_time ? String(race.start_time).slice(0, 5) : DEFAULT_START;
     const summary = summarizeRaceWeather(forecast.hourly, date, start, expectedDurationMin(race?.target_time_seconds, race?.distance_km));
     if (!summary) return null;
-    return buildRaceWeatherContext(
+    // Dados de fora (a previsão e o sítio): marcados como dados (externalData.ts).
+    return asExternalData(buildRaceWeatherContext(
       { name: race?.name ?? null, date, location: place },
       summary,
       { startTime: !race?.start_time, duration: !(Number(race?.target_time_seconds) > 0) },
       mode,
-    );
+    ));
   } catch (e) {
     console.warn(`raceWeather: ${mode === "previsao" ? "previsão" : "tempo que esteve"} falhou`, e);
     return null;

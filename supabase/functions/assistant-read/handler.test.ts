@@ -152,6 +152,7 @@ const B = "bbbbbbbb-0000-4000-8000-000000000002";
 const TOKEN_A = "ih_" + "A".repeat(43);
 const TOKEN_B = "ih_" + "B".repeat(43);
 const TOKEN_REVOKED = "ih_" + "R".repeat(43);
+const TOKEN_A2 = "ih_" + "C".repeat(43);
 const NOW = new Date("2026-10-24T10:00:00Z");
 const DAY = "2026-10-22"; // dentro dos 7 dias por omissão
 const FUTURE = "2026-12-06";
@@ -370,8 +371,8 @@ Deno.test("período por omissão: os últimos 7 dias, a acabar hoje (Lisboa)", a
 
 // ─── Limite de pedidos ────────────────────────────────────────────────────
 
-function logRows(n: number, at: string, status = 200, token_id = "tok-a"): Row[] {
-  return Array.from({ length: n }, (_, i) => ({ id: i, token_id, user_id: A, resource: "summary", status, at }));
+function logRows(n: number, at: string, status = 200, token_id = "tok-a", user_id = token_id === "tok-b" ? B : A): Row[] {
+  return Array.from({ length: n }, (_, i) => ({ id: i, token_id, user_id, resource: "summary", status, at }));
 }
 
 Deno.test("429: ao fim de 120 pedidos na última hora", async () => {
@@ -394,7 +395,48 @@ Deno.test("429: o pedido recusado não conta como uso (last_used_at fica no últ
   assertEquals(tok.last_used_at, "2026-10-24T09:00:00.000Z");
 });
 
-Deno.test("429: pedidos de há mais de uma hora, os já recusados e os de outro token não contam", async () => {
+Deno.test("429 (auditoria de 2026-11-13): o limite é por atleta — dois tokens dele somam", async () => {
+  const db = await scenario();
+  db.tables.assistant_tokens.push({ id: "tok-a2", user_id: A, token_hash: await sha256Hex(TOKEN_A2), revoked_at: null });
+  const recent = new Date(NOW.getTime() - 5 * 60_000).toISOString();
+  db.tables.assistant_access_log = [...logRows(60, recent, 200, "tok-a"), ...logRows(60, recent, 200, "tok-a2")];
+  assertEquals((await call(db, "resource=summary", TOKEN_A2)).status, 429);
+  assertEquals((await call(db, "resource=summary", TOKEN_A)).status, 429);
+});
+
+Deno.test("401 (auditoria de 2026-11-13): um token expirado é recusado; sem prazo (os antigos) continua a valer", async () => {
+  const db = await scenario();
+  const tok = db.tables.assistant_tokens.find((t) => t.id === "tok-a")!;
+  tok.expires_at = new Date(NOW.getTime() - 1000).toISOString();
+  const res = await call(db, "resource=summary");
+  assertEquals(res.status, 401);
+  assertEquals(await res.json(), { error: "token_expired" });
+  tok.expires_at = new Date(NOW.getTime() + 86_400_000).toISOString();
+  assertEquals((await call(db, "resource=summary")).status, 200);
+  tok.expires_at = null;
+  assertEquals((await call(db, "resource=summary")).status, 200);
+});
+
+Deno.test("sem a coluna expires_at (migration por aplicar), o token vale como antes", async () => {
+  const db = await scenario();
+  const orig = db.from.bind(db);
+  // deno-lint-ignore no-explicit-any
+  (db as any).from = (t: string) => {
+    const b = orig(t);
+    if (t !== "assistant_tokens") return b;
+    const sel = b.select.bind(b);
+    // deno-lint-ignore no-explicit-any
+    (b as any).select = (cols: string, o?: { head?: boolean }) => {
+      // deno-lint-ignore no-explicit-any
+      if (cols.includes("expires_at")) return { eq: () => ({ is: () => ({ maybeSingle: () => Promise.resolve({ data: null, error: { message: "column assistant_tokens.expires_at does not exist" } }) }) }) } as any;
+      return sel(cols, o);
+    };
+    return b;
+  };
+  assertEquals((await call(db, "resource=summary")).status, 200);
+});
+
+Deno.test("429: pedidos de há mais de uma hora, os já recusados e os de outro atleta não contam", async () => {
   const db = await scenario();
   const old = new Date(NOW.getTime() - 61 * 60_000).toISOString();
   const recent = new Date(NOW.getTime() - 5 * 60_000).toISOString();

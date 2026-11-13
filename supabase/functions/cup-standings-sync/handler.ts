@@ -22,6 +22,7 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 import { cupResultsUrlError } from "../_shared/formulas/cupResults.ts";
 import { TROFEU_ADAPTER, TROFEU_LIMITS, TROFEU_USER_AGENT, trofeuHttp, type TrofeuHttp, trofeuUrlKind } from "./adapters/trofeuCascais.ts";
 import { type Db, type EnsaioInput, runEnsaio, runSync, type SyncDeps } from "./sync.ts";
+import { timingSafeEqual } from "../_shared/timingSafeEqual.ts";
 
 export interface HandlerDeps {
   cronSecret: string | null | undefined;
@@ -43,13 +44,6 @@ const corsHeaders = {
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-}
-
-function timingSafeEqual(a: string, b: string): boolean {
-  if (a.length !== b.length) return false;
-  let diff = 0;
-  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
-  return diff === 0;
 }
 
 function errName(e: unknown): string {

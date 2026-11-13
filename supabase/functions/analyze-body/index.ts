@@ -53,6 +53,7 @@ import { type GeminiUsage, usageFromGemini } from "../_shared/geminiUsage.ts";
 import { withUsageRecording } from "../_shared/usageRecorder.ts";
 import { findByClientRequestId, insertOnce, parseClientRequestId } from "../_shared/idempotency.ts";
 import { fastingFromAnswers, parseAnsweredQuestions, parseRecordQuestions, RECORD_QUESTIONS_SCHEMA, recordAnswersSection, recordQuestionsRule, type RecordQuestion } from "../_shared/recordQuestions.ts";
+import { checkGeminiQuota, geminiQuotaBody } from "../_shared/geminiQuota.ts";
 
 const MAX_PHOTOS = 6;
 const MAX_NOTES_LENGTH = 500;
@@ -696,6 +697,10 @@ Deno.serve(withUsageRecording("analyze-body", async (req) => {
       return jsonResponse({ error: "Sessão inválida" }, 401);
     }
     const userId = userData.user.id;
+    // A quota do Gemini por atleta (auditoria de segurança, 2026-11-13;
+    // _shared/geminiQuota.ts): passado o limite, 429 com a frase da Carol.
+    const geminiQuota = await checkGeminiQuota(userId);
+    if (!geminiQuota.ok) return jsonResponse(geminiQuotaBody(geminiQuota), 429);
     // A memória durável e a conversa recente do chat (Fase 1, ação 1.3), em
     // paralelo com o resto: todos os caminhos abaixo acabam num resumo.
     // Nunca rejeita, por isso pode ficar por esperar num caminho de erro.

@@ -40,6 +40,7 @@ import { nextTimeAdditionsSection, withButterQuestions } from "./optionalAdditio
 import { alignItems, alignPhotoAndWritten, mismatchMeta } from "./itemAlignment.ts";
 import { NOTES_EMPTY_MESSAGE, NOTES_ITEMS_SCHEMA, notesAreAnalyzable, notesItemsPrompt, parseNotesItems } from "./notesItems.ts";
 import { isWalk } from "../_shared/formulas/runKinds.ts";
+import { checkGeminiQuota, geminiQuotaBody } from "../_shared/geminiQuota.ts";
 
 const MAX_PHOTOS = 6;
 const MAX_NOTES_LENGTH = 500;
@@ -2051,6 +2052,10 @@ Deno.serve(withUsageRecording("analyze-meal", async (req) => {
       return jsonResponse({ error: "Sessão inválida" }, 401);
     }
     const userId = userData.user.id;
+    // A quota do Gemini por atleta (auditoria de segurança, 2026-11-13;
+    // _shared/geminiQuota.ts): passado o limite, 429 com a frase da Carol.
+    const geminiQuota = await checkGeminiQuota(userId);
+    if (!geminiQuota.ok) return jsonResponse(geminiQuotaBody(geminiQuota), 429);
     // O que se pede ao Gemini fora da leitura direta (applyMealAnswers, o registo revisto).
     const mealDeps: MealDeps = {
       analyzePhotos: (images, mime, written, notes, knowledge) => written.length

@@ -49,6 +49,7 @@ import {
 } from "./formulas/cup.ts";
 import { racePriorityOf } from "./formulas/mainRace.ts";
 import { resolveExperienceLevel } from "./formulas/racePlanning.ts";
+import { EXTERNAL_DATA_NOTE } from "./externalData.ts";
 
 export type SeriesChannel = "chat" | "daily" | "run";
 
@@ -602,7 +603,10 @@ export function buildSeriesBlock(input: SeriesBlockInput): SeriesBlock | null {
   }
 
   return {
-    text: L.join("\n"),
+    // As classificações e os resultados vêm do site da competição: dados, não
+    // instruções. A nota vai antes da última linha — a do canal, que cada
+    // consumidor lê por ser a última.
+    text: [...L.slice(0, -1), EXTERNAL_DATA_NOTE, ...L.slice(-1)].join("\n"),
     active: true,
     editionId: edition.id,
     competitionName,

@@ -53,6 +53,7 @@ import {
   TERRAIN_LOOKBACK_DAYS,
 } from "../_shared/formulas/percentileSegments.ts";
 import { type Athlete, buildPublication, METRIC, scoreAthletes } from "./publish.ts";
+import { timingSafeEqual } from "../_shared/timingSafeEqual.ts";
 
 const DAY_MS = 86400000;
 const addDays = (iso: string, n: number) =>
@@ -65,7 +66,8 @@ function jsonResponse(body: unknown, status = 200): Response {
 
 async function handler(req: Request): Promise<Response> {
   const cronSecret = Deno.env.get("CRON_SECRET");
-  if (!cronSecret || req.headers.get("x-cron-secret") !== cronSecret) {
+  // Em tempo constante (auditoria de segurança, 2026-11-13).
+  if (!cronSecret || !timingSafeEqual(req.headers.get("x-cron-secret"), cronSecret)) {
     return jsonResponse({ error: "Não autorizado" }, 401);
   }
 
