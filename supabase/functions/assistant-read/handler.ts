@@ -120,14 +120,13 @@ interface TokenRow { id: string; user_id: string; expires_at?: string | null }
 async function findToken(db: Db, authorization: string | null): Promise<TokenRow | null> {
   const m = /^Bearer (.+)$/.exec(authorization ?? "");
   if (!m || !TOKEN_RE.test(m[1])) return null;
-  const { data, error } = await db
-    .from("assistant_tokens")
-    .select("id, user_id, expires_at")
-    .eq("token_hash", await sha256Hex(m[1]))
-    .is("revoked_at", null)
-    .maybeSingle();
+  const hash = await sha256Hex(m[1]);
+  const read = (cols: string) => db.from("assistant_tokens").select(cols).eq("token_hash", hash).is("revoked_at", null).maybeSingle();
+  let { data, error } = await read("id, user_id, expires_at");
+  // Sem a coluna (migration 20261113130000 por aplicar): sem prazo, como antes.
+  if (error && /expires_at/.test(String(error.message ?? ""))) ({ data, error } = await read("id, user_id"));
   if (error) throw new Error(`assistant_tokens: ${error.message}`);
-  return data ?? null;
+  return (data as TokenRow | null) ?? null;
 }
 
 async function usedLastHour(db: Db, userId: string, now: Date): Promise<number> {

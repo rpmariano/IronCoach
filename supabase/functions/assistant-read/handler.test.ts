@@ -417,6 +417,25 @@ Deno.test("401 (auditoria de 2026-11-13): um token expirado é recusado; sem pra
   assertEquals((await call(db, "resource=summary")).status, 200);
 });
 
+Deno.test("sem a coluna expires_at (migration por aplicar), o token vale como antes", async () => {
+  const db = await scenario();
+  const orig = db.from.bind(db);
+  // deno-lint-ignore no-explicit-any
+  (db as any).from = (t: string) => {
+    const b = orig(t);
+    if (t !== "assistant_tokens") return b;
+    const sel = b.select.bind(b);
+    // deno-lint-ignore no-explicit-any
+    (b as any).select = (cols: string, o?: { head?: boolean }) => {
+      // deno-lint-ignore no-explicit-any
+      if (cols.includes("expires_at")) return { eq: () => ({ is: () => ({ maybeSingle: () => Promise.resolve({ data: null, error: { message: "column assistant_tokens.expires_at does not exist" } }) }) }) } as any;
+      return sel(cols, o);
+    };
+    return b;
+  };
+  assertEquals((await call(db, "resource=summary")).status, 200);
+});
+
 Deno.test("429: pedidos de há mais de uma hora, os já recusados e os de outro atleta não contam", async () => {
   const db = await scenario();
   const old = new Date(NOW.getTime() - 61 * 60_000).toISOString();
