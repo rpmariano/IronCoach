@@ -144,6 +144,8 @@ export async function invokeEdgeFunctionWithTimeout(fnName, options = {}, timeou
       // a distinguia de um erro de rede e escondia-a atrás de "A tua mensagem
       // não saiu" (incidente 2026-09-12).
       let isBusy = false;
+      // O limite que o 429 bateu: 'hour' | 'day' (nome do campo por confirmar com o Backend).
+      let quotaScope = null;
       /* O texto que o servidor escreveu para o atleta ler — só quando é mesmo
          dele, uma string no campo `error`. Um erro do gateway (546
          WORKER_LIMIT, 503 BOOT_ERROR) não o traz, e aí `detailedMsg` fica com
@@ -164,6 +166,7 @@ export async function invokeEdgeFunctionWithTimeout(fnName, options = {}, timeou
           // dela, o recarregamento ao voltar à app não a repete.
           if (bodyJson?.model_message?.id) serverMessageId = bodyJson.model_message.id;
           isBusy = bodyJson?.busy === true;
+          if (bodyJson?.scope === 'hour' || bodyJson?.scope === 'day') quotaScope = bodyJson.scope;
         } catch (_) {}
       }
       const status = error.context?.status ?? null;
@@ -180,6 +183,7 @@ export async function invokeEdgeFunctionWithTimeout(fnName, options = {}, timeou
           isTimeout: false,
           isBusy: false,
           isQuota: true,
+          quotaScope,
           serverText: serverText || QUOTA_FALLBACK_TEXT,
           serverMessageId,
           status,

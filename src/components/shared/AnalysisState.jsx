@@ -254,8 +254,9 @@ export function AnalysisSkeleton({
  *   onManual     alternativa manual; sem ela, só aparece "Tentar de novo"
  *   manualLabel  rótulo da alternativa (mock: "Escrever")
  *   retrying     bool — desativa as ações enquanto a repetição corre
- *   quota        bool — a quota do dia (429): o corpo é a frase da Carol (`detail`), sem
- *                «Tentar de novo» nem a causa técnica — é uma resposta dela, não uma falha
+ *   quota        false | true | 'hour' | 'day' — a quota (429): o corpo é a frase da Carol (`detail`), sem
+ *                «Tentar de novo» nem a causa técnica — é uma resposta dela, não uma falha.
+ *                Título: «Por hoje chega» só no limite diário; no da hora ou sem campo, «Uma pausa».
  */
 export function AnalysisFailure({
   title,
@@ -271,7 +272,7 @@ export function AnalysisFailure({
   // A causa diz-se primeiro (sem rede, rede lenta, sessão); o que fazer vem
   // de quem monta (`children`), porque depende do registo.
   const cause = quota ? 'quota' : classifyAnalysisFailure(detail);
-  const causa = quota ? { title: 'Por hoje chega', lead: null } : CAUSA[cause];
+  const causa = quota ? { title: quota === 'day' ? 'Por hoje chega' : 'Uma pausa', lead: null } : CAUSA[cause];
   /* O aviso vive no topo do formulário, e o botão que lançou a análise está
      na barra de baixo: com o formulário descido (a juntar prints), a falha
      aparecia fora do ecrã e a app parecia ter parado sem dizer nada

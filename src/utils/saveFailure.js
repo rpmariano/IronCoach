@@ -22,7 +22,7 @@ export function saveError(res) {
   const err = new Error(saveErrorText(res));
   err.name = 'SaveError';
   // A quota do dia (429): a frase da Carol, sem «Tentar de novo» (repetir dava o mesmo 429).
-  if (res?.isQuota) err.quota = true;
+  if (res?.isQuota) { err.quota = true; err.quotaScope = res.quotaScope ?? null; }
   return markLogged(err);
 }
 

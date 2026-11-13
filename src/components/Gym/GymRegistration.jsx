@@ -434,7 +434,7 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
     setReading(true);
     setReadNote(null);
     try {
-      const { data, error, isQuota } = await invokeEdgeFunctionWithTimeout('analyze-gym', {
+      const { data, error, isQuota, quotaScope } = await invokeEdgeFunctionWithTimeout('analyze-gym', {
         body: {
           mode: 'preview',
           images: photos.map(p => p.base64),
@@ -445,7 +445,7 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
         },
       }, ANALYZE_TIMEOUT_MS);
       // A quota do dia (429): a frase da Carol, sem «Tentar de novo» nem save_failed.
-      if (error) throw isQuota ? saveError({ isQuota, serverText: error }) : new Error(error);
+      if (error) throw isQuota ? saveError({ isQuota, quotaScope, serverText: error }) : new Error(error);
       if (data?.error) throw saveRefusal(data.error);
 
       const result = mergePreview(formRef.current, data.preview, planBlocks);

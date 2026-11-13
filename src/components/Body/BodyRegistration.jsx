@@ -400,11 +400,11 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
     setReadNote(null);
     setErrorMsg('');
     try {
-      const { data, error, isQuota } = await invokeEdgeFunctionWithTimeout('analyze-body', {
+      const { data, error, isQuota, quotaScope } = await invokeEdgeFunctionWithTimeout('analyze-body', {
         body: { mode: 'preview', images: photos.map(p => p.base64), mime_type: 'image/jpeg', notes: notes.trim() || null },
       }, ANALYZE_TIMEOUT_MS);
       // A quota do dia (429): a frase da Carol, sem «Tentar de novo» nem save_failed.
-      if (error) throw isQuota ? saveError({ isQuota, serverText: error }) : new Error(error);
+      if (error) throw isQuota ? saveError({ isQuota, quotaScope, serverText: error }) : new Error(error);
       if (data?.error) throw saveRefusal(data.error);
       const preview = data?.preview || {};
       const merged = mergeBodyPreview(metricsRef.current, preview.metrics);

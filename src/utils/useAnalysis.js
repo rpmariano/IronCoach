@@ -32,7 +32,8 @@ import { reportSaveFailure, isQuotaError } from './saveFailure';
 export default function useAnalysis({ kind = null } = {}) {
   const [status, setStatus] = useState('idle');
   const [error, setError] = useState(null);
-  // A quota do dia (429): a frase da Carol fica em `error`, e não há «Tentar de novo».
+  // A quota (429): a frase da Carol fica em `error`, e não há «Tentar de novo». false, ou o
+  // limite batido — 'day' | 'hour' | true (sem o campo) — para o título do aviso.
   const [quota, setQuota] = useState(false);
   // A última tarefa corrida, para o "Tentar de novo" a repetir tal e qual.
   const lastTaskRef = useRef(null);
@@ -54,7 +55,7 @@ export default function useAnalysis({ kind = null } = {}) {
       console.error(err);
       if (kind) reportSaveFailure(kind, err);
       setError(err?.message || '');
-      setQuota(isQuotaError(err));
+      setQuota(isQuotaError(err) ? (err.quotaScope || true) : false);
       setStatus('error');
       return undefined;
     }

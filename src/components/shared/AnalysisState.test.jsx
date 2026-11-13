@@ -125,6 +125,18 @@ describe('AnalysisFailure — quota do dia (429)', () => {
     expect(screen.queryByTestId('analysis-failure-detail')).toBeNull();
     expect(screen.getByText('Escrever')).toBeInTheDocument();
   });
+
+  it('o título: «Por hoje chega» só no limite diário; no da hora ou sem o campo, «Uma pausa»', () => {
+    const { unmount } = render(<AnalysisFailure quota="day" detail="Amanhã continuo." />);
+    expect(screen.getByText('Por hoje chega')).toBeInTheDocument();
+    unmount();
+    const r2 = render(<AnalysisFailure quota="hour" detail="Tenta outra vez daqui a 10 minutos." />);
+    expect(screen.getByText('Uma pausa')).toBeInTheDocument();
+    r2.unmount();
+    render(<AnalysisFailure quota detail="x" />);
+    expect(screen.getByText('Uma pausa')).toBeInTheDocument();
+    expect(screen.queryByText('Por hoje chega')).toBeNull();
+  });
 });
 
 describe('revisão pré-master de 2026-09-19', () => {

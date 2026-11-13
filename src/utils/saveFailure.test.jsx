@@ -39,6 +39,8 @@ describe('saveFailure', () => {
     const { result } = renderHook(() => useAnalysis({ kind: 'meal' }));
     await act(async () => { await result.current.run(async () => { throw saveError({ serverText: 'Amanhã leio.', isQuota: true }); }); });
     expect([result.current.hasFailed, result.current.quota, result.current.error]).toEqual([true, true, 'Amanhã leio.']);
+    await act(async () => { await result.current.run(async () => { throw saveError({ serverText: 'Amanhã leio.', isQuota: true, quotaScope: 'day' }); }); });
+    expect(result.current.quota).toBe('day');
     await act(async () => { await result.current.run(async () => { throw new Error('Falha na análise.'); }); });
     expect(result.current.quota).toBe(false);
   });
