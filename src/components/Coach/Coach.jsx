@@ -1454,12 +1454,16 @@ export default function Coach() {
         ...(extras && typeof extras === 'object' ? extras : null),
       };
 
-      const { data, error, isTimeout, isNetwork, isBusy, serverText, serverMessageId } = await invokeEdgeFunctionWithTimeout('coach-chat', {
+      const { data, error, isTimeout, isNetwork, isBusy, isQuota, serverText, serverMessageId } = await invokeEdgeFunctionWithTimeout('coach-chat', {
         body: JSON.stringify(payload)
       });
 
       if (error) {
-        if (isBusy && !afterBusy) {
+        if (isQuota) {
+          // A quota do dia (429): a frase dela, como uma resposta normal — sem «Reenviar», que
+          // repetir dava o mesmo 429.
+          handleImmediateFailure(serverText, serverMessageId);
+        } else if (isBusy && !afterBusy) {
           // Ela ainda está a responder à mensagem anterior, e esta não foi
           // gravada: espera essa resposta, mostra-a e manda esta a seguir —
           // em vez de devolver ao atleta o "manda outra vez".

@@ -764,6 +764,26 @@ describe('Coach — falha imediata (sem timeout, isTimeout=false)', () => {
     expect(supabase.from).not.toHaveBeenCalledWith('coach_messages');
   });
 
+  it('quota do dia (429): a frase dela como resposta normal, sem "Reenviar" e sem sondagem', async () => {
+    invokeEdgeFunctionWithTimeout.mockResolvedValue({
+      data: null, error: 'Por hoje já falámos muito. Amanhã continuamos.', isTimeout: false, isNetwork: false, isQuota: true, status: 429,
+      serverText: 'Por hoje já falámos muito. Amanhã continuamos.', serverMessageId: null,
+    });
+    supabase.from.mockImplementation((table) => {
+      if (table === 'coach_messages') return coachMessagesChain({ data: [], error: null });
+      return profilesChain({ data: null, error: null });
+    });
+
+    renderCoach();
+    await sendOla();
+    await waitFor(() => expect(useAppStore.getState().coachMessages.at(-1)?.content).toBe('Por hoje já falámos muito. Amanhã continuamos.'));
+    const last = useAppStore.getState().coachMessages.at(-1);
+    expect(last.retryText).toBeUndefined();
+    expect(screen.queryByTestId('coach-retry')).not.toBeInTheDocument();
+    expect(useAppStore.getState().coachLoading).toBe(false);
+    expect(supabase.from).not.toHaveBeenCalledWith('coach_messages');
+  });
+
   // Revisão pré-deploy de 2026-09-25: um erro do gateway (546 WORKER_LIMIT,
   // 503 BOOT_ERROR) responde sem frase dela — o `error` é o texto em inglês
   // da supabase-js, que aparecia na bolha da Carol.

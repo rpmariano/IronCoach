@@ -7,6 +7,7 @@ import PremiumModal from '../shared/PremiumModal';
 import Button from '../shared/Button';
 import CompetitionsTab from './Competitions';
 import CostsTab from './CostsTab';
+import UnknownAppPhoto from './UnknownAppPhoto';
 
 const ADMIN_TABS = [
   { key: 'overview', label: 'Visão Geral', icon: LayoutGrid },
@@ -765,8 +766,6 @@ export default function Admin() {
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 {filtered.map(item => {
-                  const imageUrl = supabase.storage.from('unknown-app-photos').getPublicUrl(item.image_path).data?.publicUrl;
-
                   return (
                     <div key={item.id} className="card rounded-2xl p-4 bg-[var(--surface-glass)] border border-[var(--border-glass)] space-y-3 flex flex-col justify-between">
                       <div className="space-y-2">
@@ -780,14 +779,7 @@ export default function Admin() {
                         </div>
 
                         <div className="flex gap-3 items-center">
-                          {imageUrl && (
-                            <img
-                              src={imageUrl}
-                              alt="Screenshot da app"
-                              className="w-16 h-16 object-cover rounded-xl border border-[var(--border-glass-strong)] shrink-0 bg-[var(--bg-app)]"
-                              onError={(e) => { e.target.style.display = 'none'; }}
-                            />
-                          )}
+                          <UnknownAppPhoto path={item.image_path} variant="thumb" />
                           <div className="min-w-0 flex-1">
                             <p className="text-xs font-semibold text-[var(--text-2)] truncate">
                               {item.detected_app_guess ? `Palpite: ${item.detected_app_guess}` : 'App não identificada'}
@@ -818,8 +810,6 @@ export default function Admin() {
 
             {/* Inspection Modal */}
             {selectedUnknownLog && (() => {
-              const modalImgUrl = supabase.storage.from('unknown-app-photos').getPublicUrl(selectedUnknownLog.image_path).data?.publicUrl;
-              
               return (
                 <PremiumModal
                   isOpen={!!selectedUnknownLog}
@@ -834,15 +824,7 @@ export default function Admin() {
                   <div className="p-6 space-y-5 bg-[var(--bg-sheet)] text-[var(--text-2)]">
                     {/* Screenshot Preview */}
                     <div className="flex justify-center bg-[var(--bg-app)] rounded-2xl p-2 border border-[var(--border-glass)] max-h-72 overflow-hidden">
-                      {modalImgUrl ? (
-                        <img
-                          src={modalImgUrl}
-                          alt="Screenshot submetido pelo atleta"
-                          className="max-h-68 object-contain rounded-xl"
-                        />
-                      ) : (
-                        <p className="text-xs text-[var(--text-3)] py-8">Imagem não disponível no storage.</p>
-                      )}
+                      <UnknownAppPhoto path={selectedUnknownLog.image_path} variant="modal" />
                     </div>
 
                     {/* Extracted Best Effort Result */}

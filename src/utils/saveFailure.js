@@ -21,8 +21,13 @@ function markLogged(err) {
 export function saveError(res) {
   const err = new Error(saveErrorText(res));
   err.name = 'SaveError';
+  // A quota do dia (429): a frase da Carol, sem «Tentar de novo» (repetir dava o mesmo 429).
+  if (res?.isQuota) { err.quota = true; err.quotaScope = res.quotaScope ?? null; }
   return markLogged(err);
 }
+
+/** A falha é a quota do dia (429): mostra-se a frase, sem «Tentar de novo». */
+export const isQuotaError = (err) => !!(err && typeof err === 'object' && err.quota === true);
 
 /** O servidor respondeu e recusou (data.error, já na voz da Carol): chegou lá, não é para registar aqui. */
 export function saveRefusal(message) {

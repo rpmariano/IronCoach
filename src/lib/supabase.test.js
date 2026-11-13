@@ -196,6 +196,32 @@ describe('invokeEdgeFunctionWithTimeout — save_failed (#116)', () => {
     expect(JSON.stringify(log)).not.toContain('Rui');
   });
 
+  it('quota do dia (429): a frase da Carol, isQuota, e nunca save_failed nem erro de rede', async () => {
+    spyAppLogs();
+    vi.spyOn(functionsProto, 'invoke').mockResolvedValue({
+      data: null,
+      error: { name: 'FunctionsHttpError', message: 'Edge Function returned a non-2xx status code', context: { status: 429, json: async () => ({ error: 'Por hoje já li muito, Rui. Amanhã continuo.' }) } },
+    });
+    const res = await invokeEdgeFunctionWithTimeout('analyze-meal', { body: { mode: 'photo', images: ['x'] } }, 45000);
+    await settle();
+    expect(res).toMatchObject({ isQuota: true, isNetwork: false, isTimeout: false, status: 429, error: 'Por hoje já li muito, Rui. Amanhã continuo.', serverText: 'Por hoje já li muito, Rui. Amanhã continuo.' });
+    const events = inserts.map((i) => i.row.event);
+    expect(events).not.toContain('save_failed');
+    expect(events).toEqual(['analyze-meal']);
+    expect(inserts[0].row.level).toBe('info'); // app_logs_level_check: success|error|info
+    expect(res.quotaScope).toBeNull();
+  });
+
+  it('quota: o limite batido (scope hour|day) vem em quotaScope; outro valor é ignorado', async () => {
+    spyAppLogs();
+    const reply = (scope) => ({ data: null, error: { name: 'FunctionsHttpError', message: 'non-2xx', context: { status: 429, json: async () => ({ error: 'Uma pausa.', scope }) } } });
+    const spy = vi.spyOn(functionsProto, 'invoke');
+    spy.mockResolvedValueOnce(reply('hour')).mockResolvedValueOnce(reply('day')).mockResolvedValueOnce(reply('semana'));
+    expect((await invokeEdgeFunctionWithTimeout('coach-chat', {}, 45000)).quotaScope).toBe('hour');
+    expect((await invokeEdgeFunctionWithTimeout('coach-chat', {}, 45000)).quotaScope).toBe('day');
+    expect((await invokeEdgeFunctionWithTimeout('coach-chat', {}, 45000)).quotaScope).toBeNull();
+  });
+
   it('o que não grava (preview, coach-chat) fica com o log de sempre', async () => {
     spyAppLogs();
     vi.spyOn(functionsProto, 'invoke').mockResolvedValue({ data: null, error: functionsFetchError() });

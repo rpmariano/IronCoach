@@ -113,6 +113,32 @@ describe('AnalysisFailure — a causa, dita por ela', () => {
   });
 });
 
+describe('AnalysisFailure — quota do dia (429)', () => {
+  it('o corpo é a frase da Carol, sem «Tentar de novo», sem a causa técnica nem o texto de quem monta', () => {
+    const onRetry = vi.fn();
+    render(<AnalysisFailure quota detail="Por hoje já li muito. Amanhã continuo." onRetry={onRetry} onManual={() => {}}>Podes tentar outra vez.</AnalysisFailure>);
+    const aviso = screen.getByTestId('analysis-failure');
+    expect(aviso).toHaveAttribute('data-cause', 'quota');
+    expect(aviso).toHaveTextContent('Por hoje já li muito. Amanhã continuo.');
+    expect(aviso).not.toHaveTextContent('Podes tentar outra vez.');
+    expect(screen.queryByText(/Tentar de novo/)).toBeNull();
+    expect(screen.queryByTestId('analysis-failure-detail')).toBeNull();
+    expect(screen.getByText('Escrever')).toBeInTheDocument();
+  });
+
+  it('o título: «Por hoje chega» só no limite diário; no da hora ou sem o campo, «Uma pausa»', () => {
+    const { unmount } = render(<AnalysisFailure quota="day" detail="Amanhã continuo." />);
+    expect(screen.getByText('Por hoje chega')).toBeInTheDocument();
+    unmount();
+    const r2 = render(<AnalysisFailure quota="hour" detail="Tenta outra vez daqui a 10 minutos." />);
+    expect(screen.getByText('Uma pausa')).toBeInTheDocument();
+    r2.unmount();
+    render(<AnalysisFailure quota detail="x" />);
+    expect(screen.getByText('Uma pausa')).toBeInTheDocument();
+    expect(screen.queryByText('Por hoje chega')).toBeNull();
+  });
+});
+
 describe('revisão pré-master de 2026-09-19', () => {
   it('a "sessão" do ginásio não é uma sessão expirada', () => {
     expect(classifyAnalysisFailure('Máximo de 4 imagens por sessão')).toBe('other');

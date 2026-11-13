@@ -109,6 +109,9 @@ function logSaveFailure(fnName, body, info) {
   return true;
 }
 
+/** A frase de um 429 que não traz a da Carol (não devia acontecer: a função escreve-a sempre). */
+export const QUOTA_FALLBACK_TEXT = 'Por hoje já não consigo ler mais nada. Amanhã continuamos.';
+
 export async function invokeEdgeFunctionWithTimeout(fnName, options = {}, timeoutMs = 45000) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -141,6 +144,9 @@ export async function invokeEdgeFunctionWithTimeout(fnName, options = {}, timeou
       // a distinguia de um erro de rede e escondia-a atrás de "A tua mensagem
       // não saiu" (incidente 2026-09-12).
       let isBusy = false;
+      // O limite que o 429 bateu: 'hour' | 'day' — o campo `scope` do Backend (formato confirmado a
+      // 2026-11-13: {error, scope, retry_after_minutes}; o `quota: 'hora'|'dia'` ignora-se).
+      let quotaScope = null;
       /* O texto que o servidor escreveu para o atleta ler — só quando é mesmo
          dele, uma string no campo `error`. Um erro do gateway (546
          WORKER_LIMIT, 503 BOOT_ERROR) não o traz, e aí `detailedMsg` fica com
@@ -161,7 +167,29 @@ export async function invokeEdgeFunctionWithTimeout(fnName, options = {}, timeou
           // dela, o recarregamento ao voltar à app não a repete.
           if (bodyJson?.model_message?.id) serverMessageId = bodyJson.model_message.id;
           isBusy = bodyJson?.busy === true;
+          if (bodyJson?.scope === 'hour' || bodyJson?.scope === 'day') quotaScope = bodyJson.scope;
         } catch (_) {}
+      }
+      const status = error.context?.status ?? null;
+      /* Auditoria de segurança (2026-11-13): a quota diária do Gemini. A função responde 429 com
+         uma frase da Carol (`error`) — é uma resposta, não uma falha: quem chama mostra-a como
+         mensagem normal, sem «Tentar de novo» (repetir dá o mesmo 429). Não é save_failed nem
+         erro de rede; fica um registo info em app_logs (o nível warn não existe na tabela) para se ver quem bate na quota. */
+      if (status === 429) {
+        console.warn(`[EdgeFunction:${fnName}] Quota atingida (429).`);
+        logAppEvent('info', fnName, 'Quota atingida (429)', { fnName, status, ...(detail ? { detail } : {}) });
+        return {
+          data: null,
+          error: serverText || QUOTA_FALLBACK_TEXT,
+          isTimeout: false,
+          isBusy: false,
+          isQuota: true,
+          quotaScope,
+          serverText: serverText || QUOTA_FALLBACK_TEXT,
+          serverMessageId,
+          status,
+          isNetwork: false,
+        };
       }
       console.error(`[EdgeFunction:${fnName}] Erro na execução:`, detailedMsg, detail ?? '', error);
       const logged = logSaveFailure(fnName, options.body, {
