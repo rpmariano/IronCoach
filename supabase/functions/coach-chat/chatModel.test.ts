@@ -215,7 +215,7 @@ Deno.test("buildSystemInstruction: sem a doutrina de plano vai o stub; por omiss
 Deno.test("handler: sem a doutrina de plano, o propose_training_plan não vai nas ferramentas (ligações no código)", async () => {
   const src = await Deno.readTextFile(new URL("./index.ts", import.meta.url));
   assert(src.includes("const planDoctrine = !readOnlyTurn && needsPlanDoctrine("));
-  assert(src.includes('const lean = o.planDoctrine ? tools : withoutTool(tools, "propose_training_plan");'));
+  assert(src.includes('const planned = o.planDoctrine ? tools : withoutTool(tools, "propose_training_plan");'));
 });
 
 // 31-10-2026 (sonda): o 3.6 recusa mais de 10 ferramentas num pedido, e o 3.8
