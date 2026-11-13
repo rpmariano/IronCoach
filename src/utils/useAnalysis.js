@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState } from 'react';
-import { reportSaveFailure } from './saveFailure';
+import { reportSaveFailure, isQuotaError } from './saveFailure';
 
 /**
  * useAnalysis — a máquina de estados das três operações que dependem da IA e
@@ -32,6 +32,8 @@ import { reportSaveFailure } from './saveFailure';
 export default function useAnalysis({ kind = null } = {}) {
   const [status, setStatus] = useState('idle');
   const [error, setError] = useState(null);
+  // A quota do dia (429): a frase da Carol fica em `error`, e não há «Tentar de novo».
+  const [quota, setQuota] = useState(false);
   // A última tarefa corrida, para o "Tentar de novo" a repetir tal e qual.
   const lastTaskRef = useRef(null);
 
@@ -40,6 +42,7 @@ export default function useAnalysis({ kind = null } = {}) {
     lastTaskRef.current = task;
     setStatus('analyzing');
     setError(null);
+    setQuota(false);
     try {
       const result = await task();
       setStatus('idle');
@@ -51,6 +54,7 @@ export default function useAnalysis({ kind = null } = {}) {
       console.error(err);
       if (kind) reportSaveFailure(kind, err);
       setError(err?.message || '');
+      setQuota(isQuotaError(err));
       setStatus('error');
       return undefined;
     }
@@ -64,11 +68,13 @@ export default function useAnalysis({ kind = null } = {}) {
   const reset = useCallback(() => {
     setStatus('idle');
     setError(null);
+    setQuota(false);
   }, []);
 
   return {
     status,
     error,
+    quota,
     run,
     retry,
     reset,

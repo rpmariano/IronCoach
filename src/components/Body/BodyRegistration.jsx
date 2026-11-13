@@ -23,7 +23,7 @@ import PhotoReadSection from '../shared/registration/PhotoReadSection';
 import RegistrationSection from '../shared/registration/RegistrationSection';
 import { FieldInput, FieldTextarea } from '../shared/registration/Field';
 import { useClientRequestId, upsertById, } from '../../utils/clientRequestId';
-import { saveError, saveRefusal, reportSaveFailure, saveFailureMessage } from '../../utils/saveFailure';
+import { saveError, saveRefusal, reportSaveFailure, saveFailureMessage, isQuotaError } from '../../utils/saveFailure';
 import { printsNeedRead, AwaitingReadAction } from '../shared/registration/printsGate';
 import { PrintQuestions, questionsPayload, readQuestions } from '../shared/CarolQuestionsForm';
 
@@ -361,7 +361,7 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
       reportSaveFailure('body', err, { step: 'edit' });
       const message = saveFailureMessage(err, 'Não consegui guardar as alterações agora. Tenta de novo.');
       setErrorMsg(message);
-      setFailedSave({ message, retry: () => handleSaveEdit() });
+      setFailedSave(isQuotaError(err) ? null : { message, retry: () => handleSaveEdit() });
     } finally {
       setIsSaving(false);
     }
@@ -400,10 +400,11 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
     setReadNote(null);
     setErrorMsg('');
     try {
-      const { data, error } = await invokeEdgeFunctionWithTimeout('analyze-body', {
+      const { data, error, isQuota } = await invokeEdgeFunctionWithTimeout('analyze-body', {
         body: { mode: 'preview', images: photos.map(p => p.base64), mime_type: 'image/jpeg', notes: notes.trim() || null },
       }, ANALYZE_TIMEOUT_MS);
-      if (error) throw new Error(error);
+      // A quota do dia (429): a frase da Carol, sem «Tentar de novo» nem save_failed.
+      if (error) throw isQuota ? saveError({ isQuota, serverText: error }) : new Error(error);
       if (data?.error) throw saveRefusal(data.error);
       const preview = data?.preview || {};
       const merged = mergeBodyPreview(metricsRef.current, preview.metrics);
@@ -475,7 +476,7 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
       reportSaveFailure('body', err, { step: 'manual' });
       const message = saveFailureMessage(err, 'Não consegui gravar a avaliação agora. Tenta de novo — não fica repetida.');
       setErrorMsg(message);
-      setFailedSave({ message, retry: () => saveFromFields() });
+      setFailedSave(isQuotaError(err) ? null : { message, retry: () => saveFromFields() });
     } finally {
       setIsSaving(false);
     }
@@ -521,7 +522,8 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
       {analysis.hasFailed && (
         <AnalysisFailure
           detail={analysis.error}
-          onRetry={analysis.retry}
+          onRetry={analysis.quota ? undefined : analysis.retry}
+            quota={analysis.quota}
           onManual={() => analysis.reset()}
           manualLabel="Rever os valores"
         >

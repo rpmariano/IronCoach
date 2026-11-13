@@ -113,6 +113,20 @@ describe('AnalysisFailure — a causa, dita por ela', () => {
   });
 });
 
+describe('AnalysisFailure — quota do dia (429)', () => {
+  it('o corpo é a frase da Carol, sem «Tentar de novo», sem a causa técnica nem o texto de quem monta', () => {
+    const onRetry = vi.fn();
+    render(<AnalysisFailure quota detail="Por hoje já li muito. Amanhã continuo." onRetry={onRetry} onManual={() => {}}>Podes tentar outra vez.</AnalysisFailure>);
+    const aviso = screen.getByTestId('analysis-failure');
+    expect(aviso).toHaveAttribute('data-cause', 'quota');
+    expect(aviso).toHaveTextContent('Por hoje já li muito. Amanhã continuo.');
+    expect(aviso).not.toHaveTextContent('Podes tentar outra vez.');
+    expect(screen.queryByText(/Tentar de novo/)).toBeNull();
+    expect(screen.queryByTestId('analysis-failure-detail')).toBeNull();
+    expect(screen.getByText('Escrever')).toBeInTheDocument();
+  });
+});
+
 describe('revisão pré-master de 2026-09-19', () => {
   it('a "sessão" do ginásio não é uma sessão expirada', () => {
     expect(classifyAnalysisFailure('Máximo de 4 imagens por sessão')).toBe('other');

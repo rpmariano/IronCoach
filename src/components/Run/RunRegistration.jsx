@@ -48,7 +48,7 @@ import { findPendingPlanItems } from '../../utils/planPrefill';
 import CarolInterventionActions from '../shared/CarolInterventionActions';
 import { FieldInput, FieldSelect, FieldTextarea } from '../shared/registration/Field';
 import { useClientRequestId, } from '../../utils/clientRequestId';
-import { saveError, saveRefusal, reportSaveFailure, saveFailureMessage } from '../../utils/saveFailure';
+import { saveError, saveRefusal, reportSaveFailure, saveFailureMessage, isQuotaError } from '../../utils/saveFailure';
 import { printsNeedRead, AwaitingReadAction } from '../shared/registration/printsGate';
 import { PrintQuestions, questionsPayload, readQuestions } from '../shared/CarolQuestionsForm';
 
@@ -2125,7 +2125,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
       reportSaveFailure('run', err, { step: 'manual' });
       const message = saveFailureMessage(err, 'Não consegui gravar a corrida agora. Tenta de novo — não fica repetida.');
       setErrorMsg(message);
-      setFailedSave({ message, retry: () => handleSaveCorrida(forceBypassMissing, forceReanalyze) });
+      setFailedSave(isQuotaError(err) ? null : { message, retry: () => handleSaveCorrida(forceBypassMissing, forceReanalyze) });
     } finally {
       setIsSubmitting(false);
       setSavingWithCarol(null);
@@ -2202,7 +2202,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
     setReadNote(null);
     setErrorMsg('');
     try {
-      const { data, error } = await invokeEdgeFunctionWithTimeout('analyze-run', {
+      const { data, error, isQuota } = await invokeEdgeFunctionWithTimeout('analyze-run', {
         body: {
           mode: 'preview',
           images: runPhotos.map((p) => p.base64).filter(Boolean),
@@ -2213,7 +2213,8 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
           notes: runNotes.trim() || null,
         },
       }, ANALYZE_TIMEOUT_MS);
-      if (error) throw new Error(error);
+      // A quota do dia (429): a frase da Carol, sem «Tentar de novo» nem save_failed.
+      if (error) throw isQuota ? saveError({ isQuota, serverText: error }) : new Error(error);
       if (data?.error) throw saveRefusal(data.error);
       const read = data?.preview || {};
       const now = liveForm.current;
@@ -2451,7 +2452,8 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
       {analysis.hasFailed && (
         <AnalysisFailure
           detail={analysis.error}
-          onRetry={analysis.retry}
+          onRetry={analysis.quota ? undefined : analysis.retry}
+            quota={analysis.quota}
           onManual={showToggle && runPhotos.some((p) => p.base64) && !createdRunRef.current
             ? () => { analysis.reset(); setRunPhotos((prev) => prev.filter((p) => !p.base64)); setReadState(null); }
             : undefined}

@@ -27,7 +27,7 @@ import { normalizeStartTime, startTimeInputValue } from '../../utils/startTime';
 import CarolInterventionActions from '../shared/CarolInterventionActions';
 import { FieldInput, FieldTextarea } from '../shared/registration/Field';
 import { useClientRequestId, upsertById, } from '../../utils/clientRequestId';
-import { saveError, saveRefusal, reportSaveFailure, saveFailureMessage } from '../../utils/saveFailure';
+import { saveError, saveRefusal, reportSaveFailure, saveFailureMessage, isQuotaError } from '../../utils/saveFailure';
 import { printsNeedRead, AwaitingReadAction } from '../shared/registration/printsGate';
 import { PrintQuestions, questionsPayload, readQuestions } from '../shared/CarolQuestionsForm';
 
@@ -434,7 +434,7 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
     setReading(true);
     setReadNote(null);
     try {
-      const { data, error } = await invokeEdgeFunctionWithTimeout('analyze-gym', {
+      const { data, error, isQuota } = await invokeEdgeFunctionWithTimeout('analyze-gym', {
         body: {
           mode: 'preview',
           images: photos.map(p => p.base64),
@@ -444,7 +444,8 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
           plan_blocks: planBlocks.map(b => ({ name: b.name, type: b.type })),
         },
       }, ANALYZE_TIMEOUT_MS);
-      if (error) throw new Error(error);
+      // A quota do dia (429): a frase da Carol, sem «Tentar de novo» nem save_failed.
+      if (error) throw isQuota ? saveError({ isQuota, serverText: error }) : new Error(error);
       if (data?.error) throw saveRefusal(data.error);
 
       const result = mergePreview(formRef.current, data.preview, planBlocks);
@@ -639,7 +640,7 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
       reportSaveFailure('gym', err, { step: 'manual' });
       const message = saveFailureMessage(err, 'Não consegui gravar o treino agora. Tenta de novo — não fica repetido.');
       setErrorMsg(message);
-      setFailedSave({ message, retry: () => handleSaveManual() });
+      setFailedSave(isQuotaError(err) ? null : { message, retry: () => handleSaveManual() });
     } finally {
       setIsSaving(false);
     }
@@ -700,7 +701,7 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
       reportSaveFailure('gym', err, { step: 'edit' });
       const message = saveFailureMessage(err, 'Não consegui guardar as alterações agora. Tenta de novo.');
       setErrorMsg(message);
-      setFailedSave({ message, retry: () => handleSaveEdit() });
+      setFailedSave(isQuotaError(err) ? null : { message, retry: () => handleSaveEdit() });
     } finally {
       setIsSaving(false);
     }
@@ -800,7 +801,8 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
         {analysis.hasFailed && (
           <AnalysisFailure
             detail={analysis.error}
-            onRetry={analysis.retry}
+            onRetry={analysis.quota ? undefined : analysis.retry}
+            quota={analysis.quota}
             onManual={!isEditing && photos.length
               ? () => { setPhotos([]); setReviewedPhotos(null); analysis.reset(); setIsFormDirty(true); }
               : undefined}

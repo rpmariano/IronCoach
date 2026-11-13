@@ -24,7 +24,7 @@ import PlanPrefillBanner from '../shared/registration/PlanPrefillBanner';
 import { mealSuggestionsFor } from '../../utils/planPrefill';
 import { FieldInput, FieldTextarea, caretToEnd } from '../shared/registration/Field';
 import { useClientRequestId, upsertById, } from '../../utils/clientRequestId';
-import { saveError, saveRefusal } from '../../utils/saveFailure';
+import { saveError, saveRefusal, isQuotaError } from '../../utils/saveFailure';
 import { saveErrorText } from '../../utils/clientRequestId';
 import { ReadPrintsButton } from '../shared/registration/PhotoReadSection';
 import { printsNeedRead, AwaitingReadAction } from '../shared/registration/printsGate';
@@ -423,7 +423,8 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
         },
       }, ANALYZE_TIMEOUT_MS);
       if (seq !== readSeqRef.current) return; // as fotos mudaram a meio: esta leitura já não vale
-      if (res.error) throw new Error(saveErrorText(res));
+      // A quota do dia (429): saveError marca-a — a frase da Carol, sem «Tentar de novo».
+      if (res.error) throw res.isQuota ? saveError(res) : new Error(saveErrorText(res));
       if (res.data?.error) throw new Error(res.data.error);
       const items = previewItems(res.data);
       if (!items.length) {
@@ -441,7 +442,7 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
       if (seq !== readSeqRef.current) return;
       console.error(err);
       setReadState(null); setReadQs([]); setReadAnswers({});
-      setReadNote({ tone: 'warn', text: `${err.message || 'Não consegui ler as fotos agora.'} Podes tentar outra vez, ou gravar assim — eu leio as fotos ao gravar.` });
+      setReadNote({ tone: 'warn', text: isQuotaError(err) ? err.message : `${err.message || 'Não consegui ler as fotos agora.'} Podes tentar outra vez, ou gravar assim — eu leio as fotos ao gravar.` });
     } finally {
       if (seq === readSeqRef.current) {
         setReadAttempt({ count, written });
@@ -873,7 +874,8 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
         {analysis.hasFailed && (
           <AnalysisFailure
             detail={analysis.error}
-            onRetry={analysis.retry}
+            onRetry={analysis.quota ? undefined : analysis.retry}
+            quota={analysis.quota}
             onManual={!isEditing && photos.length > 0
               ? () => { analysis.reset(); itemNameRef.current?.focus(); }
               : undefined}

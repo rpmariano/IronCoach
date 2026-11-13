@@ -254,6 +254,8 @@ export function AnalysisSkeleton({
  *   onManual     alternativa manual; sem ela, só aparece "Tentar de novo"
  *   manualLabel  rótulo da alternativa (mock: "Escrever")
  *   retrying     bool — desativa as ações enquanto a repetição corre
+ *   quota        bool — a quota do dia (429): o corpo é a frase da Carol (`detail`), sem
+ *                «Tentar de novo» nem a causa técnica — é uma resposta dela, não uma falha
  */
 export function AnalysisFailure({
   title,
@@ -263,11 +265,13 @@ export function AnalysisFailure({
   onManual,
   manualLabel = 'Escrever',
   retrying = false,
+  quota = false,
   ...rest
 }) {
   // A causa diz-se primeiro (sem rede, rede lenta, sessão); o que fazer vem
   // de quem monta (`children`), porque depende do registo.
-  const causa = CAUSA[classifyAnalysisFailure(detail)];
+  const cause = quota ? 'quota' : classifyAnalysisFailure(detail);
+  const causa = quota ? { title: 'Por hoje chega', lead: null } : CAUSA[cause];
   /* O aviso vive no topo do formulário, e o botão que lançou a análise está
      na barra de baixo: com o formulário descido (a juntar prints), a falha
      aparecia fora do ecrã e a app parecia ter parado sem dizer nada
@@ -285,12 +289,12 @@ export function AnalysisFailure({
       tone="warn"
       title={title || causa.title}
       icon={<CoachAvatar size={20} mood="worried" />}
-      data-cause={classifyAnalysisFailure(detail)}
+      data-cause={cause}
       data-testid="analysis-failure"
       style={{ marginBottom: 16 }}
       actions={
         <>
-          {onRetry && (
+          {onRetry && !quota && (
             <WarningAction
               tone="warn"
               onClick={onRetry}
@@ -324,9 +328,11 @@ export function AnalysisFailure({
       }
       {...rest}
     >
+      {quota ? (detail || null) : (<>
       {causa.lead && <>{causa.lead} </>}
       {children}
-      {detail && (
+      </>)}
+      {detail && !quota && (
         <span
           data-testid="analysis-failure-detail"
           style={{ display: 'block', marginTop: 6, fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}

@@ -4,7 +4,9 @@ import { render, screen, fireEvent } from '@testing-library/react';
 
 vi.mock('../lib/supabase', () => ({ logAppEvent: vi.fn() }));
 import { logAppEvent } from '../lib/supabase';
-import { saveError, saveRefusal, reportSaveFailure, saveFailureMessage, SAVE_GENERIC_TEXT } from './saveFailure';
+import { saveError, saveRefusal, reportSaveFailure, saveFailureMessage, SAVE_GENERIC_TEXT, isQuotaError } from './saveFailure';
+import { renderHook, act } from '@testing-library/react';
+import useAnalysis from './useAnalysis';
 import { SAVE_NETWORK_TEXT } from './clientRequestId';
 import { saveKindOf, describeBody, saveModeOf } from '../lib/saveTelemetry';
 import { queuePendingLog, flushPendingLogs, pendingLogs, __resetPendingLogsForTests } from '../lib/pendingLogs';
@@ -21,6 +23,24 @@ describe('saveFailure', () => {
     expect(reportSaveFailure('meal', err)).toBe(false);
     expect(reportSaveFailure('meal', saveRefusal('A Carol não percebeu.'))).toBe(false);
     expect(logAppEvent).not.toHaveBeenCalled();
+  });
+
+  it('quota (429): saveError marca-a, a frase é a da Carol, e não se regista como save_failed', () => {
+    const err = saveError({ error: 'Por hoje chega.', serverText: 'Por hoje chega.', isQuota: true, status: 429 });
+    expect(isQuotaError(err)).toBe(true);
+    expect(err.message).toBe('Por hoje chega.');
+    expect(saveFailureMessage(err)).toBe('Por hoje chega.');
+    expect(reportSaveFailure('gym', err)).toBe(false);
+    expect(isQuotaError(saveError({ error: 'x', isNetwork: true }))).toBe(false);
+    expect(logAppEvent).not.toHaveBeenCalled();
+  });
+
+  it('useAnalysis: uma falha de quota fica em quota, e uma corrida nova limpa-a', async () => {
+    const { result } = renderHook(() => useAnalysis({ kind: 'meal' }));
+    await act(async () => { await result.current.run(async () => { throw saveError({ serverText: 'Amanhã leio.', isQuota: true }); }); });
+    expect([result.current.hasFailed, result.current.quota, result.current.error]).toEqual([true, true, 'Amanhã leio.']);
+    await act(async () => { await result.current.run(async () => { throw new Error('Falha na análise.'); }); });
+    expect(result.current.quota).toBe(false);
   });
 
   it('um erro de JS antes do envio regista-se uma vez, com o nome e a mensagem técnica', () => {
