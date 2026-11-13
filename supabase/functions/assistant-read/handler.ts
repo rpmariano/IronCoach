@@ -123,7 +123,7 @@ async function findToken(db: Db, authorization: string | null): Promise<TokenRow
   const hash = await sha256Hex(m[1]);
   const read = (cols: string) => db.from("assistant_tokens").select(cols).eq("token_hash", hash).is("revoked_at", null).maybeSingle();
   let { data, error } = await read("id, user_id, expires_at");
-  // Sem a coluna (migration 20261113130000 por aplicar): sem prazo, como antes.
+  // Sem a coluna (migration 20261113234813_assistant_tokens_expiry por aplicar): sem prazo, como antes.
   if (error && /expires_at/.test(String(error.message ?? ""))) ({ data, error } = await read("id, user_id"));
   if (error) throw new Error(`assistant_tokens: ${error.message}`);
   return (data as TokenRow | null) ?? null;
