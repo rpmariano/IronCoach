@@ -13,7 +13,10 @@
 --     reports»), só status/resolved_at/resolved_by são atualizáveis, e
 --     resolved_at/resolved_by vêm do servidor (now() e auth.uid()).
 --   - Tamanhos: título 200, descrição 5000, página 200, user agent 500,
---     10 anexos (hoje: 60, 857, 28, 111 e 2 no máximo).
+--     10 anexos (hoje: 60, 857, 28, 111 e 2 no máximo). Vindo da app, o
+--     trigger CORTA ao limite em vez de deixar o report falhar (quem reporta
+--     já tropeçou num problema — perder o report é o pior desfecho); as CHECK
+--     ficam como rede para o resto.
 -- app_logs
 --   - Tamanhos: event 100, message 4000, meta 16000 caracteres em JSON (hoje:
 --     22, 140 e 414 no máximo). Valem também para os registos do servidor.
@@ -43,6 +46,12 @@ begin
   end if;
 
   if tg_op = 'INSERT' then
+    -- Cortar, não recusar (os mesmos limites das CHECK em baixo).
+    new.title := left(new.title, 200);
+    new.description := left(new.description, 5000);
+    new.page := left(new.page, 200);
+    new.user_agent := left(new.user_agent, 500);
+    new.attachment_urls := new.attachment_urls[1:10];
     new.user_email := nullif(auth.jwt() ->> 'email', '');
     new.user_name := (select p.display_name from public.profiles p where p.id = auth.uid());
     new.status := 'open';

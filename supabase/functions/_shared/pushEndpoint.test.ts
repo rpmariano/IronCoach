@@ -9,6 +9,7 @@ import {
 Deno.test("isAllowedPushEndpoint: aceita os serviços de push dos browsers", () => {
   for (const ok of [
     "https://fcm.googleapis.com/fcm/send/abc:APA91b-xyz",
+    "https://jmt17.google.com/fcm/send/abc:APA91b-xyz",
     "https://web.push.apple.com/QGx1c2VyLXRva2Vu",
     "https://updates.push.services.mozilla.com/wpush/v2/gAAAAA",
     "https://wns2-par02p.notify.windows.com/w/?token=BQYAAA%3d",
