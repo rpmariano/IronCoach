@@ -3,8 +3,10 @@ import { Line } from 'react-chartjs-2';
 import ChartJS from '../../lib/chartSetup';
 import ChartFrame from '../BI/ChartFrame';
 import { fmtNumber } from '../../utils/verdicts/shared';
+import { elevationSeries } from '../../utils/courseMap';
 
-/* O perfil de altitude do percurso (o `points` do perfil do GPX: [km, altitude m], ≤ 300 pontos),
+/* O perfil de altitude do percurso: o [dist_km, alt_m] do `track` do perfil do GPX (até 1000
+   pontos a distâncias iguais), reamostrado para ~300 (utils/courseMap.js, elevationSeries),
    no padrão dos outros gráficos: ChartFrame com o número grande (o D+), a legenda, os extremos do
    eixo em HTML e o «Pedir à Carol que explique». Carrega-se por React.lazy (CourseProfilePanel):
    o Chart.js só chega ao hub da prova quando há percurso. */
@@ -12,8 +14,7 @@ import { fmtNumber } from '../../utils/verdicts/shared';
 const RACE = '#fbbf24'; // --race
 
 export default function CourseElevationChart({ profile, raceName = null }) {
-  const pts = useMemo(() => (Array.isArray(profile?.points) ? profile.points : [])
-    .filter((p) => Array.isArray(p) && Number.isFinite(p[0]) && Number.isFinite(p[1])), [profile]);
+  const pts = useMemo(() => elevationSeries(profile?.track), [profile]);
 
   const data = useMemo(() => ({
     labels: pts.map((p) => p[0]),

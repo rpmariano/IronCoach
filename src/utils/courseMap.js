@@ -5,6 +5,21 @@
 
 const finite = (v) => typeof v === 'number' && Number.isFinite(v);
 
+/** O perfil de altitude do track: [dist_km, alt_m], reamostrado para no máximo `max` pontos (o
+ *  track tem até 1000, a distâncias iguais; o Chart.js não precisa de tantos). Fica sempre o
+ *  último ponto, para o eixo acabar na distância do percurso. */
+export function elevationSeries(track, max = 300) {
+  if (!Array.isArray(track)) return [];
+  const pts = track
+    .filter((p) => Array.isArray(p) && finite(p[2]) && finite(p[3]))
+    .map((p) => [p[2], p[3]]);
+  if (pts.length <= max) return pts;
+  const step = (pts.length - 1) / (max - 1);
+  const out = [];
+  for (let i = 0; i < max; i += 1) out.push(pts[Math.round(i * step)]);
+  return out;
+}
+
 /** Os pontos [lat, lon] válidos do track (os outros campos não interessam ao desenho). */
 export function trackLatLon(track) {
   if (!Array.isArray(track)) return [];

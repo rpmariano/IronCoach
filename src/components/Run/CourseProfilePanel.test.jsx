@@ -3,7 +3,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import CourseProfilePanel from './CourseProfilePanel';
 import CourseMap from './CourseMap';
-import { courseMapPath } from '../../utils/courseMap';
+import { courseMapPath, elevationSeries } from '../../utils/courseMap';
 import { courseSuggestions } from '../../utils/courseSuggest';
 
 vi.mock('react-chartjs-2', () => ({ Line: () => <div data-testid="c-line" /> }));
@@ -13,7 +13,6 @@ const TRACK = [[38.70, -9.15, 0, 10], [38.705, -9.15, 0.55, 30], [38.709, -9.15,
 const PROFILE = {
   v: 1, source: 'gpx', distance_km: 21.3, gain_m: 182, loss_m: 175, min_alt_m: 4, max_alt_m: 96,
   km: [], climbs: [],
-  points: [[0, 10], [5, 60], [10, 96], [15, 40], [21.3, 17]],
   track: TRACK, start: [38.70, -9.15], finish: [38.709, -9.13],
 };
 
@@ -103,11 +102,14 @@ describe('CourseProfilePanel', () => {
     expect(screen.getByRole('button', { name: /Trocar/ })).toBeInTheDocument();
   });
 
-  it('um perfil sem track não mostra o mapa', async () => {
-    const { track, start, finish, ...semTrack } = PROFILE; // eslint-disable-line no-unused-vars
-    render(<CourseProfilePanel profile={semTrack} onFile={vi.fn()} onRemove={vi.fn()} />);
-    await screen.findByTestId('c-line', {}, { timeout: 8000 });
-    expect(screen.queryByTestId('course-map')).toBeNull();
+  it('elevationSeries: [dist_km, alt_m] do track, reamostrado (com o último ponto) para o gráfico', () => {
+    expect(elevationSeries(TRACK)).toEqual([[0, 10], [0.55, 30], [1.0, 45], [1.87, 40], [2.74, 20]]);
+    const longo = Array.from({ length: 1000 }, (_, i) => [38.7, -9.1, i * 0.0213, 10 + (i % 50)]);
+    const serie = elevationSeries(longo);
+    expect(serie).toHaveLength(300);
+    expect(serie[0]).toEqual([0, 10]);
+    expect(serie.at(-1)).toEqual([999 * 0.0213, 10 + (999 % 50)]);
+    expect(elevationSeries([[1, 2, 'x', 3], null])).toEqual([]);
   });
 
   it('distância ou D+ diferentes: sugere, e só aplica quando o atleta confirma', () => {
