@@ -516,10 +516,10 @@ const RUNNING_TOOL = {
 // ferramenta — o modelo não consegue inventar um tipo novo.
 // "caminhada" (2026-10-05): tipo de treino da corrida para recuperações e para
 // quem não pode correr (_shared/formulas/runKinds.ts). Exige a migração
-// 20261005120000 no check de runs.training_type.
+// 20261005171145 no check de runs.training_type.
 // "ativacao" (bug #84, 2026-10-25): o treino curto da véspera/antevéspera de
 // uma prova (15-30 min fáceis com 3-4 acelerações), que até aqui saía como
-// "recuperação". Exige a migração 20261025100000 no check de runs.training_type.
+// "recuperação". Exige a migração 20261025163613 no check de runs.training_type.
 const RUN_TRAINING_TYPES = [
   "continuo", "longo", "recuperacao", "tempo", "fartlek",
   "intervalos", "subidas", "trail", "tecnico", WALK_TRAINING_TYPE, PRE_RACE_ACTIVATION_TYPE,
@@ -1190,6 +1190,15 @@ export function needsPlanDoctrine(message: string, turnCase: TurnCase, forced: b
 export const MAX_TOOLS_PER_REQUEST = 10;
 const CAP_DROP_ORDER = ["set_cup_season_goal", "set_cup_participation", "save_pantry_food", "resolve_intervention", "update_race_event"];
 
+/** Sem save_coach_note (turnos com fotos e proativos — auditoria de
+ *  segurança, 2026-11-13): o prompt manda gravar factos «assim que o atleta
+ *  os revelar», e sem esta linha ela dizia «anotei» sem ter gravado nada. */
+export const NO_NOTES_PHOTO_NOTE =
+  "NOTAS NESTE TURNO: neste turno não gravas notas; não digas que anotaste — se o atleta revelar um facto, " +
+  "pede-lhe que o repita sem foto ou diz que fica para a próxima mensagem.";
+export const NO_NOTES_PROACTIVE_NOTE =
+  "NOTAS NESTE TURNO: neste turno não gravas notas; não digas que anotaste nem que vais anotar.";
+
 /** Num turno de plano com inscrição ativa, o que a Carol diz se ele falar do Troféu. */
 export const SERIES_DEFERRED_NOTE =
   "COMPETIÇÃO POR JORNADAS NESTE TURNO: não tens as ferramentas do Troféu (set_cup_participation, set_cup_season_goal) " +
@@ -1335,7 +1344,7 @@ export async function recordProactiveDelivered(
   // deno-lint-ignore no-explicit-any
   sb: any, userId: string, trigger: ProactiveTrigger | "targets_review", key: string,
   // O que acompanha a entrega (a proposta de uma revisão dos objetivos);
-  // sem a coluna (migração 20261025210000 por aplicar), grava-se sem ele.
+  // sem a coluna (migração 20261025204514 por aplicar), grava-se sem ele.
   payload: unknown = null,
 ): Promise<void> {
   try {
@@ -2089,7 +2098,7 @@ export async function saveRecommendations(sb: any, userId: string, messageId: st
 }
 
 // Grava a resposta dela com a emoção. Sem a coluna `mood` (a migration
-// 20260924001000 ainda por aplicar) o PostgREST recusa o insert inteiro — e
+// 20260924004356 ainda por aplicar) o PostgREST recusa o insert inteiro — e
 // perder a mensagem por causa da cara seria pior do que perder a cara. Por
 // isso, se o insert com a emoção falhar, seja porquê, grava-se sem ela; o
 // cliente deduz a emoção do texto.
@@ -2097,7 +2106,7 @@ export async function saveRecommendations(sb: any, userId: string, messageId: st
 export async function insertModelMessage(sb: any, userId: string, content: string, mood: CarolMood | null, planContinuation: unknown = null) {
   // A continuação de um plano partido vai também na linha da mensagem: um
   // turno de mais de 45 s chega ao cliente por sondagem, sem a resposta, e o
-  // plan_continuation perdia-se com ela (migração 20261025180000). Sem a
+  // plan_continuation perdia-se com ela (migração 20261025173709). Sem a
   // coluna, grava-se sem ela, como a emoção.
   if (planContinuation) {
     const withPlan = await sb.from("coach_messages")
@@ -3030,7 +3039,7 @@ export function buildNutritionAnalyticsPanel(
     }
   }
 
-  // D6 (2026-10-05): desde a migração 20261005090000_micronutrients_nullable
+  // D6 (2026-10-05): desde a migração 20261005110436_micronutrients_nullable
   // um micronutriente que o modelo não deu fica null e não entra na soma — os
   // totais são MÍNIMOS. Antes eram apresentados como completos e a Carol
   // podia afirmar "pouco ferro hoje" quando o ferro era só desconhecido. A
@@ -7797,7 +7806,7 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
     // utilizador (ex.: um pedido lento ainda em curso + um reenvio manual
     // depois de um erro de rede/timeout no cliente) de gerarem efeitos
     // duplicados — nomeadamente duas propostas de plano concorrentes para a
-    // mesma pergunta em aberto (ver migração 20260820120000_coach_chat_lock).
+    // mesma pergunta em aberto (ver migração 20260820103609_coach_chat_lock).
     // UPDATE condicional otimista: só avança quem conseguir "reservar" o
     // campo; um lock com mais de LOCK_STALE_MS é tratado como órfão (função
     // anterior que morreu a meio) e pode ser reocupado.
@@ -9214,6 +9223,11 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
     // Num turno de plano com inscrição, o Troféu ficou de fora: ela diz que grava a seguir.
     if (planDoctrine && seriesToolsOn) finalSystemInstruction += "\n\n" + SERIES_DEFERRED_NOTE;
     const toolNamesSent = toolsBlock[0].functionDeclarations.map((t: { name: string }) => t.name);
+    // Sem save_coach_note neste turno: ela não diz que anotou (revisão do lote de segurança).
+    if (!toolNamesSent.includes("save_coach_note")) {
+      if (chatImages.length > 0) finalSystemInstruction += "\n\n" + NO_NOTES_PHOTO_NOTE;
+      else if (proactiveTrigger) finalSystemInstruction += "\n\n" + NO_NOTES_PROACTIVE_NOTE;
+    }
     const toolsBytes = JSON.stringify(toolsBlock).length;
 
     // ── Loop de function calling ──────────────────────────────────────────

@@ -2055,7 +2055,6 @@ Deno.serve(withUsageRecording("analyze-meal", async (req) => {
     // A quota do Gemini por atleta (auditoria de segurança, 2026-11-13;
     // _shared/geminiQuota.ts): passado o limite, 429 com a frase da Carol.
     const geminiQuota = await checkGeminiQuota(userId);
-    if (!geminiQuota.ok) return jsonResponse(geminiQuotaBody(geminiQuota), 429);
     // O que se pede ao Gemini fora da leitura direta (applyMealAnswers, o registo revisto).
     const mealDeps: MealDeps = {
       analyzePhotos: (images, mime, written, notes, knowledge) => written.length
@@ -2067,6 +2066,12 @@ Deno.serve(withUsageRecording("analyze-meal", async (req) => {
     };
 
     const body = await req.json();
+    // A quota decide-se depois de saber se é um reenvio já gravado: esse devolve
+    // a gravação de antes, sem o Gemini, e não leva 429 (revisão do lote de
+    // segurança, 2026-11-14).
+    if (!geminiQuota.ok && !(await findByClientRequestId(sb, "meals", userId, parseClientRequestId(body.client_request_id)))) {
+      return jsonResponse(geminiQuotaBody(geminiQuota), 429);
+    }
     const rawNotes = typeof body.notes === "string" ? body.notes.slice(0, MAX_NOTES_LENGTH) : null;
     // A hora da refeição (meals.meal_time), gravada aqui para a análise já a
     // ver — até 2026-09-28 a app gravava-a num update à parte, DEPOIS desta

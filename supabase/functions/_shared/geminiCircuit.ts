@@ -1,5 +1,5 @@
 /* O disjuntor do modelo principal do Gemini, partilhado entre instâncias
-   (migração 20261030120000_gemini_circuit).
+   (migração 20261030151040_gemini_circuit).
 
    Porquê (30-10-2026): o gemini-3.8-flash esteve sobrecarregado uma manhã
    inteira — 503 ou sem resposta em quase todos os pedidos — e cada pedido

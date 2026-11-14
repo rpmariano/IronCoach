@@ -78,3 +78,16 @@ Deno.test("recordUsage: chamadas de dois modelos (Flash de recurso) gravam uma l
   }, insert);
   assertEquals(rows.map((r) => [r.model, r.input_tokens, r.calls]), [["gemini-3.8-flash", 300, 2]]);
 });
+
+Deno.test("recordUsage (revisão de 2026-11-14): as linhas de um mesmo pedido levam a mesma hora (a quota conta pedidos)", async () => {
+  const rows: UsageRow[] = [];
+  await recordUsage("coach-chat", UID, {
+    input_tokens: 300, output_tokens: 0, calls: 2,
+    by_model: { "gemini-3.8-flash": { input_tokens: 100, calls: 1 }, "gemini-3.6-flash": { input_tokens: 200, calls: 1 } },
+  }, (r) => { rows.push(r); return Promise.resolve({ error: null }); });
+  assertEquals(rows.length, 2);
+  // deno-lint-ignore no-explicit-any
+  const at = rows.map((r) => (r as any).created_at);
+  assertEquals(typeof at[0], "string");
+  assertEquals(at[0], at[1]);
+});

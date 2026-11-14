@@ -4,7 +4,7 @@
 -- deploy da analyze-meal que grava null na despensa (ver "Ordem de deploy").
 -- ============================================================================
 --
--- O mesmo problema do D6 (20261005090000_micronutrients_nullable, que tratou
+-- O mesmo problema do D6 (20261005110436_micronutrients_nullable, que tratou
 -- de meal_items), agora na despensa: em athlete_foods as sete colunas de
 -- micronutrientes por 100 g (fiber/sugar/sodium_per_100g e iron_mg/
 -- calcium_mg/vitamin_c_mg/potassium_mg_per_100g) são NOT NULL DEFAULT 0, e
@@ -58,7 +58,7 @@
 --      analyze-meal nova devolve no modo pantry_food (null no que não
 --      sabe). O front antes da função nova trataria os zeros da função
 --      antiga como dados.
---   Independente de 20261005090000 (meal_items), mas a analyze-meal nova
+--   Independente de 20261005110436 (meal_items), mas a analyze-meal nova
 --   precisa das duas.
 --
 -- ── Rollback ────────────────────────────────────────────────────────────

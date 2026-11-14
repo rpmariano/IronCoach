@@ -79,7 +79,7 @@ const GEMINI_RETRIES = 1;
 // "caminhada" (2026-10-05): a caminhada é um tipo de treino da corrida — ver
 // _shared/formulas/runKinds.ts. Sem ela aqui, o training_type que o cliente
 // manda era descartado em silêncio e a caminhada gravava-se como treino sem
-// tipo (logo, como corrida). Exige a migração 20261005120000 (check de
+// tipo (logo, como corrida). Exige a migração 20261005171145 (check de
 // runs.training_type) ANTES deste deploy.
 export const TRAINING_TYPE_KEYS = [
   "continuo", "longo", "recuperacao", "tempo", "fartlek",
@@ -1584,9 +1584,14 @@ Deno.serve(withUsageRecording("analyze-run", async (req) => {
     // A quota do Gemini por atleta (auditoria de segurança, 2026-11-13;
     // _shared/geminiQuota.ts): passado o limite, 429 com a frase da Carol.
     const geminiQuota = await checkGeminiQuota(userId);
-    if (!geminiQuota.ok) return jsonResponse(geminiQuotaBody(geminiQuota), 429);
 
     const body = await req.json();
+    // A quota decide-se depois de saber se é um reenvio já gravado: esse devolve
+    // a gravação de antes, sem o Gemini, e não leva 429 (revisão do lote de
+    // segurança, 2026-11-14).
+    if (!geminiQuota.ok && !(await findByClientRequestId(sb, "runs", userId, parseClientRequestId(body.client_request_id)))) {
+      return jsonResponse(geminiQuotaBody(geminiQuota), 429);
+    }
     const rawNotes = typeof body.notes === "string" ? body.notes.slice(0, MAX_NOTES_LENGTH) : null;
 
     // ── Modo reanálise por foto: run_id presente sem mode manual ───────

@@ -16,7 +16,7 @@
 // ver o comentário em mealNutrients.ts — ferro/cálcio/vitamina C/potássio
 // mostravam sempre 0.
 // D6 da Evolução (2026-10-05): desde a migração
-// 20261005090000_micronutrients_nullable a analyze-meal grava null num
+// 20261005110436_micronutrients_nullable a analyze-meal grava null num
 // micronutriente que o modelo não deu. Aqui um null não entra na soma (via
 // computeMealNutrients, `?? 0`) e nunca dá NaN — vetor dourado "micronutrientes
 // null". Os totais são por isso mínimos: quem os mostra (coach-chat, painel

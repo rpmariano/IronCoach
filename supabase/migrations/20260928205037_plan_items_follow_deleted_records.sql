@@ -12,7 +12,7 @@
 -- ============================================================================
 --
 -- A FALHA. coach_plan_items.completed_run_id / completed_session_id são
--- `on delete set null` (20260810000000_coach_plans.sql:53-54). Apagar a
+-- `on delete set null` (20260809141830_coach_plans.sql:53-54). Apagar a
 -- corrida (Calendário, Corridas, cartão da corrida) ou a sessão de ginásio
 -- que cumpriu um treino deixava o item `concluido`, com actual_date e sem
 -- registo nenhum: o Início dizia "Feito." e a adesão
@@ -52,7 +52,7 @@
 --     auth.users que já não tinha a linha (ERROR 23503, conta por apagar —
 --     revisão pré-deploy; ensaiado).
 --   · A função não fica exposta como RPC (molde de
---     20260918001600_revoke_execute_trigger_functions.sql).
+--     20260918001630_revoke_execute_trigger_functions.sql).
 -- ============================================================================
 
 create or replace function public.release_plan_items_of_deleted_record()
