@@ -35,6 +35,7 @@ import { claimWithCupFallback } from "./claim.ts";
 import { currentPlanResume } from "../_shared/planResumeData.ts";
 import type { ChooseCtx } from "./decide.ts";
 import { timingSafeEqual } from "../_shared/timingSafeEqual.ts";
+import { isGonePushError, PUSH_SEND_TIMEOUT_MS, sendToAllWithTimeout } from "../_shared/pushSend.ts";
 
 const corsHeaders = { "Content-Type": "application/json" };
 
@@ -426,16 +427,22 @@ async function handler(req: Request): Promise<Response> {
       // prometeu — o `trigger` não vai, é o prefixo da própria chave.
       const payload = JSON.stringify({ title: message.title, body: message.body, tag: "carol-proactive", tab: tickTab(candidate), key: candidate.key });
       let anySuccess = false;
-      for (const sub of userSubs) {
-        try {
-          await webpush.sendNotification({ endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } }, payload);
+      // Em paralelo e com prazo de 10 s cada (auditoria de segurança,
+      // 2026-11-14): um serviço de push pendurado já não prende os outros
+      // envios nem os atletas seguintes (_shared/pushSend.ts).
+      const results = await sendToAllWithTimeout(userSubs, (sub) =>
+        webpush.sendNotification(
+          { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
+          payload,
+          { timeout: PUSH_SEND_TIMEOUT_MS },
+        ));
+      for (const result of results) {
+        if (result.ok) {
           anySuccess = true;
-        } catch (e) {
-          // deno-lint-ignore no-explicit-any
-          const status = (e as any)?.statusCode;
-          if (status === 404 || status === 410) await sb.from("push_subscriptions").delete().eq("id", sub.id);
-          else console.error("coach-proactive-tick: falha a enviar", sub.id, e);
+          continue;
         }
+        if (isGonePushError(result.error)) await sb.from("push_subscriptions").delete().eq("id", result.sub.id);
+        else console.error("coach-proactive-tick: falha a enviar", result.sub.id, result.error);
       }
       if (anySuccess) {
         sent++;

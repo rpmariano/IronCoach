@@ -88,6 +88,7 @@ import {
 } from "../_shared/formulas/planResume.ts";
 import { currentPlanResume } from "../_shared/planResumeData.ts";
 import { checkGeminiQuota, geminiQuotaBody } from "../_shared/geminiQuota.ts";
+import { geminiResponseSummary } from "../_shared/geminiLog.ts";
 
 /* O modelo do chat: o fixo de _shared/geminiModel.ts (o mesmo das outras
    funções). Até 30-10-2026 era o alias "gemini-flash-latest", escolhido para
@@ -1236,7 +1237,12 @@ export function chatToolsFor(
   // Sem save_coach_note nos turnos com fotos e nos proativos (auditoria de
   // segurança, 2026-11-13): uma foto com texto escrito, ou um turno que o
   // atleta não escreveu, não pode deixar uma nota durável na memória dela.
-  const lean = o.photos || o.proactive ? withoutTool(planned, "save_coach_note") : planned;
+  // Nem resolve_intervention (2.ª auditoria, 2026-11-14): o desfecho de uma
+  // intervenção é o que o atleta DIZ — não o que está escrito numa foto, nem
+  // num turno que ele não escreveu. Fica para a mensagem seguinte.
+  const lean = o.photos || o.proactive
+    ? withoutTool(withoutTool(planned, "save_coach_note"), "resolve_intervention")
+    : planned;
   return enforceToolCap(lean, JSON.stringify({ allowed: allowed ? [...allowed] : "todas", ...o }));
 }
 
@@ -7768,6 +7774,11 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
   // lock de coach_chat_busy_since (ver abaixo) em QUALQUER caminho de saída.
   // deno-lint-ignore no-explicit-any
   let sb: any = null;
+  // O lock escreve-se com a service role: a app só o lê — o trigger
+  // guard_profile_privilege_columns ignora o que ela lá escreva (2.ª
+  // auditoria de segurança, 2026-11-14, M1). Só para esta coluna.
+  // deno-lint-ignore no-explicit-any
+  let lockDb: any = null;
   let lockedUserId: string | null = null;
   // O valor escrito ao reservar: o finally só liberta o lock se ainda for o
   // deste pedido — não o de outro que o tenha reocupado entretanto.
@@ -7798,7 +7809,7 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
     const userId = userData.user.id;
     // A quota do Gemini por atleta (auditoria de segurança, 2026-11-13;
     // _shared/geminiQuota.ts): passado o limite, 429 com a frase da Carol.
-    const geminiQuota = await checkGeminiQuota(userId);
+    const geminiQuota = await checkGeminiQuota(userId, { fn: "coach-chat" });
     if (!geminiQuota.ok) return jsonResponse(geminiQuotaBody(geminiQuota), 429);
 
     // ── Lock por utilizador ───────────────────────────────────────────────
@@ -7817,7 +7828,8 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
     const LOCK_STALE_MS = CHAT_BUDGET_MS + 35_000;
     const staleBeforeIso = new Date(Date.now() - LOCK_STALE_MS).toISOString();
     const myLockIso = new Date().toISOString();
-    const { data: lockRows, error: lockErr } = await sb
+    lockDb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+    const { data: lockRows, error: lockErr } = await lockDb
       .from("profiles")
       .update({ coach_chat_busy_since: myLockIso })
       .eq("id", userId)
@@ -9594,12 +9606,24 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
           }
         } else if (name === "update_goals" || name === "update_nutrition_goals") {
           // "update_nutrition_goals" mantido por retrocompatibilidade com histórico de conversa.
-          result = await runUpdateGoals(sb, userId, args || {});
-          goalsWereUpdated = goalsWereUpdated || result.startsWith("Metas atualizadas");
+          // As de escrita só correm se tiverem sido enviadas neste pedido
+          // (2.ª auditoria de segurança, 2026-11-14): o caso do turno, as
+          // fotos ou o teto podem tê-las tirado, e o modelo não as pode
+          // chamar na mesma.
+          if (!toolNamesSent.includes("update_goals")) {
+            result = unknownFunctionResult(name);
+          } else {
+            result = await runUpdateGoals(sb, userId, args || {});
+            goalsWereUpdated = goalsWereUpdated || result.startsWith("Metas atualizadas");
             goalWasProposed = goalWasProposed || result.startsWith("Proposta de altera");
+          }
         } else if (name === "update_race_event") {
-          result = await runUpdateRaceEvent(sb, userId, args || {}, message, lastModelText);
-          raceWasUpdated = raceWasUpdated || result.startsWith("Prova atualizada");
+          if (!toolNamesSent.includes("update_race_event")) {
+            result = unknownFunctionResult(name);
+          } else {
+            result = await runUpdateRaceEvent(sb, userId, args || {}, message, lastModelText);
+            raceWasUpdated = raceWasUpdated || result.startsWith("Prova atualizada");
+          }
         } else if (name === "save_coach_note") {
           // Só se tiver sido enviada neste pedido (fora dos turnos com fotos e dos proativos).
           result = toolNamesSent.includes("save_coach_note") ? await runSaveCoachNote(sb, userId, args || {}) : unknownFunctionResult(name);
@@ -9610,10 +9634,14 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
             : unknownFunctionResult(name);
           if (result.startsWith("Produto ")) pantryFoodsSaved++;
         } else if (name === "save_meal_suggestions") {
-          result = await runSaveMealSuggestions(sb, userId, args || {});
+          result = toolNamesSent.includes(name) ? await runSaveMealSuggestions(sb, userId, args || {}) : unknownFunctionResult(name);
         } else if (name === "resolve_intervention") {
-          result = await runResolveIntervention(sb, userId, args || {});
-          interventionWasResolved = interventionWasResolved || !result.startsWith("Erro");
+          if (!toolNamesSent.includes(name)) {
+            result = unknownFunctionResult(name);
+          } else {
+            result = await runResolveIntervention(sb, userId, args || {});
+            interventionWasResolved = interventionWasResolved || !result.startsWith("Erro");
+          }
         } else if (name === "set_cup_participation" || name === "set_cup_season_goal") {
           // Só com inscrição ativa e se o caso as deixou seguir: sem isso é
           // como se não existissem.
@@ -9643,7 +9671,7 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
     const rawText = extractReplyText(geminiJson);
 
     if (!rawText) {
-      console.error("Gemini resposta vazia:", JSON.stringify(geminiJson));
+      console.error("Gemini resposta vazia:", geminiResponseSummary(geminiJson));
       const fallback = await replyAfterWritesWithoutText();
       if (fallback) return fallback;
       // "Gerar uma resposta" é vocabulário de modelo, não dela
@@ -9699,7 +9727,7 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
       // JSON inválido/cortado (ex.: resposta truncada a meio) — nunca mostrar
       // o texto bruto ao utilizador (parecia um JSON partido no ecrã); melhor
       // pedir para tentar de novo do que guardar/mostrar lixo no histórico.
-      console.error("Gemini devolveu JSON inválido/incompleto:", rawText);
+      console.error("Gemini devolveu JSON inválido/incompleto:", geminiResponseSummary(geminiJson, rawText));
       const fallback = await replyAfterWritesWithoutText();
       if (fallback) return fallback;
       return jsonResponse({
@@ -9827,8 +9855,8 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
     // saída (sucesso, erro tratado ou exceção) — senão o utilizador ficava
     // bloqueado até ao timeout de LOCK_STALE_MS por um pedido que já tinha
     // terminado.
-    if (lockedUserId && lockIso && sb) {
-      const { error: unlockErr } = await sb
+    if (lockedUserId && lockIso && lockDb) {
+      const { error: unlockErr } = await lockDb
         .from("profiles")
         .update({ coach_chat_busy_since: null })
         .eq("id", lockedUserId)

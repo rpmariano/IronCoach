@@ -136,7 +136,7 @@ Deno.serve(withUsageRecording("estimate-shoe-lifespan", async (req) => {
     }
     // A quota do Gemini por atleta (auditoria de segurança, 2026-11-13;
     // _shared/geminiQuota.ts): passado o limite, 429 com a frase da Carol.
-    const geminiQuota = await checkGeminiQuota(userData.user.id);
+    const geminiQuota = await checkGeminiQuota(userData.user.id, { fn: "estimate-shoe-lifespan" });
     if (!geminiQuota.ok) return jsonResponse(geminiQuotaBody(geminiQuota), 429);
 
     const body = await req.json();

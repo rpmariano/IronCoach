@@ -239,7 +239,7 @@ Deno.serve(withUsageRecording("analyze-diploma", async (req) => {
     if (userError || !userData?.user) return jsonResponse({ error: "Sessão inválida" }, 401);
     // A quota do Gemini por atleta (auditoria de segurança, 2026-11-13;
     // _shared/geminiQuota.ts): passado o limite, 429 com a frase da Carol.
-    const geminiQuota = await checkGeminiQuota(userData.user.id);
+    const geminiQuota = await checkGeminiQuota(userData.user.id, { fn: "analyze-diploma" });
     if (!geminiQuota.ok) return jsonResponse(geminiQuotaBody(geminiQuota), 429);
 
     const body = await req.json();

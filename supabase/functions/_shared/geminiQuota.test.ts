@@ -1,6 +1,6 @@
 import { assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
 import {
-  checkGeminiQuota, evaluateGeminiQuota, GEMINI_QUOTA_REQUESTS_PER_HOUR, GEMINI_QUOTA_TOKENS_PER_DAY, geminiQuotaBody, geminiQuotaNotice,
+  checkGeminiQuota, evaluateGeminiQuota, GEMINI_GLOBAL_TOKENS_PER_DAY, GEMINI_QUOTA_REQUESTS_PER_HOUR, GEMINI_QUOTA_TOKENS_PER_DAY, geminiQuotaBody, geminiQuotaNotice,
   quotaReplayCandidate,
 } from "./geminiQuota.ts";
 
@@ -44,8 +44,19 @@ Deno.test("evaluateGeminiQuota: 4 M tokens em 24 h — 429 por dia; o que tem ma
 });
 
 // deno-lint-ignore no-explicit-any
-function fakeDb(opts: { admin?: boolean; rows?: any[]; error?: string }) {
+function fakeDb(opts: {
+  admin?: boolean; rows?: any[]; error?: string;
+  // deno-lint-ignore no-explicit-any
+  globalTokens?: number; reserve?: boolean; rpcError?: any; calls?: any[];
+}) {
   return {
+    // deno-lint-ignore no-explicit-any
+    rpc: (name: string, args: any) => {
+      opts.calls?.push({ name, args });
+      if (opts.rpcError) return Promise.resolve({ data: null, error: opts.rpcError });
+      if (name === "ai_tokens_since") return Promise.resolve({ data: opts.globalTokens ?? 0, error: null });
+      return Promise.resolve({ data: opts.reserve ?? true, error: null });
+    },
     from: (t: string) => {
       // deno-lint-ignore no-explicit-any
       const c: any = { select: () => c, eq: () => c, gte: () => c, order: () => c };
@@ -62,6 +73,41 @@ Deno.test("checkGeminiQuota: o admin não tem limite; uma falha a ler deixa pass
   assertEquals(await checkGeminiQuota("u1", { db: fakeDb({ rows, admin: true }), nowMs: NOW }), { ok: true });
   assertEquals(await checkGeminiQuota("u1", { db: fakeDb({ error: "rede" }), nowMs: NOW }), { ok: true });
   assertEquals(await checkGeminiQuota("u1", { db: { from: () => { throw new Error("x"); } }, nowMs: NOW }), { ok: true });
+});
+
+Deno.test("checkGeminiQuota (2.ª auditoria, M1/A1): reserva antes da chamada e teto global", async () => {
+  // A reserva recusa (rajada em paralelo que o ai_usage ainda não vê): 429 da hora.
+  const calls: { name: string; args: Record<string, unknown> }[] = [];
+  const r = await checkGeminiQuota("u1", { db: fakeDb({ reserve: false, calls }), nowMs: NOW, fn: "analyze-meal" });
+  assertEquals(r.ok, false);
+  if (!r.ok) assertEquals(r.window, "hora");
+  const res = calls.find((c) => c.name === "reserve_gemini_request")!;
+  assertEquals(res.args, { p_user: "u1", p_function: "analyze-meal", p_limit: GEMINI_QUOTA_REQUESTS_PER_HOUR });
+  // O teto global atingido: 429 do dia, e não se reserva lugar nenhum.
+  const calls2: { name: string }[] = [];
+  const g = await checkGeminiQuota("u1", { db: fakeDb({ globalTokens: GEMINI_GLOBAL_TOKENS_PER_DAY, calls: calls2 }), nowMs: NOW });
+  assertEquals(g.ok, false);
+  if (!g.ok) assertEquals(g.window, "dia");
+  assertEquals(calls2.some((c) => c.name === "reserve_gemini_request"), false);
+  if (!g.ok) assertEquals(geminiQuotaBody(g).error, "Por hoje já chegámos ao limite do que consigo analisar. Amanhã continuo contigo.");
+  // O admin passa os dois.
+  assertEquals(await checkGeminiQuota("u1", { db: fakeDb({ admin: true, reserve: false, globalTokens: 9e9 }), nowMs: NOW }), { ok: true });
+  // Quem já passou a quota dele não reserva lugar.
+  const calls3: { name: string }[] = [];
+  const rows = Array.from({ length: 80 }, (_, i) => ({ created_at: ago(i * 10_000), input_tokens: 10 }));
+  await checkGeminiQuota("u1", { db: fakeDb({ rows, calls: calls3 }), nowMs: NOW });
+  assertEquals(calls3.some((c) => c.name === "reserve_gemini_request"), false);
+  // A migration por aplicar (RPC inexistente) ou um erro nela: passa.
+  for (const code of ["PGRST202", "42883", "XX000"]) {
+    assertEquals(await checkGeminiQuota("u1", { db: fakeDb({ rpcError: { code, message: "x" } }), nowMs: NOW }), { ok: true }, code);
+  }
+});
+
+Deno.test("as funções dizem à quota quem pede (a reserva guarda-o)", async () => {
+  for (const f of ["coach-chat", "analyze-meal", "analyze-gym", "analyze-run", "analyze-body", "analyze-diploma", "enrich-race-event", "estimate-shoe-lifespan", "coach-daily-summary"]) {
+    const src = await Deno.readTextFile(new URL(`../${f}/index.ts`, import.meta.url));
+    assertStringIncludes(src, `{ fn: "${f}" })`, f);
+  }
 });
 
 Deno.test("a quota está em todas as funções que chamam o Gemini a pedido do atleta", async () => {
