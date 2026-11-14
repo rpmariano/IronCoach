@@ -1190,6 +1190,15 @@ export function needsPlanDoctrine(message: string, turnCase: TurnCase, forced: b
 export const MAX_TOOLS_PER_REQUEST = 10;
 const CAP_DROP_ORDER = ["set_cup_season_goal", "set_cup_participation", "save_pantry_food", "resolve_intervention", "update_race_event"];
 
+/** Sem save_coach_note (turnos com fotos e proativos — auditoria de
+ *  segurança, 2026-11-13): o prompt manda gravar factos «assim que o atleta
+ *  os revelar», e sem esta linha ela dizia «anotei» sem ter gravado nada. */
+export const NO_NOTES_PHOTO_NOTE =
+  "NOTAS NESTE TURNO: neste turno não gravas notas; não digas que anotaste — se o atleta revelar um facto, " +
+  "pede-lhe que o repita sem foto ou diz que fica para a próxima mensagem.";
+export const NO_NOTES_PROACTIVE_NOTE =
+  "NOTAS NESTE TURNO: neste turno não gravas notas; não digas que anotaste nem que vais anotar.";
+
 /** Num turno de plano com inscrição ativa, o que a Carol diz se ele falar do Troféu. */
 export const SERIES_DEFERRED_NOTE =
   "COMPETIÇÃO POR JORNADAS NESTE TURNO: não tens as ferramentas do Troféu (set_cup_participation, set_cup_season_goal) " +
@@ -9188,6 +9197,11 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
     // Num turno de plano com inscrição, o Troféu ficou de fora: ela diz que grava a seguir.
     if (planDoctrine && seriesToolsOn) finalSystemInstruction += "\n\n" + SERIES_DEFERRED_NOTE;
     const toolNamesSent = toolsBlock[0].functionDeclarations.map((t: { name: string }) => t.name);
+    // Sem save_coach_note neste turno: ela não diz que anotou (revisão do lote de segurança).
+    if (!toolNamesSent.includes("save_coach_note")) {
+      if (chatImages.length > 0) finalSystemInstruction += "\n\n" + NO_NOTES_PHOTO_NOTE;
+      else if (proactiveTrigger) finalSystemInstruction += "\n\n" + NO_NOTES_PROACTIVE_NOTE;
+    }
     const toolsBytes = JSON.stringify(toolsBlock).length;
 
     // ── Loop de function calling ──────────────────────────────────────────
