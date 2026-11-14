@@ -14,6 +14,15 @@
 // O admin (profiles.is_admin) fica sem limite. Uma falha a ler deixa passar:
 // a quota protege o custo, não pode deitar a app abaixo. O ai_usage só se lê
 // com a service role (a RLS só o abre ao admin).
+//
+// Conta PEDIDOS, não linhas: com o Flash de recurso, um pedido grava uma
+// linha por modelo — com a mesma hora (usageRecorder.ts) —, e cada par
+// (função, created_at) é um pedido.
+//
+// É best-effort: o ai_usage só se grava DEPOIS da resposta (usageRecorder,
+// runAfterResponse), por isso pedidos em paralelo passam todos a verificação
+// antes de qualquer um contar. Trava um ciclo ou uma conta abusada ao longo
+// de minutos, não uma rajada de pedidos simultâneos.
 
 import { createClient } from "jsr:@supabase/supabase-js@2";
 
@@ -27,6 +36,8 @@ const DAY_MS = 24 * HOUR_MS;
 
 export interface QuotaRow {
   created_at: string;
+  /** A função que gravou a linha: com created_at, identifica o pedido. */
+  function?: string | null;
   input_tokens?: number | null;
   output_tokens?: number | null;
   thoughts_tokens?: number | null;
@@ -39,10 +50,18 @@ const tokensOf = (r: QuotaRow) => (Number(r.input_tokens) || 0) + (Number(r.outp
 /** A decisão, pura: as linhas do atleta nas últimas 24 h e o relógio. */
 export function evaluateGeminiQuota(rows: QuotaRow[] | null | undefined, nowMs: number): QuotaResult {
   const list = (rows || [])
-    .map((r) => ({ at: Date.parse(r.created_at), tokens: tokensOf(r) }))
+    .map((r) => ({ at: Date.parse(r.created_at), tokens: tokensOf(r), key: `${r.function ?? ""}|${r.created_at}` }))
     .filter((r) => Number.isFinite(r.at) && r.at > nowMs - DAY_MS && r.at <= nowMs)
     .sort((a, b) => a.at - b.at);
-  const hour = list.filter((r) => r.at > nowMs - HOUR_MS);
+  // Os pedidos da última hora: um por (função, hora exata) — as linhas de
+  // um mesmo pedido têm a mesma hora.
+  const seen = new Set<string>();
+  const hour = list.filter((r) => {
+    if (r.at <= nowMs - HOUR_MS) return false;
+    if (seen.has(r.key)) return false;
+    seen.add(r.key);
+    return true;
+  });
   if (hour.length >= GEMINI_QUOTA_REQUESTS_PER_HOUR) {
     // Volta a haver lugar quando sai da janela o pedido que passa o limite.
     const freeAt = hour[hour.length - GEMINI_QUOTA_REQUESTS_PER_HOUR].at + HOUR_MS;
@@ -100,7 +119,7 @@ export async function checkGeminiQuota(userId: string, deps: { db?: Db; nowMs?: 
     const since = new Date(nowMs - DAY_MS).toISOString();
     const [profileRes, usageRes] = await Promise.all([
       db.from("profiles").select("is_admin").eq("id", userId).maybeSingle(),
-      db.from("ai_usage").select("created_at, input_tokens, output_tokens, thoughts_tokens")
+      db.from("ai_usage").select("created_at, function, input_tokens, output_tokens, thoughts_tokens")
         .eq("user_id", userId).gte("created_at", since).order("created_at", { ascending: false }).limit(5000),
     ]);
     if (profileRes?.data?.is_admin === true) return { ok: true };

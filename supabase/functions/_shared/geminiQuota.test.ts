@@ -64,8 +64,25 @@ Deno.test("checkGeminiQuota: o admin não tem limite; uma falha a ler deixa pass
 });
 
 Deno.test("a quota está em todas as funções que chamam o Gemini a pedido do atleta", async () => {
-  for (const f of ["coach-chat", "analyze-meal", "analyze-gym", "analyze-run", "analyze-body", "analyze-diploma", "enrich-race-event", "estimate-shoe-lifespan"]) {
+  for (const f of ["coach-chat", "analyze-meal", "analyze-gym", "analyze-run", "analyze-body", "analyze-diploma", "enrich-race-event", "estimate-shoe-lifespan", "coach-daily-summary"]) {
     const src = await Deno.readTextFile(new URL(`../${f}/index.ts`, import.meta.url));
-    assertStringIncludes(src, "if (!geminiQuota.ok) return jsonResponse(geminiQuotaBody(geminiQuota), 429);", f);
+    assertStringIncludes(src, "jsonResponse(geminiQuotaBody(geminiQuota), 429)", f);
   }
+  // Nas analyze-*, decide-se depois de saber se é um reenvio já gravado (revisão de 2026-11-14).
+  for (const [f, table] of [["analyze-meal", "meals"], ["analyze-gym", "workout_sessions"], ["analyze-run", "runs"], ["analyze-body", "body_assessments"]]) {
+    const src = await Deno.readTextFile(new URL(`../${f}/index.ts`, import.meta.url));
+    assertStringIncludes(src, `if (!geminiQuota.ok && !(await findByClientRequestId(sb, "${table}", userId, parseClientRequestId(body.client_request_id)))) {`, f);
+  }
+});
+
+Deno.test("evaluateGeminiQuota (revisão de 2026-11-14): as linhas de um mesmo pedido (Flash de recurso) contam como um", () => {
+  const at = (i: number) => ago(i * 30_000);
+  // 59 pedidos, cada um com duas linhas (um por modelo, a mesma hora): ainda passa.
+  const rows = Array.from({ length: GEMINI_QUOTA_REQUESTS_PER_HOUR - 1 }, (_, i) => [
+    { created_at: at(i), function: "coach-chat", input_tokens: 10 },
+    { created_at: at(i), function: "coach-chat", input_tokens: 10 },
+  ]).flat();
+  assertEquals(evaluateGeminiQuota(rows, NOW), { ok: true });
+  // O 60.º pedido fecha.
+  assertEquals(evaluateGeminiQuota([...rows, { created_at: ago(1), function: "analyze-meal", input_tokens: 10 }], NOW).ok, false);
 });

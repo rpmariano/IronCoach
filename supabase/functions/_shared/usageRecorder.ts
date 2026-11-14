@@ -31,6 +31,8 @@ export type UsageRow = {
   thoughts_tokens: number;
   calls: number;
   source: "server";
+  /** A hora do pedido, a mesma nas linhas de um pedido (a quota conta pedidos). */
+  created_at?: string;
 };
 
 const int = (v: unknown) => Math.max(0, Math.round(Number(v) || 0));
@@ -113,9 +115,13 @@ export async function recordUsage(
   usage: GeminiUsage | Record<string, unknown> | null | undefined,
   insert: Insert = defaultInsert,
 ): Promise<void> {
+  // As linhas de um mesmo pedido (uma por modelo, com o Flash de recurso)
+  // levam a mesma hora: a quota do Gemini conta pedidos, não linhas
+  // (geminiQuota.ts — revisão do lote de segurança, 2026-11-14).
+  const createdAt = new Date().toISOString();
   for (const row of usageRows(fn, userId, usage)) {
     try {
-      const { error } = await insert(row);
+      const { error } = await insert({ ...row, created_at: createdAt });
       if (error) console.warn(`[ai_usage] ${fn}: falha a gravar consumo`, error);
     } catch (e) {
       console.warn(`[ai_usage] ${fn}: falha a gravar consumo`, e);

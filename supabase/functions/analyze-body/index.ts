@@ -700,7 +700,6 @@ Deno.serve(withUsageRecording("analyze-body", async (req) => {
     // A quota do Gemini por atleta (auditoria de segurança, 2026-11-13;
     // _shared/geminiQuota.ts): passado o limite, 429 com a frase da Carol.
     const geminiQuota = await checkGeminiQuota(userId);
-    if (!geminiQuota.ok) return jsonResponse(geminiQuotaBody(geminiQuota), 429);
     // A memória durável e a conversa recente do chat (Fase 1, ação 1.3), em
     // paralelo com o resto: todos os caminhos abaixo acabam num resumo.
     // Nunca rejeita, por isso pode ficar por esperar num caminho de erro.
@@ -708,6 +707,12 @@ Deno.serve(withUsageRecording("analyze-body", async (req) => {
     const goalsCtxPromise = fetchGoalsContext(sb, userId);
 
     const body = await req.json();
+    // A quota decide-se depois de saber se é um reenvio já gravado: esse devolve
+    // a gravação de antes, sem o Gemini, e não leva 429 (revisão do lote de
+    // segurança, 2026-11-14).
+    if (!geminiQuota.ok && !(await findByClientRequestId(sb, "body_assessments", userId, parseClientRequestId(body.client_request_id)))) {
+      return jsonResponse(geminiQuotaBody(geminiQuota), 429);
+    }
     const rawNotes = typeof body.notes === "string" ? body.notes.slice(0, MAX_NOTES_LENGTH) : null;
     // 'HH:MM' (ou 'HH:MM:SS' da BD) → 'HH:MM'; qualquer outra coisa = não indicada.
     const rawTime = typeof body.assessment_time === "string" && /^([01]\d|2[0-3]):[0-5]\d/.test(body.assessment_time)

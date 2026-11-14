@@ -1584,9 +1584,14 @@ Deno.serve(withUsageRecording("analyze-run", async (req) => {
     // A quota do Gemini por atleta (auditoria de segurança, 2026-11-13;
     // _shared/geminiQuota.ts): passado o limite, 429 com a frase da Carol.
     const geminiQuota = await checkGeminiQuota(userId);
-    if (!geminiQuota.ok) return jsonResponse(geminiQuotaBody(geminiQuota), 429);
 
     const body = await req.json();
+    // A quota decide-se depois de saber se é um reenvio já gravado: esse devolve
+    // a gravação de antes, sem o Gemini, e não leva 429 (revisão do lote de
+    // segurança, 2026-11-14).
+    if (!geminiQuota.ok && !(await findByClientRequestId(sb, "runs", userId, parseClientRequestId(body.client_request_id)))) {
+      return jsonResponse(geminiQuotaBody(geminiQuota), 429);
+    }
     const rawNotes = typeof body.notes === "string" ? body.notes.slice(0, MAX_NOTES_LENGTH) : null;
 
     // ── Modo reanálise por foto: run_id presente sem mode manual ───────
