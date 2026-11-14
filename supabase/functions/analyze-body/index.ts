@@ -54,6 +54,7 @@ import { withUsageRecording } from "../_shared/usageRecorder.ts";
 import { findByClientRequestId, insertOnce, parseClientRequestId } from "../_shared/idempotency.ts";
 import { fastingFromAnswers, parseAnsweredQuestions, parseRecordQuestions, RECORD_QUESTIONS_SCHEMA, recordAnswersSection, recordQuestionsRule, type RecordQuestion } from "../_shared/recordQuestions.ts";
 import { checkGeminiQuota, geminiQuotaBody, quotaReplayCandidate } from "../_shared/geminiQuota.ts";
+import { isRealDateISO } from "../_shared/realDate.ts";
 
 const MAX_PHOTOS = 6;
 const MAX_NOTES_LENGTH = 500;
@@ -699,7 +700,7 @@ Deno.serve(withUsageRecording("analyze-body", async (req) => {
     const userId = userData.user.id;
     // A quota do Gemini por atleta (auditoria de segurança, 2026-11-13;
     // _shared/geminiQuota.ts): passado o limite, 429 com a frase da Carol.
-    const geminiQuota = await checkGeminiQuota(userId);
+    const geminiQuota = await checkGeminiQuota(userId, { fn: "analyze-body" });
     // A memória durável e a conversa recente do chat (Fase 1, ação 1.3), em
     // paralelo com o resto: todos os caminhos abaixo acabam num resumo.
     // Nunca rejeita, por isso pode ficar por esperar num caminho de erro.
@@ -768,7 +769,7 @@ Deno.serve(withUsageRecording("analyze-body", async (req) => {
     if (!geminiQuota.ok) return jsonResponse(geminiQuotaBody(geminiQuota), 429);
 
     if (body.mode === "manual") {
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(body.date ?? "")) {
+      if (!isRealDateISO(body.date ?? "")) {
         return jsonResponse({ error: "Data inválida (esperado YYYY-MM-DD)" }, 400);
       }
       const rawMetrics = (body.metrics ?? {}) as Record<string, unknown>;
@@ -929,7 +930,7 @@ Deno.serve(withUsageRecording("analyze-body", async (req) => {
     if (images.length > MAX_PHOTOS) {
       return jsonResponse({ error: `Máximo de ${MAX_PHOTOS} imagens por avaliação` }, 400);
     }
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(date ?? "")) {
+    if (!isRealDateISO(date ?? "")) {
       return jsonResponse({ error: "Data inválida (esperado YYYY-MM-DD)" }, 400);
     }
     const mime = ["image/jpeg", "image/png", "image/webp", "image/heic", "image/heif"]

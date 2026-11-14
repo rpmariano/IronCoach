@@ -1048,7 +1048,7 @@ Deno.serve(withUsageRecording("coach-daily-summary", async (req) => {
     // A quota do Gemini (revisão do lote de segurança, 2026-11-14): também o
     // «Atualizar» (force=true) a respeita. Passada, devolve o resumo de hoje
     // que já houver (como a cache, com a janela da quota); sem nenhum, o 429.
-    const geminiQuota = await checkGeminiQuota(userId);
+    const geminiQuota = await checkGeminiQuota(userId, { fn: "coach-daily-summary" });
     if (!geminiQuota.ok) {
       const { data: cachedToday } = await sb.from("coach_daily_summary").select("*")
         .eq("user_id", userId).eq("date", today).maybeSingle();

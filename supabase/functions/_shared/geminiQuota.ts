@@ -30,6 +30,14 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 export const GEMINI_QUOTA_REQUESTS_PER_HOUR = 60;
 /** Tokens (entrada + saída + raciocínio) por atleta nas últimas 24 h. */
 export const GEMINI_QUOTA_TOKENS_PER_DAY = 4_000_000;
+/** O teto GLOBAL — todos os atletas somados — nas últimas 24 h (2.ª auditoria
+ *  de segurança, 2026-11-14, A1). Nos 30 dias antes, o dia com mais consumo
+ *  somou 1,51 M tokens (mediana 0,52 M): 20 M é ~13× isso. Passado, ninguém
+ *  chama o Gemini até a janela descer (429 com a frase do dia); o admin não. */
+export const GEMINI_GLOBAL_TOKENS_PER_DAY = 20_000_000;
+/** Quando a reserva da hora recusa, quanto se diz para esperar (a reserva não
+ *  diz quando liberta o lugar). */
+const RESERVATION_RETRY_SECONDS = 15 * 60;
 
 const HOUR_MS = 3_600_000;
 const DAY_MS = 24 * HOUR_MS;
@@ -136,26 +144,56 @@ export function quotaReplayCandidate(body: any, recordIdField: string): boolean 
 // deno-lint-ignore no-explicit-any
 type Db = any;
 
+/** A RPC (ou a tabela) ainda não existe: migration por aplicar. */
+// deno-lint-ignore no-explicit-any
+const missingRpc = (e: any) => ["42883", "PGRST202", "42P01", "PGRST205"].includes(String(e?.code ?? ""));
+
 /**
- * Lê e decide. `db`: um cliente com a service role (por omissão, um novo a
- * partir do ambiente). Admin, ou uma falha a ler: passa.
+ * Lê e decide, por esta ordem — e só reserva o lugar se tudo o resto passar:
+ *   1. o admin passa sempre;
+ *   2. o atleta: os tokens das últimas 24 h e os pedidos da última hora no
+ *      ai_usage (evaluateGeminiQuota);
+ *   3. o teto global de tokens nas últimas 24 h (ai_tokens_since);
+ *   4. a reserva do pedido (reserve_gemini_request): atómica, conta a última
+ *      hora ANTES da chamada — as rajadas em paralelo já não passam todas
+ *      (2.ª auditoria de segurança, 2026-11-14, M1).
+ * `fn`: a função que pede (fica na reserva). `db`: um cliente com a service
+ * role (por omissão, um novo a partir do ambiente). Uma falha a ler, ou as
+ * RPC por criar (migration 20261114130000 por aplicar): passa.
  */
-export async function checkGeminiQuota(userId: string, deps: { db?: Db; nowMs?: number } = {}): Promise<QuotaResult> {
+export async function checkGeminiQuota(userId: string, deps: { db?: Db; nowMs?: number; fn?: string } = {}): Promise<QuotaResult> {
   const nowMs = deps.nowMs ?? Date.now();
   try {
     const db = deps.db ?? createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
     const since = new Date(nowMs - DAY_MS).toISOString();
-    const [profileRes, usageRes] = await Promise.all([
+    const [profileRes, usageRes, globalRes] = await Promise.all([
       db.from("profiles").select("is_admin").eq("id", userId).maybeSingle(),
       db.from("ai_usage").select("created_at, function, input_tokens, output_tokens, thoughts_tokens")
         .eq("user_id", userId).gte("created_at", since).order("created_at", { ascending: false }).limit(5000),
+      db.rpc("ai_tokens_since", { p_since: since }),
     ]);
     if (profileRes?.data?.is_admin === true) return { ok: true };
     if (usageRes?.error) {
       console.warn("quota do Gemini: ai_usage não lido — passa:", usageRes.error.message);
+    } else {
+      const own = evaluateGeminiQuota(usageRes?.data ?? [], nowMs);
+      if (!own.ok) return own;
+    }
+    if (globalRes?.error) {
+      if (!missingRpc(globalRes.error)) console.warn("quota do Gemini: teto global não lido — passa:", globalRes.error.message);
+    } else if (Number(globalRes?.data) >= GEMINI_GLOBAL_TOKENS_PER_DAY) {
+      console.warn("quota do Gemini: teto GLOBAL de tokens atingido", JSON.stringify({ tokens: Number(globalRes.data) }));
+      return { ok: false, window: "dia", retryAfterSeconds: 3600 };
+    }
+    const reserve = await db.rpc("reserve_gemini_request", {
+      p_user: userId, p_function: (deps.fn ?? "?").slice(0, 60), p_limit: GEMINI_QUOTA_REQUESTS_PER_HOUR,
+    });
+    if (reserve?.error) {
+      if (!missingRpc(reserve.error)) console.warn("quota do Gemini: reserva falhou — passa:", reserve.error.message);
       return { ok: true };
     }
-    return evaluateGeminiQuota(usageRes?.data ?? [], nowMs);
+    if (reserve?.data === false) return { ok: false, window: "hora", retryAfterSeconds: RESERVATION_RETRY_SECONDS };
+    return { ok: true };
   } catch (e) {
     console.warn("quota do Gemini: falhou — passa:", e instanceof Error ? e.message : e);
     return { ok: true };

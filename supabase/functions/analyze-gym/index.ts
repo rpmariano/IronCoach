@@ -62,6 +62,7 @@ import { ACTIVITY_PERIODS_PROMPT, ACTIVITY_PERIODS_SCHEMA, durationBreakdown, se
 import { isIsometricExercise } from "../_shared/formulas/isometric.ts";
 import { foodKey } from "../_shared/formulas/foodKey.ts";
 import { checkGeminiQuota, geminiQuotaBody, quotaReplayCandidate } from "../_shared/geminiQuota.ts";
+import { isRealDateISO } from "../_shared/realDate.ts";
 
 const MAX_PHOTOS = 6;
 const MAX_NOTES_LENGTH = 500;
@@ -1234,7 +1235,7 @@ Deno.serve(withUsageRecording("analyze-gym", async (req) => {
     const userId = userData.user.id;
     // A quota do Gemini por atleta (auditoria de segurança, 2026-11-13;
     // _shared/geminiQuota.ts): passado o limite, 429 com a frase da Carol.
-    const geminiQuota = await checkGeminiQuota(userId);
+    const geminiQuota = await checkGeminiQuota(userId, { fn: "analyze-gym" });
 
     const body = await req.json();
     // A quota: 429 antes de qualquer chamada ao Gemini. Só um pedido que pode
@@ -1363,7 +1364,7 @@ Deno.serve(withUsageRecording("analyze-gym", async (req) => {
     if (!geminiQuota.ok) return jsonResponse(geminiQuotaBody(geminiQuota), 429);
 
     if (body.mode === "manual") {
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(body.date ?? "")) {
+      if (!isRealDateISO(body.date ?? "")) {
         return jsonResponse({ error: "Data inválida (esperado YYYY-MM-DD)" }, 400);
       }
       const kind = body.kind === "aula" ? "aula" : "forca";
@@ -1630,7 +1631,7 @@ Deno.serve(withUsageRecording("analyze-gym", async (req) => {
     if (images.length > MAX_PHOTOS) {
       return jsonResponse({ error: `Máximo de ${MAX_PHOTOS} imagens por sessão` }, 400);
     }
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(date ?? "")) {
+    if (!isRealDateISO(date ?? "")) {
       return jsonResponse({ error: "Data inválida (esperado YYYY-MM-DD)" }, 400);
     }
     // Qualquer valor que não seja 'aula' cai em 'forca' — inclui os pedidos de

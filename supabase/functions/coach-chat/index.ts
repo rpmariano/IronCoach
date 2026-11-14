@@ -7742,6 +7742,11 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
   // lock de coach_chat_busy_since (ver abaixo) em QUALQUER caminho de saída.
   // deno-lint-ignore no-explicit-any
   let sb: any = null;
+  // O lock escreve-se com a service role: a app só o lê — o trigger
+  // guard_profile_privilege_columns ignora o que ela lá escreva (2.ª
+  // auditoria de segurança, 2026-11-14, M1). Só para esta coluna.
+  // deno-lint-ignore no-explicit-any
+  let lockDb: any = null;
   let lockedUserId: string | null = null;
   // O valor escrito ao reservar: o finally só liberta o lock se ainda for o
   // deste pedido — não o de outro que o tenha reocupado entretanto.
@@ -7772,7 +7777,7 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
     const userId = userData.user.id;
     // A quota do Gemini por atleta (auditoria de segurança, 2026-11-13;
     // _shared/geminiQuota.ts): passado o limite, 429 com a frase da Carol.
-    const geminiQuota = await checkGeminiQuota(userId);
+    const geminiQuota = await checkGeminiQuota(userId, { fn: "coach-chat" });
     if (!geminiQuota.ok) return jsonResponse(geminiQuotaBody(geminiQuota), 429);
 
     // ── Lock por utilizador ───────────────────────────────────────────────
@@ -7791,7 +7796,8 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
     const LOCK_STALE_MS = CHAT_BUDGET_MS + 35_000;
     const staleBeforeIso = new Date(Date.now() - LOCK_STALE_MS).toISOString();
     const myLockIso = new Date().toISOString();
-    const { data: lockRows, error: lockErr } = await sb
+    lockDb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+    const { data: lockRows, error: lockErr } = await lockDb
       .from("profiles")
       .update({ coach_chat_busy_since: myLockIso })
       .eq("id", userId)
@@ -9801,8 +9807,8 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
     // saída (sucesso, erro tratado ou exceção) — senão o utilizador ficava
     // bloqueado até ao timeout de LOCK_STALE_MS por um pedido que já tinha
     // terminado.
-    if (lockedUserId && lockIso && sb) {
-      const { error: unlockErr } = await sb
+    if (lockedUserId && lockIso && lockDb) {
+      const { error: unlockErr } = await lockDb
         .from("profiles")
         .update({ coach_chat_busy_since: null })
         .eq("id", lockedUserId)

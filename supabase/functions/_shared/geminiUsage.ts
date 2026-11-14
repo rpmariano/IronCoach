@@ -20,6 +20,8 @@
    input e não vem em promptTokenCount — por isso entra em input_tokens.
    `calls` é o nº de respostas do Gemini que contaram para este total. */
 
+import { AsyncLocalStorage } from "node:async_hooks";
+
 export type GeminiUsage = {
   input_tokens: number;
   output_tokens: number;
@@ -40,8 +42,40 @@ export function emptyUsage(): GeminiUsage {
   return { input_tokens: 0, output_tokens: 0, cached_tokens: 0, thoughts_tokens: 0, calls: 0 };
 }
 
+/* O consumo de TODO o pedido, mesmo quando ele acaba em erro (2.ª auditoria
+   de segurança, 2026-11-14, M1). Até aqui só se gravava o `usage` que a
+   resposta trazia: uma chamada ao Gemini seguida de um erro (JSON inválido,
+   uma data que não existe, uma imagem em branco no diploma) não ficava no
+   ai_usage — e a quota, que o lê, não a contava. Cada usageFromGemini soma
+   aqui o que leu; withUsageRecording (usageRecorder.ts) abre o saco no início
+   do pedido e grava-o no fim se a resposta não trouxer mais. Fora de um
+   pedido (cron, testes) não há saco e nada muda. */
+type UsageSink = { total: GeminiUsage | null };
+const usageSinkStore = new AsyncLocalStorage<UsageSink>();
+
+/** Corre `fn` com um saco de consumo novo; devolve-o (o total vai-se enchendo). */
+export function runWithUsageSink<T>(fn: () => T): { sink: UsageSink; result: T } {
+  const sink: UsageSink = { total: null };
+  const result = usageSinkStore.run(sink, fn);
+  return { sink, result };
+}
+
+/** Tokens de um consumo (entrada + saída + raciocínio), para comparar. */
+export function usageTokens(u: Partial<GeminiUsage> | null | undefined): number {
+  if (!u || typeof u !== "object") return 0;
+  return (Number(u.input_tokens) || 0) + (Number(u.output_tokens) || 0) + (Number(u.thoughts_tokens) || 0);
+}
+
 // deno-lint-ignore no-explicit-any
 export function usageFromGemini(json: any): GeminiUsage {
+  const usage = readGeminiUsage(json);
+  const sink = usageSinkStore.getStore();
+  if (sink) sink.total = addUsage(sink.total, usage);
+  return usage;
+}
+
+// deno-lint-ignore no-explicit-any
+function readGeminiUsage(json: any): GeminiUsage {
   const m = json?.usageMetadata ?? {};
   const counts: ModelUsage = {
     input_tokens: (Number(m.promptTokenCount) || 0) + (Number(m.toolUsePromptTokenCount) || 0),

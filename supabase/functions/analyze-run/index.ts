@@ -60,6 +60,7 @@ import { durationBreakdown } from "../_shared/formulas/sessionDuration.ts";
 import { parseAnsweredQuestions, parseRecordQuestions, RECORD_QUESTIONS_SCHEMA, recordAnswersSection, recordQuestionsRule, type RecordQuestion } from "../_shared/recordQuestions.ts";
 import { geminiHeaders, geminiUrl, geminiWithFallback, thinkingConfig } from "../_shared/geminiModel.ts";
 import { checkGeminiQuota, geminiQuotaBody, quotaReplayCandidate } from "../_shared/geminiQuota.ts";
+import { isRealDateISO } from "../_shared/realDate.ts";
 
 const MAX_PHOTOS = 6;
 const MAX_NOTES_LENGTH = 500;
@@ -1583,7 +1584,7 @@ Deno.serve(withUsageRecording("analyze-run", async (req) => {
     const userId = userData.user.id;
     // A quota do Gemini por atleta (auditoria de segurança, 2026-11-13;
     // _shared/geminiQuota.ts): passado o limite, 429 com a frase da Carol.
-    const geminiQuota = await checkGeminiQuota(userId);
+    const geminiQuota = await checkGeminiQuota(userId, { fn: "analyze-run" });
 
     const body = await req.json();
     // A quota: 429 antes de qualquer chamada ao Gemini. Só um pedido que pode
@@ -1673,7 +1674,7 @@ Deno.serve(withUsageRecording("analyze-run", async (req) => {
       };
       // O que o atleta editou no formulário e não vem da imagem.
       if (typeof body.name === "string" && body.name.trim()) patch.name = body.name.trim().slice(0, 120);
-      if (typeof body.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(body.date)) patch.date = body.date;
+      if (typeof body.date === "string" && isRealDateISO(body.date)) patch.date = body.date;
       if ("effort_rpe" in body) {
         const rpe = body.effort_rpe;
         patch.effort_rpe = rpe === null || rpe === undefined ? null : (Number.isInteger(rpe) && rpe >= 1 && rpe <= 10 ? rpe : null);
@@ -1772,7 +1773,7 @@ Deno.serve(withUsageRecording("analyze-run", async (req) => {
       if (kind === "treino" && !trainingType) {
         return jsonResponse({ error: "Escolhe o tipo de treino." }, 400);
       }
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(body.date ?? "")) {
+      if (!isRealDateISO(body.date ?? "")) {
         return jsonResponse({ error: "Data inválida (esperado YYYY-MM-DD)" }, 400);
       }
 
@@ -1908,7 +1909,7 @@ Deno.serve(withUsageRecording("analyze-run", async (req) => {
     if (images.length > MAX_PHOTOS) {
       return jsonResponse({ error: `Máximo de ${MAX_PHOTOS} imagens por corrida` }, 400);
     }
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(date ?? "")) {
+    if (!isRealDateISO(date ?? "")) {
       return jsonResponse({ error: "Data inválida (esperado YYYY-MM-DD)" }, 400);
     }
     const mime = ["image/jpeg", "image/png", "image/webp", "image/heic", "image/heif"]

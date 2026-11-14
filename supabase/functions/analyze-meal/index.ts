@@ -41,6 +41,7 @@ import { alignItems, alignPhotoAndWritten, mismatchMeta } from "./itemAlignment.
 import { NOTES_EMPTY_MESSAGE, NOTES_ITEMS_SCHEMA, notesAreAnalyzable, notesItemsPrompt, parseNotesItems } from "./notesItems.ts";
 import { isWalk } from "../_shared/formulas/runKinds.ts";
 import { checkGeminiQuota, geminiQuotaBody, quotaReplayCandidate } from "../_shared/geminiQuota.ts";
+import { isRealDateISO } from "../_shared/realDate.ts";
 
 const MAX_PHOTOS = 6;
 const MAX_NOTES_LENGTH = 500;
@@ -1896,7 +1897,7 @@ export async function saveReviewedMeal(
 ): Promise<ReviewedMealResult> {
   const { date, meal_type, notes } = input;
   if (!MEAL_TYPES.includes(meal_type as string)) return { ok: false, status: 400, error: "Tipo de refeição inválido" };
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(typeof date === "string" ? date : "")) return { ok: false, status: 400, error: "Data inválida (esperado YYYY-MM-DD)" };
+  if (!isRealDateISO(typeof date === "string" ? date : "")) return { ok: false, status: 400, error: "Data inválida (esperado YYYY-MM-DD)" };
   if (input.images.length === 0) return { ok: false, status: 400, error: "Nenhuma imagem recebida" };
   if (input.images.length > MAX_PHOTOS) return { ok: false, status: 400, error: `Máximo de ${MAX_PHOTOS} fotos por refeição` };
   const items = parseReviewedMealItems(input.items);
@@ -2054,7 +2055,7 @@ Deno.serve(withUsageRecording("analyze-meal", async (req) => {
     const userId = userData.user.id;
     // A quota do Gemini por atleta (auditoria de segurança, 2026-11-13;
     // _shared/geminiQuota.ts): passado o limite, 429 com a frase da Carol.
-    const geminiQuota = await checkGeminiQuota(userId);
+    const geminiQuota = await checkGeminiQuota(userId, { fn: "analyze-meal" });
     // O que se pede ao Gemini fora da leitura direta (applyMealAnswers, o registo revisto).
     const mealDeps: MealDeps = {
       analyzePhotos: (images, mime, written, notes, knowledge) => written.length
@@ -2211,7 +2212,7 @@ Deno.serve(withUsageRecording("analyze-meal", async (req) => {
       if (!MEAL_TYPES.includes(body.meal_type)) {
         return jsonResponse({ error: "Tipo de refeição inválido" }, 400);
       }
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(body.date ?? "")) {
+      if (!isRealDateISO(body.date ?? "")) {
         return jsonResponse({ error: "Data inválida (esperado YYYY-MM-DD)" }, 400);
       }
       // As gramas são opcionais — quando o utilizador não as indica, o
@@ -2437,7 +2438,7 @@ Deno.serve(withUsageRecording("analyze-meal", async (req) => {
     if (!MEAL_TYPES.includes(meal_type)) {
       return jsonResponse({ error: "Tipo de refeição inválido" }, 400);
     }
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(date ?? "")) {
+    if (!isRealDateISO(date ?? "")) {
       return jsonResponse({ error: "Data inválida (esperado YYYY-MM-DD)" }, 400);
     }
     // Os alimentos escritos no mesmo ecrã das fotos (bug #47) — opcionais: a
