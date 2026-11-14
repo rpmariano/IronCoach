@@ -59,7 +59,7 @@ import { findByClientRequestId, insertOnce, parseClientRequestId } from "../_sha
 import { durationBreakdown } from "../_shared/formulas/sessionDuration.ts";
 import { parseAnsweredQuestions, parseRecordQuestions, RECORD_QUESTIONS_SCHEMA, recordAnswersSection, recordQuestionsRule, type RecordQuestion } from "../_shared/recordQuestions.ts";
 import { geminiHeaders, geminiUrl, geminiWithFallback, thinkingConfig } from "../_shared/geminiModel.ts";
-import { checkGeminiQuota, geminiQuotaBody } from "../_shared/geminiQuota.ts";
+import { checkGeminiQuota, geminiQuotaBody, quotaReplayCandidate } from "../_shared/geminiQuota.ts";
 
 const MAX_PHOTOS = 6;
 const MAX_NOTES_LENGTH = 500;
@@ -1586,12 +1586,11 @@ Deno.serve(withUsageRecording("analyze-run", async (req) => {
     const geminiQuota = await checkGeminiQuota(userId);
 
     const body = await req.json();
-    // A quota decide-se depois de saber se é um reenvio já gravado: esse devolve
-    // a gravação de antes, sem o Gemini, e não leva 429 (revisão do lote de
-    // segurança, 2026-11-14).
-    if (!geminiQuota.ok && !(await findByClientRequestId(sb, "runs", userId, parseClientRequestId(body.client_request_id)))) {
-      return jsonResponse(geminiQuotaBody(geminiQuota), 429);
-    }
+    // A quota: 429 antes de qualquer chamada ao Gemini. Só um pedido que pode
+    // ser o reenvio de um registo já gravado segue até ao replay, que o devolve
+    // sem o Gemini; depois dele, o 429 é incondicional (quotaReplayCandidate —
+    // revisão de 4003c2f4: o id vem do cliente e não pode saltar a quota).
+    if (!geminiQuota.ok && !quotaReplayCandidate(body, "run_id")) return jsonResponse(geminiQuotaBody(geminiQuota), 429);
     const rawNotes = typeof body.notes === "string" ? body.notes.slice(0, MAX_NOTES_LENGTH) : null;
 
     // ── Modo reanálise por foto: run_id presente sem mode manual ───────
@@ -1753,6 +1752,8 @@ Deno.serve(withUsageRecording("analyze-run", async (req) => {
     const replay = (run: any) => jsonResponse({ run, replayed: true });
     const alreadySaved = !body.run_id ? await findByClientRequestId(sb, "runs", userId, clientRequestId) : null;
     if (alreadySaved) return replay(alreadySaved);
+    // Não era um reenvio: daqui para baixo há Gemini.
+    if (!geminiQuota.ok) return jsonResponse(geminiQuotaBody(geminiQuota), 429);
 
     if (body.mode === "manual") {
       const clientName = typeof body.name === "string" ? body.name.trim().slice(0, 120) : "";

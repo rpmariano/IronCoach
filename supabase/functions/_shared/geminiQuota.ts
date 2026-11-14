@@ -93,6 +93,13 @@ export function geminiQuotaText(r: Exclude<QuotaResult, { ok: true }>): string {
   return "Por hoje já chegámos ao limite do que consigo analisar. Amanhã continuo contigo.";
 }
 
+/** O resumo do dia com a quota passada (200, o de hoje que já houver): o
+ *  aviso para a app mostrar ao lado do resumo antigo. */
+export function geminiQuotaNotice(r: Exclude<QuotaResult, { ok: true }>) {
+  const b = geminiQuotaBody(r);
+  return { quota: b.scope, quota_message: b.error, retry_after_minutes: b.retry_after_minutes };
+}
+
 /** O corpo do 429: a frase (error), a janela — `scope` "hour" | "day" (e
  *  `quota` "hora" | "dia") — e quando voltar a tentar, em segundos e minutos. */
 export function geminiQuotaBody(r: Exclude<QuotaResult, { ok: true }>) {
@@ -103,6 +110,27 @@ export function geminiQuotaBody(r: Exclude<QuotaResult, { ok: true }>) {
     retry_after_seconds: r.retryAfterSeconds,
     retry_after_minutes: Math.max(1, Math.ceil(r.retryAfterSeconds / 60)),
   };
+}
+
+/**
+ * Pode ser o reenvio de um registo já gravado — o único pedido que, com a
+ * quota passada, segue até ao replay (alreadySaved → alreadyReply devolve a
+ * gravação de antes, sem o Gemini). Sem mode (ou mode manual, que se trata
+ * depois do replay), sem o id de um registo existente e com
+ * client_request_id. Tudo o resto — pantry_food, answer, preview, as
+ * reanálises com meal_id/run_id/session_id/assessment_id — leva 429 antes de
+ * qualquer chamada ao Gemini: o id vem do cliente, e reutilizar o de um
+ * registo gravado não pode saltar a quota (revisão de 4003c2f4). Depois do
+ * replay, sem reenvio resolvido (nem gravação, nem a desfeita entretanto), o
+ * 429 é incondicional.
+ */
+// deno-lint-ignore no-explicit-any
+export function quotaReplayCandidate(body: any, recordIdField: string): boolean {
+  const mode = body?.mode;
+  if (mode != null && mode !== "manual") return false;
+  const id = body?.[recordIdField];
+  if (typeof id === "string" ? id.trim() !== "" : id != null) return false;
+  return typeof body?.client_request_id === "string" && body.client_request_id.trim() !== "";
 }
 
 // deno-lint-ignore no-explicit-any

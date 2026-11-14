@@ -41,7 +41,7 @@ import { attemptTimeoutMs, geminiHeaders, geminiUrl, geminiWithFallback, thinkin
 import { isWalkPlanItem, runMatchesPlanItem, runsOnly, walkIntensity, walksOnly } from "../_shared/formulas/runKinds.ts";
 import { dayCompleteness, mealLoggingProfile, mealProfileStartISO } from "../_shared/formulas/dayCompleteness.ts";
 import { calorieGoalResolver, GOAL_HISTORY_SELECT } from "../_shared/formulas/goalHistory.ts";
-import { checkGeminiQuota, geminiQuotaBody } from "../_shared/geminiQuota.ts";
+import { checkGeminiQuota, geminiQuotaBody, geminiQuotaNotice } from "../_shared/geminiQuota.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -1052,7 +1052,7 @@ Deno.serve(withUsageRecording("coach-daily-summary", async (req) => {
     if (!geminiQuota.ok) {
       const { data: cachedToday } = await sb.from("coach_daily_summary").select("*")
         .eq("user_id", userId).eq("date", today).maybeSingle();
-      if (cachedToday) return jsonResponse({ summary: cachedToday, cached: true, quota: geminiQuotaBody(geminiQuota).scope });
+      if (cachedToday) return jsonResponse({ summary: cachedToday, cached: true, ...geminiQuotaNotice(geminiQuota) });
       return jsonResponse(geminiQuotaBody(geminiQuota), 429);
     }
 
