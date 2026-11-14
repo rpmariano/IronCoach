@@ -19,7 +19,7 @@ const SUMMARY = { date: TODAY, recap: 'Boa semana.', warnings: null, meal_sugges
 describe('loadDailySummary', () => {
   beforeEach(() => {
     mocks.invoke.mockReset();
-    useAppStore.setState({ dailySummary: null, dailySummaryLoading: false });
+    useAppStore.setState({ dailySummary: null, dailySummaryLoading: false, dailySummaryNotice: null });
   });
 
   it('chama a Edge Function e guarda o resumo devolvido', async () => {
@@ -123,5 +123,53 @@ describe('loadDailySummary', () => {
     expect(mocks.invoke).toHaveBeenCalledTimes(2);
     expect(mocks.invoke).toHaveBeenLastCalledWith('coach-daily-summary', { body: { force: true } });
     expect(useAppStore.getState().dailySummaryLoading).toBe(false);
+  });
+});
+
+// A quota (dev-back fd125f9e): o «Atualizar» parecia não fazer nada.
+describe('loadDailySummary — quota', () => {
+  beforeEach(() => {
+    mocks.invoke.mockReset();
+    useAppStore.setState({ dailySummary: SUMMARY, dailySummaryLoading: false, dailySummaryNotice: null });
+  });
+
+  it('force com a quota passada: guarda o resumo guardado e a frase dela (quota_message)', async () => {
+    mocks.invoke.mockResolvedValue({ data: { summary: SUMMARY, cached: true, quota: 'hour', quota_message: 'Fizeste muitos pedidos seguidos e preciso de uma pausa. Tenta outra vez daqui a 12 minutos.', retry_after_minutes: 12 }, error: null });
+    const before = Date.now();
+    const result = await useAppStore.getState().loadDailySummary({ force: true });
+    expect(result).toEqual(SUMMARY);
+    const n = useAppStore.getState().dailySummaryNotice;
+    expect(n).toMatchObject({ text: 'Fizeste muitos pedidos seguidos e preciso de uma pausa. Tenta outra vez daqui a 12 minutos.', scope: 'hour', day: TODAY });
+    // Expira com a quota: agora + retry_after_minutes.
+    expect(n.until).toBeGreaterThanOrEqual(before + 12 * 60000);
+    expect(n.until).toBeLessThanOrEqual(Date.now() + 12 * 60000);
+  });
+
+  it('429 sem resumo de hoje: a frase dela no aviso, e o resumo em memória fica', async () => {
+    mocks.invoke.mockResolvedValue({ data: null, error: 'Por hoje chega. Amanhã há mais.', isQuota: true, quotaScope: 'day', retryAfterMinutes: 300, status: 429 });
+    const result = await useAppStore.getState().loadDailySummary({ force: true });
+    expect(result).toBeNull();
+    // O limite do dia vale até à mudança de dia, não pelos minutos.
+    expect(useAppStore.getState().dailySummaryNotice).toEqual({ text: 'Por hoje chega. Amanhã há mais.', scope: 'day', until: null, day: TODAY });
+    expect(useAppStore.getState().dailySummary).toEqual(SUMMARY);
+  });
+
+  it('um pedido novo sem quota limpa o aviso; um erro qualquer não cria aviso', async () => {
+    useAppStore.setState({ dailySummaryNotice: { text: 'x', scope: 'hour' } });
+    mocks.invoke.mockResolvedValueOnce({ data: { summary: SUMMARY, cached: false }, error: null });
+    await useAppStore.getState().loadDailySummary({ force: true });
+    expect(useAppStore.getState().dailySummaryNotice).toBeNull();
+    mocks.invoke.mockResolvedValueOnce({ data: null, error: 'Edge Function returned a non-2xx status code', status: 500 });
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+    await useAppStore.getState().loadDailySummary({ force: true });
+    err.mockRestore();
+    expect(useAppStore.getState().dailySummaryNotice).toBeNull();
+  });
+});
+
+describe('troca de conta (revisão do af9d2cb4)', () => {
+  it('o aviso de quota do atleta A não passa para o B', async () => {
+    const { __emptyDataForTests } = await import('./index');
+    expect(__emptyDataForTests).toHaveProperty('dailySummaryNotice', null);
   });
 });

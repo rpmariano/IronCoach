@@ -210,6 +210,14 @@ describe('invokeEdgeFunctionWithTimeout — save_failed (#116)', () => {
     expect(events).toEqual(['analyze-meal']);
     expect(inserts[0].row.level).toBe('info'); // app_logs_level_check: success|error|info
     expect(res.quotaScope).toBeNull();
+    expect(res.retryAfterMinutes).toBeNull();
+  });
+
+  it('quota: retry_after_minutes vem em retryAfterMinutes (para o aviso do resumo expirar)', async () => {
+    spyAppLogs();
+    vi.spyOn(functionsProto, 'invoke').mockResolvedValue({ data: null, error: { name: 'FunctionsHttpError', message: 'non-2xx', context: { status: 429, json: async () => ({ error: 'Uma pausa.', scope: 'hour', retry_after_minutes: 12 }) } } });
+    const res = await invokeEdgeFunctionWithTimeout('coach-daily-summary', {}, 45000);
+    expect([res.quotaScope, res.retryAfterMinutes]).toEqual(['hour', 12]);
   });
 
   it('quota: o limite batido (scope hour|day) vem em quotaScope; outro valor é ignorado', async () => {

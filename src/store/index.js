@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { supabase, invokeEdgeFunctionWithTimeout } from '../lib/supabase';
 import { planAcceptanceMode, closeOldBlock, isTrainingPlan, doneItemKeys } from '../utils/planAcceptance';
+import { quotaNotice } from '../utils/quotaNotice';
 import { todayISO, lisbonTodayISO, addDaysISO } from '../lib/utils';
 import { markOnboardingDoneLocally } from '../utils/onboarding';
 import { newCheckinAlarms, interventionReasonFor, mergeCheckin, readCheckinReason, checkinReasonNow } from '../utils/checkin';
@@ -296,6 +297,10 @@ export const useAppStore = create((set, get) => ({
   // Ver specs/plano-de-treino.md §11.
   dailySummary: null,
   dailySummaryLoading: false,
+  // A quota (dev-back fd125f9e): { text, scope: 'hour'|'day'|null, until, day } — a frase da Carol a
+  // dizer porque é que o «Atualizar» não trouxe um resumo novo; expira sozinha (utils/quotaNotice).
+  // null sem quota.
+  dailySummaryNotice: null,
   // De que conta são as corridas e o ginásio que estão no store — posto
   // quando chegam, no mesmo set. O dailySummaryRefresh espera por ele para
   // tomar o ponto de partida: uma lista vazia de antes do carregamento não
@@ -1334,10 +1339,23 @@ export const useAppStore = create((set, get) => ({
     }
 
     const run = (async () => {
-      set({ dailySummaryLoading: true });
+      set({ dailySummaryLoading: true, dailySummaryNotice: null });
       try {
-        const { data, error } = await invokeEdgeFunctionWithTimeout('coach-daily-summary', { body: { force } });
-        if (error) { console.error('Error loading daily summary:', error); return null; }
+        const { data, error, isQuota, quotaScope, retryAfterMinutes } = await invokeEdgeFunctionWithTimeout('coach-daily-summary', { body: { force } });
+        if (error) {
+          /* A quota sem resumo de hoje (429): a frase dela, em vez de o cartão não dizer nada. */
+          if (isQuota) {
+            set({ dailySummaryNotice: quotaNotice({ text: error, scope: quotaScope, retryAfterMinutes, nowMs: Date.now(), todayISO: today }) });
+            return null;
+          }
+          console.error('Error loading daily summary:', error);
+          return null;
+        }
+        /* Com force e a quota passada, o servidor devolve o resumo guardado (200, cached) com
+           quota + quota_message: sem esta frase, o «Atualizar» parecia não fazer nada. */
+        if (data?.quota && typeof data.quota_message === 'string' && data.quota_message.trim()) {
+          set({ dailySummaryNotice: quotaNotice({ text: data.quota_message, scope: data.quota, retryAfterMinutes: data.retry_after_minutes, nowMs: Date.now(), todayISO: today }) });
+        }
         // A carga que pede conversa abre um assunto por resolver no servidor
         // (runLoadAlert.ts): o Início mostra-o já, sem esperar pela próxima
         // carga do perfil.
@@ -1753,12 +1771,14 @@ const sliceSeq = {}; // por fatia, o carregamento que a escreveu por último
 
 const EMPTY_DATA = {
   profile: null, isAdmin: false, meals: [], runs: [], gymSessions: [], bodyAssessments: [], waterLogs: [], goalHistory: [],
-  coachMessages: [], raceEvents: [], coachPlans: [], coachGoalProposals: [], coachPlanItems: [], shoes: [], dailyCheckins: [], dailySummary: null,
+  coachMessages: [], raceEvents: [], coachPlans: [], coachGoalProposals: [], coachPlanItems: [], shoes: [], dailyCheckins: [], dailySummary: null, dailySummaryNotice: null,
   percentileSnapshots: [], leaderboardEntries: [],
   trainingLoadedFor: null,
   loadedSlices: {},
   cup: CUP_EMPTY,
 };
+// Para os testes: o que se limpa ao trocar de conta (revisão do af9d2cb4 — o aviso de quota do A ao B).
+export const __emptyDataForTests = EMPTY_DATA;
 /** O dataPending nunca dura mais do que isto: um pedido que nunca responde
  *  não pode deixar o onboarding, as boas-vindas e o primeiro dia à espera
  *  para sempre (revisão pré-deploy de 90bfa9b). */

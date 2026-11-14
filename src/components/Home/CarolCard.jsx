@@ -8,6 +8,7 @@ import { getRacePrediction } from '../../utils/biEngine';
 import { formatPace, parseDurationToSeconds } from '../../utils/run';
 import { isRacePlanItem } from '../../utils/homeModels';
 import { lisbonParts } from '../../utils/carolWelcome';
+import { isQuotaNoticeActive } from '../../utils/quotaNotice';
 import { eventoDaVida } from '../../utils/carolVida';
 import { todaysCheckin } from '../../utils/checkin';
 import { computeAcceptedWindow } from './WeeklyPlanCard';
@@ -394,7 +395,7 @@ export function useCoachDailyMessages(agora = new Date()) {
 const MOOD_KEYS = new Set(['recap', 'warnings', 'hoje', 'tomorrow_prep']);
 
 export default function CarolCard({ onOpenCoach, onOpenRace }) {
-  const { dailySummary, dailySummaryLoading, loadDailySummary } = useAppStore();
+  const { dailySummary, dailySummaryLoading, dailySummaryNotice, loadDailySummary } = useAppStore();
   const agora = useAgora();
   const hoje = lisbonParts(agora).date;
   const messages = useCoachDailyMessages(agora);
@@ -466,6 +467,13 @@ export default function CarolCard({ onOpenCoach, onOpenRace }) {
               </div>
             ))}
           </div>
+        )}
+
+        {/* A quota (429 ou o resumo guardado com quota_message): a frase dela, junto ao resumo. */}
+        {isQuotaNoticeActive(dailySummaryNotice, agora.getTime(), hoje) && !loading && (
+          <p role="status" data-testid="carol-quota-notice" className="text-[12px] leading-[1.45] font-medium mt-1.5" style={{ color: 'var(--text-3)' }}>
+            {dailySummaryNotice.text}
+          </p>
         )}
 
         {(canExpand || expanded) && !loading && (
