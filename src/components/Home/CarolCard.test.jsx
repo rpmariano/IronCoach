@@ -36,7 +36,7 @@ describe('CarolCard — o cartão da Carol no Início', () => {
     vi.useFakeTimers({ toFake: ['Date'] });
     relogio('10:00');
     loadDailySummary.mockClear();
-    useAppStore.setState({ dailySummary: null, dailySummaryLoading: false, loadDailySummary, coachPlans: [], coachPlanItems: [], waterLogs: [], profile: { id: 'u1' }, raceEvents: [], runs: [], gymSessions: [], dailyCheckins: [], coachNotes: [] });
+    useAppStore.setState({ dailySummary: null, dailySummaryLoading: false, dailySummaryNotice: null, loadDailySummary, coachPlans: [], coachPlanItems: [], waterLogs: [], profile: { id: 'u1' }, raceEvents: [], runs: [], gymSessions: [], dailyCheckins: [], coachNotes: [] });
   });
 
   afterEach(() => {
@@ -46,6 +46,16 @@ describe('CarolCard — o cartão da Carol no Início', () => {
   const textoDoCartao = () => screen.getByTestId('carol-card').textContent;
   const abrir = () => fireEvent.click(screen.getByText('Ler mais'));
   const secao = (rotulo) => screen.getByText(rotulo).parentElement.textContent;
+
+  it('a frase da quota aparece junto ao resumo; sem ela, nada', () => {
+    const { unmount } = render(<CarolCard />);
+    expect(screen.queryByTestId('carol-quota-notice')).toBeNull();
+    unmount();
+    useAppStore.setState({ dailySummaryNotice: { text: 'Fizeste muitos pedidos seguidos e preciso de uma pausa. Tenta outra vez daqui a 12 minutos.', scope: 'hour' } });
+    render(<CarolCard />);
+    expect(screen.getByTestId('carol-quota-notice')).toHaveTextContent('Tenta outra vez daqui a 12 minutos.');
+    expect(screen.getByTestId('carol-quota-notice')).toHaveAttribute('role', 'status');
+  });
 
   it('pede o resumo ao montar, sem reload — não force', () => {
     render(<CarolCard />);
