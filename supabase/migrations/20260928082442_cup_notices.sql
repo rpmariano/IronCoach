@@ -29,7 +29,7 @@
 --
 -- Parte das definições REAIS de produção (pg_get_constraintdef, projeto
 -- roxfzsiciizkevopgpnl, lidas a 2026-09-27): os 11 tipos de
--- 20260925200100_proactive_vitrina.sql, nas duas tabelas.
+-- 20260926001423_proactive_vitrina.sql, nas duas tabelas.
 --
 -- Tem de ser aplicada ANTES do deploy (push a `dev`) do coach-proactive-tick
 -- e do coach-chat que conhecem os tipos cup_*. O código tolera a M3 em falta
@@ -37,7 +37,7 @@
 -- momento seguinte), mas sem ela nenhum aviso do Troféu sai.
 --
 -- Reverter: apagar as linhas cup_* das duas tabelas e repor as duas
--- restrições com os 11 tipos (o texto de 20260925200100).
+-- restrições com os 11 tipos (o texto de 20260926001423).
 -- ============================================================================
 
 begin;

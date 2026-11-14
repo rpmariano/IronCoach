@@ -57,7 +57,7 @@ export function microFromModel(v: unknown): number | null {
 }
 
 // ── Os micronutrientes da despensa (2026-10-05) ──────────────────────────
-// Migração 20261005100000_pantry_micronutrients_nullable: em athlete_foods
+// Migração 20261005110449_pantry_micronutrients_nullable: em athlete_foods
 // os micronutrientes passam a nuláveis (null = por confirmar) e a linha ganha
 // micros_checked_at. A REGRA, em três casos, por micronutriente:
 //   · null                → por confirmar;
@@ -151,7 +151,7 @@ const MEAL_ITEM_COLUMNS = ["name", "quantity_grams", ...NUTRIENT_COLUMNS] as con
 // deno-lint-ignore no-explicit-any
 export function pickMealItem(it: any): Record<string, unknown> {
   // Micronutriente em falta grava null, não 0 (D6, 2026-10-05) — precisa da
-  // migração 20261005090000_micronutrients_nullable aplicada antes.
+  // migração 20261005110436_micronutrients_nullable aplicada antes.
   return Object.fromEntries(MEAL_ITEM_COLUMNS.map((k) => [
     k,
     isMicroColumn(k) ? microOrNull(it?.[k]) : it?.[k] ?? (k === "name" ? "Alimento" : 0),

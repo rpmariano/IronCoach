@@ -10,7 +10,7 @@
 //
 // A regra é uma só, para servidor e cliente (via @formulas):
 // - race_priority em falta conta como 'a': é o default da coluna
-//   (20260809120000_resting_hr_race_priority.sql) e a mesma leitura de
+//   (20260809094208_resting_hr_race_priority.sql) e a mesma leitura de
 //   detectRaceConflictServer;
 // - a PRINCIPAL é a próxima 'a' ainda por correr;
 // - o FOCO é a principal quando existe, senão a próxima por data — um atleta

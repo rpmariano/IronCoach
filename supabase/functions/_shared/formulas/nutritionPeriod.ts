@@ -577,7 +577,7 @@ export const MICRO_KEYS: MicroKey[] = ["fiber", "sugar", "sodium", "iron_mg", "c
 
 /**
  * Desde quando a analyze-meal grava null num micronutriente que o modelo não
- * deu (D6; migração 20261005090000_micronutrients_nullable). Antes disso
+ * deu (D6; migração 20261005110436_micronutrients_nullable). Antes disso
  * gravava 0 — e um 0 desses tanto é "não tem" como "não sei".
  *
  * null = AINDA NÃO HÁ DEPLOY: a cobertura fica desligada (coverageKnown

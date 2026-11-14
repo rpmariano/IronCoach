@@ -79,7 +79,7 @@ const GEMINI_RETRIES = 1;
 // "caminhada" (2026-10-05): a caminhada é um tipo de treino da corrida — ver
 // _shared/formulas/runKinds.ts. Sem ela aqui, o training_type que o cliente
 // manda era descartado em silêncio e a caminhada gravava-se como treino sem
-// tipo (logo, como corrida). Exige a migração 20261005120000 (check de
+// tipo (logo, como corrida). Exige a migração 20261005171145 (check de
 // runs.training_type) ANTES deste deploy.
 export const TRAINING_TYPE_KEYS = [
   "continuo", "longo", "recuperacao", "tempo", "fartlek",

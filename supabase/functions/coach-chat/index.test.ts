@@ -2016,7 +2016,7 @@ Deno.test("save_meal_suggestions: sem plano, mais de um dia cria plano proposto 
   assertEquals(inserted?.meal_suggestion, "Pasta pré-corrida");
   assertEquals(inserted?.user_id, "u1");
   // O plano proposto usa "summary", nunca "notes" (coach_plans não tem essa
-  // coluna — ver migração 20260810000000_coach_plans.sql).
+  // coluna — ver migração 20260809141830_coach_plans.sql).
   const planInsert = calls.inserts.find((i: any) => i.status === "proposto");
   assertEquals(planInsert?.summary, "Sugestões alimentares do Coach");
   assertEquals(Object.prototype.hasOwnProperty.call(planInsert ?? {}, "notes"), false);

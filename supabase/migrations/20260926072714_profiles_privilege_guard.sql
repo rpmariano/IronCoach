@@ -44,7 +44,7 @@
 --     como o dono). O trigger olha para `current_user`, que numa função
 --     SECURITY INVOKER — esta — é o papel de quem fez o pedido.
 --   · A função não fica exposta como RPC (molde de
---     20260918001600_revoke_execute_trigger_functions.sql: o EXECUTE de uma
+--     20260918001630_revoke_execute_trigger_functions.sql: o EXECUTE de uma
 --     função de trigger verifica-se quando se CRIA o trigger, não quando
 --     dispara).
 -- ============================================================================

@@ -135,7 +135,7 @@ create trigger race_events_mark_plan_race_lost
 -- ---------------------------------------------------------------------------
 -- 5. Funções de trigger não se expõem como RPC
 -- ---------------------------------------------------------------------------
--- A lição da migration 20260918001600: as funções de trigger são SECURITY
+-- A lição da migration 20260918001630: as funções de trigger são SECURITY
 -- DEFINER e ficavam invocáveis por anon/authenticated. A nova nasce já
 -- fechada; a sync_plan_end_to_race_date mantém o ACL que já tinha (o
 -- `create or replace` não o repõe), mas revoga-se de novo por segurança.
