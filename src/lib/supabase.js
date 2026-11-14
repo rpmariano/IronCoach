@@ -147,6 +147,7 @@ export async function invokeEdgeFunctionWithTimeout(fnName, options = {}, timeou
       // O limite que o 429 bateu: 'hour' | 'day' — o campo `scope` do Backend (formato confirmado a
       // 2026-11-13: {error, scope, retry_after_minutes}; o `quota: 'hora'|'dia'` ignora-se).
       let quotaScope = null;
+      let retryAfterMinutes = null;
       /* O texto que o servidor escreveu para o atleta ler — só quando é mesmo
          dele, uma string no campo `error`. Um erro do gateway (546
          WORKER_LIMIT, 503 BOOT_ERROR) não o traz, e aí `detailedMsg` fica com
@@ -168,6 +169,7 @@ export async function invokeEdgeFunctionWithTimeout(fnName, options = {}, timeou
           if (bodyJson?.model_message?.id) serverMessageId = bodyJson.model_message.id;
           isBusy = bodyJson?.busy === true;
           if (bodyJson?.scope === 'hour' || bodyJson?.scope === 'day') quotaScope = bodyJson.scope;
+          if (Number(bodyJson?.retry_after_minutes) > 0) retryAfterMinutes = Number(bodyJson.retry_after_minutes);
         } catch (_) {}
       }
       const status = error.context?.status ?? null;
@@ -185,6 +187,7 @@ export async function invokeEdgeFunctionWithTimeout(fnName, options = {}, timeou
           isBusy: false,
           isQuota: true,
           quotaScope,
+          retryAfterMinutes,
           serverText: serverText || QUOTA_FALLBACK_TEXT,
           serverMessageId,
           status,

@@ -8,6 +8,7 @@ import { getRacePrediction } from '../../utils/biEngine';
 import { formatPace, parseDurationToSeconds } from '../../utils/run';
 import { isRacePlanItem } from '../../utils/homeModels';
 import { lisbonParts } from '../../utils/carolWelcome';
+import { isQuotaNoticeActive } from '../../utils/quotaNotice';
 import { eventoDaVida } from '../../utils/carolVida';
 import { todaysCheckin } from '../../utils/checkin';
 import { computeAcceptedWindow } from './WeeklyPlanCard';
@@ -469,7 +470,7 @@ export default function CarolCard({ onOpenCoach, onOpenRace }) {
         )}
 
         {/* A quota (429 ou o resumo guardado com quota_message): a frase dela, junto ao resumo. */}
-        {dailySummaryNotice?.text && !loading && (
+        {isQuotaNoticeActive(dailySummaryNotice, agora.getTime(), hoje) && !loading && (
           <p role="status" data-testid="carol-quota-notice" className="text-[12px] leading-[1.45] font-medium mt-1.5" style={{ color: 'var(--text-3)' }}>
             {dailySummaryNotice.text}
           </p>

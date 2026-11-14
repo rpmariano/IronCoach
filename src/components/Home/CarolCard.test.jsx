@@ -3,6 +3,7 @@ import { render, screen, fireEvent, act, waitFor } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { useAppStore } from '../../store';
 import { addDaysISO } from '../../lib/utils';
+import { lisbonParts } from '../../utils/carolWelcome';
 import { supabase } from '../../lib/supabase';
 import { CUP_EMPTY, cupEnrolledHintKey, __resetCupModuleState } from '../../store/cupSlice';
 import * as F from '@formulas/cup.fixtures.ts';
@@ -51,10 +52,25 @@ describe('CarolCard — o cartão da Carol no Início', () => {
     const { unmount } = render(<CarolCard />);
     expect(screen.queryByTestId('carol-quota-notice')).toBeNull();
     unmount();
-    useAppStore.setState({ dailySummaryNotice: { text: 'Fizeste muitos pedidos seguidos e preciso de uma pausa. Tenta outra vez daqui a 12 minutos.', scope: 'hour' } });
+    useAppStore.setState({ dailySummaryNotice: { text: 'Fizeste muitos pedidos seguidos e preciso de uma pausa. Tenta outra vez daqui a 12 minutos.', scope: 'hour', until: Date.now() + 12 * 60000, day: lisbonParts(new Date()).date } });
     render(<CarolCard />);
     expect(screen.getByTestId('carol-quota-notice')).toHaveTextContent('Tenta outra vez daqui a 12 minutos.');
     expect(screen.getByTestId('carol-quota-notice')).toHaveAttribute('role', 'status');
+  });
+
+  it('o aviso de quota some sozinho quando a hora passa — com o resumo de hoje em memória', () => {
+    vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval'] });
+    useAppStore.setState({ dailySummaryNotice: { text: 'Tenta outra vez daqui a 2 minutos.', scope: 'hour', until: Date.now() + 2 * 60000, day: lisbonParts(new Date()).date } });
+    render(<CarolCard />);
+    expect(screen.getByTestId('carol-quota-notice')).toBeInTheDocument();
+    act(() => { vi.advanceTimersByTime(3 * 60000); });
+    expect(screen.queryByTestId('carol-quota-notice')).toBeNull();
+  });
+
+  it('o aviso de um dia anterior não aparece', () => {
+    useAppStore.setState({ dailySummaryNotice: { text: 'Por hoje chega.', scope: 'day', until: null, day: '2020-01-01' } });
+    render(<CarolCard />);
+    expect(screen.queryByTestId('carol-quota-notice')).toBeNull();
   });
 
   it('pede o resumo ao montar, sem reload — não force', () => {
