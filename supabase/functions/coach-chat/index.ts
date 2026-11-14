@@ -1236,7 +1236,12 @@ export function chatToolsFor(
   // Sem save_coach_note nos turnos com fotos e nos proativos (auditoria de
   // segurança, 2026-11-13): uma foto com texto escrito, ou um turno que o
   // atleta não escreveu, não pode deixar uma nota durável na memória dela.
-  const lean = o.photos || o.proactive ? withoutTool(planned, "save_coach_note") : planned;
+  // Nem resolve_intervention (2.ª auditoria, 2026-11-14): o desfecho de uma
+  // intervenção é o que o atleta DIZ — não o que está escrito numa foto, nem
+  // num turno que ele não escreveu. Fica para a mensagem seguinte.
+  const lean = o.photos || o.proactive
+    ? withoutTool(withoutTool(planned, "save_coach_note"), "resolve_intervention")
+    : planned;
   return enforceToolCap(lean, JSON.stringify({ allowed: allowed ? [...allowed] : "todas", ...o }));
 }
 
@@ -9574,12 +9579,24 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
           }
         } else if (name === "update_goals" || name === "update_nutrition_goals") {
           // "update_nutrition_goals" mantido por retrocompatibilidade com histórico de conversa.
-          result = await runUpdateGoals(sb, userId, args || {});
-          goalsWereUpdated = goalsWereUpdated || result.startsWith("Metas atualizadas");
+          // As de escrita só correm se tiverem sido enviadas neste pedido
+          // (2.ª auditoria de segurança, 2026-11-14): o caso do turno, as
+          // fotos ou o teto podem tê-las tirado, e o modelo não as pode
+          // chamar na mesma.
+          if (!toolNamesSent.includes("update_goals")) {
+            result = unknownFunctionResult(name);
+          } else {
+            result = await runUpdateGoals(sb, userId, args || {});
+            goalsWereUpdated = goalsWereUpdated || result.startsWith("Metas atualizadas");
             goalWasProposed = goalWasProposed || result.startsWith("Proposta de altera");
+          }
         } else if (name === "update_race_event") {
-          result = await runUpdateRaceEvent(sb, userId, args || {}, message, lastModelText);
-          raceWasUpdated = raceWasUpdated || result.startsWith("Prova atualizada");
+          if (!toolNamesSent.includes("update_race_event")) {
+            result = unknownFunctionResult(name);
+          } else {
+            result = await runUpdateRaceEvent(sb, userId, args || {}, message, lastModelText);
+            raceWasUpdated = raceWasUpdated || result.startsWith("Prova atualizada");
+          }
         } else if (name === "save_coach_note") {
           // Só se tiver sido enviada neste pedido (fora dos turnos com fotos e dos proativos).
           result = toolNamesSent.includes("save_coach_note") ? await runSaveCoachNote(sb, userId, args || {}) : unknownFunctionResult(name);
@@ -9590,10 +9607,14 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
             : unknownFunctionResult(name);
           if (result.startsWith("Produto ")) pantryFoodsSaved++;
         } else if (name === "save_meal_suggestions") {
-          result = await runSaveMealSuggestions(sb, userId, args || {});
+          result = toolNamesSent.includes(name) ? await runSaveMealSuggestions(sb, userId, args || {}) : unknownFunctionResult(name);
         } else if (name === "resolve_intervention") {
-          result = await runResolveIntervention(sb, userId, args || {});
-          interventionWasResolved = interventionWasResolved || !result.startsWith("Erro");
+          if (!toolNamesSent.includes(name)) {
+            result = unknownFunctionResult(name);
+          } else {
+            result = await runResolveIntervention(sb, userId, args || {});
+            interventionWasResolved = interventionWasResolved || !result.startsWith("Erro");
+          }
         } else if (name === "set_cup_participation" || name === "set_cup_season_goal") {
           // Só com inscrição ativa e se o caso as deixou seguir: sem isso é
           // como se não existissem.
