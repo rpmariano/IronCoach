@@ -27,7 +27,7 @@ alter table public.push_subscriptions
 alter table public.push_subscriptions
   add constraint push_subscriptions_endpoint_allowed
   check (
-    endpoint ~* '^https://(fcm\.googleapis\.com|([a-z0-9-]+\.)+push\.apple\.com|updates\.push\.services\.mozilla\.com|([a-z0-9-]+\.)+notify\.windows\.com)/'
+    endpoint ~* '^https://(fcm\.googleapis\.com|jmt17\.google\.com|([a-z0-9-]+\.)+push\.apple\.com|updates\.push\.services\.mozilla\.com|([a-z0-9-]+\.)+notify\.windows\.com)/'
     and length(endpoint) <= 2048
   ) not valid;
 

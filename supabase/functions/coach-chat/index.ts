@@ -7831,13 +7831,24 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
     const LOCK_STALE_MS = CHAT_BUDGET_MS + 35_000;
     const staleBeforeIso = new Date(Date.now() - LOCK_STALE_MS).toISOString();
     const myLockIso = new Date().toISOString();
-    lockDb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
-    const { data: lockRows, error: lockErr } = await lockDb
-      .from("profiles")
-      .update({ coach_chat_busy_since: myLockIso })
-      .eq("id", userId)
-      .or(`coach_chat_busy_since.is.null,coach_chat_busy_since.lt.${staleBeforeIso}`)
-      .select("id");
+    // Um cliente que não se cria (sem a chave no ambiente) é uma falha do
+    // lock como as outras: regista e segue, sem 500 (revisão do lote).
+    // deno-lint-ignore no-explicit-any
+    let lockRows: any[] | null = null;
+    // deno-lint-ignore no-explicit-any
+    let lockErr: any = null;
+    try {
+      lockDb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+      ({ data: lockRows, error: lockErr } = await lockDb
+        .from("profiles")
+        .update({ coach_chat_busy_since: myLockIso })
+        .eq("id", userId)
+        .or(`coach_chat_busy_since.is.null,coach_chat_busy_since.lt.${staleBeforeIso}`)
+        .select("id"));
+    } catch (e) {
+      lockDb = null;
+      lockErr = e;
+    }
     if (lockErr) {
       // Falha a adquirir o lock não deve impedir a resposta — regista e segue
       // em frente sem proteção de duplicação, é preferível a bloquear o coach.

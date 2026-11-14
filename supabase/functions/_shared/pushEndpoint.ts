@@ -7,6 +7,7 @@
 // lá (SSRF), ou para um endereço que nunca responde. Só os serviços de push
 // dos browsers que a app suporta:
 //   - fcm.googleapis.com                (Chrome, Edge antigo, Android)
+//   - jmt17.google.com                  (o FCM de staging do Chromium)
 //   - *.push.apple.com                  (Safari / iOS: web.push.apple.com)
 //   - updates.push.services.mozilla.com (Firefox)
 //   - *.notify.windows.com              (Edge no Windows: wns2-xxx.notify…)
@@ -18,7 +19,7 @@
 // mesmo host para o URL e ficavam a dar 500 no insert. Se mudar aqui, muda lá.
 
 export const PUSH_ENDPOINT_PATTERN =
-  /^https:\/\/(fcm\.googleapis\.com|([a-z0-9-]+\.)+push\.apple\.com|updates\.push\.services\.mozilla\.com|([a-z0-9-]+\.)+notify\.windows\.com)\//i;
+  /^https:\/\/(fcm\.googleapis\.com|jmt17\.google\.com|([a-z0-9-]+\.)+push\.apple\.com|updates\.push\.services\.mozilla\.com|([a-z0-9-]+\.)+notify\.windows\.com)\//i;
 
 // Os endpoints reais andam pelos 150–400 caracteres; isto só trava lixo.
 export const PUSH_ENDPOINT_MAX_LENGTH = 2048;
