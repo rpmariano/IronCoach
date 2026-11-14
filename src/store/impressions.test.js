@@ -145,6 +145,14 @@ describe('logImpression e logImpressionDismissed — o próprio telemóvel fica 
     expect(useAppStore.getState().impressionDismissed.size).toBe(0);
   });
 
+  it('auditoria B2: terminar sessão apaga os rascunhos (o peso de quem saiu não aparece a quem entra)', () => {
+    window.localStorage.setItem('ironcoach:u:a:avaliacao-rascunho:nova', JSON.stringify({ metrics: { weight_kg: '80' } }));
+    window.localStorage.setItem('ironcoach:u:a:carol-chat-rascunho', JSON.stringify({ inputStr: 'olá' }));
+    useAppStore.getState().setSession(null);
+    expect(window.localStorage.getItem('ironcoach:u:a:avaliacao-rascunho:nova')).toBeNull();
+    expect(window.localStorage.getItem('ironcoach:u:a:carol-chat-rascunho')).toBeNull();
+  });
+
   it('terminar sessão limpa também a cache dos insights, para o utilizador seguinte não a herdar', () => {
     window.localStorage.clear();
     useAppStore.setState({ insightStates: {} });

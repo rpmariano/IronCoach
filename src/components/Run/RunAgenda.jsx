@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useAppStore } from '../../store';
+import { scopedDraftKey } from '../../utils/draftScope';
+import { useDraftUserId } from '../../utils/useDraftUserId';
 import ConfirmDeleteModal from '../shared/ConfirmDeleteModal';
 import UnsavedChangesModal from '../shared/UnsavedChangesModal';
 import PremiumModal from '../shared/PremiumModal';
@@ -149,7 +151,9 @@ export default function RunAgenda({ onClose }) {
   // Identifica este rascunho de forma única para o sobreviver a um
   // recarregamento (ver formDraftPersistence.js) — nunca partilhado entre
   // provas diferentes nem entre uma edição e uma criação nova a seguir.
-  const draftStorageKey = editingEventId ? `ironcoach:prova-rascunho:${editingEventId}` : 'ironcoach:prova-rascunho:nova';
+  // Por conta (auditoria B2): num telemóvel partilhado, o atleta seguinte não vê o rascunho do anterior.
+  const draftUserId = useDraftUserId();
+  const draftStorageKey = scopedDraftKey(editingEventId ? `ironcoach:prova-rascunho:${editingEventId}` : 'ironcoach:prova-rascunho:nova', draftUserId);
   // Só tenta restaurar UMA VEZ por sessão de edição/criação — sem isto, o
   // efeito de inicialização (que também corre sempre que `raceEvents`
   // muda, ex.: outra prova gravada em paralelo) repunha o rascunho

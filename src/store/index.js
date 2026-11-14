@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { supabase, invokeEdgeFunctionWithTimeout } from '../lib/supabase';
 import { planAcceptanceMode, closeOldBlock, isTrainingPlan, doneItemKeys } from '../utils/planAcceptance';
 import { quotaNotice } from '../utils/quotaNotice';
+import { clearAllDrafts, purgeUnscopedDrafts } from '../utils/draftScope';
 import { todayISO, lisbonTodayISO, addDaysISO } from '../lib/utils';
 import { markOnboardingDoneLocally } from '../utils/onboarding';
 import { newCheckinAlarms, interventionReasonFor, mergeCheckin, readCheckinReason, checkinReasonNow } from '../utils/checkin';
@@ -417,6 +418,8 @@ export const useAppStore = create((set, get) => ({
     // seguinte. Os 'ignored' do próprio voltam do servidor ao entrar.
     try { localStorage.removeItem('ironcoach_insight_states'); } catch { /* sem storage */ }
     try { localStorage.removeItem('ironcoach_insight_snoozes'); } catch { /* sem storage */ }
+    // Os rascunhos (texto e fotos) também não passam para quem entra a seguir (auditoria B2).
+    clearAllDrafts();
     // proactiveKeyRequested (P.9): uma chave pedida antes do sign-out não é
     // para o próximo utilizador deste telemóvel.
     // A competição (cupSlice.js) também: a inscrição de quem saiu não passa
@@ -1966,6 +1969,9 @@ async function runInitialLoad(set, get, userId) {
   // conta já tenha estado completa antes (A → B → A).
   const firstForUser = completeUserId !== userId || switching;
   if (switching || firstForUser) set({ ...(switching ? EMPTY_DATA : {}), ...(firstForUser ? { dataPending: true } : {}) });
+  // Auditoria B2: na troca de conta, os rascunhos da anterior saem; ao entrar, os antigos sem conta na chave também.
+  if (switching) clearAllDrafts();
+  else if (firstForUser) purgeUnscopedDrafts();
   if (firstForUser) {
     setTimeout(() => {
       if (seq !== loadSeq || !get().dataPending) return;

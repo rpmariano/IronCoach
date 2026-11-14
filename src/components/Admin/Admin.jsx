@@ -8,6 +8,7 @@ import Button from '../shared/Button';
 import CompetitionsTab from './Competitions';
 import CostsTab from './CostsTab';
 import UnknownAppPhoto from './UnknownAppPhoto';
+import { isVideoAttachment } from '../../utils/reportImages';
 
 const ADMIN_TABS = [
   { key: 'overview', label: 'Visão Geral', icon: LayoutGrid },
@@ -150,7 +151,8 @@ export default function Admin() {
       const results = await Promise.all(
         paths.map(path => supabase.storage.from('bug-report-photos').createSignedUrl(path, 3600))
       );
-      setBugAttachmentUrls(results.map(r => r.data?.signedUrl).filter(Boolean));
+      // Com o caminho ao lado: um anexo antigo em vídeo mostra-se num <video>, não num <img>.
+      setBugAttachmentUrls(results.map((r, i) => (r.data?.signedUrl ? { url: r.data.signedUrl, path: paths[i] } : null)).filter(Boolean));
     } catch (err) {
       console.error('Error creating signed urls for bug attachments:', err);
       setBugAttachmentUrls([]);
@@ -592,16 +594,16 @@ export default function Admin() {
                         {bugAttachmentUrls.length === 0 ? (
                           <p className="text-[11px] text-[var(--text-3)]">A gerar links de acesso...</p>
                         ) : (
-                          bugAttachmentUrls.map((url, idx) => (
-                            <a
-                              key={idx}
-                              href={url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-[11px] text-[var(--run)] hover:text-[var(--coach-soft)] break-all truncate block"
-                            >
-                              Ver anexo {idx + 1}
-                            </a>
+                          /* Auditoria M4: o anexo abre aqui, num <img>, e não numa aba nova com o
+                             URL assinado (que ficava no histórico do browser). */
+                          bugAttachmentUrls.map(({ url, path }, idx) => (
+                            isVideoAttachment(path) ? (
+                              <video key={idx} src={url} controls preload="metadata" aria-label={`Anexo ${idx + 1}`} data-testid="bug-attachment"
+                                className="w-full max-h-72 rounded-xl border border-[var(--border-glass)] bg-[var(--bg-app)]" />
+                            ) : (
+                              <img key={idx} src={url} alt={`Anexo ${idx + 1} do report`} data-testid="bug-attachment" loading="lazy"
+                                className="w-full max-h-96 object-contain rounded-xl border border-[var(--border-glass)] bg-[var(--bg-app)]" />
+                            )
                           ))
                         )}
                       </div>

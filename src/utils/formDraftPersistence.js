@@ -80,6 +80,13 @@ export function restorePersistedFormDraft(key) {
   }
 }
 
+/** Cancela todos os writes de debounce pendentes (logout, troca de conta — draftScope.js): um
+ *  rascunho do atleta que saiu não pode voltar a escrever-se depois de limpo. */
+export function cancelAllPendingFormDrafts() {
+  for (const timer of pendingTimers.values()) clearTimeout(timer);
+  pendingTimers.clear();
+}
+
 /** Remove o rascunho guardado — chamar ao gravar com sucesso ou ao descartar. */
 export function clearPersistedFormDraft(key) {
   if (!key) return;

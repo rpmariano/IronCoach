@@ -732,7 +732,9 @@ describe('GymRegistration — BUG CORRIGIDO (2026-08-30) — rascunho sobrevive 
   it('gravar com sucesso limpa o rascunho — o próximo treino novo não vem com nome antigo', async () => {
     // Simula um rascunho já persistido de uma sessão anterior (poupa esperar
     // pelo debounce real de formDraftPersistence.js).
-    localStorage.setItem('ironcoach:treino-rascunho:nova', JSON.stringify({ name: 'Rascunho Antigo' }));
+    // A chave do rascunho leva a conta (auditoria B2).
+    useAppStore.setState({ session: { user: { id: 'user-1' } } });
+    localStorage.setItem('ironcoach:u:user-1:treino-rascunho:nova', JSON.stringify({ name: 'Rascunho Antigo' }));
     mocks.invoke.mockResolvedValue({ data: { session: { id: 'sess-9' }, sets: [] }, error: null });
 
     const { unmount } = render(<GymRegistration onClose={onClose} />);
@@ -746,7 +748,7 @@ describe('GymRegistration — BUG CORRIGIDO (2026-08-30) — rascunho sobrevive 
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
     unmount();
 
-    expect(localStorage.getItem('ironcoach:treino-rascunho:nova')).toBeNull();
+    expect(localStorage.getItem('ironcoach:u:user-1:treino-rascunho:nova')).toBeNull();
 
     // Próximo treino novo: sem vestígios do rascunho gravado.
     render(<GymRegistration onClose={onClose} />);

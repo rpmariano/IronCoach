@@ -71,12 +71,16 @@ export const draftMediaStore = {
   save: (key, value) => withStore('readwrite', (store) => store.put(value, key)),
   remove: (key) => withStore('readwrite', (store) => store.delete(key)),
   removeAllFor: (draftKey) => withStore('readwrite', (store) => store.delete(IDBKeyRange.bound(`${draftKey}::`, `${draftKey}::￿`))),
+  clearAll: () => withStore('readwrite', (store) => store.clear()),
 };
 
 /* Quando cada rascunho foi apagado pela última vez: um save agendado ANTES
    disso não o pode ressuscitar (a mesma corrida que formDraftPersistence
    resolve com os timers pendentes). */
 const clearedAt = new Map();
+/* Quando TODAS as fotos de rascunho foram apagadas (logout, troca de conta — draftScope.js). */
+let clearedAllAt = 0;
+const clearedSince = (draftKey) => Math.max(clearedAt.get(draftKey) || 0, clearedAllAt);
 
 /** Apaga todas as fotos guardadas do rascunho `draftKey`. */
 export function clearDraftMedia(draftKey) {
@@ -84,6 +88,16 @@ export function clearDraftMedia(draftKey) {
   clearedAt.set(draftKey, Date.now());
   try {
     draftMediaStore.removeAllFor(draftKey)?.catch?.(() => {});
+  } catch {
+    /* sem IndexedDB não há nada a apagar */
+  }
+}
+
+/** Apaga as fotos de TODOS os rascunhos deste telemóvel (logout, troca de conta). */
+export function clearAllDraftMedia() {
+  clearedAllAt = Date.now();
+  try {
+    draftMediaStore.clearAll()?.catch?.(() => {});
   } catch {
     /* sem IndexedDB não há nada a apagar */
   }
@@ -119,7 +133,7 @@ export function usePersistedDraftMedia(draftKey, slot, value, setValue) {
         if (cancelled) return;
         readyRef.current = true;
         // Descartado enquanto a leitura corria: não ressuscita.
-        if ((clearedAt.get(draftKey) || 0) >= startedAt) return;
+        if (clearedSince(draftKey) >= startedAt) return;
         if (!isEmpty(saved) && isEmpty(valueRef.current)) {
           setValue(saved);
         } else if (!isEmpty(valueRef.current)) {
@@ -135,7 +149,7 @@ export function usePersistedDraftMedia(draftKey, slot, value, setValue) {
     if (!key || !readyRef.current) return undefined;
     const scheduledAt = Date.now();
     const timer = setTimeout(() => {
-      if ((clearedAt.get(draftKey) || 0) >= scheduledAt) return;
+      if (clearedSince(draftKey) >= scheduledAt) return;
       const write = isEmpty(value) ? draftMediaStore.remove(key) : draftMediaStore.save(key, value);
       Promise.resolve(write).catch(() => {});
     }, DEBOUNCE_MS);

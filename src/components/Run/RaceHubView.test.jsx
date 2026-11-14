@@ -506,6 +506,15 @@ describe('RaceHubView — plano para o dia', () => {
     expect(screen.queryByText(/Não conheço o percurso/)).not.toBeInTheDocument();
   });
 
+  it('o site da prova só é link se for http(s); um «javascript:» fica texto', () => {
+    const { unmount } = render(<RaceHubView race={{ ...MEIA_PROXIMA, website: 'https://meiadelisboa.pt' }} runs={[]} profile={PROFILE} onFetchWebInfo={vi.fn()} />);
+    expect(screen.getByRole('link', { name: 'https://meiadelisboa.pt' })).toHaveAttribute('href', 'https://meiadelisboa.pt');
+    unmount();
+    render(<RaceHubView race={{ ...MEIA_PROXIMA, website: 'javascript:alert(1)' }} runs={[]} profile={PROFILE} onFetchWebInfo={vi.fn()} />);
+    expect(screen.getByTestId('race-website-text')).toHaveTextContent('javascript:alert(1)');
+    expect(document.querySelector('a[href^="javascript"]')).toBeNull();
+  });
+
   it('sem informação do site mas com site da prova, oferece buscar o percurso', () => {
     const onFetchWebInfo = vi.fn();
     render(
