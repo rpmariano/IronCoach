@@ -6,6 +6,7 @@ import SectionLabel from '../shared/SectionLabel';
 import Warning, { WarningAction } from '../shared/Warning';
 import { formatPace, formatDuration } from '../../utils/run';
 import { normalizeStartTime } from '../../utils/startTime';
+import { pacingRouteInput } from '../../utils/coursePacing';
 import {
   kmLabel as km, FUEL_LABEL, basisLabel as basisLabelOf,
   renderRacePlanFile, downloadFile, shareOrDownload, canShareFiles,
@@ -51,7 +52,7 @@ export default function RacePacingPlanCard({
      extração feita — é o mesmo onFetchWebInfo do cartão "Informação do Site
      Oficial", aqui repetido junto ao plano porque é aqui que a falta se
      nota. */
-  const canFetchRoute = !!onFetchWebInfo && !race?.web_info && !race?.course_profile && !!race?.website?.toString().trim();
+  const canFetchRoute = !!onFetchWebInfo && !race?.web_info && !pacingRouteInput(race).hasCourse && !!race?.website?.toString().trim();
 
   /* Guardar o plano como imagem (ação P.13). Guardar descarrega; partilhar
      abre a folha do sistema (no iPhone é por aí que se guarda nas Fotos) e,

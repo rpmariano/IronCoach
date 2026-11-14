@@ -45,7 +45,7 @@ import RaceMuralSheet from './RaceMuralSheet';
 import AddToCalendar from './AddToCalendar';
 import CupRaceBlock from './CupRaceBlock';
 import { buildRacePacingPlan } from '@formulas/racePacing.ts';
-import { courseRouteSegments, sanitizeCourseProfile } from '@formulas/courseProfile.ts';
+import { pacingRouteInput } from '../../utils/coursePacing';
 import { calculateRaceTrainingPlan, formatDatePTShort, formatDateDayMonth } from '../../utils/racePlanEngine';
 import { calculateReadinessIndex, getRacePrediction, getVDOTTrend } from '../../utils/biEngine';
 import { racePriorityLabel, raceDistanceLabel, formatPace, formatDuration, findRaceRun, parseDurationToSeconds, describeRaceClassification, describeRaceTimes } from '../../utils/run';
@@ -200,7 +200,6 @@ export default function RaceHubView({
     const targetSeconds = Number(race?.target_time_seconds) > 0
       ? Number(race.target_time_seconds)
       : parseDurationToSeconds(race?.target_time);
-    const course = sanitizeCourseProfile(race?.course_profile ?? null);
     const predictedSeconds = Number(prediction?.predictedSeconds) > 0
       ? Math.round(prediction.predictedSeconds)
       : null;
@@ -211,12 +210,8 @@ export default function RaceHubView({
       targetSeconds: targetSeconds > 0 ? targetSeconds : null,
       predictedSeconds,
       experienceLevel: race?.experience_level,
-      /* Os troços do GPX quando o atleta o carregou, senão os do site — a mesma regra do
-         racePacingRoute do coach-chat, para o Hub e a Carol falarem do mesmo percurso
-         (bug 2026-11-14: com GPX e sem troços no site, o Hub ficava sem subidas). */
-      ...(course
-        ? { routeSegments: courseRouteSegments(course), routeSummary: null, routeSource: 'gpx' }
-        : { routeSegments: race?.web_info?.route_segments || null, routeSummary: race?.web_info?.route_summary || null, routeSource: 'site' }),
+      // GPX primeiro, site depois — a regra do racePacingRoute do coach-chat (bug 2026-11-14).
+      ...pacingRouteInput(race),
     });
   }, [showPacingPlan, race, prediction]);
 

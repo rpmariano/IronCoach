@@ -532,6 +532,19 @@ describe('RaceHubView — plano para o dia', () => {
     expect(screen.queryByText(/Não conheço o percurso/)).not.toBeInTheDocument();
   });
 
+  it('com o GPX carregado e site por extrair, não oferece «Buscar o percurso»', () => {
+    const pts = [];
+    for (let i = 0; i <= 422; i += 1) pts.push({ lat: 38.7 + (i * 0.05) / 111.195, lon: -9.14, ele: 50 + (i % 40) });
+    const built = buildCourseProfile(pts);
+    expect(built.ok).toBe(true);
+    const base = { ...MEIA_PROXIMA, web_info: null, website: 'https://meiadelisboa.pt' };
+    const { unmount } = render(<RaceHubView race={base} runs={[]} profile={PROFILE} onFetchWebInfo={vi.fn()} />);
+    expect(screen.queryAllByTestId('race-pacing-fetch-route').length).toBeGreaterThan(0);
+    unmount();
+    render(<RaceHubView race={{ ...base, course_profile: built.profile }} runs={[]} profile={PROFILE} onFetchWebInfo={vi.fn()} />);
+    expect(screen.queryByTestId('race-pacing-fetch-route')).not.toBeInTheDocument();
+  });
+
   it('o site da prova só é link se for http(s); um «javascript:» fica texto', () => {
     const { unmount } = render(<RaceHubView race={{ ...MEIA_PROXIMA, website: 'https://meiadelisboa.pt' }} runs={[]} profile={PROFILE} onFetchWebInfo={vi.fn()} />);
     expect(screen.getByRole('link', { name: 'https://meiadelisboa.pt' })).toHaveAttribute('href', 'https://meiadelisboa.pt');
