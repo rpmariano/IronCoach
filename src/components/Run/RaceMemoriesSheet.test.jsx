@@ -164,6 +164,22 @@ describe('RaceMemoriesSheet', () => {
     expect(mocks.removed).toEqual(['user-1/race-1/photo-1.jpg']);
   });
 
+  it('o bucket a recusar a imagem (tamanho/tipo): a frase, sem "Tentar de novo"', async () => {
+    mocks.uploadError = { statusCode: '415', message: 'mime type image/gif is not supported' };
+    try {
+      render(<RaceMemoriesSheet race={RACE} userId="user-1" onClose={vi.fn()} />);
+      await screen.findByTestId('race-memories-save');
+      await act(async () => {
+        fireEvent.change(inputDaEtiqueta('Adicionar a medalha'), { target: { files: [ficheiroImagem()] } });
+      });
+      fireEvent.click(screen.getByTestId('race-memories-save'));
+      expect(await screen.findByText(/Este tipo de ficheiro não é aceite/)).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Tentar de novo' })).toBeNull();
+    } finally {
+      mocks.uploadError = null;
+    }
+  });
+
   it('se o envio falhar, avisa e deixa tentar de novo sem fechar', async () => {
     const onClose = vi.fn();
     mocks.uploadError = { message: 'rede' };

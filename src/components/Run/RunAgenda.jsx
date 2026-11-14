@@ -45,6 +45,7 @@ import RecordConfirmation from '../shared/RecordConfirmation';
 import DurationInput from '../shared/DurationInput';
 import { todayISO } from '../../lib/utils';
 import { FieldInput, FieldSelect, FieldTextarea } from '../shared/registration/Field';
+import { enrichErrorText } from '../../utils/enrichErrorText';
 
 function formatDatePT(isoStr) {
   if (!isoStr) return '';
@@ -632,11 +633,12 @@ export default function RunAgenda({ onClose }) {
               ? (parseFloat((draft.elevation_gain_m || '').toString().replace(',', '.')) || undefined)
               : undefined,
           };
-      const { data, error, serverText } = await invokeEdgeFunctionWithTimeout('enrich-race-event', { body }, 90000);
+      const res = await invokeEdgeFunctionWithTimeout('enrich-race-event', { body }, 90000);
+      const { data, error } = res;
       if (error) {
-        // A frase do servidor («Endereço do site inválido…», «O site respondeu com um erro.»); um erro
-        // do gateway sem frase (texto em inglês da supabase-js) fica no aviso genérico.
-        showToast(serverText || 'Não consegui obter informação deste site.', 'error');
+        // A frase do servidor; num timeout ou falha de rede, a da ligação — não culpa o site
+        // (utils/enrichErrorText.js).
+        showToast(enrichErrorText(res), 'error');
         return;
       }
       if (data?.race_event) {

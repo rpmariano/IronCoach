@@ -1548,7 +1548,9 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
       // reabrir e gravar outra vez retoma ESTA, não cria uma segunda ligada
       // à mesma prova (revisão pré-deploy de 79c0bf9).
       adoptCreatedRun(run);
-      setMemoriesFailed(true);
+      // Uma recusa do bucket (tamanho, tipo) diz-se como é, sem «Tentar de novo» — como no
+      // RaceMemoriesSheet: repetir com a mesma imagem dava o mesmo.
+      setMemoriesFailed(err?.noRetry ? { text: err.message, final: true } : true);
       setIsSubmitting(false);
       return;
     }
@@ -1564,7 +1566,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
       finishRaceAndGoToHub();
     } catch (err) {
       console.error('Falha a guardar as memórias da prova (nova tentativa)', err);
-      setMemoriesFailed(true);
+      setMemoriesFailed(err?.noRetry ? { text: err.message, final: true } : true);
     } finally {
       setSavingMemories(false);
     }
@@ -2763,13 +2765,15 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
             <Warning
               title="Memórias por guardar"
               className="mt-3"
-              actions={(
+              actions={memoriesFailed?.final ? null : (
                 <WarningAction onClick={retryRaceMemories} disabled={savingMemories}>
                   {savingMemories ? 'A guardar…' : 'Tentar de novo'}
                 </WarningAction>
               )}
             >
-              A corrida ficou gravada. O que não consegui foi guardar as memórias da prova — podes tentar outra vez sem perder nada.
+              {memoriesFailed?.final
+                ? `A corrida ficou gravada. ${memoriesFailed.text} Troca a imagem e grava outra vez.`
+                : 'A corrida ficou gravada. O que não consegui foi guardar as memórias da prova — podes tentar outra vez sem perder nada.'}
             </Warning>
           )}
         </section>

@@ -292,8 +292,17 @@ export default function Admin() {
     setSavingLog(true);
     try {
       if (log.image_path) {
-        const { error: removeError } = await supabase.storage.from(UNKNOWN_APP_BUCKET).remove([log.image_path]);
+        const bucket = supabase.storage.from(UNKNOWN_APP_BUCKET);
+        const { data: removed, error: removeError } = await bucket.remove([log.image_path]);
         if (removeError) throw removeError;
+        /* A RLS a recusar o DELETE não dá erro: o remove devolve data: [] (revisão do 9a8b5e88).
+           Sem o objeto na resposta, só se apaga a linha se a imagem já não existir — um URL
+           assinado que falha com «not found». Se ela ainda lá está, a linha fica. */
+        if (!Array.isArray(removed) || removed.length === 0) {
+          const { error: signError } = await bucket.createSignedUrl(log.image_path, 60);
+          const gone = signError && (String(signError.statusCode ?? signError.status ?? '') === '404' || /not.?found/i.test(String(signError.message || '')));
+          if (!gone) throw new Error('A imagem não foi apagada do storage.');
+        }
       }
       const { error } = await supabase.from('unknown_app_image_logs').delete().eq('id', log.id);
       if (error) throw error;

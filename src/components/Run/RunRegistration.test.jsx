@@ -1885,6 +1885,25 @@ describe('RunRegistration — modo prova', () => {
     expect(localStorage.getItem('ironcoach:corrida-rascunho:nova')).toBeNull();
   });
 
+  it('o bucket a recusar a imagem (tamanho/tipo): a frase, sem "Tentar de novo"', async () => {
+    entrarPeloPrefill();
+    mocks.uploadError = { statusCode: '413', message: 'The object exceeded the maximum allowed size' };
+    try {
+      render(<RunRegistration onClose={onClose} />);
+      fireEvent.change(screen.getByLabelText(/Tempo oficial/), { target: { value: '1:53:42' } });
+      await act(async () => {
+        fireEvent.change(inputDaEtiqueta('Adicionar a medalha'), { target: { files: [ficheiroImagem('medalha.jpg')] } });
+      });
+      fireEvent.click(screen.getByRole('button', { name: /Registar a prova/i }));
+      fireEvent.click(await screen.findByRole('button', { name: /Prosseguir sem estas métricas/i }));
+      expect(await screen.findByText(/A corrida ficou gravada\. A imagem é demasiado grande para guardar\. Troca a imagem/)).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Tentar de novo' })).toBeNull();
+      expect(onClose).not.toHaveBeenCalled();
+    } finally {
+      mocks.uploadError = null;
+    }
+  });
+
   /* Revisão pré-deploy 2026-09-13: o rascunho guardava as memórias já no
      bucket, com uma chave sem a prova — iam parar ao registo de outra. */
   it('as memórias que já estão no bucket não se guardam no rascunho; as novas guardam-se com o id da prova', async () => {
