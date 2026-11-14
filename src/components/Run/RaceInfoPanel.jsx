@@ -28,7 +28,7 @@ export default function RaceInfoPanel({ ev }) {
     e.stopPropagation();
     setLoading(true);
     try {
-      const { data, error } = await invokeEdgeFunctionWithTimeout(
+      const { data, error, serverText } = await invokeEdgeFunctionWithTimeout(
         'enrich-race-event',
         { body: { race_event_id: ev.id } },
         // Pode ler várias páginas do site (principal + até 4 sub-páginas em
@@ -37,7 +37,9 @@ export default function RaceInfoPanel({ ev }) {
         90000,
       );
       if (error) {
-        showToast(typeof error === 'string' ? error : 'Não consegui obter informação deste site.', 'error');
+        // A frase do servidor («Endereço do site inválido…», «O site respondeu com um erro.»); um erro
+        // do gateway sem frase (texto em inglês da supabase-js) fica no aviso genérico.
+        showToast(serverText || 'Não consegui obter informação deste site.', 'error');
         return;
       }
       if (data?.race_event) {

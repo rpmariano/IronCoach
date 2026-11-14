@@ -95,15 +95,23 @@ describe('RaceInfoPanel', () => {
   });
 
   it('mostra um toast de erro quando a edge function falha, sem atualizar o store', async () => {
-    invokeEdgeFunctionWithTimeout.mockResolvedValue({ data: null, error: 'Não consegui aceder a este site.' });
+    invokeEdgeFunctionWithTimeout.mockResolvedValue({ data: null, error: 'Endereço do site inválido. Usa um endereço https:// (sem porta).', serverText: 'Endereço do site inválido. Usa um endereço https:// (sem porta).', status: 400 });
 
     renderPanel(BASE_EVENT);
     fireEvent.click(screen.getByRole('button', { name: /Obter do site/i }));
 
     await waitFor(() => {
-      expect(screen.getByText('Não consegui aceder a este site.')).toBeInTheDocument();
+      expect(screen.getByText('Endereço do site inválido. Usa um endereço https:// (sem porta).')).toBeInTheDocument();
     });
     expect(useAppStore.getState().raceEvents[0].web_info).toBeNull();
+  });
+
+  it('um erro do gateway sem frase do servidor fica no aviso genérico, nunca o texto em inglês', async () => {
+    invokeEdgeFunctionWithTimeout.mockResolvedValue({ data: null, error: 'Edge Function returned a non-2xx status code', serverText: null, status: 546 });
+    renderPanel(BASE_EVENT);
+    fireEvent.click(screen.getByRole('button', { name: /Obter do site/i }));
+    await waitFor(() => expect(screen.getByText('Não consegui obter informação deste site.')).toBeInTheDocument());
+    expect(screen.queryByText(/non-2xx/)).toBeNull();
   });
 
   it('mostra a mensagem devolvida quando o site não tem informação relevante', async () => {

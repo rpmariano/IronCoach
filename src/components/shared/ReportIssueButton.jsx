@@ -10,6 +10,7 @@ import { useToast } from './ToastProvider';
 import PremiumModal from './PremiumModal';
 import { Button } from './Button';
 import { FieldInput, FieldTextarea } from './registration/Field';
+import { storageRefusalText } from '../../utils/storageErrors';
 
 /* O botão arrasta-se (pedido 2026-09-23: tapava a caixa de texto do Coach).
    Ao largar encosta à margem mais perto e a posição fica neste telemóvel
@@ -177,6 +178,8 @@ export default function ReportIssueButton() {
       // partir deste caminho no momento em que abre o report.
       const attachmentPaths = [];
       let failedUploads = 0;
+      // A razão de uma recusa do bucket (tamanho, tipo), para o aviso dizer porquê.
+      let refusalText = null;
 
       // Upload ficheiros se existirem.
       //
@@ -209,6 +212,7 @@ export default function ReportIssueButton() {
           }
 
           if (uploadError) {
+            refusalText = refusalText || storageRefusalText(uploadError);
             console.error(`[ReportIssueButton] Falha ao anexar ${file.name}:`, uploadError);
             failedUploads++;
           } else {
@@ -233,7 +237,7 @@ export default function ReportIssueButton() {
 
       showToast(
         failedUploads > 0
-          ? `Report enviado, mas ${failedUploads} ficheiro(s) não foram anexados.`
+          ? `Report enviado, mas ${failedUploads} ficheiro(s) não foram anexados.${refusalText ? ` ${refusalText}` : ''}`
           : 'Obrigado! O teu report foi enviado à equipa.',
         failedUploads > 0 ? 'info' : 'success',
       );

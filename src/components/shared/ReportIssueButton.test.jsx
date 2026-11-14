@@ -180,6 +180,18 @@ describe('ReportIssueButton', () => {
     expect(await screen.findByText(/1 ficheiro\(s\) não foram anexados/)).toBeInTheDocument();
   });
 
+  it('o bucket a recusar o tamanho: o aviso diz porquê', async () => {
+    uploadMock.mockResolvedValueOnce({ error: { statusCode: '413', message: 'The object exceeded the maximum allowed size' } });
+    renderButton();
+    fireEvent.click(screen.getByLabelText('Reportar um problema'));
+    fillTitle('Título');
+    fireEvent.change(screen.getByPlaceholderText(/Descreve o problema/), { target: { value: 'Algo.' } });
+    fireEvent.change(document.querySelector('input[type="file"]'), { target: { files: [new File(['x'], 'a.jpg', { type: 'image/jpeg' })] } });
+    await waitFor(() => expect(screen.getByText('1 ficheiro(s) selecionado(s)')).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: /Enviar report/ }));
+    expect(await screen.findByText(/não foram anexados\. A imagem é demasiado grande para guardar\./)).toBeInTheDocument();
+  });
+
   it('permite selecionar imagens', async () => {
     renderButton();
     fireEvent.click(screen.getByLabelText('Reportar um problema'));

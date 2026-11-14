@@ -271,8 +271,10 @@ export function AnalysisFailure({
 }) {
   // A causa diz-se primeiro (sem rede, rede lenta, sessão); o que fazer vem
   // de quem monta (`children`), porque depende do registo.
-  const cause = quota ? 'quota' : classifyAnalysisFailure(detail);
-  const causa = quota ? { title: quota === 'day' ? 'Por hoje chega' : 'Uma pausa', lead: null } : CAUSA[cause];
+  const cause = quota === 'final' ? 'final' : quota ? 'quota' : classifyAnalysisFailure(detail);
+  const causa = quota
+    ? { title: quota === 'day' ? 'Por hoje chega' : quota === 'final' ? 'Não consegui usar esta imagem' : 'Uma pausa', lead: null }
+    : CAUSA[cause];
   /* O aviso vive no topo do formulário, e o botão que lançou a análise está
      na barra de baixo: com o formulário descido (a juntar prints), a falha
      aparecia fora do ecrã e a app parecia ter parado sem dizer nada

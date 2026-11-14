@@ -25,7 +25,7 @@ import PhotoReadSection from '../shared/registration/PhotoReadSection';
 import RegistrationSection from '../shared/registration/RegistrationSection';
 import { FieldInput, FieldTextarea } from '../shared/registration/Field';
 import { useClientRequestId, upsertById, } from '../../utils/clientRequestId';
-import { saveError, saveRefusal, reportSaveFailure, saveFailureMessage, isQuotaError } from '../../utils/saveFailure';
+import { saveError, saveRefusal, reportSaveFailure, saveFailureMessage, isNoRetryError } from '../../utils/saveFailure';
 import { printsNeedRead, AwaitingReadAction } from '../shared/registration/printsGate';
 import { PrintQuestions, questionsPayload, readQuestions } from '../shared/CarolQuestionsForm';
 
@@ -365,7 +365,7 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
       reportSaveFailure('body', err, { step: 'edit' });
       const message = saveFailureMessage(err, 'Não consegui guardar as alterações agora. Tenta de novo.');
       setErrorMsg(message);
-      setFailedSave(isQuotaError(err) ? null : { message, retry: () => handleSaveEdit() });
+      setFailedSave(isNoRetryError(err) ? null : { message, retry: () => handleSaveEdit() });
     } finally {
       setIsSaving(false);
     }
@@ -404,11 +404,11 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
     setReadNote(null);
     setErrorMsg('');
     try {
-      const { data, error, isQuota, quotaScope } = await invokeEdgeFunctionWithTimeout('analyze-body', {
+      const { data, error, isQuota, quotaScope, status } = await invokeEdgeFunctionWithTimeout('analyze-body', {
         body: { mode: 'preview', images: photos.map(p => p.base64), mime_type: 'image/jpeg', notes: notes.trim() || null },
       }, ANALYZE_TIMEOUT_MS);
       // A quota do dia (429): a frase da Carol, sem «Tentar de novo» nem save_failed.
-      if (error) throw isQuota ? saveError({ isQuota, quotaScope, serverText: error }) : new Error(error);
+      if (error) throw (isQuota || status === 413) ? saveError({ isQuota, quotaScope, status, serverText: error }) : new Error(error);
       if (data?.error) throw saveRefusal(data.error);
       const preview = data?.preview || {};
       const merged = mergeBodyPreview(metricsRef.current, preview.metrics);
@@ -480,7 +480,7 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
       reportSaveFailure('body', err, { step: 'manual' });
       const message = saveFailureMessage(err, 'Não consegui gravar a avaliação agora. Tenta de novo — não fica repetida.');
       setErrorMsg(message);
-      setFailedSave(isQuotaError(err) ? null : { message, retry: () => saveFromFields() });
+      setFailedSave(isNoRetryError(err) ? null : { message, retry: () => saveFromFields() });
     } finally {
       setIsSaving(false);
     }
