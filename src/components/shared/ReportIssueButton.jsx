@@ -47,7 +47,7 @@ export function clampBottom(bottom, viewportH) {
  * data/hora/utilizador/página são gravados automaticamente em bug_reports.
  */
 export default function ReportIssueButton() {
-  const { session, profile, activeTab, openCreationMode, editingRaceId } = useAppStore();
+  const { session, activeTab, openCreationMode, editingRaceId } = useAppStore();
   const { showToast } = useToast();
 
   const [isOpen, setIsOpen] = useState(false);
@@ -221,8 +221,8 @@ export default function ReportIssueButton() {
 
       const { error } = await supabase.from('bug_reports').insert({
         user_id: userId,
-        user_email: session?.user?.email || null,
-        user_name: profile?.full_name || null,
+        // O email e o nome preenche-os o servidor (guarda dos bug_reports, 2026-11-14): o que o
+        // cliente mandava não era de confiança (e o full_name nem existia no perfil).
         title: trimmedTitle,
         description: trimmed,
         page: currentPageLabel({ activeTab, openCreationMode, editingRaceId }),
@@ -305,6 +305,7 @@ export default function ReportIssueButton() {
               onChange={(e) => setDescription(e.target.value)}
               placeholder="Descreve o problema — o que fizeste e o que esperavas que acontecesse..."
               className="resize-none"
+              maxLength={5000}
               disabled={submitting}
             />
           </div>
