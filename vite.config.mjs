@@ -1,5 +1,6 @@
 import { defineConfig } from 'vite';
 import { entryBuildId } from './src/lib/buildId.js';
+import { injectCsp } from './src/lib/csp.js';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import { fileURLToPath, URL } from 'node:url';
@@ -35,6 +36,16 @@ function appBuildId() {
       const id = entryBuildId(bundle) || Date.now().toString(36);
       this.emitFile({ type: 'asset', fileName: 'version.json', source: JSON.stringify({ build: id }) });
     },
+  };
+}
+
+/* Content-Security-Policy por <meta>, só no build (auditoria M5 — ver src/lib/csp.js): em
+   desenvolvimento o Vite e o plugin do React injetam scripts inline que ela bloquearia. */
+function contentSecurityPolicy() {
+  return {
+    name: 'ironcoach-csp',
+    apply: 'build',
+    transformIndexHtml: { order: 'post', handler: (html) => injectCsp(html) },
   };
 }
 
@@ -77,6 +88,7 @@ export default defineConfig({
     tailwindcss(),
     react(),
     appBuildId(),
+    contentSecurityPolicy(),
   ],
   resolve: {
     alias: {
