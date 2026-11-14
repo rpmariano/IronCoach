@@ -12,6 +12,7 @@
 
 import { isWalkPlanItem } from "./formulas/runKinds.ts";
 import { buildTrainingWeatherContext, trainingHours, weatherAtHours, type TrainingDay } from "./formulas/trainingWeather.ts";
+import { asExternalData } from "./externalData.ts";
 
 const TIMEOUT_MS = 4000;
 
@@ -98,11 +99,12 @@ export async function fetchTrainingWeatherBlock(
       const dayHours = label === "hoje" ? hours.filter((h) => h >= hourNow) : hours;
       days.push({ date, label, training: dayItems.map(describeItem).join(" + "), weather: weatherAtHours(json.hourly, date, dayHours) });
     }
-    return buildTrainingWeatherContext(
+    // Dados de fora (a previsão): marcados como dados (externalData.ts).
+    return asExternalData(buildTrainingWeatherContext(
       { city: String(place.training_city || "").trim() || "o sítio onde treina", altitudeM },
       days,
       habitual,
-    );
+    ));
   } catch (e) {
     console.warn("trainingWeather: falhou", e);
     return null;

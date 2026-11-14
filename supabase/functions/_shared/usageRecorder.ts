@@ -19,7 +19,7 @@
    Funções sem utilizador (cron) chamam recordUsage diretamente. */
 
 import { createClient, type SupabaseClient } from "jsr:@supabase/supabase-js@2";
-import type { GeminiUsage } from "./geminiUsage.ts";
+import { type GeminiUsage, runWithUsageSink, usageTokens } from "./geminiUsage.ts";
 
 export type UsageRow = {
   user_id: string | null;
@@ -31,6 +31,8 @@ export type UsageRow = {
   thoughts_tokens: number;
   calls: number;
   source: "server";
+  /** A hora do pedido, a mesma nas linhas de um pedido (a quota conta pedidos). */
+  created_at?: string;
 };
 
 const int = (v: unknown) => Math.max(0, Math.round(Number(v) || 0));
@@ -113,9 +115,13 @@ export async function recordUsage(
   usage: GeminiUsage | Record<string, unknown> | null | undefined,
   insert: Insert = defaultInsert,
 ): Promise<void> {
+  // As linhas de um mesmo pedido (uma por modelo, com o Flash de recurso)
+  // levam a mesma hora: a quota do Gemini conta pedidos, não linhas
+  // (geminiQuota.ts — revisão do lote de segurança, 2026-11-14).
+  const createdAt = new Date().toISOString();
   for (const row of usageRows(fn, userId, usage)) {
     try {
-      const { error } = await insert(row);
+      const { error } = await insert({ ...row, created_at: createdAt });
       if (error) console.warn(`[ai_usage] ${fn}: falha a gravar consumo`, error);
     } catch (e) {
       console.warn(`[ai_usage] ${fn}: falha a gravar consumo`, e);
@@ -135,22 +141,49 @@ function runAfterResponse(p: Promise<void>): Promise<void> | void {
   return p;
 }
 
+/** O que gravar: o `usage` da resposta, ou o que o pedido somou de facto
+ *  (usageFromGemini) quando é mais — a resposta de erro não traz usage, e uma
+ *  chamada cujo resultado se deitou fora também conta (2.ª auditoria de
+ *  segurança, 2026-11-14, M1). */
+// deno-lint-ignore no-explicit-any
+export function usageToRecord(bodyUsage: any, sinkTotal: GeminiUsage | null): GeminiUsage | Record<string, unknown> | null {
+  const fromBody = bodyUsage && typeof bodyUsage === "object" ? bodyUsage : null;
+  if (sinkTotal && usageTokens(sinkTotal) > usageTokens(fromBody)) return sinkTotal;
+  return fromBody;
+}
+
 export function withUsageRecording(
   fn: string,
   handler: (req: Request) => Response | Promise<Response>,
   insert: Insert = defaultInsert,
 ): (req: Request) => Promise<Response> {
   return async (req: Request) => {
-    const res = await handler(req);
+    const userId = () => userIdFromAuth(req.headers.get("Authorization"));
+    const { sink, result } = runWithUsageSink(() => handler(req));
+    let res: Response;
     try {
-      if (!(res.headers.get("content-type") || "").includes("application/json")) return res;
-      const body = await res.clone().json();
-      if (body && typeof body === "object" && body.usage) {
-        await runAfterResponse(recordUsage(fn, userIdFromAuth(req.headers.get("Authorization")), body.usage, insert));
+      res = await result;
+    } catch (e) {
+      // O handler rebentou depois de chamar o Gemini: grava o que se gastou
+      // (num finally do pedido) e deixa o erro seguir.
+      if (sink.total) await runAfterResponse(recordUsage(fn, userId(), sink.total, insert));
+      throw e;
+    }
+    // O total fecha aqui: o que correr depois de a resposta sair (waitUntil)
+    // grava-se por conta própria.
+    const sinkTotal = sink.total;
+    // deno-lint-ignore no-explicit-any
+    let bodyUsage: any = null;
+    try {
+      if ((res.headers.get("content-type") || "").includes("application/json")) {
+        const body = await res.clone().json();
+        if (body && typeof body === "object") bodyUsage = body.usage ?? null;
       }
     } catch (e) {
       console.warn(`[ai_usage] ${fn}: resposta ilegível para o registo de consumo`, e);
     }
+    const usage = usageToRecord(bodyUsage, sinkTotal);
+    if (usage) await runAfterResponse(recordUsage(fn, userId(), usage, insert));
     return res;
   };
 }

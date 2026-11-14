@@ -8,12 +8,12 @@
 -- (coach-chat/targetsReview.ts). Uma revisão por gatilho: a chave
 -- 'targets_review:<plan_id>' ou 'targets_review:race:<race_id>' fica em
 -- coach_proactive_log com trigger = 'targets_review', quando a mensagem é
--- gravada, com a proposta em payload (migração 20261025210000). É esse
+-- gravada, com a proposta em payload (migração 20261025204514). É esse
 -- registo (nas últimas 24 h) que o «Atualiza os objetivos» aplica.
 -- (Comentário corrigido depois de aplicada; o SQL não mudou.)
 --
 -- O que muda: o check de trigger aceita 'targets_review'. A lista inclui
--- 'cup_map' (migração 20261025160000): este check substitui o dela, e as duas
+-- 'cup_map' (migração 20261025171509): este check substitui o dela, e as duas
 -- têm de se aplicar por ordem.
 --
 -- ORDEM DE DEPLOY: antes do coach-chat. Sem ela, o registo falha (fica um
@@ -21,7 +21,7 @@
 -- encontra (e não aplica nada).
 --
 -- ROLLBACK: delete from public.coach_proactive_log where trigger = 'targets_review';
---   e repor o check da 20261025160000.
+--   e repor o check da 20261025171509.
 -- ============================================================================
 
 begin;

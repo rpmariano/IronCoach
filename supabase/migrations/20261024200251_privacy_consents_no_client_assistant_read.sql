@@ -4,7 +4,7 @@
 --
 -- A política "own privacy_consents insert" (20260921120000_percentile_snapshots)
 -- deixa o atleta inserir no seu livro qualquer kind que o check aceite — e
--- desde 20261024120000_assistant_read isso inclui 'assistant_read'. Essas
+-- desde 20261024165159_assistant_read isso inclui 'assistant_read'. Essas
 -- linhas só podem nascer nas RPCs create_assistant_token/revoke_assistant_token,
 -- junto com o token a que dizem respeito; uma linha escrita à mão pelo
 -- cliente era um consentimento (ou uma retirada) sem token nenhum por trás.

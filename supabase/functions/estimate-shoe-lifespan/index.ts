@@ -27,6 +27,7 @@ import { upstreamErrorText } from "../_shared/carolTone.ts";
 import { usageFromGemini } from "../_shared/geminiUsage.ts";
 import { attemptTimeoutMs, geminiHeaders, geminiUrl, geminiWithFallback, thinkingConfig } from "../_shared/geminiModel.ts";
 import { withUsageRecording } from "../_shared/usageRecorder.ts";
+import { checkGeminiQuota, geminiQuotaBody } from "../_shared/geminiQuota.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -133,6 +134,10 @@ Deno.serve(withUsageRecording("estimate-shoe-lifespan", async (req) => {
     if (userError || !userData?.user) {
       return jsonResponse({ error: "Sessão inválida" }, 401);
     }
+    // A quota do Gemini por atleta (auditoria de segurança, 2026-11-13;
+    // _shared/geminiQuota.ts): passado o limite, 429 com a frase da Carol.
+    const geminiQuota = await checkGeminiQuota(userData.user.id, { fn: "estimate-shoe-lifespan" });
+    if (!geminiQuota.ok) return jsonResponse(geminiQuotaBody(geminiQuota), 429);
 
     const body = await req.json();
     const brand = typeof body.brand === "string" ? body.brand.trim().slice(0, 60) : "";

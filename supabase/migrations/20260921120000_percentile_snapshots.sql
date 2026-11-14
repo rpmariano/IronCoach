@@ -226,7 +226,7 @@ begin
   return new;
 end $$;
 
--- Lição de 20260918001600: uma função de trigger não tem de estar exposta
+-- Lição de 20260918001630: uma função de trigger não tem de estar exposta
 -- como RPC. O privilégio EXECUTE é verificado ao CRIAR o trigger, não quando
 -- ele dispara — retirá-lo a anon/authenticated não o desliga.
 revoke execute on function public.clear_leaderboard_name_on_consent_revoked() from public, anon, authenticated;

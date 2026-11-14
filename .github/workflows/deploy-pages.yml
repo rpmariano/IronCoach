@@ -12,13 +12,15 @@ name: Deploy React app to GitHub Pages
 on:
   push:
     branches: [master]
-  # Permite publicar a partir de outro ramo para validar antes de fazer merge.
+  # Execução manual a partir de qualquer ramo corre só o build e os testes
+  # (para validar antes de fazer merge); a publicação só acontece a partir de
+  # master — ver o `if:` do job deploy.
   workflow_dispatch:
 
+# Mínimo por omissão; pages: write e id-token: write só no job deploy
+# (auditoria de segurança, 2026-11-14).
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 # Um deploy de cada vez; não cancela um a meio para não deixar o site incompleto.
 concurrency:
@@ -28,14 +30,19 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    # configure-pages lê a configuração do Pages pela API — precisa de
+    # pages: read; não publica nada (só o job deploy publica).
+    permissions:
+      contents: read
+      pages: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       # Node 24 para igualar o ambiente local onde os testes passam. Com Node 20
       # o jsdom rebenta a carregar o undici ("webidl.util.markAsUncloneable is
       # not a function") e nenhum teste chega a arrancar. O vite@8 também exige
       # ^20.19.0 || >=22.12.0.
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 24
           cache: npm
@@ -53,18 +60,25 @@ jobs:
           VITE_BASE: /IronCoach/
         run: npm run build
 
-      - uses: actions/configure-pages@v5
+      - uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b # v5.0.0
 
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3.0.1
         with:
           path: dist
 
   deploy:
     needs: build
+    # workflow_dispatch não filtra ramos: sem isto, uma execução manual a
+    # partir de qualquer ramo publicava no site de produção
+    # (auditoria de segurança, 2026-11-14).
+    if: github.ref == 'refs/heads/master'
     runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4.0.5

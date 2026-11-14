@@ -1,6 +1,6 @@
 // Despensa: alimento genérico com variantes (bug #87, 2026-10-25).
 // Contrato: specs/despensa-variantes-contrato.md. Migração
-// 20261025140000_athlete_foods_variants (parent_id, variant_label).
+// 20261025163616_athlete_foods_variants (parent_id, variant_label).
 //
 // «Coxa de frango» é o GENÉRICO; «Coxa de frango com pele» e «… sem pele»
 // são VARIANTES (linhas filhas), cada uma com os seus valores por 100 g.

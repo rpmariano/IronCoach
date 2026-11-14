@@ -28,20 +28,24 @@
 import { foodKey } from "./foodKey.ts";
 
 const EXPLICIT_RE = /(?:^| )isometri/;
+/** «Agachamento com pausa isométrica», «… com isometria»: um exercício de reps
+ *  com uma pausa — não é isométrico (revisão de 1a481508). */
+const PAUSE_RE = /(?:^| )(?:pausas?|com isometria)(?: |$)/;
 const HOLD_RE = /(?:^| )hold(?: |$)/;
 const HOLD_AND_PRESS_RE = /(?:^| )hold and press(?: |$)/;
 const MOVEMENT_RE = new RegExp(
   "(?:^| )(?:elevac(?:ao|oes)|remadas?|rows?|flex(?:ao|oes)|push ?ups?|pull ?ups?|chin ?ups?|dips?|trx|jacks?|toques?|taps?|rocks?|" +
     "dinamicas?|rotac(?:ao|oes)|rotations?|saltos?|jumps?|up and down|cotovelos?|elbows?|ao peito|alternad[ao]s?|caminhadas?|" +
-    "deslocamentos?|walks?|walkouts?|raises?|lifts?|pikes?|saws?|reach(?:es)?|crunch(?:es)?|climbers?|crawls?|spiderman|downward)(?: |$)",
+    "deslocamentos?|walks?|walkouts?|raises?|lifts?|pikes?|saws?|reach(?:es)?|crunch(?:es)?|climbers?|crawls?|spiderman|downward|" +
+    "tucks?|abduc(?:ao|oes))(?: |$)",
 );
 const POSITIVE_RE = new RegExp(
   "(?:^| )(?:prancha|plank|hollow|wall sits?|wall squats?|cadeirinha|agachamento na parede|cadeira (?:na )?parede|" +
-    "dead hang|bar hang|passive hang|suspensao|l sit)(?: |$)",
+    "dead hangs?|bar hangs?|passive hangs?|suspensao|l sit)(?: |$)",
 );
 const STRONG_RE = new RegExp(
   "^(?:prancha(?: lateral)?|(?:side |front )?plank|hollow(?: body)? hold|wall sits?|cadeirinha|agachamento na parede|" +
-    "dead hang|suspensao(?: passiva)? na barra(?: fixa)?|l sit)$",
+    "dead hangs?|suspensao(?: passiva)? na barra(?: fixa)?|l sit)$",
 );
 
 /** O exercício é isométrico: prescreve-se e regista-se em segundos por série. */
@@ -49,6 +53,7 @@ export function isIsometricExercise(name: unknown): boolean {
   if (typeof name !== "string") return false;
   const key = foodKey(name);
   if (!key) return false;
+  if (PAUSE_RE.test(key)) return false;
   if (EXPLICIT_RE.test(key)) return true;
   if (HOLD_RE.test(key) && !HOLD_AND_PRESS_RE.test(key)) return true;
   if (MOVEMENT_RE.test(key)) return false;
@@ -60,5 +65,8 @@ export function isIsometricExercise(name: unknown): boolean {
 export function isStrongIsometric(name: unknown): boolean {
   if (typeof name !== "string") return false;
   const key = foodKey(name);
-  return !!key && (STRONG_RE.test(key) || EXPLICIT_RE.test(key));
+  if (!key || PAUSE_RE.test(key)) return false;
+  // «Isométric…» só é forte sem movimento no nome («Remada isométrica» é
+  // isométrica pelo nome, mas não converte reps: revisão de 1a481508).
+  return STRONG_RE.test(key) || (EXPLICIT_RE.test(key) && !MOVEMENT_RE.test(key));
 }

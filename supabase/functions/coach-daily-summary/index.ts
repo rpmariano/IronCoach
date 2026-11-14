@@ -41,6 +41,7 @@ import { attemptTimeoutMs, geminiHeaders, geminiUrl, geminiWithFallback, thinkin
 import { isWalkPlanItem, runMatchesPlanItem, runsOnly, walkIntensity, walksOnly } from "../_shared/formulas/runKinds.ts";
 import { dayCompleteness, mealLoggingProfile, mealProfileStartISO } from "../_shared/formulas/dayCompleteness.ts";
 import { calorieGoalResolver, GOAL_HISTORY_SELECT } from "../_shared/formulas/goalHistory.ts";
+import { checkGeminiQuota, geminiQuotaBody, geminiQuotaNotice } from "../_shared/geminiQuota.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -1042,6 +1043,17 @@ Deno.serve(withUsageRecording("coach-daily-summary", async (req) => {
         .eq("date", today)
         .maybeSingle();
       if (cached) return jsonResponse({ summary: cached, cached: true });
+    }
+
+    // A quota do Gemini (revisão do lote de segurança, 2026-11-14): também o
+    // «Atualizar» (force=true) a respeita. Passada, devolve o resumo de hoje
+    // que já houver (como a cache, com a janela da quota); sem nenhum, o 429.
+    const geminiQuota = await checkGeminiQuota(userId, { fn: "coach-daily-summary" });
+    if (!geminiQuota.ok) {
+      const { data: cachedToday } = await sb.from("coach_daily_summary").select("*")
+        .eq("user_id", userId).eq("date", today).maybeSingle();
+      if (cachedToday) return jsonResponse({ summary: cachedToday, cached: true, ...geminiQuotaNotice(geminiQuota) });
+      return jsonResponse(geminiQuotaBody(geminiQuota), 429);
     }
 
     // A memória durável e a conversa recente do chat (Fase 1, ação 1.3): o

@@ -423,6 +423,22 @@ enabled = true
 # JSON string passed through to pg-delta SQL formatting.
 # format_options = "{\"keywordCase\":\"upper\",\"indent\":2,\"maxWidth\":80,\"commaStyle\":\"trailing\"}"
 
+# O coach-chat valida a sessão lá dentro (sb.auth.getUser, com o JWT do
+# atleta e a RLS dele) e responde ao 401 com a frase da Carol
+# (CHAT_SESSION_TEXT) — o gateway respondia antes, com um 401 genérico que a
+# app não sabe dizer. Está assim em produção (verify_jwt = false) e fica
+# declarado para um deploy novo não a criar com verify_jwt = true (auditoria
+# de segurança, 2026-11-13).
+[functions.coach-chat]
+verify_jwt = false
+
+# O send-water-reminders é chamado pelo pg_cron, sem JWT de utilizador: a
+# autenticação é o cabeçalho x-cron-secret, verificado lá dentro em tempo
+# constante (_shared/timingSafeEqual.ts). Está assim em produção e fica
+# declarado pela mesma razão (auditoria de segurança, 2026-11-13).
+[functions.send-water-reminders]
+verify_jwt = false
+
 # O coach-proactive-tick é chamado pelo pg_cron, sem JWT de utilizador: a
 # autenticação é o cabeçalho x-cron-secret, verificado dentro da função (como
 # no send-water-reminders). Sem isto, o deploy criava-a com verify_jwt = true

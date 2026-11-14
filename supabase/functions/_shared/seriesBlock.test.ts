@@ -13,6 +13,7 @@ import {
 } from "./seriesBlock.ts";
 import type { RoundRole } from "./formulas/seriesArbitration.ts";
 import { cupRoundRoles } from "./formulas/cupRoles.ts";
+import { EXTERNAL_DATA_NOTE } from "./externalData.ts";
 
 /* O bloco COMPETIÇÃO POR JORNADAS (specs/trofeu.md §5, Fase 2, 2026-09-26).
    Os textos correm sobre buildSeriesBlock (puro), montado a partir das
@@ -183,6 +184,7 @@ const EX_TEXT = [
   "Pontos: não fales de pontos (a base da pontuação ainda não é conhecida).",
   "Época anterior — Troféu de Teste 2025/26: 8 de 11 presenças, 12.º no escalão.",
   "Regras: as provas principais dele mandam sempre. O papel de cada jornada é o desta lista — calculado; nunca o refaças de cabeça, nem inventes datas. Se ele escolher outro papel, explica uma vez o custo e aceita sem julgar. Com dor, doença ou um alarme, ele salta e não se discute; os pontos nunca pesam contra isso. Nunca uses o clube ou os colegas para o pressionar a correr, não fales de quantos atletas o clube precisa, nem de outros atletas ou das classificações deles.",
+  EXTERNAL_DATA_NOTE,
   "No balanço de uma jornada (depois da prova), fecha com o papel da seguinte, tal como está nesta lista. O que ele decidir numa jornada grava-se com set_cup_participation.",
 ].join("\n");
 

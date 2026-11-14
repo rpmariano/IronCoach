@@ -61,6 +61,10 @@ import { parseAnsweredQuestions, parseRecordQuestions, RECORD_QUESTIONS_SCHEMA, 
 import { ACTIVITY_PERIODS_PROMPT, ACTIVITY_PERIODS_SCHEMA, durationBreakdown, sessionDurationSeconds } from "../_shared/formulas/sessionDuration.ts";
 import { isIsometricExercise } from "../_shared/formulas/isometric.ts";
 import { foodKey } from "../_shared/formulas/foodKey.ts";
+import { checkGeminiQuota, geminiQuotaBody, quotaReplayCandidate } from "../_shared/geminiQuota.ts";
+import { isRealDateISO } from "../_shared/realDate.ts";
+import { hasOversizedImage, IMAGE_TOO_LARGE_TEXT } from "../_shared/imageLimits.ts";
+import { geminiResponseSummary } from "../_shared/geminiLog.ts";
 
 const MAX_PHOTOS = 6;
 const MAX_NOTES_LENGTH = 500;
@@ -424,7 +428,7 @@ async function analyzeWithGemini(
   try {
     parsed = JSON.parse(rawText);
   } catch {
-    console.error("Gemini devolveu JSON inválido:", rawText);
+    console.error("Gemini devolveu JSON inválido:", geminiResponseSummary(geminiJson, rawText));
     throw new Error("A análise devolveu um formato inesperado. Tenta novamente.");
   }
 
@@ -1022,8 +1026,8 @@ async function generateGymCoachNotes(
     let parsed: any = {};
     try {
       parsed = JSON.parse(rawText.replace(/```json\n/g, '').replace(/```/g, ''));
-    } catch (e) {
-      console.error("Coach generation json parse error", e, rawText);
+    } catch {
+      console.error("Coach generation json parse error", geminiResponseSummary(json, rawText));
     }
     return { 
       text: parsed.text?.trim() || null, 
@@ -1231,8 +1235,17 @@ Deno.serve(withUsageRecording("analyze-gym", async (req) => {
       return jsonResponse({ error: "Sessão inválida" }, 401);
     }
     const userId = userData.user.id;
+    // A quota do Gemini por atleta (auditoria de segurança, 2026-11-13;
+    // _shared/geminiQuota.ts): passado o limite, 429 com a frase da Carol.
+    const geminiQuota = await checkGeminiQuota(userId, { fn: "analyze-gym" });
 
     const body = await req.json();
+    if (hasOversizedImage(body)) return jsonResponse({ error: IMAGE_TOO_LARGE_TEXT }, 413);
+    // A quota: 429 antes de qualquer chamada ao Gemini. Só um pedido que pode
+    // ser o reenvio de um registo já gravado segue até ao replay, que o devolve
+    // sem o Gemini; depois dele, o 429 é incondicional (quotaReplayCandidate —
+    // revisão de 4003c2f4: o id vem do cliente e não pode saltar a quota).
+    if (!geminiQuota.ok && !quotaReplayCandidate(body, "session_id")) return jsonResponse(geminiQuotaBody(geminiQuota), 429);
     const rawNotes = typeof body.notes === "string" ? body.notes.slice(0, MAX_NOTES_LENGTH) : null;
 
     // Valores que o utilizador escreveu no formulário. Ganham sempre à
@@ -1350,9 +1363,11 @@ Deno.serve(withUsageRecording("analyze-gym", async (req) => {
     // Desfeita entretanto: este pedido grava-a de novo, como se fosse o primeiro.
     const alreadyReply = alreadySaved ? await settled(alreadySaved) : null;
     if (alreadyReply) return alreadyReply;
+    // Não era um reenvio resolvido: daqui para baixo há Gemini.
+    if (!geminiQuota.ok) return jsonResponse(geminiQuotaBody(geminiQuota), 429);
 
     if (body.mode === "manual") {
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(body.date ?? "")) {
+      if (!isRealDateISO(body.date ?? "")) {
         return jsonResponse({ error: "Data inválida (esperado YYYY-MM-DD)" }, 400);
       }
       const kind = body.kind === "aula" ? "aula" : "forca";
@@ -1619,7 +1634,7 @@ Deno.serve(withUsageRecording("analyze-gym", async (req) => {
     if (images.length > MAX_PHOTOS) {
       return jsonResponse({ error: `Máximo de ${MAX_PHOTOS} imagens por sessão` }, 400);
     }
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(date ?? "")) {
+    if (!isRealDateISO(date ?? "")) {
       return jsonResponse({ error: "Data inválida (esperado YYYY-MM-DD)" }, 400);
     }
     // Qualquer valor que não seja 'aula' cai em 'forca' — inclui os pedidos de

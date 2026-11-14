@@ -13,6 +13,7 @@ const ISO = [
   "Hollow hold com pernas estendidas", "Wall sit uma perna", "Cadeirinha a uma perna", "Bar hang", "Passive hang", "Wall squat",
   "Isometric split squat hold", "Bird dog hold", "Prancha RKC", "Prancha alta", "Prancha em antebraços", "Side plank (joelhos)",
   "Hollow hold pernas fletidas", "Single leg glute bridge hold", "Suspensão passiva", "Prancha lateral com perna elevada",
+  "Dead hangs",
 ];
 const MOV = [
   "Elevação de pernas em suspensão na barra", "Elevação de joelhos em suspensão", "Elevações de joelhos em suspensão",
@@ -29,6 +30,9 @@ const MOV = [
   "Superman com rotação", "L-sit pull-up", "Joelhos ao peito", "Prancha com joelho ao cotovelo", "Prancha lateral com rotação",
   "Prancha com toque no pé", "Wall sit com elevação de calcanhares", "Dead hang pull-up", "Prancha com deslocamento",
   "Prancha caminhada", "Escalador", "Peso morto romeno", "", null, 3,
+  // Revisão de 1a481508.
+  "Plank knee tuck", "Plank knee tucks", "Prancha com abdução de perna", "Agachamento com pausa isométrica 3×8",
+  "Agachamento com pausa isométrica", "Supino com isometria",
 ];
 
 Deno.test("isIsometricExercise: os isométricos", () => {
@@ -41,12 +45,15 @@ Deno.test("isIsometricExercise: os que têm movimento (ou nunca foram isométric
 
 Deno.test("isStrongIsometric: só o nome sem dúvida — é aí que as reps passam a segundos", () => {
   for (const n of ["Prancha", "Prancha lateral", "Plank", "Side plank", "Front plank", "Hollow hold", "Hollow body hold", "Wall sit", "Wall-sit",
-    "Cadeirinha", "Agachamento na parede", "Dead hang", "Suspensão na barra", "Suspensão passiva na barra", "L-sit", "Remada isométrica"]) {
+    "Cadeirinha", "Agachamento na parede", "Dead hang", "Dead hangs", "Suspensão na barra", "Suspensão passiva na barra", "L-sit",
+    "Agachamento isométrico", "Ponte isométrica", "Isometria de glúteo"]) {
     assertEquals(isStrongIsometric(n), true, n);
   }
   // Isométricos, mas com o nome a dizer mais do que o exercício: não se convertem.
   for (const n of ["Prancha com joelhos apoiados", "Pallof hold", "Glute bridge hold", "Bird dog hold", "Wall sit uma perna", "Prancha RKC",
-    "Bear plank", "Copenhagen plank", "Superman hold", "Plank walk", "Agachamento", "", null]) {
+    "Bear plank", "Copenhagen plank", "Superman hold", "Plank walk", "Agachamento", "", null,
+    // Revisão de 1a481508: «isométric» não basta com movimento ou pausa no nome.
+    "Remada isométrica", "Flexão isométrica", "Agachamento com pausa isométrica 3×8"]) {
     assertEquals(isStrongIsometric(n), false, String(n));
   }
 });

@@ -16,6 +16,8 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 import webpush from "npm:web-push@3";
 import { raceDayWaterPhase, waterReminderMessage, type RaceForWater } from "./message.ts";
 import { carolQuietSince, usersQuietAfterCarol } from "./afterCarol.ts";
+import { timingSafeEqual } from "../_shared/timingSafeEqual.ts";
+import { isGonePushError, PUSH_SEND_TIMEOUT_MS, sendToAllWithTimeout } from "../_shared/pushSend.ts";
 
 const corsHeaders = { "Content-Type": "application/json" };
 
@@ -72,7 +74,8 @@ function isWithinReminderHours(hour: number, startHour: number | null, endHour: 
 async function handler(req: Request): Promise<Response> {
   const cronSecret = Deno.env.get("CRON_SECRET");
   const providedSecret = req.headers.get("x-cron-secret");
-  if (!cronSecret || providedSecret !== cronSecret) {
+  // Em tempo constante (auditoria de segurança, 2026-11-13).
+  if (!cronSecret || !timingSafeEqual(providedSecret, cronSecret)) {
     return jsonResponse({ error: "Não autorizado" }, 401);
   }
 
@@ -204,24 +207,27 @@ async function handler(req: Request): Promise<Response> {
         afterRace: phases.includes("depois"),
       }));
 
-      for (const sub of subs) {
-        try {
-          await webpush.sendNotification(
-            { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
-            payload,
-          );
+      // Em paralelo e com prazo de 10 s cada (auditoria de segurança,
+      // 2026-11-14): um serviço de push pendurado já não prende os outros
+      // envios nem o resto do ciclo (_shared/pushSend.ts).
+      const results = await sendToAllWithTimeout(subs, (sub) =>
+        webpush.sendNotification(
+          { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
+          payload,
+          { timeout: PUSH_SEND_TIMEOUT_MS },
+        ));
+      for (const result of results) {
+        if (result.ok) {
           anySuccess = true;
           sent++;
-        } catch (e) {
-          failed++;
-          // deno-lint-ignore no-explicit-any
-          const statusCode = (e as any)?.statusCode;
-          if (statusCode === 404 || statusCode === 410) {
-            // Subscrição expirada/revogada pelo browser — deixa de ser válida.
-            await sb.from("push_subscriptions").delete().eq("id", sub.id);
-          } else {
-            console.error("Falha a enviar push:", sub.id, e);
-          }
+          continue;
+        }
+        failed++;
+        if (isGonePushError(result.error)) {
+          // Subscrição expirada/revogada pelo browser — deixa de ser válida.
+          await sb.from("push_subscriptions").delete().eq("id", result.sub.id);
+        } else {
+          console.error("Falha a enviar push:", result.sub.id, result.error);
         }
       }
 

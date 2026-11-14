@@ -1,10 +1,10 @@
 -- ============================================================================
 -- Repõe a política de INSERT no bucket bug-report-photos.
 --
--- Ficou órfã desde 20260822200000_remove_bug_report_screenshot.sql, que a
+-- Ficou órfã desde 20260822235257_remove_bug_report_screenshot.sql, que a
 -- apagou de propósito ao recuar a funcionalidade de screenshot. Quando os
 -- anexos (imagens/vídeos) foram reintroduzidos em
--- 20260824100000_bug_reports_attachments_and_notifications.sql, só a
+-- 20260824130937_bug_reports_attachments_and_notifications.sql, só a
 -- política de leitura (admin/revisor) foi recriada — esta de escrita
 -- ficou esquecida, e sem ela nenhum upload passava (RLS bloqueava
 -- silenciosamente, o que rebentava o submit inteiro do report).

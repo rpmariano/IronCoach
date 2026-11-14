@@ -1,7 +1,7 @@
 -- ============================================================================
 -- Funções de trigger não têm de estar expostas como RPC
 -- ============================================================================
--- APLICADA EM PRODUÇÃO a 2026-09-18 00:16 UTC (version 20260918001600).
+-- APLICADA EM PRODUÇÃO a 2026-09-18 00:16 UTC (version 20260918001630).
 --
 -- Advisor de segurança do Supabase, lints 0028 e 0029: as duas funções de
 -- trigger deste projeto são SECURITY DEFINER e estavam invocáveis por `anon`

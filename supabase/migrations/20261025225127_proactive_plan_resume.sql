@@ -22,7 +22,7 @@
 -- e o plano a meio não é retomado.
 --
 -- ROLLBACK: delete das linhas com trigger 'plan_resume' nas duas tabelas e
--- repor os checks das migrações 20261025200000 (log) e anterior (pushes).
+-- repor os checks das migrações 20261025191142 (log) e anterior (pushes).
 -- ============================================================================
 
 begin;

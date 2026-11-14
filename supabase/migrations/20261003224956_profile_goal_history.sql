@@ -22,7 +22,7 @@
 --     outro caminho ficam registados sem a app ter de se lembrar.
 --   · Ninguém escreve aqui pela API: só há política de leitura das próprias
 --     linhas. A função do trigger é SECURITY DEFINER e não fica exposta como
---     RPC (molde de 20260918001600_revoke_execute_trigger_functions.sql).
+--     RPC (molde de 20260918001630_revoke_execute_trigger_functions.sql).
 --
 -- PONTO DE PARTIDA. Não havia histórico nenhum; o que se sabe ao certo é o
 -- valor de hoje e o que cada proposta aceite mudou (coach_goal_proposals:

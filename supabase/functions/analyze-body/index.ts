@@ -53,6 +53,10 @@ import { type GeminiUsage, usageFromGemini } from "../_shared/geminiUsage.ts";
 import { withUsageRecording } from "../_shared/usageRecorder.ts";
 import { findByClientRequestId, insertOnce, parseClientRequestId } from "../_shared/idempotency.ts";
 import { fastingFromAnswers, parseAnsweredQuestions, parseRecordQuestions, RECORD_QUESTIONS_SCHEMA, recordAnswersSection, recordQuestionsRule, type RecordQuestion } from "../_shared/recordQuestions.ts";
+import { checkGeminiQuota, geminiQuotaBody, quotaReplayCandidate } from "../_shared/geminiQuota.ts";
+import { isRealDateISO } from "../_shared/realDate.ts";
+import { hasOversizedImage, IMAGE_TOO_LARGE_TEXT } from "../_shared/imageLimits.ts";
+import { geminiResponseSummary } from "../_shared/geminiLog.ts";
 
 const MAX_PHOTOS = 6;
 const MAX_NOTES_LENGTH = 500;
@@ -501,7 +505,7 @@ async function analyzeWithGemini(
   try {
     parsed = JSON.parse(rawText);
   } catch {
-    console.error("Gemini devolveu JSON inválido:", rawText);
+    console.error("Gemini devolveu JSON inválido:", geminiResponseSummary(geminiJson, rawText));
     throw new Error("A análise devolveu um formato inesperado. Tenta novamente.");
   }
 
@@ -696,6 +700,9 @@ Deno.serve(withUsageRecording("analyze-body", async (req) => {
       return jsonResponse({ error: "Sessão inválida" }, 401);
     }
     const userId = userData.user.id;
+    // A quota do Gemini por atleta (auditoria de segurança, 2026-11-13;
+    // _shared/geminiQuota.ts): passado o limite, 429 com a frase da Carol.
+    const geminiQuota = await checkGeminiQuota(userId, { fn: "analyze-body" });
     // A memória durável e a conversa recente do chat (Fase 1, ação 1.3), em
     // paralelo com o resto: todos os caminhos abaixo acabam num resumo.
     // Nunca rejeita, por isso pode ficar por esperar num caminho de erro.
@@ -703,6 +710,12 @@ Deno.serve(withUsageRecording("analyze-body", async (req) => {
     const goalsCtxPromise = fetchGoalsContext(sb, userId);
 
     const body = await req.json();
+    if (hasOversizedImage(body)) return jsonResponse({ error: IMAGE_TOO_LARGE_TEXT }, 413);
+    // A quota: 429 antes de qualquer chamada ao Gemini. Só um pedido que pode
+    // ser o reenvio de um registo já gravado segue até ao replay, que o devolve
+    // sem o Gemini; depois dele, o 429 é incondicional (quotaReplayCandidate —
+    // revisão de 4003c2f4: o id vem do cliente e não pode saltar a quota).
+    if (!geminiQuota.ok && !quotaReplayCandidate(body, "assessment_id")) return jsonResponse(geminiQuotaBody(geminiQuota), 429);
     const rawNotes = typeof body.notes === "string" ? body.notes.slice(0, MAX_NOTES_LENGTH) : null;
     // 'HH:MM' (ou 'HH:MM:SS' da BD) → 'HH:MM'; qualquer outra coisa = não indicada.
     const rawTime = typeof body.assessment_time === "string" && /^([01]\d|2[0-3]):[0-5]\d/.test(body.assessment_time)
@@ -755,9 +768,11 @@ Deno.serve(withUsageRecording("analyze-body", async (req) => {
       jsonResponse({ assessment, source_app: assessment?.classifications?.source_app ?? null, replayed: true });
     const alreadySaved = !body.assessment_id ? await findByClientRequestId(sb, "body_assessments", userId, clientRequestId) : null;
     if (alreadySaved) return replay(alreadySaved);
+    // Não era um reenvio: daqui para baixo há Gemini.
+    if (!geminiQuota.ok) return jsonResponse(geminiQuotaBody(geminiQuota), 429);
 
     if (body.mode === "manual") {
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(body.date ?? "")) {
+      if (!isRealDateISO(body.date ?? "")) {
         return jsonResponse({ error: "Data inválida (esperado YYYY-MM-DD)" }, 400);
       }
       const rawMetrics = (body.metrics ?? {}) as Record<string, unknown>;
@@ -918,7 +933,7 @@ Deno.serve(withUsageRecording("analyze-body", async (req) => {
     if (images.length > MAX_PHOTOS) {
       return jsonResponse({ error: `Máximo de ${MAX_PHOTOS} imagens por avaliação` }, 400);
     }
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(date ?? "")) {
+    if (!isRealDateISO(date ?? "")) {
       return jsonResponse({ error: "Data inválida (esperado YYYY-MM-DD)" }, 400);
     }
     const mime = ["image/jpeg", "image/png", "image/webp", "image/heic", "image/heif"]

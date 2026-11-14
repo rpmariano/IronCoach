@@ -22,6 +22,7 @@ import {
 } from "../_shared/geminiFetch.ts";
 import { geminiHeaders, geminiUrl, geminiWithFallback, thinkingConfig } from "../_shared/geminiModel.ts";
 import { withUsageRecording } from "../_shared/usageRecorder.ts";
+import { checkGeminiQuota, geminiQuotaBody } from "../_shared/geminiQuota.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -236,6 +237,10 @@ Deno.serve(withUsageRecording("analyze-diploma", async (req) => {
     const sb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_ANON_KEY")!, { global: { headers: { Authorization: authHeader } } });
     const { data: userData, error: userError } = await sb.auth.getUser();
     if (userError || !userData?.user) return jsonResponse({ error: "Sessão inválida" }, 401);
+    // A quota do Gemini por atleta (auditoria de segurança, 2026-11-13;
+    // _shared/geminiQuota.ts): passado o limite, 429 com a frase da Carol.
+    const geminiQuota = await checkGeminiQuota(userData.user.id, { fn: "analyze-diploma" });
+    if (!geminiQuota.ok) return jsonResponse(geminiQuotaBody(geminiQuota), 429);
 
     const body = await req.json();
     const image = typeof body.image === "string" ? body.image.replace(/^data:[^,]+,/, "") : "";

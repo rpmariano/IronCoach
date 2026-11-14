@@ -84,5 +84,5 @@ end;
 $$;
 
 -- O `create or replace` mantém o ACL, mas revoga-se de novo para o ficheiro
--- ser completo por si só (lição da migration 20260918001600).
+-- ser completo por si só (lição da migration 20260918001630).
 revoke execute on function public.sync_plan_end_to_race_date() from public, anon, authenticated;

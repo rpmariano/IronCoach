@@ -39,7 +39,7 @@
 //     fazia (prescriptionAdherence: duração e tipo).
 
 import { foodKey } from "./foodKey.ts";
-import { isIsometricExercise } from "./isometric.ts";
+import { isStrongIsometric } from "./isometric.ts";
 import { ADHERENCE_TOLERANCE } from "./prescriptionAdherence.ts";
 import { inferGoalMet } from "./goalCheck.ts";
 
@@ -265,9 +265,9 @@ function emptyBlock(b: { index: number; label: string; kind: "forca" | "cardio";
 function fillStrength(block: BlockExecution, done: DoneExercise, sessionDate: string, history: HistorySession[]) {
   // Um bloco antigo «Prancha 3×30» em reps, registado em segundos (só
   // duration_seconds, sem reps): as reps eram os segundos (revisão de 2b51cca7).
-  // Só num isométrico (isometric.ts): uma remada registada só com tempo não é
-  // uma remada em segundos (revisão de 0d76f4d4).
-  if (!block.secondsTarget && block.repsTarget && isIsometricExercise(block.name) && done.sets.every((s) => posNum(s.reps) === null) &&
+  // Só num isométrico forte (isStrongIsometric — revisão de 1a481508): uma
+  // remada registada só com tempo não é uma remada em segundos.
+  if (!block.secondsTarget && block.repsTarget && isStrongIsometric(block.name) && done.sets.every((s) => posNum(s.reps) === null) &&
     done.sets.some((s) => posNum(s.duration_seconds) !== null)) {
     block.secondsTarget = block.repsTarget;
     block.repsTarget = null;
