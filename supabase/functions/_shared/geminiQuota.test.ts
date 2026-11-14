@@ -1,6 +1,7 @@
 import { assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
 import {
-  checkGeminiQuota, evaluateGeminiQuota, GEMINI_QUOTA_REQUESTS_PER_HOUR, GEMINI_QUOTA_TOKENS_PER_DAY, geminiQuotaBody,
+  checkGeminiQuota, evaluateGeminiQuota, GEMINI_QUOTA_REQUESTS_PER_HOUR, GEMINI_QUOTA_TOKENS_PER_DAY, geminiQuotaBody, geminiQuotaNotice,
+  quotaReplayCandidate,
 } from "./geminiQuota.ts";
 
 const NOW = Date.parse("2026-11-13T12:00:00Z");
@@ -68,10 +69,16 @@ Deno.test("a quota está em todas as funções que chamam o Gemini a pedido do a
     const src = await Deno.readTextFile(new URL(`../${f}/index.ts`, import.meta.url));
     assertStringIncludes(src, "jsonResponse(geminiQuotaBody(geminiQuota), 429)", f);
   }
-  // Nas analyze-*, decide-se depois de saber se é um reenvio já gravado (revisão de 2026-11-14).
-  for (const [f, table] of [["analyze-meal", "meals"], ["analyze-gym", "workout_sessions"], ["analyze-run", "runs"], ["analyze-body", "body_assessments"]]) {
+  // Nas analyze-* (revisão de 4003c2f4): 429 antes de qualquer Gemini, menos um
+  // candidato a reenvio — e, depois do replay, incondicional.
+  for (const [f, idf] of [["analyze-meal", "meal_id"], ["analyze-gym", "session_id"], ["analyze-run", "run_id"], ["analyze-body", "assessment_id"]]) {
     const src = await Deno.readTextFile(new URL(`../${f}/index.ts`, import.meta.url));
-    assertStringIncludes(src, `if (!geminiQuota.ok && !(await findByClientRequestId(sb, "${table}", userId, parseClientRequestId(body.client_request_id)))) {`, f);
+    const early = src.indexOf(`if (!geminiQuota.ok && !quotaReplayCandidate(body, "${idf}")) return jsonResponse(geminiQuotaBody(geminiQuota), 429);`);
+    const replayAt = src.indexOf("const alreadySaved = ");
+    const late = src.indexOf("if (!geminiQuota.ok) return jsonResponse(geminiQuotaBody(geminiQuota), 429);", replayAt);
+    assertEquals(early > 0 && early < replayAt && late > replayAt, true, f);
+    // Nenhuma chamada ao Gemini antes do 429 de cima (os modos vêm depois dele).
+    assertEquals(src.indexOf('body.mode === "preview"') > early, true, f);
   }
 });
 
@@ -85,4 +92,27 @@ Deno.test("evaluateGeminiQuota (revisão de 2026-11-14): as linhas de um mesmo p
   assertEquals(evaluateGeminiQuota(rows, NOW), { ok: true });
   // O 60.º pedido fecha.
   assertEquals(evaluateGeminiQuota([...rows, { created_at: ago(1), function: "analyze-meal", input_tokens: 10 }], NOW).ok, false);
+});
+
+Deno.test("quotaReplayCandidate (revisão de 4003c2f4): um id reutilizado com mode ou com o id de um registo não salta a quota", () => {
+  const cid = "11111111-2222-4333-8444-555555555555";
+  // Com a quota passada, estes levam 429 antes de qualquer Gemini.
+  assertEquals(quotaReplayCandidate({ mode: "preview", client_request_id: cid }, "meal_id"), false);
+  assertEquals(quotaReplayCandidate({ mode: "answer", meal_id: "m1", client_request_id: cid }, "meal_id"), false);
+  assertEquals(quotaReplayCandidate({ mode: "pantry_food", client_request_id: cid }, "meal_id"), false);
+  assertEquals(quotaReplayCandidate({ meal_id: "m1", client_request_id: cid }, "meal_id"), false);
+  assertEquals(quotaReplayCandidate({ run_id: "r1", client_request_id: cid }, "run_id"), false);
+  assertEquals(quotaReplayCandidate({ session_id: "s1", client_request_id: cid }, "session_id"), false);
+  assertEquals(quotaReplayCandidate({ assessment_id: "a1", client_request_id: cid }, "assessment_id"), false);
+  assertEquals(quotaReplayCandidate({}, "meal_id"), false);
+  // Só um registo novo com client_request_id (com fotos, ou manual) segue até ao replay.
+  assertEquals(quotaReplayCandidate({ client_request_id: cid }, "meal_id"), true);
+  assertEquals(quotaReplayCandidate({ mode: "manual", client_request_id: cid }, "run_id"), true);
+});
+
+Deno.test("geminiQuotaNotice: o aviso do resumo do dia com a quota passada (200 com o resumo de hoje)", () => {
+  const r = evaluateGeminiQuota(Array.from({ length: GEMINI_QUOTA_REQUESTS_PER_HOUR }, (_, i) => ({ created_at: ago(i * 30_000), input_tokens: 1 })), NOW);
+  assertEquals(geminiQuotaNotice(r as never), {
+    quota: "hour", quota_message: "Fizeste muitos pedidos seguidos e preciso de uma pausa. Tenta outra vez daqui a 31 minutos.", retry_after_minutes: 31,
+  });
 });

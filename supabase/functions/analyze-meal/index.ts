@@ -40,7 +40,7 @@ import { nextTimeAdditionsSection, withButterQuestions } from "./optionalAdditio
 import { alignItems, alignPhotoAndWritten, mismatchMeta } from "./itemAlignment.ts";
 import { NOTES_EMPTY_MESSAGE, NOTES_ITEMS_SCHEMA, notesAreAnalyzable, notesItemsPrompt, parseNotesItems } from "./notesItems.ts";
 import { isWalk } from "../_shared/formulas/runKinds.ts";
-import { checkGeminiQuota, geminiQuotaBody } from "../_shared/geminiQuota.ts";
+import { checkGeminiQuota, geminiQuotaBody, quotaReplayCandidate } from "../_shared/geminiQuota.ts";
 
 const MAX_PHOTOS = 6;
 const MAX_NOTES_LENGTH = 500;
@@ -2066,12 +2066,11 @@ Deno.serve(withUsageRecording("analyze-meal", async (req) => {
     };
 
     const body = await req.json();
-    // A quota decide-se depois de saber se é um reenvio já gravado: esse devolve
-    // a gravação de antes, sem o Gemini, e não leva 429 (revisão do lote de
-    // segurança, 2026-11-14).
-    if (!geminiQuota.ok && !(await findByClientRequestId(sb, "meals", userId, parseClientRequestId(body.client_request_id)))) {
-      return jsonResponse(geminiQuotaBody(geminiQuota), 429);
-    }
+    // A quota: 429 antes de qualquer chamada ao Gemini. Só um pedido que pode
+    // ser o reenvio de um registo já gravado segue até ao replay, que o devolve
+    // sem o Gemini; depois dele, o 429 é incondicional (quotaReplayCandidate —
+    // revisão de 4003c2f4: o id vem do cliente e não pode saltar a quota).
+    if (!geminiQuota.ok && !quotaReplayCandidate(body, "meal_id")) return jsonResponse(geminiQuotaBody(geminiQuota), 429);
     const rawNotes = typeof body.notes === "string" ? body.notes.slice(0, MAX_NOTES_LENGTH) : null;
     // A hora da refeição (meals.meal_time), gravada aqui para a análise já a
     // ver — até 2026-09-28 a app gravava-a num update à parte, DEPOIS desta
@@ -2178,6 +2177,8 @@ Deno.serve(withUsageRecording("analyze-meal", async (req) => {
     // Desfeita entretanto: este pedido grava-a de novo, como se fosse o primeiro.
     const alreadyReply = alreadySaved ? await settled(alreadySaved) : null;
     if (alreadyReply) return alreadyReply;
+    // Não era um reenvio resolvido: daqui para baixo há Gemini.
+    if (!geminiQuota.ok) return jsonResponse(geminiQuotaBody(geminiQuota), 429);
 
     // ── Registo revisto: fotos + alimentos revistos + respostas (#106) ──
     // Não volta a ler as fotos: grava o que o atleta reviu no preview.
