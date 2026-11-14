@@ -347,6 +347,15 @@ export function hhmmOf(value: unknown): string | null {
   return m ? `${m[1].padStart(2, "0")}:${m[2]}` : null;
 }
 
+/** A prova sem a partida do GPX (`course_start:course_profile->start`): esse campo é jsonb do
+ *  cliente, só serve para a meteorologia, e nem as coordenadas nem o que lá estiver vão ao modelo. */
+// deno-lint-ignore no-explicit-any
+export function withoutCourseStart(race: any): any {
+  if (!race || typeof race !== "object") return race;
+  const { course_start: _courseStart, ...rest } = race;
+  return rest;
+}
+
 export function buildDailySummaryContext(params: {
   today: string;
   // deno-lint-ignore no-explicit-any
@@ -514,7 +523,9 @@ export function buildDailySummaryContext(params: {
       ? (nextRace ? "PROVA_COM_PLANO" : "MANUTENCAO_COM_PLANO")
       : (nextRace ? "PROVA_SEM_PLANO" : "LIVRE"),
     proxima_prova: nextRace ? {
-      ...nextRace,
+      // Sem a partida do GPX (course_start): é jsonb do cliente, só serve para a meteorologia, e as
+      // coordenadas nunca vão ao modelo (revisão pré-deploy do GPX, 2026-11-14).
+      ...withoutCourseStart(nextRace),
       fase_do_plano: getRacePhase(
         Math.round((new Date(nextRace.date + "T00:00:00Z").getTime() - new Date(today + "T00:00:00Z").getTime()) / 86400000),
         nextRace.distance_km ?? null,

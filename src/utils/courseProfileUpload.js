@@ -32,6 +32,9 @@ export const readCourseProfile = (race) => sanitizeCourseProfile(race?.course_pr
 export function isMissingColumnError(error) {
   if (!error) return false;
   const code = String(error.code || '');
+  // O CHECK race_events_course_profile_shape (23514) também fala em course_profile: é um perfil
+  // grande demais, não a coluna em falta.
+  if (code === '23514') return false;
   return code === 'PGRST204' || code === '42703' || /course_profile/.test(String(error.message || ''));
 }
 
