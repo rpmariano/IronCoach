@@ -55,6 +55,7 @@ import { findByClientRequestId, insertOnce, parseClientRequestId } from "../_sha
 import { fastingFromAnswers, parseAnsweredQuestions, parseRecordQuestions, RECORD_QUESTIONS_SCHEMA, recordAnswersSection, recordQuestionsRule, type RecordQuestion } from "../_shared/recordQuestions.ts";
 import { checkGeminiQuota, geminiQuotaBody, quotaReplayCandidate } from "../_shared/geminiQuota.ts";
 import { isRealDateISO } from "../_shared/realDate.ts";
+import { hasOversizedImage, IMAGE_TOO_LARGE_TEXT } from "../_shared/imageLimits.ts";
 
 const MAX_PHOTOS = 6;
 const MAX_NOTES_LENGTH = 500;
@@ -708,6 +709,7 @@ Deno.serve(withUsageRecording("analyze-body", async (req) => {
     const goalsCtxPromise = fetchGoalsContext(sb, userId);
 
     const body = await req.json();
+    if (hasOversizedImage(body)) return jsonResponse({ error: IMAGE_TOO_LARGE_TEXT }, 413);
     // A quota: 429 antes de qualquer chamada ao Gemini. Só um pedido que pode
     // ser o reenvio de um registo já gravado segue até ao replay, que o devolve
     // sem o Gemini; depois dele, o 429 é incondicional (quotaReplayCandidate —
