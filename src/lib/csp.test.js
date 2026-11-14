@@ -26,10 +26,10 @@ describe('CSP do build', () => {
     expect(inlineHashes(`<script>${body.replace(/\n/g, '\r\n')}</script>`).scripts).toEqual([lf]);
   });
 
-  it('só as origens que a app usa: o Supabase do projeto (https e wss), o open-meteo, data: e blob:', () => {
+  it('só as origens que a app usa: o Supabase do projeto (https e wss) e o open-meteo; data:/blob: só nas imagens', () => {
     const csp = cspFor(html);
     expect(directive(csp, 'default-src')).toBe("default-src 'self'");
-    expect(directive(csp, 'connect-src')).toBe(`connect-src 'self' data: blob: ${SUPABASE_ORIGIN} wss://roxfzsiciizkevopgpnl.supabase.co https://geocoding-api.open-meteo.com https://api.open-meteo.com`);
+    expect(directive(csp, 'connect-src')).toBe(`connect-src 'self' ${SUPABASE_ORIGIN} wss://roxfzsiciizkevopgpnl.supabase.co https://geocoding-api.open-meteo.com https://api.open-meteo.com`);
     expect(directive(csp, 'img-src')).toBe(`img-src 'self' data: blob: ${SUPABASE_ORIGIN}`);
     expect(directive(csp, 'object-src')).toBe("object-src 'none'");
     expect(directive(csp, 'frame-src')).toBe("frame-src 'none'");

@@ -126,6 +126,14 @@ describe('AnalysisFailure — quota do dia (429)', () => {
     expect(screen.getByText('Escrever')).toBeInTheDocument();
   });
 
+  it('uma recusa final (413): a frase do servidor, sem «Tentar de novo», título próprio', () => {
+    render(<AnalysisFailure quota="final" detail="Imagem demasiado grande." onRetry={() => {}} onManual={() => {}}>Podes tentar outra vez.</AnalysisFailure>);
+    expect(screen.getByText('Não consegui usar esta imagem')).toBeInTheDocument();
+    expect(screen.getByTestId('analysis-failure')).toHaveTextContent('Imagem demasiado grande.');
+    expect(screen.queryByText(/Tentar de novo/)).toBeNull();
+    expect(screen.getByTestId('analysis-failure')).toHaveAttribute('data-cause', 'final');
+  });
+
   it('o título: «Por hoje chega» só no limite diário; no da hora ou sem o campo, «Uma pausa»', () => {
     const { unmount } = render(<AnalysisFailure quota="day" detail="Amanhã continuo." />);
     expect(screen.getByText('Por hoje chega')).toBeInTheDocument();

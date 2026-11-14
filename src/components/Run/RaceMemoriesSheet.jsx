@@ -115,7 +115,8 @@ export default function RaceMemoriesSheet({ race, run = null, userId, onClose, o
       onClose?.();
     } catch (err) {
       console.error('Falha a guardar as memórias da prova', err);
-      setSaveFailed(true);
+      // Uma recusa do bucket (tamanho, tipo) diz-se como é, e não se oferece repetir.
+      setSaveFailed(err?.noRetry ? { text: err.message, final: true } : true);
     } finally {
       setSaving(false);
     }
@@ -187,9 +188,11 @@ export default function RaceMemoriesSheet({ race, run = null, userId, onClose, o
           <Warning
             title="Memórias por guardar"
             className="mt-3"
-            actions={<WarningAction onClick={save} disabled={saving}>{saving ? 'A guardar…' : 'Tentar de novo'}</WarningAction>}
+            actions={saveFailed?.final ? null : <WarningAction onClick={save} disabled={saving}>{saving ? 'A guardar…' : 'Tentar de novo'}</WarningAction>}
           >
-            Não consegui guardar as memórias — podes tentar outra vez sem perder nada.
+            {saveFailed?.final
+              ? `${saveFailed.text} Troca a imagem e grava outra vez.`
+              : 'Não consegui guardar as memórias — podes tentar outra vez sem perder nada.'}
           </Warning>
         )}
 

@@ -17,8 +17,10 @@ import { createHash } from 'node:crypto';
    - o Supabase do projeto (REST, Auth, Storage, Edge Functions) e o seu Realtime (wss);
    - o open-meteo (geocoding e altitude do sítio onde treinas, utils/trainingPlace.js).
    O login Google é uma navegação (redirect), não precisa de entrada.
-   data: e blob: — as fotos comprimidas (dataUrl), as pré-visualizações e o mural (blob:), e o
-   fetch(dataUrl) que passa a foto a bytes antes do upload (raceMemories.js). */
+   data: e blob: só nas imagens e media — as fotos comprimidas (dataUrl), as pré-visualizações e
+   o mural (blob:). Nenhum fetch() da app lê data: nem blob: (a foto passa a bytes por atob, em
+   raceMemories.js; os únicos fetch são o Supabase, o open-meteo e SVG da própria app), por isso
+   connect-src não os leva. */
 
 export const SUPABASE_ORIGIN = 'https://roxfzsiciizkevopgpnl.supabase.co';
 const SUPABASE_WS = SUPABASE_ORIGIN.replace(/^https:/, 'wss:');
@@ -47,7 +49,7 @@ export function cspFor(html) {
     ["img-src", "'self'", 'data:', 'blob:', SUPABASE_ORIGIN],
     ["media-src", "'self'", 'data:', 'blob:', SUPABASE_ORIGIN],
     ["font-src", "'self'", 'data:'],
-    ["connect-src", "'self'", 'data:', 'blob:', SUPABASE_ORIGIN, SUPABASE_WS, ...OPEN_METEO],
+    ["connect-src", "'self'", SUPABASE_ORIGIN, SUPABASE_WS, ...OPEN_METEO],
     ["worker-src", "'self'"],
     ["manifest-src", "'self'"],
     ["frame-src", "'none'"],

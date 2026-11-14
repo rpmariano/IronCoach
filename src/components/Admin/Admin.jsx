@@ -1,13 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useAppStore } from '../../store';
-import { LayoutGrid, Users, BarChart3, CircleDollarSign, ScrollText, CheckCircle2, ShieldAlert, Utensils, Activity, FileQuestion, Eye, Check, Filter, Bug, RotateCcw, Send, User, Hourglass, XCircle, Trophy } from 'lucide-react';
+import { LayoutGrid, Users, BarChart3, CircleDollarSign, ScrollText, CheckCircle2, ShieldAlert, Utensils, Activity, FileQuestion, Eye, Check, Filter, Bug, RotateCcw, Send, User, Hourglass, XCircle, Trophy, Trash2 } from 'lucide-react';
 import CarolIcon from '../Coach/CarolIcon';
 import PremiumModal from '../shared/PremiumModal';
 import Button from '../shared/Button';
 import CompetitionsTab from './Competitions';
 import CostsTab from './CostsTab';
-import UnknownAppPhoto from './UnknownAppPhoto';
+import UnknownAppPhoto, { UNKNOWN_APP_BUCKET } from './UnknownAppPhoto';
 import { isVideoAttachment } from '../../utils/reportImages';
 
 const ADMIN_TABS = [
@@ -276,6 +276,32 @@ export default function Admin() {
     } catch (err) {
       console.error('Error saving unknown log:', err);
       alert('Falha ao guardar alterações no log.');
+    } finally {
+      setSavingLog(false);
+    }
+  };
+
+  /* Apagar um registo de app desconhecida (auditoria de segurança, 2026-11-14): sai também o
+     print do storage — antes ficava lá para sempre, órfão. Primeiro a imagem: se falhar, a
+     linha fica e o admin pode tentar de novo (ao contrário, um print com dados de saúde ficava
+     no bucket sem nada que o apontasse). Uma imagem que já não existe não impede apagar. */
+  const handleDeleteUnknownLog = async () => {
+    const log = selectedUnknownLog;
+    if (!log) return;
+    if (!window.confirm('Apagar este registo e a imagem? Não dá para desfazer.')) return;
+    setSavingLog(true);
+    try {
+      if (log.image_path) {
+        const { error: removeError } = await supabase.storage.from(UNKNOWN_APP_BUCKET).remove([log.image_path]);
+        if (removeError) throw removeError;
+      }
+      const { error } = await supabase.from('unknown_app_image_logs').delete().eq('id', log.id);
+      if (error) throw error;
+      setUnknownLogs(prev => prev.filter(item => item.id !== log.id));
+      setSelectedUnknownLog(null);
+    } catch (err) {
+      console.error('Error deleting unknown log:', err);
+      alert('Falha ao apagar o registo.');
     } finally {
       setSavingLog(false);
     }
@@ -867,6 +893,17 @@ export default function Admin() {
                           className="w-full bg-[var(--bg-app)] border border-[var(--border-glass-strong)] rounded-xl py-2 px-3 text-xs text-[var(--text-2)] outline-none resize-none"
                         />
                       </div>
+
+                      <button
+                        type="button"
+                        onClick={handleDeleteUnknownLog}
+                        disabled={savingLog}
+                        data-testid="unknown-log-delete"
+                        className="w-full flex items-center justify-center gap-1.5 min-h-[44px] text-xs font-semibold rounded-xl border transition disabled:opacity-50"
+                        style={{ color: 'var(--danger)', borderColor: 'var(--tint-danger-bd)' }}
+                      >
+                        <Trash2 size={14} /> Apagar registo e imagem
+                      </button>
 
                       <div className="flex gap-2 pt-2">
                         <Button

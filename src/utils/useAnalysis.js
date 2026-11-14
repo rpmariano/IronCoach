@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState } from 'react';
-import { reportSaveFailure, isQuotaError } from './saveFailure';
+import { reportSaveFailure, isQuotaError, isNoRetryError } from './saveFailure';
 
 /**
  * useAnalysis — a máquina de estados das três operações que dependem da IA e
@@ -55,7 +55,8 @@ export default function useAnalysis({ kind = null } = {}) {
       console.error(err);
       if (kind) reportSaveFailure(kind, err);
       setError(err?.message || '');
-      setQuota(isQuotaError(err) ? (err.quotaScope || true) : false);
+      // 'final': outra recusa sem volta (a imagem demasiado grande) — sem «Tentar de novo» também.
+      setQuota(isQuotaError(err) ? (err.quotaScope || true) : (isNoRetryError(err) ? 'final' : false));
       setStatus('error');
       return undefined;
     }

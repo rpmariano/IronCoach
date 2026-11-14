@@ -24,9 +24,11 @@ describe('draftScope — rascunhos por conta', () => {
     localStorage.setItem('ironcoach:treino-rascunho:nova', '{}');
     localStorage.setItem('ironcoach:u:a:carol-chat-rascunho', '{}');
     localStorage.setItem('ironcoach_onboarding_draft_a', '{}');
+    localStorage.setItem('ironcoach_onboarding_done_a', '1');
     localStorage.setItem('ironcoach:outra-coisa', '1');
     clearAllDrafts();
-    expect(Object.keys(localStorage).sort()).toEqual(['ironcoach:outra-coisa', 'ironcoach_onboarding_draft_a']);
+    // O rascunho do onboarding também sai (o peso, a idade…); a marca de onboarding feito fica.
+    expect(Object.keys(localStorage).sort()).toEqual(['ironcoach:outra-coisa', 'ironcoach_onboarding_done_a']);
     expect(clearAll).toHaveBeenCalledTimes(1);
   });
 

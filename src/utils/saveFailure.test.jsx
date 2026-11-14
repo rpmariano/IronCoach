@@ -4,7 +4,7 @@ import { render, screen, fireEvent } from '@testing-library/react';
 
 vi.mock('../lib/supabase', () => ({ logAppEvent: vi.fn() }));
 import { logAppEvent } from '../lib/supabase';
-import { saveError, saveRefusal, reportSaveFailure, saveFailureMessage, SAVE_GENERIC_TEXT, isQuotaError } from './saveFailure';
+import { saveError, saveRefusal, reportSaveFailure, saveFailureMessage, SAVE_GENERIC_TEXT, isQuotaError, isNoRetryError } from './saveFailure';
 import { renderHook, act } from '@testing-library/react';
 import useAnalysis from './useAnalysis';
 import { SAVE_NETWORK_TEXT } from './clientRequestId';
@@ -33,6 +33,20 @@ describe('saveFailure', () => {
     expect(reportSaveFailure('gym', err)).toBe(false);
     expect(isQuotaError(saveError({ error: 'x', isNetwork: true }))).toBe(false);
     expect(logAppEvent).not.toHaveBeenCalled();
+  });
+
+  it('413 (imagem demasiado grande): a frase do servidor, final, sem ser quota', () => {
+    const err = saveError({ error: 'Imagem demasiado grande.', serverText: 'Imagem demasiado grande.', status: 413 });
+    expect(err.message).toBe('Imagem demasiado grande.');
+    expect(isNoRetryError(err)).toBe(true);
+    expect(isQuotaError(err)).toBe(false);
+    expect(isNoRetryError(saveError({ error: 'x', serverText: 'x', status: 500 }))).toBe(false);
+  });
+
+  it('useAnalysis: um 413 fica como «final» (sem «Tentar de novo»)', async () => {
+    const { result } = renderHook(() => useAnalysis({ kind: 'gym' }));
+    await act(async () => { await result.current.run(async () => { throw saveError({ serverText: 'Imagem demasiado grande.', status: 413 }); }); });
+    expect([result.current.quota, result.current.error]).toEqual(['final', 'Imagem demasiado grande.']);
   });
 
   it('useAnalysis: uma falha de quota fica em quota, e uma corrida nova limpa-a', async () => {

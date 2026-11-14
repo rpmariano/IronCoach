@@ -21,13 +21,19 @@ function markLogged(err) {
 export function saveError(res) {
   const err = new Error(saveErrorText(res));
   err.name = 'SaveError';
-  // A quota do dia (429): a frase da Carol, sem «Tentar de novo» (repetir dava o mesmo 429).
+  // A quota (429): a frase da Carol, sem «Tentar de novo» (repetir dava o mesmo 429).
   if (res?.isQuota) { err.quota = true; err.quotaScope = res.quotaScope ?? null; }
+  // A imagem demasiado grande (413, analyze-*): repetir com a mesma imagem dava o mesmo.
+  if (res?.isQuota || res?.status === 413) err.noRetry = true;
   return markLogged(err);
 }
 
-/** A falha é a quota do dia (429): mostra-se a frase, sem «Tentar de novo». */
+/** A falha é a quota (429): mostra-se a frase, sem «Tentar de novo». */
 export const isQuotaError = (err) => !!(err && typeof err === 'object' && err.quota === true);
+
+/** Uma recusa final do servidor (a quota, a imagem demasiado grande, o storage a recusar o
+ *  tamanho ou o tipo): mostra-se a frase, sem «Tentar de novo» — repetir dava o mesmo. */
+export const isNoRetryError = (err) => !!(err && typeof err === 'object' && (err.noRetry === true || err.quota === true));
 
 /** O servidor respondeu e recusou (data.error, já na voz da Carol): chegou lá, não é para registar aqui. */
 export function saveRefusal(message) {

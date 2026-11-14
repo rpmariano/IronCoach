@@ -110,8 +110,6 @@ describe('ReportIssueButton', () => {
     const payload = insertMock.mock.calls[0][0];
     expect(payload).toEqual({
       user_id: 'user-1',
-      user_email: 'atleta@ironcoach.app',
-      user_name: 'Atleta Teste',
       title: 'Botão de guardar sem resposta',
       description: 'O botão de guardar não responde.',
       page: 'Carol',
@@ -119,6 +117,12 @@ describe('ReportIssueButton', () => {
       attachment_urls: null,
     });
     expect(payload).not.toHaveProperty('screenshot_path');
+    // O email e o nome preenche-os o servidor.
+    expect(payload).not.toHaveProperty('user_email');
+    expect(payload).not.toHaveProperty('user_name');
+    // Os limites do servidor: título curto, descrição até 5000.
+    expect(screen.getByPlaceholderText(/Resume o problema/).maxLength).toBeLessThanOrEqual(200);
+    expect(screen.getByPlaceholderText(/Descreve o problema/).maxLength).toBe(5000);
 
     expect(await screen.findByText('Obrigado! O teu report foi enviado à equipa.')).toBeInTheDocument();
     await waitFor(() => expect(screen.queryByText('O que aconteceu?')).not.toBeInTheDocument());
@@ -174,6 +178,18 @@ describe('ReportIssueButton', () => {
       }),
     );
     expect(await screen.findByText(/1 ficheiro\(s\) não foram anexados/)).toBeInTheDocument();
+  });
+
+  it('o bucket a recusar o tamanho: o aviso diz porquê', async () => {
+    uploadMock.mockResolvedValueOnce({ error: { statusCode: '413', message: 'The object exceeded the maximum allowed size' } });
+    renderButton();
+    fireEvent.click(screen.getByLabelText('Reportar um problema'));
+    fillTitle('Título');
+    fireEvent.change(screen.getByPlaceholderText(/Descreve o problema/), { target: { value: 'Algo.' } });
+    fireEvent.change(document.querySelector('input[type="file"]'), { target: { files: [new File(['x'], 'a.jpg', { type: 'image/jpeg' })] } });
+    await waitFor(() => expect(screen.getByText('1 ficheiro(s) selecionado(s)')).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: /Enviar report/ }));
+    expect(await screen.findByText(/não foram anexados\. A imagem é demasiado grande para guardar\./)).toBeInTheDocument();
   });
 
   it('permite selecionar imagens', async () => {
