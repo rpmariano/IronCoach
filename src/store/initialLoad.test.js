@@ -137,6 +137,23 @@ describe('loadInitialData com prazo', () => {
     expect(useAppStore.getState().runs).toEqual([]);
   });
 
+  it('auditoria B2: a troca de conta apaga os rascunhos da anterior (texto e fotos)', async () => {
+    let p = useAppStore.getState().loadInitialData('u9');
+    await vi.runAllTimersAsync();
+    await p;
+    // A u9 deixa um rascunho; a recarga da própria conta não lhe mexe.
+    localStorage.setItem('ironcoach:u:u9:corrida-rascunho:nova', JSON.stringify({ runNotes: 'minha' }));
+    p = useAppStore.getState().loadInitialData('u9');
+    await vi.runAllTimersAsync();
+    await p;
+    expect(localStorage.getItem('ironcoach:u:u9:corrida-rascunho:nova')).not.toBeNull();
+    // Entra a u10 neste telemóvel: o rascunho da u9 sai.
+    p = useAppStore.getState().loadInitialData('u10');
+    await vi.runAllTimersAsync();
+    await p;
+    expect(localStorage.getItem('ironcoach:u:u9:corrida-rascunho:nova')).toBeNull();
+  });
+
   it('um pedido que nunca responde não segura o dataPending para sempre', async () => {
     net.plan.coach_plan_items = { delay: 10 * 60 * 1000 };
     const p = useAppStore.getState().loadInitialData('u8');

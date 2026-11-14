@@ -1,5 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useAppStore, selectCoachHasPendingTopic } from '../../store';
+import { scopedDraftKey } from '../../utils/draftScope';
+import { useDraftUserId } from '../../utils/useDraftUserId';
 import { invokeEdgeFunctionWithTimeout, supabase } from '../../lib/supabase';
 import { Send, Loader2, Sparkles, RotateCcw, ImagePlus, X } from 'lucide-react';
 import { compressImage } from '../../lib/image';
@@ -984,14 +986,16 @@ export default function Coach() {
   // uma única vez ao montar — este ecrã desmonta/remonta ao trocar de
   // separador, por isso não precisa do guard restoredForKeyRef usado nos
   // formulários (que ficam montados durante várias sessões de edição).
+  // Por conta (auditoria B2): o texto por enviar do atleta anterior não aparece ao seguinte.
+  const chatDraftKey = scopedDraftKey(COACH_CHAT_DRAFT_KEY, useDraftUserId());
   useEffect(() => {
-    const persisted = restorePersistedFormDraft(COACH_CHAT_DRAFT_KEY);
+    const persisted = restorePersistedFormDraft(chatDraftKey);
     if (persisted?.inputStr) setInputStr(persisted.inputStr);
-  }, []);
+  }, [chatDraftKey]);
 
   // Grava o rascunho (com debounce) enquanto houver texto por enviar —
   // handleSend limpa-o assim que a mensagem é enviada (ver abaixo).
-  usePersistedFormDraft(COACH_CHAT_DRAFT_KEY, { inputStr }, { isDirty: true });
+  usePersistedFormDraft(chatDraftKey, { inputStr }, { isDirty: true });
 
   const cutoffTime = Date.now() - (hoursToShow * 60 * 60 * 1000);
   const visibleMessages = (coachMessages || []).filter(msg => {
@@ -1404,7 +1408,7 @@ export default function Coach() {
     const nPhotos = Array.isArray(extras?.images) ? extras.images.length : 0;
 
     setInputStr('');
-    clearPersistedFormDraft(COACH_CHAT_DRAFT_KEY);
+    clearPersistedFormDraft(chatDraftKey);
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto';
     }

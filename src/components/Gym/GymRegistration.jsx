@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useAppStore } from '../../store';
+import { scopedDraftKey } from '../../utils/draftScope';
+import { useDraftUserId } from '../../utils/useDraftUserId';
 import { supabase, invokeEdgeFunctionWithTimeout } from '../../lib/supabase';
 import { ANALYZE_TIMEOUT_MS } from '../../lib/edgeTimeouts';
 import { compressImage } from '../../lib/image';
@@ -54,7 +56,9 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
   // Identifica este rascunho de forma única para sobreviver a um
   // recarregamento (ver formDraftPersistence.js) — nunca partilhado entre
   // treinos diferentes nem entre uma edição e uma criação nova a seguir.
-  const draftStorageKey = sessionIdToEdit ? `ironcoach:treino-rascunho:${sessionIdToEdit}` : 'ironcoach:treino-rascunho:nova';
+  // Por conta (auditoria B2): num telemóvel partilhado, o atleta seguinte não vê o rascunho do anterior.
+  const draftUserId = useDraftUserId();
+  const draftStorageKey = scopedDraftKey(sessionIdToEdit ? `ironcoach:treino-rascunho:${sessionIdToEdit}` : 'ironcoach:treino-rascunho:nova', draftUserId);
   // Só tenta restaurar UMA VEZ por sessão de edição/criação — sem isto, o
   // efeito de carregamento reporia o rascunho guardado por cima de
   // alterações mais recentes ainda não persistidas.

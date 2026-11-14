@@ -874,7 +874,7 @@ describe('Coach — BUG CORRIGIDO (2026-08-30) — rascunho da mensagem sobreviv
   it('enviar a mensagem limpa o rascunho — a próxima visita ao chat não vem com texto antigo', async () => {
     // Simula um rascunho já persistido de uma sessão anterior (poupa
     // esperar pelo debounce real de formDraftPersistence.js).
-    localStorage.setItem('ironcoach:carol-chat-rascunho', JSON.stringify({ inputStr: 'Rascunho Antigo' }));
+    localStorage.setItem('ironcoach:u:user-1:carol-chat-rascunho', JSON.stringify({ inputStr: 'Rascunho Antigo' }));
     invokeEdgeFunctionWithTimeout.mockResolvedValue({ data: { model_message: { content: 'Olá!' } }, error: null });
 
     const { unmount } = renderCoach();
@@ -883,7 +883,7 @@ describe('Coach — BUG CORRIGIDO (2026-08-30) — rascunho da mensagem sobreviv
     fireEvent.click(screen.getByRole('button', { name: /Enviar pergunta à Carol/i }));
 
     await waitFor(() => expect(screen.getByPlaceholderText('Escreve a tua pergunta...').value).toBe(''));
-    expect(localStorage.getItem('ironcoach:carol-chat-rascunho')).toBeNull();
+    expect(localStorage.getItem('ironcoach:u:user-1:carol-chat-rascunho')).toBeNull();
     unmount();
 
     // Reabrir o chat: sem vestígios do rascunho enviado.

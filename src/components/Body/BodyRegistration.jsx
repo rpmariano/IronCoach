@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useAppStore } from '../../store';
+import { scopedDraftKey } from '../../utils/draftScope';
+import { useDraftUserId } from '../../utils/useDraftUserId';
 import { supabase, invokeEdgeFunctionWithTimeout } from '../../lib/supabase';
 import { ANALYZE_TIMEOUT_MS } from '../../lib/edgeTimeouts';
 import { compressImage } from '../../lib/image';
@@ -141,7 +143,9 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
   // Identifica este rascunho de forma única para sobreviver a um
   // recarregamento (ver formDraftPersistence.js) — nunca partilhado entre
   // avaliações diferentes nem entre uma edição e uma criação nova a seguir.
-  const draftStorageKey = assessmentIdToEdit ? `ironcoach:avaliacao-rascunho:${assessmentIdToEdit}` : 'ironcoach:avaliacao-rascunho:nova';
+  // Por conta (auditoria B2): num telemóvel partilhado, o atleta seguinte não vê o rascunho do anterior.
+  const draftUserId = useDraftUserId();
+  const draftStorageKey = scopedDraftKey(assessmentIdToEdit ? `ironcoach:avaliacao-rascunho:${assessmentIdToEdit}` : 'ironcoach:avaliacao-rascunho:nova', draftUserId);
   // Só tenta restaurar UMA VEZ por sessão de edição/criação.
   const restoredForKeyRef = useRef(null);
 

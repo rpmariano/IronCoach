@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { ImagePlus, X, Sparkles, PencilLine, Footprints, Trophy, AlertTriangle, PersonStanding } from 'lucide-react';
 import { useAppStore } from '../../store';
+import { scopedDraftKey } from '../../utils/draftScope';
+import { useDraftUserId } from '../../utils/useDraftUserId';
 import { supabase, invokeEdgeFunctionWithTimeout } from '../../lib/supabase';
 import { ANALYZE_TIMEOUT_MS } from '../../lib/edgeTimeouts';
 import { compressImage } from '../../lib/image';
@@ -251,7 +253,9 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
   // Identifica este rascunho de forma única para sobreviver a um
   // recarregamento (ver formDraftPersistence.js) — nunca partilhado entre
   // corridas diferentes nem entre uma edição e uma criação nova a seguir.
-  const draftStorageKey = runIdToEdit ? `ironcoach:corrida-rascunho:${runIdToEdit}` : 'ironcoach:corrida-rascunho:nova';
+  // Por conta (auditoria B2): num telemóvel partilhado, o atleta seguinte não vê o rascunho do anterior.
+  const draftUserId = useDraftUserId();
+  const draftStorageKey = scopedDraftKey(runIdToEdit ? `ironcoach:corrida-rascunho:${runIdToEdit}` : 'ironcoach:corrida-rascunho:nova', draftUserId);
   // Só tenta restaurar UMA VEZ por sessão de edição/criação — sem isto, o
   // efeito de carregamento reporia o rascunho guardado por cima de
   // alterações mais recentes ainda não persistidas.
