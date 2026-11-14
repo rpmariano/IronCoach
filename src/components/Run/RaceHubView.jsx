@@ -58,6 +58,7 @@ import { experienceLevelLabel } from '../../utils/experience';
 import { normalizeStartTime } from '../../utils/startTime';
 import './RaceHubView.css';
 import { runsOnly } from '@formulas/runKinds.ts';
+import { safeHttpUrl } from '../../utils/safeUrl';
 
 export default function RaceHubView({
   race,
@@ -1150,14 +1151,19 @@ export default function RaceHubView({
             <div className="flex items-center justify-between p-2.5 rounded-xl bg-white/[0.04] border border-white/[0.08] gap-2">
               <div className="flex items-center gap-2 min-w-0">
                 <LinkIcon size={13} className="text-[var(--race)] shrink-0" />
-                <a
-                  href={race.website}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-xs font-semibold text-[var(--text-2)] underline hover:text-[var(--race)] transition truncate"
-                >
-                  {race.website}
-                </a>
+                {/* Só é link o que é http(s) — um «javascript:…» fica texto (utils/safeUrl.js). */}
+                {safeHttpUrl(race.website) ? (
+                  <a
+                    href={safeHttpUrl(race.website)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs font-semibold text-[var(--text-2)] underline hover:text-[var(--race)] transition truncate"
+                  >
+                    {race.website}
+                  </a>
+                ) : (
+                  <span className="text-xs font-semibold text-[var(--text-2)] truncate" data-testid="race-website-text">{race.website}</span>
+                )}
               </div>
             </div>
 

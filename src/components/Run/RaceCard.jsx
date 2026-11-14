@@ -32,6 +32,7 @@ import { calculateRaceTrainingPlan } from '../../utils/racePlanEngine';
 import { todayISO } from '../../lib/utils';
 import { startTimeInputValue } from '../../utils/startTime';
 import { raceResultLine } from '../../utils/raceDay';
+import { safeHttpUrl } from '../../utils/safeUrl';
 
 function formatDatePT(isoStr) {
   if (!isoStr) return '';
@@ -247,9 +248,14 @@ export default function RaceCard({ ev, onEdit, onToggleStatus, onDelete, onRegis
           {ev.website && (
             <div className="text-[11px] text-[var(--text-3)] flex items-center gap-1 px-0.5 truncate">
               <LinkIcon size={11} className="shrink-0 text-[var(--text-3)]" />
-              <a href={ev.website} target="_blank" rel="noopener noreferrer" className="underline hover:text-[var(--mod-prova)] transition truncate">
-                {ev.website}
-              </a>
+              {/* Só é link o que é http(s) — um «javascript:…» fica texto (utils/safeUrl.js). */}
+              {safeHttpUrl(ev.website) ? (
+                <a href={safeHttpUrl(ev.website)} target="_blank" rel="noopener noreferrer" className="underline hover:text-[var(--mod-prova)] transition truncate">
+                  {ev.website}
+                </a>
+              ) : (
+                <span className="truncate" data-testid="race-website-text">{ev.website}</span>
+              )}
             </div>
           )}
 
