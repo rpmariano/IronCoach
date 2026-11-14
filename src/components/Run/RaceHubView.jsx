@@ -59,6 +59,7 @@ import { normalizeStartTime } from '../../utils/startTime';
 import './RaceHubView.css';
 import { runsOnly } from '@formulas/runKinds.ts';
 import { safeHttpUrl } from '../../utils/safeUrl';
+import CourseProfilePanel from './CourseProfilePanel';
 
 export default function RaceHubView({
   race,
@@ -73,6 +74,7 @@ export default function RaceHubView({
   onMarkCompleted,
   onMemoriesSaved,
   calendarRaceId,
+  course = null,
 }) {
   const [expandedPhaseId, setExpandedPhaseId] = useState(null);
   const [confirmCompleted, setConfirmCompleted] = useState(false);
@@ -1119,6 +1121,14 @@ export default function RaceHubView({
       </div>
 
       {confirmCompletedModal}
+
+      {/* ─── Percurso (GPX): o perfil de altitude e o traçado (CourseProfilePanel). Quem monta
+          (RunAgenda) lê o ficheiro e grava; sem `course`, não aparece. */}
+      {course && (
+        <div className="rh-web-info-card mb-4" data-testid="race-hub-course">
+          <CourseProfilePanel {...course} />
+        </div>
+      )}
 
       {/* ─── 4. Informação Oficial do Site da Prova & Extração ─────────────── */}
       <div className="rh-web-info-card mb-4">

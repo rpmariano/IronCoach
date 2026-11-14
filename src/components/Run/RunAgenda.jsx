@@ -46,6 +46,8 @@ import DurationInput from '../shared/DurationInput';
 import { todayISO } from '../../lib/utils';
 import { FieldInput, FieldSelect, FieldTextarea } from '../shared/registration/Field';
 import { enrichErrorText } from '../../utils/enrichErrorText';
+import CourseProfilePanel from './CourseProfilePanel';
+import { courseProfileFromFile, saveCourseProfile, readCourseProfile, COURSE_BUILD_ERRORS } from '../../utils/courseProfileUpload';
 
 function formatDatePT(isoStr) {
   if (!isoStr) return '';
@@ -100,6 +102,9 @@ const EMPTY_DRAFT = {
   // uma já gravada, o pedido persiste-o de imediato (ver
   // handleFetchWebInfo), este campo só reflete esse valor.
   web_info: null,
+  // O perfil do percurso do GPX (utils/courseProfileUpload.js). A editar uma prova gravada,
+  // carregar/remover grava logo (como o web_info); numa prova nova vai no insert.
+  course_profile: null,
   notes: '',
 };
 
@@ -400,6 +405,7 @@ export default function RunAgenda({ onClose }) {
           target_pace: ev.target_pace_seconds_per_km ? formatPace(ev.target_pace_seconds_per_km) : '',
           website: ev.website || '',
           web_info: ev.web_info || null,
+          course_profile: readCourseProfile(ev),
           notes: ev.notes || '',
           // Não é um campo do formulário — nunca editável — mas o
           // RaceHubView embutido (aba "Treino e Evolução", abaixo, `race=
@@ -562,6 +568,60 @@ export default function RunAgenda({ onClose }) {
   const updateDraft = (key, val) => {
     setIsDirty(true);
     setDraft(prev => ({ ...prev, [key]: val }));
+  };
+
+  /* O percurso (GPX), no Hub e nos Detalhes. A editar uma prova gravada, carregar e remover gravam
+     logo — como o «Obter do site»: setDraft direto, sem sujar o rascunho. Numa prova nova fica no
+     rascunho até «Guardar prova». O ficheiro nunca sobe (utils/courseProfileUpload.js). */
+  const [courseBusy, setCourseBusy] = useState(false);
+  const [courseError, setCourseError] = useState(null);
+  const persistCourse = async (nextProfile) => {
+    if (!editingEventId) {
+      updateDraft('course_profile', nextProfile);
+      return true;
+    }
+    const res = await saveCourseProfile({ raceId: editingEventId, userId: profile?.id, profile: nextProfile });
+    if (!res.ok) { setCourseError(res.message); return false; }
+    writeRaceEventsLocally(raceEvents.map(e => (e.id === editingEventId ? { ...e, ...res.patch } : e)));
+    setDraft(prev => ({ ...prev, course_profile: nextProfile }));
+    return true;
+  };
+  const handleCourseFile = async (file) => {
+    setCourseBusy(true);
+    setCourseError(null);
+    try {
+      const next = await courseProfileFromFile(file);
+      if (await persistCourse(next)) showToast('Percurso carregado.', 'success');
+    } catch (err) {
+      setCourseError(err?.message || COURSE_BUILD_ERRORS.poucos_pontos);
+    } finally {
+      setCourseBusy(false);
+    }
+  };
+  const handleCourseRemove = async () => {
+    setCourseBusy(true);
+    setCourseError(null);
+    try {
+      if (await persistCourse(null)) showToast('Percurso removido.', 'success');
+    } finally {
+      setCourseBusy(false);
+    }
+  };
+  // A sugestão do GPX (distância, D+) só entra quando o atleta a aceita — e pelo caminho dos
+  // campos, para o ritmo/tempo e o nível acompanharem como se a escrevesse à mão.
+  const handleCourseApply = (s) => {
+    if (s?.distance_km != null) updateDistance(String(s.distance_km));
+    if (s?.elevation_gain_m != null) updateElevation(String(s.elevation_gain_m));
+  };
+  const courseSuggest = { distance: !isCupRound && !detailsLocked, elevation: draft.race_type === 'trail' && !detailsLocked };
+  const coursePanelProps = {
+    profile: draft.course_profile,
+    race: draft,
+    onFile: handleCourseFile,
+    onRemove: handleCourseRemove,
+    busy: courseBusy,
+    error: courseError,
+    suggest: courseSuggest,
   };
 
   // Numa jornada do Troféu, "Principal" mostra primeiro o custo (specs/
@@ -803,6 +863,12 @@ export default function RunAgenda({ onClose }) {
       web_info: draft.web_info || null,
       notes: draft.notes?.trim() || null,
     };
+    /* O percurso do GPX vai no insert de uma prova nova (numa edição já foi gravado ao carregar).
+       Só com percurso: sem a coluna (migration por aplicar), uma prova sem GPX grava na mesma. */
+    if (!editingEventId && draft.course_profile) {
+      payload.course_profile = draft.course_profile;
+      payload.course_profile_at = new Date().toISOString();
+    }
     if (isCupRound) {
       // Dados do organizador: não se enviam (ver isCupRound).
       delete payload.date;
@@ -1127,6 +1193,11 @@ export default function RunAgenda({ onClose }) {
                 gymSessions={gymSessions}
                 onFetchWebInfo={handleFetchWebInfo}
                 fetchingWebInfo={fetchingWebInfo}
+                course={{
+                  ...coursePanelProps,
+                  // No Hub a sugestão só se diz: os campos mudam-se nos Detalhes.
+                  suggestionHint: detailsLocked ? null : 'Para usar estes valores, abre «Detalhes da prova».',
+                }}
                 onMarkCompleted={editingEventId ? handleMarkCompleted : undefined}
                 onMemoriesSaved={editingEventId ? handleMemoriesSaved : undefined}
                 calendarRaceId={editingEventId && !isDirty ? editingEventId : undefined}
@@ -1415,6 +1486,12 @@ export default function RunAgenda({ onClose }) {
                   value={draft.website}
                   onChange={e => { updateDraft('website', e.target.value) }}
                 />
+              </div>
+
+              {/* Percurso (GPX, opcional) */}
+              <div>
+                <span className="text-[11px] text-[var(--text-3)] mb-1 block">Percurso (opcional)</span>
+                <CourseProfilePanel {...coursePanelProps} onApplySuggestion={handleCourseApply} showMap={false} />
               </div>
 
               {/* Notas (opcional) */}
