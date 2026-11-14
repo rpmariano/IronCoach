@@ -5,6 +5,7 @@ import { useToast } from '../shared/ToastProvider';
 import Button from '../shared/Button';
 import { Sparkles, RefreshCw } from 'lucide-react';
 import RaceWebInfoSections from './RaceWebInfoSections';
+import { enrichErrorText } from '../../utils/enrichErrorText';
 
 // Secção "Informação da Prova" dentro do cartão expandido (RaceCard) — botão
 // para pedir ao Gemini que leia o site oficial (ev.website) e extraia
@@ -28,7 +29,7 @@ export default function RaceInfoPanel({ ev }) {
     e.stopPropagation();
     setLoading(true);
     try {
-      const { data, error, serverText } = await invokeEdgeFunctionWithTimeout(
+      const res = await invokeEdgeFunctionWithTimeout(
         'enrich-race-event',
         { body: { race_event_id: ev.id } },
         // Pode ler várias páginas do site (principal + até 4 sub-páginas em
@@ -36,10 +37,11 @@ export default function RaceInfoPanel({ ev }) {
         // caso sem deixar um pedido preso indefinidamente.
         90000,
       );
+      const { data, error } = res;
       if (error) {
-        // A frase do servidor («Endereço do site inválido…», «O site respondeu com um erro.»); um erro
-        // do gateway sem frase (texto em inglês da supabase-js) fica no aviso genérico.
-        showToast(serverText || 'Não consegui obter informação deste site.', 'error');
+        // A frase do servidor; num timeout ou falha de rede, a da ligação — não culpa o site
+        // (utils/enrichErrorText.js).
+        showToast(enrichErrorText(res), 'error');
         return;
       }
       if (data?.race_event) {

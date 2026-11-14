@@ -106,6 +106,19 @@ describe('RaceInfoPanel', () => {
     expect(useAppStore.getState().raceEvents[0].web_info).toBeNull();
   });
 
+  it('timeout ou rede: a frase da ligação, sem culpar o site', async () => {
+    invokeEdgeFunctionWithTimeout.mockResolvedValueOnce({ data: null, error: 'Failed to send a request to the Edge Function', isNetwork: true, status: null });
+    const { unmount } = renderPanel(BASE_EVENT);
+    fireEvent.click(screen.getByRole('button', { name: /Obter do site/i }));
+    await waitFor(() => expect(screen.getByText(/A ligação falhou/)).toBeInTheDocument());
+    expect(screen.queryByText('Não consegui obter informação deste site.')).toBeNull();
+    unmount();
+    invokeEdgeFunctionWithTimeout.mockResolvedValueOnce({ data: null, error: 'A operação demorou demasiado tempo a responder (timeout). Por favor, tente novamente.', isTimeout: true });
+    renderPanel(BASE_EVENT);
+    fireEvent.click(screen.getByRole('button', { name: /Obter do site/i }));
+    await waitFor(() => expect(screen.getByText(/demorou demasiado tempo/)).toBeInTheDocument());
+  });
+
   it('um erro do gateway sem frase do servidor fica no aviso genérico, nunca o texto em inglês', async () => {
     invokeEdgeFunctionWithTimeout.mockResolvedValue({ data: null, error: 'Edge Function returned a non-2xx status code', serverText: null, status: 546 });
     renderPanel(BASE_EVENT);
