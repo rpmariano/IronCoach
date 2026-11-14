@@ -88,6 +88,7 @@ import {
 } from "../_shared/formulas/planResume.ts";
 import { currentPlanResume } from "../_shared/planResumeData.ts";
 import { checkGeminiQuota, geminiQuotaBody } from "../_shared/geminiQuota.ts";
+import { geminiResponseSummary } from "../_shared/geminiLog.ts";
 
 /* O modelo do chat: o fixo de _shared/geminiModel.ts (o mesmo das outras
    funções). Até 30-10-2026 era o alias "gemini-flash-latest", escolhido para
@@ -9644,7 +9645,7 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
     const rawText = extractReplyText(geminiJson);
 
     if (!rawText) {
-      console.error("Gemini resposta vazia:", JSON.stringify(geminiJson));
+      console.error("Gemini resposta vazia:", geminiResponseSummary(geminiJson));
       const fallback = await replyAfterWritesWithoutText();
       if (fallback) return fallback;
       // "Gerar uma resposta" é vocabulário de modelo, não dela
@@ -9700,7 +9701,7 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
       // JSON inválido/cortado (ex.: resposta truncada a meio) — nunca mostrar
       // o texto bruto ao utilizador (parecia um JSON partido no ecrã); melhor
       // pedir para tentar de novo do que guardar/mostrar lixo no histórico.
-      console.error("Gemini devolveu JSON inválido/incompleto:", rawText);
+      console.error("Gemini devolveu JSON inválido/incompleto:", geminiResponseSummary(geminiJson, rawText));
       const fallback = await replyAfterWritesWithoutText();
       if (fallback) return fallback;
       return jsonResponse({

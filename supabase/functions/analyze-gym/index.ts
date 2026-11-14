@@ -64,6 +64,7 @@ import { foodKey } from "../_shared/formulas/foodKey.ts";
 import { checkGeminiQuota, geminiQuotaBody, quotaReplayCandidate } from "../_shared/geminiQuota.ts";
 import { isRealDateISO } from "../_shared/realDate.ts";
 import { hasOversizedImage, IMAGE_TOO_LARGE_TEXT } from "../_shared/imageLimits.ts";
+import { geminiResponseSummary } from "../_shared/geminiLog.ts";
 
 const MAX_PHOTOS = 6;
 const MAX_NOTES_LENGTH = 500;
@@ -427,7 +428,7 @@ async function analyzeWithGemini(
   try {
     parsed = JSON.parse(rawText);
   } catch {
-    console.error("Gemini devolveu JSON inválido:", rawText);
+    console.error("Gemini devolveu JSON inválido:", geminiResponseSummary(geminiJson, rawText));
     throw new Error("A análise devolveu um formato inesperado. Tenta novamente.");
   }
 
@@ -1025,8 +1026,8 @@ async function generateGymCoachNotes(
     let parsed: any = {};
     try {
       parsed = JSON.parse(rawText.replace(/```json\n/g, '').replace(/```/g, ''));
-    } catch (e) {
-      console.error("Coach generation json parse error", e, rawText);
+    } catch {
+      console.error("Coach generation json parse error", geminiResponseSummary(json, rawText));
     }
     return { 
       text: parsed.text?.trim() || null, 

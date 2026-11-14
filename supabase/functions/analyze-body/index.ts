@@ -56,6 +56,7 @@ import { fastingFromAnswers, parseAnsweredQuestions, parseRecordQuestions, RECOR
 import { checkGeminiQuota, geminiQuotaBody, quotaReplayCandidate } from "../_shared/geminiQuota.ts";
 import { isRealDateISO } from "../_shared/realDate.ts";
 import { hasOversizedImage, IMAGE_TOO_LARGE_TEXT } from "../_shared/imageLimits.ts";
+import { geminiResponseSummary } from "../_shared/geminiLog.ts";
 
 const MAX_PHOTOS = 6;
 const MAX_NOTES_LENGTH = 500;
@@ -504,7 +505,7 @@ async function analyzeWithGemini(
   try {
     parsed = JSON.parse(rawText);
   } catch {
-    console.error("Gemini devolveu JSON inválido:", rawText);
+    console.error("Gemini devolveu JSON inválido:", geminiResponseSummary(geminiJson, rawText));
     throw new Error("A análise devolveu um formato inesperado. Tenta novamente.");
   }
 
