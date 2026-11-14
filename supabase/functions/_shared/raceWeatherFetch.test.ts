@@ -1,4 +1,4 @@
-import { assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
+import { assert, assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
 import { fetchRaceWeatherContext, fetchRaceWeatherObserved } from "./raceWeatherFetch.ts";
 
 const TODAY = "2026-09-18";
@@ -93,4 +93,24 @@ Deno.test("fetchRaceWeatherObserved: só do dia da prova até 7 dias depois", as
   assertEquals(calls.length, 0);
   // E a previsão continua a não servir para depois da prova.
   assertEquals(await fetchRaceWeatherContext(race, "2026-09-22", impl), null);
+});
+
+Deno.test("com o GPX, a partida dispensa a geocodificação (arredondada a ~1 km) e serve provas sem local", async () => {
+  const urls: string[] = [];
+  const impl = ((url: string) => {
+    urls.push(url);
+    if (url.includes("geocoding")) throw new Error("não devia geocodificar");
+    const hours = Array.from({ length: 24 }, (_, h) => `2026-09-20T${String(h).padStart(2, "0")}:00`);
+    const v = (x: number) => hours.map(() => x);
+    return Promise.resolve(new Response(JSON.stringify({ hourly: { time: hours, temperature_2m: v(18), apparent_temperature: v(18), relative_humidity_2m: v(60), precipitation_probability: v(10), wind_speed_10m: v(8) } })));
+  }) as unknown as typeof fetch;
+  const text = await fetchRaceWeatherContext({ ...race, location: null, course_profile: { start: [38.712345, -9.139876] } }, TODAY, impl);
+  assert(text && text.includes("Meia de Lisboa"), String(text));
+  assertEquals(urls.length, 1);
+  assert(urls[0].includes("latitude=38.71&longitude=-9.14"), urls[0]);
+  // Só o start (o que o coach-daily-summary seleciona) também serve; um start inválido cai no local.
+  urls.length = 0;
+  await fetchRaceWeatherContext({ ...race, location: null, course_start: [38.712345, -9.139876] }, TODAY, impl);
+  assertEquals(urls.length, 1);
+  assertEquals(await fetchRaceWeatherContext({ ...race, location: "", course_start: ["x", 1] }, TODAY, impl), null);
 });

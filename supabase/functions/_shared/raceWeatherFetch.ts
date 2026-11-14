@@ -7,11 +7,17 @@
 // encontrar, em qualquer país. Nada fica guardado: é uma previsão, e a de
 // amanhã é melhor do que a de hoje.
 //
+// Com o GPX do percurso carregado (race_events.course_profile, 2026-11-14),
+// a partida do GPX dispensa a geocodificação — e serve provas sem local
+// escrito. Vai ao Open-Meteo arredondada a 2 casas (~1 km): chega para o
+// tempo e não manda o ponto exato.
+//
 // Nunca rejeita: sem rede, sem local, sem resultado, devolve null e a Carol
 // simplesmente não fala do tempo.
 
 import { buildRaceWeatherContext, DEFAULT_START, expectedDurationMin, summarizeRaceWeather } from "./formulas/raceWeather.ts";
 import { asExternalData } from "./externalData.ts";
+import { courseStart } from "./formulas/courseProfile.ts";
 
 export const WEATHER_WINDOW_DAYS = 7;
 const TIMEOUT_MS = 4000;
@@ -39,7 +45,18 @@ async function geocode(fetchImpl: typeof fetch, place: string, budget?: AbortSig
   return null;
 }
 
-type WeatherRace = { name?: string | null; date?: string | null; location?: string | null; start_time?: string | null; target_time_seconds?: number | null; distance_km?: number | string | null } | null | undefined;
+type WeatherRace = {
+  name?: string | null; date?: string | null; location?: string | null; start_time?: string | null;
+  target_time_seconds?: number | null; distance_km?: number | string | null;
+  /** O perfil do GPX inteiro, ou só a partida (`course_start:course_profile->start`). */
+  course_profile?: unknown; course_start?: unknown;
+} | null | undefined;
+
+/** A partida do GPX arredondada a 2 casas (~1 km), ou null. */
+export function gpxWeatherCoords(race: WeatherRace): { latitude: number; longitude: number } | null {
+  const s = courseStart(race?.course_start) ?? courseStart(race?.course_profile);
+  return s ? { latitude: Math.round(s[0] * 100) / 100, longitude: Math.round(s[1] * 100) / 100 } : null;
+}
 
 /** A previsão, nos 7 dias antes da prova. */
 export function fetchRaceWeatherContext(race: WeatherRace, todayISO: string, fetchImpl: typeof fetch = fetch): Promise<string | null> {
@@ -58,12 +75,13 @@ async function fetchRaceWeather(race: WeatherRace, todayISO: string, mode: "prev
   try {
     const date = typeof race?.date === "string" ? race.date.slice(0, 10) : null;
     const place = (race?.location || "").trim();
-    if (!date || !place) return null;
+    const gpxCoords = gpxWeatherCoords(race);
+    if (!date || (!place && !gpxCoords)) return null;
     const days = Math.round((Date.parse(`${date}T00:00:00Z`) - Date.parse(`${todayISO}T00:00:00Z`)) / 86400000);
     if (mode === "previsao" ? (days < 0 || days > WEATHER_WINDOW_DAYS) : (days > 0 || days < -WEATHER_WINDOW_DAYS)) return null;
 
     const budget = AbortSignal.timeout(TOTAL_BUDGET_MS);
-    const coords = await geocode(fetchImpl, place, budget);
+    const coords = gpxCoords ?? await geocode(fetchImpl, place, budget);
     if (!coords) return null;
     // timezone=auto: as horas vêm na hora do sítio da prova. Com Lisboa fixo,
     // uma prova em Madrid às 09:00 lia a janela das 10:00 locais.
@@ -79,7 +97,7 @@ async function fetchRaceWeather(race: WeatherRace, todayISO: string, mode: "prev
     if (!summary) return null;
     // Dados de fora (a previsão e o sítio): marcados como dados (externalData.ts).
     return asExternalData(buildRaceWeatherContext(
-      { name: race?.name ?? null, date, location: place },
+      { name: race?.name ?? null, date, location: place || null },
       summary,
       { startTime: !race?.start_time, duration: !(Number(race?.target_time_seconds) > 0) },
       mode,

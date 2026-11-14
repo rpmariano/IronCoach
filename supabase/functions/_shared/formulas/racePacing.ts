@@ -29,6 +29,10 @@ export interface RacePacingInput {
   experienceLevel?: string | null;
   routeSegments?: RouteSegmentInput[] | null;
   routeSummary?: string | null;
+  /** De onde vêm os troços: o site da prova (web_info.route_segments) ou o
+   *  GPX que o atleta carregou (courseRouteSegments). Com GPX o percurso é
+   *  conhecido mesmo sem troços (um percurso plano não tem nenhum ≥ 3%). */
+  routeSource?: "site" | "gpx" | null;
 }
 
 export interface PacingRow {
@@ -59,6 +63,8 @@ export interface RacePacingPlan {
   decisionKm: number;
   effortMode: boolean; // trail: por esforço, o ritmo é só referência
   knowsRoute: boolean;
+  /** "gpx" quando o percurso vem do GPX do atleta; senão "site" (ou null sem percurso). */
+  routeSource: "site" | "gpx" | null;
   rows: PacingRow[];
   fuel: FuelMark[];
   notes: string[];
@@ -108,7 +114,7 @@ export function buildRacePacingPlan(input: RacePacingInput): RacePacingPlan | nu
 
   // Troços do percurso por km: o segmento com marco cai no km que o contém.
   const routeByKm = new Map<number, RouteSegmentInput>();
-  let knowsRoute = false;
+  let knowsRoute = input.routeSource === "gpx";
   for (const seg of input.routeSegments || []) {
     if (!seg || typeof seg.description !== "string") continue;
     knowsRoute = true;
@@ -240,6 +246,7 @@ export function buildRacePacingPlan(input: RacePacingInput): RacePacingPlan | nu
     decisionKm,
     effortMode: isTrail,
     knowsRoute,
+    routeSource: knowsRoute ? (input.routeSource === "gpx" ? "gpx" : "site") : null,
     rows: grouped,
     fuel,
     notes,
