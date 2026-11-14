@@ -7,14 +7,14 @@
    - Waypoints (<wpt>) não contam: são marcas soltas, não o percurso.
    - Não se lê nada além das coordenadas e da altitude — nem o nome, nem a descrição, nem tempos
      ou frequência cardíaca que o ficheiro possa trazer.
-   - Só .gpx, até 10 MB. */
+   - Só .gpx, até 15 MB (o limite do Backend), verificado antes de o ler. */
 
-export const GPX_MAX_BYTES = 10 * 1024 * 1024;
+export const GPX_MAX_BYTES = 15 * 1024 * 1024;
 export const GPX_ACCEPT = '.gpx,application/gpx+xml';
 
 export const GPX_ERRORS = {
   notGpx: 'Este ficheiro não é um GPX.',
-  tooLarge: 'O GPX é demasiado grande (máx. 10 MB).',
+  tooLarge: 'O GPX é demasiado grande (máx. 15 MB).',
   noPoints: 'O GPX não tem pontos.',
   noElevation: 'O GPX não tem altitude.',
   unreadable: 'Não consegui ler este ficheiro.',
