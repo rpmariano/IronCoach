@@ -71,6 +71,6 @@ Quando solicitar ao Claude Code para aplicar estes elementos na versão Master (
 3. **Estilos Globais**:
    * Garantir que as fontes globais (como Inter, Outfit ou Roboto) estão carregadas para que a tipografia renderize com a elegância especificada.
 4. **Verificação no Styleguide**:
-   * Aceder a [`public/all_widgets_preview.html`](file:///c:/Users/rpmar/IronHealth/public/all_widgets_preview.html) no browser para verificar a coerência visual antes de fazer commits na ramificação principal.
+   * Aceder a [`specs/mockups/all_widgets_preview.html`](specs/mockups/all_widgets_preview.html) no browser para verificar a coerência visual antes de fazer commits na ramificação principal.
 5. **Regras e Arquitetura do Coach de IA**:
    * O fluxo de dados unificado do Coach (cruzando dados de Nutrição, Corrida, Ginásio e Corpo) e as respetivas janelas de histórico analisadas estão inteiramente documentados em [**`sdd.md`**](file:///c:/Users/rpmar/IronHealth/sdd.md) na raiz do projeto. O Claude Code deve seguir este documento para garantir que o Coach mantenha a inteligência contextual em todos os módulos.
