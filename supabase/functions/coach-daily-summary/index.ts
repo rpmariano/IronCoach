@@ -1066,7 +1066,7 @@ Deno.serve(withUsageRecording("coach-daily-summary", async (req) => {
 
     // ── Contexto: perfil, refeições/água de hoje, atividade recente, plano ──
     // `status`: ver RACE_COLUMNS no coach-chat (2026-09-26, revisão da Fase 0).
-    const DAILY_RACE_COLUMNS = "id, name, date, race_type, distance_km, race_priority, status, target_time, target_time_seconds, target_pace_seconds_per_km, start_time, location";
+    const DAILY_RACE_COLUMNS = "id, name, date, race_type, distance_km, race_priority, status, target_time, target_time_seconds, target_pace_seconds_per_km, start_time, location, course_start:course_profile->start";
     const [
       { data: profile },
       { data: todayMeals },
