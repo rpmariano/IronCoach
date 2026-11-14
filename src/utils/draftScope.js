@@ -15,18 +15,20 @@ const PREFIX = 'ironcoach:';
 // Um rascunho de formulário: «ironcoach:[u:<id>:]<nome>-rascunho[:…]».
 const DRAFT_RE = /^ironcoach:(u:[^:]+:)?[a-z-]+-rascunho(?::|$)/;
 const SCOPED_RE = /^ironcoach:u:[^:]+:/;
+// O rascunho do onboarding (Onboarding.jsx) já levava a conta na chave, mas não saía no logout.
+const ONBOARDING_DRAFT_RE = /^ironcoach_onboarding_draft_/;
 
 export function scopedDraftKey(base, userId) {
   if (!userId || typeof base !== 'string' || !base.startsWith(PREFIX)) return base;
   return `${PREFIX}u:${userId}:${base.slice(PREFIX.length)}`;
 }
 
-function draftKeysInStorage(filter) {
+function draftKeysInStorage(filter, re = DRAFT_RE) {
   const keys = [];
   try {
     for (let i = 0; i < localStorage.length; i += 1) {
       const k = localStorage.key(i);
-      if (k && DRAFT_RE.test(k) && filter(k)) keys.push(k);
+      if (k && re.test(k) && filter(k)) keys.push(k);
     }
   } catch { /* sem storage */ }
   return keys;
@@ -38,10 +40,11 @@ function removeKeys(keys) {
   }
 }
 
-/** Logout e troca de conta: apaga todos os rascunhos (texto e fotos) deste telemóvel. */
+/** Logout e troca de conta: apaga todos os rascunhos, o do onboarding incluído (texto e fotos) deste telemóvel. */
 export function clearAllDrafts() {
   cancelAllPendingFormDrafts();
   removeKeys(draftKeysInStorage(() => true));
+  removeKeys(draftKeysInStorage(() => true, ONBOARDING_DRAFT_RE));
   clearAllDraftMedia();
 }
 
