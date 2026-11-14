@@ -5,7 +5,8 @@
 
    Diferença que conta: distância a mais de 2% (e pelo menos 200 m); D+ a mais de 10% (e pelo menos
    20 m) — um GPX de relógio nunca bate ao metro com a distância oficial. Sem valor na prova, o do
-   GPX sugere-se sempre. */
+   GPX sugere-se sempre. `distance`/`elevation` a false desligam um dos dois (a distância de uma
+   jornada do Troféu é do organizador; o D+ só é campo do formulário num trail). */
 
 const num = (v) => {
   const n = typeof v === 'string' ? Number(v.replace(',', '.')) : Number(v);
@@ -13,17 +14,17 @@ const num = (v) => {
 };
 
 /** { distance_km?, elevation_gain_m? } a sugerir (só o que difere), ou null. */
-export function courseSuggestions(profile, race) {
+export function courseSuggestions(profile, race, { distance = true, elevation = true } = {}) {
   if (!profile) return null;
   const out = {};
   const gpxKm = num(profile.distance_km);
   const raceKm = num(race?.distance_km);
-  if (gpxKm && (!raceKm || Math.abs(gpxKm - raceKm) > Math.max(0.2, raceKm * 0.02))) {
+  if (distance && gpxKm && (!raceKm || Math.abs(gpxKm - raceKm) > Math.max(0.2, raceKm * 0.02))) {
     out.distance_km = Math.round(gpxKm * 10) / 10;
   }
   const gpxGain = Number(profile.gain_m);
   const raceGain = num(race?.elevation_gain_m);
-  if (Number.isFinite(gpxGain) && gpxGain >= 0 && (raceGain == null ? gpxGain >= 20 : Math.abs(gpxGain - raceGain) > Math.max(20, raceGain * 0.1))) {
+  if (elevation && Number.isFinite(gpxGain) && gpxGain >= 0 && (raceGain == null ? gpxGain >= 20 : Math.abs(gpxGain - raceGain) > Math.max(20, raceGain * 0.1))) {
     out.elevation_gain_m = Math.round(gpxGain);
   }
   return Object.keys(out).length ? out : null;

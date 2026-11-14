@@ -34,6 +34,8 @@ export default function CourseProfilePanel({
   busy = false,
   error = null,
   showMap = true,
+  suggest = { distance: true, elevation: true },
+  suggestionHint = null,
   className = '',
 }) {
   const inputRef = useRef(null);
@@ -43,7 +45,7 @@ export default function CourseProfilePanel({
     e.target.value = '';
     if (file) onFile?.(file);
   };
-  const suggestion = profile ? courseSuggestions(profile, race) : null;
+  const suggestion = profile ? courseSuggestions(profile, race, suggest) : null;
 
   const input = (
     <input
@@ -121,6 +123,7 @@ export default function CourseProfilePanel({
               Usar os valores do GPX
             </button>
           )}
+          {!onApplySuggestion && suggestionHint && <p className="m-0 mt-1 text-[11.5px] text-[var(--text-3)]">{suggestionHint}</p>}
         </div>
       )}
 

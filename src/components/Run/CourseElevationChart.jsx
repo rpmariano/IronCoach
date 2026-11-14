@@ -65,7 +65,7 @@ export default function CourseElevationChart({ profile, raceName = null }) {
   return (
     <ChartFrame
       label="Perfil de altitude"
-      value={`+${fmtNumber(profile.gain_m, 0)}`}
+      value={fmtNumber(profile.gain_m, 0)}
       unit="m de subida"
       valueColor="var(--race)"
       legend={[{ label: `Altitude · ${fmtNumber(profile.min_alt_m, 0)}–${fmtNumber(profile.max_alt_m, 0)} m`, color: RACE, shape: 'line' }]}
