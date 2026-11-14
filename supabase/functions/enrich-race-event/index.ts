@@ -37,6 +37,7 @@ import { usageFromGemini } from "../_shared/geminiUsage.ts";
 import { withUsageRecording } from "../_shared/usageRecorder.ts";
 import { attemptTimeoutMs, geminiHeaders, geminiUrl, geminiWithFallback, thinkingConfig } from "../_shared/geminiModel.ts";
 import { checkGeminiQuota, geminiQuotaBody } from "../_shared/geminiQuota.ts";
+import { safeFetch, SafeFetchError } from "../_shared/safeFetch.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -138,23 +139,18 @@ function htmlToText(html: string): string {
   return text.trim();
 }
 
+// O endereço vem do atleta: passa pelo guarda anti-SSRF (auditoria de
+// segurança, 2026-11-14 — _shared/safeFetch.ts): só https na porta por
+// omissão, sem IPs privados nem nomes internos, DNS verificado antes do
+// pedido e redirecionamentos revalidados um a um.
 async function fetchPageText(rawUrl: string, timeoutMs: number): Promise<{ text: string | null; error: string | null }> {
-  let url: URL;
-  try {
-    url = new URL(rawUrl);
-  } catch {
-    return { text: null, error: "Endereço do site inválido." };
-  }
-  if (url.protocol !== "http:" && url.protocol !== "https:") {
-    return { text: null, error: "Endereço do site inválido." };
-  }
-
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const res = await fetch(url.toString(), {
+    // Um http:// (gravado antes, ou escrito à pressa) tenta-se em https://:
+    // o mesmo site, sem o canal em claro que o guarda recusa.
+    const res = await safeFetch(rawUrl.trim().replace(/^http:\/\//i, "https://"), {
       signal: controller.signal,
-      redirect: "follow",
       headers: {
         // Alguns sites de eventos bloqueiam pedidos sem User-Agent de
         // navegador — este identifica-se claramente como bot em vez de
@@ -166,7 +162,8 @@ async function fetchPageText(rawUrl: string, timeoutMs: number): Promise<{ text:
     });
     clearTimeout(timer);
     if (!res.ok) {
-      return { text: null, error: `O site respondeu com um erro (HTTP ${res.status}).` };
+      // Sem o código HTTP de quem respondeu (auditoria de segurança, 2026-11-14).
+      return { text: null, error: "O site respondeu com um erro." };
     }
     const contentType = res.headers.get("content-type") || "";
     if (contentType && !contentType.includes("text/html") && !contentType.includes("text/plain") && !contentType.includes("xml")) {
@@ -181,17 +178,29 @@ async function fetchPageText(rawUrl: string, timeoutMs: number): Promise<{ text:
     return { text: raw, error: null };
   } catch (e) {
     clearTimeout(timer);
-    if (e instanceof Error && e.name === "AbortError") {
+    // Endereço mal escrito, http ou outra porta: o atleta pode corrigir.
+    if (e instanceof SafeFetchError && e.reason === "invalid_url") {
+      return { text: null, error: "Endereço do site inválido. Usa um endereço https:// (sem porta)." };
+    }
+    // Recusas do guarda (IP privado, DNS, redirecionamentos) ficam só no
+    // registo — ao cliente vai a frase genérica (auditoria de segurança, 2026-11-14).
+    if (e instanceof SafeFetchError) {
+      console.warn("enrich-race-event: endereço recusado:", e.reason, e.message);
+      return { text: null, error: "Não consegui aceder a este site." };
+    }
+    if (controller.signal.aborted || (e instanceof Error && e.name === "AbortError")) {
       return { text: null, error: "O site demorou demasiado tempo a responder." };
     }
     return { text: null, error: "Não consegui aceder a este site." };
   }
 }
 
+// Só https: as ligações http seriam recusadas pelo guarda e gastavam uma das
+// MAX_SUBPAGES (auditoria de segurança, 2026-11-14).
 function resolveUrl(href: string, base: string): string | null {
   try {
     const u = new URL(href, base);
-    if (u.protocol !== "http:" && u.protocol !== "https:") return null;
+    if (u.protocol !== "https:") return null;
     u.hash = "";
     return u.toString();
   } catch {
