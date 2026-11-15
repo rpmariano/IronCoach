@@ -48,7 +48,6 @@ import { FieldInput, FieldSelect, FieldTextarea } from '../shared/registration/F
 import { enrichErrorText } from '../../utils/enrichErrorText';
 import CourseProfilePanel from './CourseProfilePanel';
 import { courseProfileFromFile, saveCourseProfile, readCourseProfile, COURSE_BUILD_ERRORS } from '../../utils/courseProfileUpload';
-import { raceHasResult, RESULT_CLEARED_PATCH } from '../../utils/raceResultClear';
 
 function formatDatePT(isoStr) {
   if (!isoStr) return '';
@@ -190,7 +189,7 @@ export default function RunAgenda({ onClose }) {
      ficam como estavam — mudá-los depois reescrevia o palmarés, a régua do
      objetivo e o balanço da Carol. O que se edita a partir daqui é o
      RESULTADO, pelo "Editar o registo" do hub (pedido 2026-09-13). Sem a
-     página "Detalhes da prova", sem "Guardar prova"; fica "Apagar o resultado". */
+     página "Detalhes da prova", sem "Guardar prova"; fica "Eliminar prova". */
   const detailsLocked = !!editingEventId && draft.status === 'concluida';
 
   /* A prova de uma jornada do Troféu (race_events.cup_round_id, specs/
@@ -973,17 +972,11 @@ export default function RunAgenda({ onClose }) {
     }
   };
 
-  /* Apagar numa prova gravada (RaceRemoveDialog, o mesmo da agenda). Com resultado — concluída ou
-     com corrida ligada —, a ação principal é «Apagar o resultado» (bug de 2026-11-15: quem queria
-     refazer o tempo apagava a prova inteira); «Eliminar a prova» fica como secundária. Uma prova
-     nova ainda sem id não tem o que apagar: "Cancelar"/fechar já descarta o rascunho. */
+  /* «Eliminar prova» (RaceRemoveDialog, o mesmo da agenda): o botão diz sempre o que apaga — a
+     prova (regra do Rui, 2026-11-15). Refazer só o tempo faz-se em «Editar o registo» →
+     «Eliminar registo». Uma prova nova ainda sem id não tem o que apagar: "Cancelar"/fechar já
+     descarta o rascunho. */
   const editingRace = editingEventId ? (raceEvents || []).find(e => e.id === editingEventId) : null;
-  const raceWithResult = !!editingRace && raceHasResult(editingRace, runs);
-  const removeLabel = raceWithResult ? 'Apagar o resultado' : 'Eliminar';
-  // O resultado saiu: o store já tem a prova agendada; o rascunho acompanha sem se sujar.
-  const handleResultCleared = () => {
-    setDraft(prev => ({ ...prev, ...RESULT_CLEARED_PATCH }));
-  };
   const handleRaceDeleted = () => {
     setNavGuard(null);
     handleCloseForm();
@@ -1099,7 +1092,6 @@ export default function RunAgenda({ onClose }) {
         isOpen={showDeleteConfirm && !!editingRace}
         race={editingRace}
         onClose={() => setShowDeleteConfirm(false)}
-        onCleared={handleResultCleared}
         onDeleted={handleRaceDeleted}
       />
 
@@ -1194,7 +1186,7 @@ export default function RunAgenda({ onClose }) {
                     icon={<Trash2 size={14} />}
                     data-testid="race-remove-button"
                   >
-                    {removeLabel}
+                    Eliminar prova
                   </Button>
                 )}
                 {!detailsLocked && (
@@ -1524,7 +1516,7 @@ export default function RunAgenda({ onClose }) {
                     className="text-xs"
                     icon={<Trash2 size={14} />}
                   >
-                    {removeLabel}
+                    Eliminar prova
                   </Button>
                 )}
                 <Button

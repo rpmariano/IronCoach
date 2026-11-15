@@ -31,6 +31,9 @@ import { ecrasQueSePerdem } from '../../../supabase/functions/_shared/sourceApps
 import PremiumModal from '../shared/PremiumModal';
 import { firstRecordMoment } from '../../utils/firstRecord';
 import { runRecordMoment } from '@formulas/runRecord.ts';
+import { checkRaceTime } from '@formulas/raceTimeSanity.ts';
+import { predictRaceSeconds } from './RaceLevelSuggestion';
+import RaceRemoveDialog from './RaceRemoveDialog';
 import { WALK_TRAINING_TYPE, isWalk, runMatchesPlanItem } from '@formulas/runKinds.ts';
 import RunTrainingTypeHelp from '../shared/RunTrainingTypeHelp';
 import Chip from '../shared/Chip';
@@ -249,6 +252,41 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
   // O modo prova exige a prova: sem ela em memória, isto é uma competição
   // fora da agenda e o ecrã é o de sempre.
   const isRaceMode = !!raceEvent;
+
+  /* Tempo impossível não se aceita (bug de 2026-11-15: «1:23» lido como 1 min 23 s numa prova de
+     10 km com objetivo 56:40). A regra é a partilhada com o servidor (@formulas/raceTimeSanity.ts):
+     mais rápido do que 2:40/km, ou menos de metade do objetivo — ou da previsão, sem objetivo. Vale
+     no tempo oficial e na duração, ao sair do campo e ao gravar. */
+  const raceTimeReference = () => {
+    if (!raceEvent) return null;
+    const target = Number(raceEvent.target_time_seconds) || parseDurationToSeconds(raceEvent.target_time) || null;
+    if (target) return target;
+    try {
+      return predictRaceSeconds({
+        raceType: raceEvent.race_type, distanceKm: Number(raceEvent.distance_km) || null,
+        elevationGainM: raceEvent.elevation_gain_m, declaredLevel: raceEvent.experience_level,
+        profile, runs,
+      }) || null;
+    } catch { return null; }
+  };
+  const raceTimeProblem = (text, distanceKm) => {
+    if (!isRaceMode || !text) return null;
+    const res = checkRaceTime({ text, distanceKm: Number(distanceKm) || Number(raceEvent?.distance_km) || null, referenceSeconds: raceTimeReference() });
+    return res.ok ? null : res;
+  };
+  // O erro só aparece depois de o atleta sair do campo (ou tentar gravar): a escrever, «0:05» é a meio.
+  const [timeTouched, setTimeTouched] = useState({ official: false, duration: false });
+  const [showRemoveRecord, setShowRemoveRecord] = useState(false);
+  const officialTimeProblem = () => raceTimeProblem(officialTime, raceEvent?.distance_km);
+  const durationProblem = () => raceTimeProblem(runDuration, runDistance);
+  // A primeira das duas, para o diálogo de gravar.
+  const raceTimeBlock = () => {
+    const off = officialTimeProblem();
+    if (off) return `Tempo oficial: ${off.message}`;
+    const dur = durationProblem();
+    if (dur) return `Tempo pessoal: ${dur.message}`;
+    return null;
+  };
 
   // Identifica este rascunho de forma única para sobreviver a um
   // recarregamento (ver formDraftPersistence.js) — nunca partilhado entre
@@ -1600,6 +1638,11 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
       failValidation('Indica o tempo oficial da prova.');
       return;
     }
+    if (raceTimeBlock()) {
+      setTimeTouched({ official: true, duration: true });
+      failValidation(raceTimeBlock());
+      return;
+    }
 
     setErrorMsg('');
     analysis.run(analyzeRunTask);
@@ -1932,6 +1975,11 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
     }
     if (isRaceMode && !parseDurationToSeconds(officialTime)) {
       failValidation('Indica o tempo oficial da prova.');
+      return;
+    }
+    if (raceTimeBlock()) {
+      setTimeTouched({ official: true, duration: true });
+      failValidation(raceTimeBlock());
       return;
     }
 
@@ -2569,10 +2617,44 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
         <DurationInput id="rr-duracao"
           placeholder="00:00"
           value={runDuration} onChange={(v) => { setRunDuration(v); setIsFormDirty(true); }}
+          onBlur={() => setTimeTouched(t => ({ ...t, duration: true }))}
+          aria-invalid={timeTouched.duration && !!durationProblem() ? true : undefined}
+          aria-describedby={timeTouched.duration && durationProblem() ? 'rr-duracao-erro' : undefined}
         />
+        {timeTouched.duration && renderTimeProblem(durationProblem(), 'rr-duracao-erro', (v) => { setRunDuration(v); setIsFormDirty(true); })}
       </div>
     </>
   );
+
+  /* O erro de um tempo impossível, por baixo do campo, com o valor provável a um toque. */
+  function renderTimeProblem(problem, id, apply, className = 'mt-1.5') {
+    if (!problem) return null;
+    return (
+      <div id={id} role="alert" data-testid={id} className={`${className} text-[12px] leading-[1.45] flex flex-wrap items-center gap-x-2 gap-y-1`} style={{ color: 'var(--danger)' }}>
+        <span>{problem.message}</span>
+        {problem.suggestion && (
+          <button
+            type="button"
+            onClick={() => apply(problem.suggestion.text)}
+            className="min-h-[44px] px-2 font-extrabold underline underline-offset-2"
+            style={{ color: 'var(--race)' }}
+          >
+            Usar {problem.suggestion.text}
+          </button>
+        )}
+      </div>
+    );
+  }
+
+  /* «Eliminar registo» — só a editar o registo de uma prova. Apaga a corrida, ou só o resultado
+     (a corrida fica como treino); a prova NUNCA (bug de 2026-11-15: quem queria refazer o tempo
+     apagava a prova inteira). A prova volta a agendada e o registo fecha. */
+  const handleRecordRemoved = () => {
+    clearPersistedFormDraft(draftStorageKey);
+    setIsFormDirty(false);
+    setNavGuard(null);
+    onClose?.();
+  };
 
   const renderProvaForm = () => {
     const objetivo = [
@@ -2649,6 +2731,9 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
                   placeholder="ex.: 1:45:00"
                   value={officialTime}
                   onChange={(v) => { setOfficialTime(v); setIsFormDirty(true); }}
+                  onBlur={() => setTimeTouched(t => ({ ...t, official: true }))}
+                  aria-invalid={timeTouched.official && !!officialTimeProblem() ? true : undefined}
+                  aria-describedby={timeTouched.official && officialTimeProblem() ? 'rr-tempo-oficial-erro' : undefined}
                 />
               </div>
               <div>
@@ -2662,6 +2747,8 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
                 />
               </div>
             </div>
+
+            {timeTouched.official && renderTimeProblem(officialTimeProblem(), 'rr-tempo-oficial-erro', (v) => { setOfficialTime(v); setIsFormDirty(true); }, 'mb-4 -mt-2')}
 
             {/* Hora de partida — vem preenchida da agenda, mas é a desta
                 corrida (runs.start_time): a partida real pode não ser a
@@ -2777,6 +2864,32 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
             </Warning>
           )}
         </section>
+
+        {runIdToEdit && (
+          <div className="pt-1 pb-2">
+            <Button
+              type="button"
+              variant="light-danger"
+              className="w-full text-xs"
+              onClick={() => setShowRemoveRecord(true)}
+              disabled={isSubmitting}
+              data-testid="race-record-remove-button"
+            >
+              Eliminar registo
+            </Button>
+            <p className="text-[11px] mt-1.5 text-center" style={{ color: 'var(--text-4)' }}>
+              A prova fica na agenda, por registar.
+            </p>
+          </div>
+        )}
+        <RaceRemoveDialog
+          mode="registo"
+          isOpen={showRemoveRecord}
+          race={raceEvent}
+          runId={runIdToEdit}
+          onClose={() => setShowRemoveRecord(false)}
+          onCleared={handleRecordRemoved}
+        />
       </div>
     );
   };

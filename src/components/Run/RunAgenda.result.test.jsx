@@ -6,10 +6,9 @@ import { ToastProvider } from '../shared/ToastProvider';
 import RunAgenda from './RunAgenda';
 import { todayISO, addDaysISO } from '../../lib/utils';
 
-/* Bug de 2026-11-15: a atleta queria «eliminar o registo» da prova concluída, para refazer o tempo,
-   e o «Eliminar» do hub apagou a prova inteira (a corrida ficou órfã). No hub de uma prova com
-   resultado, a ação é «Apagar o resultado»: a prova volta a agendada e fica aberta, pronta a
-   registar outra vez. */
+/* Bug de 2026-11-15: a atleta queria refazer o tempo da prova concluída e o «Eliminar» do hub apagou
+   a prova inteira. Regra do Rui: o botão que apaga a prova diz sempre «Eliminar prova», e a
+   confirmação diz o que se perde. Refazer só o tempo faz-se em «Editar o registo». */
 
 vi.mock('react-chartjs-2', () => ({ Line: () => <div data-testid="c-line" /> }));
 
@@ -39,11 +38,10 @@ const RACE = {
   race_type: 'estrada', distance_km: 10, elevation_gain_m: null, experience_level: 'medio', race_priority: 'a',
   target_time: '55:00', target_time_seconds: 3300, target_pace_seconds_per_km: 330,
   website: null, web_info: null, notes: null, course_profile: null,
-  coach_balance: 'Boa prova.', coach_balance_at: `${DATA}T20:00:00Z`, diploma_path: 'u/diploma.jpg',
 };
 const RUN = { id: 'run-1', user_id: 'user-1', date: DATA, distance_km: 10.1, duration_minutes: 52, race_id: 'race-1', run_kind: 'competicao' };
 
-describe('RunAgenda — apagar o resultado de uma prova concluída', () => {
+describe('RunAgenda — «Eliminar prova» numa prova concluída', () => {
   beforeEach(() => {
     mocks.ops.length = 0;
     localStorage.clear();
@@ -57,41 +55,22 @@ describe('RunAgenda — apagar o resultado de uma prova concluída', () => {
     });
   });
 
-  it('o hub fica aberto, a prova volta a agendada, as memórias ficam e os detalhes destrancam', async () => {
-    render(<ToastProvider><RunAgenda onClose={() => {}} /></ToastProvider>);
-    expect(screen.queryByRole('button', { name: /^Detalhes da prova$/i })).not.toBeInTheDocument();
-
-    fireEvent.click(screen.getByTestId('race-remove-button'));
-    const popup = await screen.findByTestId('race-remove-result');
-    expect(popup).toHaveTextContent('«Corrida do Tejo» volta a «agendada»');
-    expect(popup).toHaveTextContent('As memórias (diploma, medalha, fotos) ficam.');
-    fireEvent.click(within(popup).getByRole('button', { name: 'Apagar o resultado' }));
-
-    await waitFor(() => expect(useAppStore.getState().raceEvents[0].status).toBe('agendada'));
-    expect(mocks.ops.every((o) => o.kind === 'update' && o.filters.user_id === 'user-1')).toBe(true);
-    const prova = useAppStore.getState().raceEvents[0];
-    expect(prova.diploma_path).toBe('u/diploma.jpg');
-    expect(prova.coach_balance).toBeNull();
-    expect(useAppStore.getState().runs[0].race_id).toBeNull();
-
-    // A prova continua aberta, agora como agendada: os detalhes voltam.
-    expect(useAppStore.getState().editingRaceId).toBe('race-1');
-    expect(await screen.findByRole('button', { name: /^Detalhes da prova$/i })).toBeInTheDocument();
-    await waitFor(() => expect(screen.queryByTestId('race-remove-result')).not.toBeInTheDocument());
-  });
-
-  it('«Eliminar a prova inteira» continua lá, como secundária, e fecha o hub', async () => {
+  it('diz o que se perde, aponta o «Eliminar registo», e só apaga a prova (com user_id) ao confirmar', async () => {
     const onClose = vi.fn();
     render(<ToastProvider><RunAgenda onClose={onClose} /></ToastProvider>);
-    fireEvent.click(screen.getByTestId('race-remove-button'));
-    const popup = await screen.findByTestId('race-remove-result');
-    fireEvent.click(within(popup).getByRole('button', { name: /Eliminar a prova inteira/ }));
+    const botao = screen.getByTestId('race-remove-button');
+    expect(botao).toHaveTextContent('Eliminar prova');
+    fireEvent.click(botao);
+
     const aviso = await screen.findByTestId('race-remove-race');
-    expect(aviso).toHaveTextContent('o resultado, as conquistas, as memórias (diploma, medalha, fotos) e a ligação à corrida');
+    expect(aviso).toHaveTextContent('«Corrida do Tejo» sai do calendário e perdes o resultado, o diploma, as fotos e a ligação à corrida.');
+    expect(aviso).toHaveTextContent('Para refazer só o tempo, usa «Eliminar registo» em «Editar o registo».');
+    expect(mocks.ops).toEqual([]);
     fireEvent.click(within(aviso).getByRole('button', { name: 'Eliminar prova' }));
 
     await waitFor(() => expect(useAppStore.getState().raceEvents).toEqual([]));
     expect(mocks.ops).toEqual([{ table: 'race_events', kind: 'delete', patch: null, filters: { id: 'race-1', user_id: 'user-1' } }]);
+    expect(useAppStore.getState().runs[0].race_id).toBeNull();
     expect(useAppStore.getState().editingRaceId).toBeNull();
     expect(onClose).toHaveBeenCalled();
   });

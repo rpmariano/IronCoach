@@ -14,9 +14,9 @@ import Calendar from './Calendar';
    confirm do browser nunca é chamado, e nada é apagado enquanto o atleta não
    confirmar no popup da app.
 
-   Bug de 2026-11-15: numa prova concluída, «Eliminar» apagava a prova inteira
-   a quem só queria refazer o tempo. Com resultado, a ação principal passou a
-   «Apagar o resultado»; eliminar a prova ficou como secundária. */
+   Bug de 2026-11-15 (regras do Rui): o botão diz sempre «Eliminar prova», e
+   numa prova com resultado a confirmação diz o que se perde. Refazer só o
+   tempo faz-se no editar registo («Eliminar registo»). */
 
 const mocks = vi.hoisted(() => ({ deleted: [], ops: [] }));
 
@@ -78,7 +78,7 @@ describe('Calendário — eliminar prova', () => {
   it('pede confirmação no popup da app, não no window.confirm', async () => {
     renderCalendario();
     abrirCartao();
-    fireEvent.click(await screen.findByRole('button', { name: /^Eliminar$/ }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Eliminar prova' }));
 
     expect(confirmSpy).not.toHaveBeenCalled();
     expect(await screen.findByTestId('race-remove-race')).toHaveTextContent('«Meia de Lisboa» sai do calendário');
@@ -88,7 +88,7 @@ describe('Calendário — eliminar prova', () => {
   it('"Cancelar" fecha o popup e não apaga nada', async () => {
     renderCalendario();
     abrirCartao();
-    fireEvent.click(await screen.findByRole('button', { name: /^Eliminar$/ }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Eliminar prova' }));
     await screen.findByTestId('race-remove-race');
 
     fireEvent.click(screen.getByRole('button', { name: 'Cancelar' }));
@@ -100,7 +100,7 @@ describe('Calendário — eliminar prova', () => {
   it('só apaga depois de confirmar — e o delete leva o user_id', async () => {
     renderCalendario();
     abrirCartao();
-    fireEvent.click(await screen.findByRole('button', { name: /^Eliminar$/ }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Eliminar prova' }));
     const popup = await screen.findByRole('dialog');
 
     fireEvent.click(within(popup).getByRole('button', { name: 'Eliminar prova' }));
@@ -114,56 +114,19 @@ describe('Calendário — eliminar prova', () => {
       useAppStore.setState({ raceEvents: [PROVA_FEITA], runs: [CORRIDA] });
     });
 
-    it('«Apagar o resultado» é a ação principal: a prova volta a agendada e a corrida fica como treino', async () => {
+    it('o botão diz «Eliminar prova» e a confirmação diz o que se perde', async () => {
       renderCalendario();
       abrirCartao();
       expect(screen.queryByRole('button', { name: /^Eliminar$/ })).not.toBeInTheDocument();
-      fireEvent.click(await screen.findByRole('button', { name: 'Apagar o resultado' }));
-      const popup = await screen.findByTestId('race-remove-result');
-      expect(within(popup).getByLabelText(/Manter como treino/)).toBeChecked();
-
-      fireEvent.click(within(popup).getByRole('button', { name: 'Apagar o resultado' }));
-      await waitFor(() => expect(useAppStore.getState().raceEvents[0].status).toBe('agendada'));
-
-      expect(mocks.deleted).toEqual([]);
-      expect(mocks.ops).toEqual([
-        { table: 'runs', kind: 'update', patch: { race_id: null }, filters: { id: 'run-1', user_id: 'user-1' } },
-        { table: 'race_events', kind: 'update', patch: { status: 'agendada', coach_balance: null, coach_balance_at: null }, filters: { id: 'race-1', user_id: 'user-1' } },
-      ]);
-      const prova = useAppStore.getState().raceEvents[0];
-      expect(prova).toMatchObject({ id: 'race-1', name: 'Meia de Lisboa', coach_balance: null, coach_balance_at: null });
-      expect(useAppStore.getState().runs).toEqual([{ ...CORRIDA, race_id: null }]);
-    });
-
-    it('à escolha, apaga também a corrida', async () => {
-      renderCalendario();
-      abrirCartao();
-      fireEvent.click(await screen.findByRole('button', { name: 'Apagar o resultado' }));
-      const popup = await screen.findByTestId('race-remove-result');
-      fireEvent.click(within(popup).getByLabelText(/Apagar também a corrida/));
-      fireEvent.click(within(popup).getByRole('button', { name: 'Apagar o resultado' }));
-
-      await waitFor(() => expect(mocks.deleted).toEqual(['run-1']));
-      await waitFor(() => expect(useAppStore.getState().raceEvents[0].status).toBe('agendada'));
-      expect(mocks.ops[0]).toMatchObject({ table: 'runs', kind: 'delete', filters: { id: 'run-1', user_id: 'user-1' } });
-      expect(useAppStore.getState().runs).toEqual([]);
-      expect(useAppStore.getState().raceEvents).toHaveLength(1);
-    });
-
-    it('«Eliminar a prova inteira» é secundária e diz o que se perde', async () => {
-      renderCalendario();
-      abrirCartao();
-      fireEvent.click(await screen.findByRole('button', { name: 'Apagar o resultado' }));
-      const popup = await screen.findByTestId('race-remove-result');
-      fireEvent.click(within(popup).getByRole('button', { name: /Eliminar a prova inteira/ }));
-
+      fireEvent.click(await screen.findByRole('button', { name: 'Eliminar prova' }));
       const aviso = await screen.findByTestId('race-remove-race');
-      expect(aviso).toHaveTextContent('o resultado, as conquistas');
-      expect(aviso).toHaveTextContent('a ligação à corrida');
+      expect(aviso).toHaveTextContent('perdes o resultado, o diploma, as fotos e a ligação à corrida');
+      expect(aviso).toHaveTextContent('«Eliminar registo»');
       expect(mocks.ops).toEqual([]);
 
       fireEvent.click(within(aviso).getByRole('button', { name: 'Eliminar prova' }));
       await waitFor(() => expect(mocks.deleted).toEqual(['race-1']));
+      expect(mocks.ops[0]).toMatchObject({ table: 'race_events', kind: 'delete', filters: { id: 'race-1', user_id: 'user-1' } });
       expect(useAppStore.getState().raceEvents).toHaveLength(0);
       // A corrida fica, sem a ligação (como a FK SET NULL faz na BD).
       expect(useAppStore.getState().runs).toEqual([{ ...CORRIDA, race_id: null }]);

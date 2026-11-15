@@ -15,6 +15,19 @@ import { RACE_BALANCE_CACHE_PREFIX } from './coachProactive';
    voltam a aparecer ao registar outra vez. A corrida desliga-se (fica como treino) ou apaga-se — a
    escolha é do atleta. Todos os pedidos levam o user_id, por defesa (além da RLS). */
 
+/* Os campos do resultado na corrida (runs.details): o tempo oficial, a posição e a classificação do
+   diploma. Ao apagar só o resultado, saem; a corrida fica com o que o relógio mediu. */
+export const RACE_RESULT_DETAIL_KEYS = Object.freeze([
+  'official_time_seconds', 'position', 'bib_number', 'age_group', 'age_group_position',
+  'gender_position', 'participants', 'gun_time_seconds', 'official_splits',
+]);
+export function stripResultDetails(details) {
+  if (!details || typeof details !== 'object') return details ?? null;
+  const next = { ...details };
+  RACE_RESULT_DETAIL_KEYS.forEach((k) => { delete next[k]; });
+  return next;
+}
+
 export const RESULT_CLEARED_PATCH = Object.freeze({ status: 'agendada', coach_balance: null, coach_balance_at: null });
 
 /* As corridas que são o resultado desta prova: as ligadas por race_id e, para registos anteriores a
@@ -40,31 +53,34 @@ function dropBalanceCache(raceId) {
   try { window.localStorage.removeItem(`${RACE_BALANCE_CACHE_PREFIX}${raceId}`); } catch { /* sem storage */ }
 }
 
-/* deleteRuns: true apaga as corridas do resultado; false desliga-as (race_id null) e ficam como
-   treino. Devolve { ok, message? }. Atualiza o store (provas, corridas e, se apagou, o plano). */
-export async function clearRaceResult({ race, userId, deleteRuns }) {
+/* deleteRuns: true apaga as corridas do resultado; false desliga-as (race_id null, sem os campos do
+   resultado em details) e ficam como treino. Devolve { ok, message? }. Atualiza o store (provas, corridas e, se apagou, o plano). */
+export async function clearRaceResult({ race, userId, deleteRuns, runId = null }) {
   if (!race?.id || !userId) return { ok: false, message: 'Sem sessão.' };
   const store = useAppStore.getState();
   const resultRuns = raceResultRuns(race, store.runs);
-  const linkedIds = resultRuns.filter((r) => r.race_id === race.id).map((r) => r.id);
-  const runIds = deleteRuns ? resultRuns.map((r) => r.id) : linkedIds;
+  // A corrida que se está a editar entra sempre (pode estar ligada só pela data).
+  const editing = runId ? (store.runs || []).find((r) => r.id === runId) : null;
+  if (editing && !resultRuns.some((r) => r.id === editing.id)) resultRuns.push(editing);
+  const runIds = resultRuns.map((r) => r.id);
+  const keepPatch = (r) => ({ race_id: null, details: stripResultDetails(r.details) });
 
   if (!isDemo(userId)) {
     try {
-      for (const id of runIds) {
+      for (const r of resultRuns) {
         const q = deleteRuns
-          ? supabase.from('runs').delete().eq('id', id).eq('user_id', userId)
-          : supabase.from('runs').update({ race_id: null }).eq('id', id).eq('user_id', userId);
+          ? supabase.from('runs').delete().eq('id', r.id).eq('user_id', userId)
+          : supabase.from('runs').update(keepPatch(r)).eq('id', r.id).eq('user_id', userId);
         const { error } = await q;
         if (error) throw error;
       }
       const { data, error } = await supabase.from('race_events').update(RESULT_CLEARED_PATCH)
         .eq('id', race.id).eq('user_id', userId).select('id').maybeSingle();
       if (error || !data) {
-        // A prova não mudou: as corridas desligadas voltam a ela (apagadas já não voltam).
+        // A prova não mudou: as corridas desligadas voltam como estavam (apagadas já não voltam).
         if (!deleteRuns) {
-          for (const id of linkedIds) {
-            await Promise.resolve(supabase.from('runs').update({ race_id: race.id }).eq('id', id).eq('user_id', userId)).catch(() => {});
+          for (const r of resultRuns) {
+            await Promise.resolve(supabase.from('runs').update({ race_id: r.race_id ?? null, details: r.details ?? null }).eq('id', r.id).eq('user_id', userId)).catch(() => {});
           }
         }
         throw error || new Error('Não encontrei a prova.');
@@ -81,7 +97,7 @@ export async function clearRaceResult({ race, userId, deleteRuns }) {
   if (typeof now.setRuns === 'function') {
     now.setRuns(deleteRuns
       ? (now.runs || []).filter((r) => !ids.has(r.id))
-      : (now.runs || []).map((r) => (ids.has(r.id) ? { ...r, race_id: null } : r)));
+      : (now.runs || []).map((r) => (ids.has(r.id) ? { ...r, ...keepPatch(r) } : r)));
   }
   dropBalanceCache(race.id);
   // Apagar corridas solta os treinos do plano que cumpriam (trigger na BD): relê-se o plano.
