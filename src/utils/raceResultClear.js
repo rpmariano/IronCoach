@@ -65,34 +65,50 @@ export async function clearRaceResult({ race, userId, deleteRuns, runId = null }
   const runIds = resultRuns.map((r) => r.id);
   const keepPatch = (r) => ({ race_id: null, details: stripResultDetails(r.details) });
 
+  /* A ordem importa (revisão pré-deploy, 2026-11-15): a PROVA primeiro, as corridas depois. Se o
+     update à prova falhar, nada se perdeu — as corridas ainda lá estão e a prova continua como
+     estava. Se uma corrida falhar depois, a prova volta ao que era (e as corridas já desligadas
+     também), exceto se já se apagou alguma: aí o resultado já não existe e a prova fica agendada. */
+  let done = [];
   if (!isDemo(userId)) {
+    const { data, error } = await Promise.resolve(
+      supabase.from('race_events').update(RESULT_CLEARED_PATCH).eq('id', race.id).eq('user_id', userId).select('id').maybeSingle(),
+    ).catch((err) => ({ data: null, error: err }));
+    if (error || !data) {
+      console.error('[apagar o resultado] prova:', error || 'sem linha');
+      return { ok: false, message: 'Não consegui apagar o resultado. Tenta outra vez.' };
+    }
     try {
       for (const r of resultRuns) {
         const q = deleteRuns
           ? supabase.from('runs').delete().eq('id', r.id).eq('user_id', userId)
           : supabase.from('runs').update(keepPatch(r)).eq('id', r.id).eq('user_id', userId);
-        const { error } = await q;
-        if (error) throw error;
-      }
-      const { data, error } = await supabase.from('race_events').update(RESULT_CLEARED_PATCH)
-        .eq('id', race.id).eq('user_id', userId).select('id').maybeSingle();
-      if (error || !data) {
-        // A prova não mudou: as corridas desligadas voltam como estavam (apagadas já não voltam).
-        if (!deleteRuns) {
-          for (const r of resultRuns) {
-            await Promise.resolve(supabase.from('runs').update({ race_id: r.race_id ?? null, details: r.details ?? null }).eq('id', r.id).eq('user_id', userId)).catch(() => {});
-          }
-        }
-        throw error || new Error('Não encontrei a prova.');
+        const { error: runError } = await q;
+        if (runError) throw runError;
+        done.push(r.id);
       }
     } catch (err) {
-      console.error('[apagar o resultado]', err);
+      console.error('[apagar o resultado] corrida:', err);
+      if (deleteRuns && done.length) {
+        // Já se apagou corrida: o resultado foi-se, a prova fica agendada — o store acompanha.
+        applyLocally(race, deleteRuns, new Set(done), keepPatch, userId);
+        return { ok: false, message: 'Apaguei só parte do registo. Tenta outra vez para acabar.' };
+      }
+      const previous = { status: race.status ?? 'concluida', coach_balance: race.coach_balance ?? null, coach_balance_at: race.coach_balance_at ?? null };
+      await Promise.resolve(supabase.from('race_events').update(previous).eq('id', race.id).eq('user_id', userId)).catch(() => {});
+      for (const r of resultRuns.filter((x) => done.includes(x.id))) {
+        await Promise.resolve(supabase.from('runs').update({ race_id: r.race_id ?? null, details: r.details ?? null }).eq('id', r.id).eq('user_id', userId)).catch(() => {});
+      }
       return { ok: false, message: 'Não consegui apagar o resultado. Tenta outra vez.' };
     }
   }
 
+  applyLocally(race, deleteRuns, new Set(runIds), keepPatch, userId);
+  return { ok: true };
+}
+
+function applyLocally(race, deleteRuns, ids, keepPatch, userId) {
   const now = useAppStore.getState();
-  const ids = new Set(runIds);
   now.setRaceEvents((now.raceEvents || []).map((e) => (e.id === race.id ? { ...e, ...RESULT_CLEARED_PATCH } : e)));
   if (typeof now.setRuns === 'function') {
     now.setRuns(deleteRuns
@@ -101,10 +117,9 @@ export async function clearRaceResult({ race, userId, deleteRuns, runId = null }
   }
   dropBalanceCache(race.id);
   // Apagar corridas solta os treinos do plano que cumpriam (trigger na BD): relê-se o plano.
-  if (deleteRuns && runIds.length && !isDemo(userId)) {
+  if (deleteRuns && ids.size && !isDemo(userId)) {
     Promise.resolve(now.reloadAfterRunDeleted?.()).catch(() => {});
   }
-  return { ok: true };
 }
 
 // Eliminar a prova inteira. A corrida ligada fica (FK SET NULL) — como treino.

@@ -119,9 +119,10 @@ describe('Registo da prova — «Eliminar registo» dentro do editar', () => {
     fireEvent.click(within(popup).getByRole('button', { name: 'Eliminar registo' }));
 
     await waitFor(() => expect(onClose).toHaveBeenCalled());
+    // A prova primeiro, a corrida depois: se a prova falhasse, a corrida não se perdia.
     expect(mocks.ops.slice(0, 2)).toEqual([
-      { table: 'runs', kind: 'delete', patch: null, filters: { id: 'run-1', user_id: 'user-1' } },
       { table: 'race_events', kind: 'update', patch: { status: 'agendada', coach_balance: null, coach_balance_at: null }, filters: { id: 'race-1', user_id: 'user-1' } },
+      { table: 'runs', kind: 'delete', patch: null, filters: { id: 'run-1', user_id: 'user-1' } },
     ]);
     expect(mocks.ops.some((o) => o.table === 'race_events' && o.kind === 'delete')).toBe(false);
     const prova = useAppStore.getState().raceEvents[0];
@@ -137,7 +138,7 @@ describe('Registo da prova — «Eliminar registo» dentro do editar', () => {
     fireEvent.click(within(popup).getByRole('button', { name: 'Eliminar registo' }));
 
     await waitFor(() => expect(useAppStore.getState().raceEvents[0].status).toBe('agendada'));
-    expect(mocks.ops[0]).toEqual({
+    expect(mocks.ops.find((o) => o.table === 'runs')).toEqual({
       table: 'runs', kind: 'update',
       patch: { race_id: null, details: { race_type: '10k', avg_hr: 160 } },
       filters: { id: 'run-1', user_id: 'user-1' },
