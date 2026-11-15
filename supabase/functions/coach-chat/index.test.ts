@@ -3803,9 +3803,10 @@ Deno.test("buildRacePlanContext: a tabela troço a troço, a base, o percurso e 
   assertStringIncludes(ctx, "=== PLANO PARA O DIA DA PROVA");
   assertStringIncludes(ctx, "Prova: Meia de Lisboa — é amanhã.");
   assertStringIncludes(ctx, "Base: o objetivo, 1:52:00 (5.18/km).");
-  assertStringIncludes(ctx, "Primeiro km: 5.26/km. Ponto de decisão: km 15.");
+  // A subida da Calçada abranda um km: o plano tira-o ao resto e a chegada dá o objetivo (bug #122).
+  assertStringIncludes(ctx, "Chegada planeada: 1:52:00. Primeiro km: 5.25/km. Ponto de decisão: km 15.");
   assertStringIncludes(ctx, "Percurso: conhecido");
-  assertStringIncludes(ctx, "- km 0–1 · 5.26/km · passagem 5:26 · controlar");
+  assertStringIncludes(ctx, "- km 0–1 · 5.25/km · passagem 5:25 · controlar");
   assertStringIncludes(ctx, "· subida · subida da Calçada da Ajuda — Subida: desacelera");
   assertStringIncludes(ctx, "Abastecimento: km 5 água");
   assertEquals(buildRacePlanContext(null, "X", 1), null);
