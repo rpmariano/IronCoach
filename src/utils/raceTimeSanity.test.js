@@ -23,7 +23,7 @@ describe('raceTimeSanity', () => {
     const r = checkRaceTime({ text: '1:05:00', distanceKm: 42.195 });
     expect(r.ok).toBe(false);
     expect(r.suggestion).toBeNull();
-    expect(r.message).toBe('1:05:00 dá um ritmo mais rápido do que o recorde do mundo. Confirma o tempo.');
+    expect(r.message).toBe('1:05:00 dá um ritmo de elite mundial (mais rápido do que 2:40/km). Confirma o tempo.');
   });
 
   it('menos de metade do objetivo (ou da previsão) bloqueia', () => {
