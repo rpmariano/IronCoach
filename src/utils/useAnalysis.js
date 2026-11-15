@@ -1,4 +1,5 @@
 import { useCallback, useRef, useState } from 'react';
+import { reportSaveFailure, isQuotaError, isNoRetryError } from './saveFailure';
 
 /**
  * useAnalysis — a máquina de estados das três operações que dependem da IA e
@@ -24,9 +25,16 @@ import { useCallback, useRef, useState } from 'react';
  * perde numa falha — o `catch` vive aqui e não chega a mexer no estado do
  * ecrã.
  */
-export default function useAnalysis() {
+/**
+ * @param {{ kind?: 'meal'|'run'|'gym'|'body' }} [opts]  com kind, uma falha regista-se em app_logs
+ *   (save_failed, #116) — a não ser que o invoke já a tenha registado.
+ */
+export default function useAnalysis({ kind = null } = {}) {
   const [status, setStatus] = useState('idle');
   const [error, setError] = useState(null);
+  // A quota (429): a frase da Carol fica em `error`, e não há «Tentar de novo». false, ou o
+  // limite batido — 'day' | 'hour' | true (sem o campo) — para o título do aviso.
+  const [quota, setQuota] = useState(false);
   // A última tarefa corrida, para o "Tentar de novo" a repetir tal e qual.
   const lastTaskRef = useRef(null);
 
@@ -35,6 +43,7 @@ export default function useAnalysis() {
     lastTaskRef.current = task;
     setStatus('analyzing');
     setError(null);
+    setQuota(false);
     try {
       const result = await task();
       setStatus('idle');
@@ -44,11 +53,14 @@ export default function useAnalysis() {
       // apanha a consola, e a mensagem técnica é o que permite perceber
       // depois se foi timeout, 401 ou resposta inválida.
       console.error(err);
+      if (kind) reportSaveFailure(kind, err);
       setError(err?.message || '');
+      // 'final': outra recusa sem volta (a imagem demasiado grande) — sem «Tentar de novo» também.
+      setQuota(isQuotaError(err) ? (err.quotaScope || true) : (isNoRetryError(err) ? 'final' : false));
       setStatus('error');
       return undefined;
     }
-  }, []);
+  }, [kind]);
 
   const retry = useCallback(() => {
     if (lastTaskRef.current) return run(lastTaskRef.current);
@@ -58,11 +70,13 @@ export default function useAnalysis() {
   const reset = useCallback(() => {
     setStatus('idle');
     setError(null);
+    setQuota(false);
   }, []);
 
   return {
     status,
     error,
+    quota,
     run,
     retry,
     reset,

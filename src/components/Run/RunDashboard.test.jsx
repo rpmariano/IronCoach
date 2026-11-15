@@ -296,17 +296,15 @@ describe('R9 — rótulos dos recordes', () => {
     expect(screen.getByText('≈21 km')).toBeInTheDocument();
     expect(screen.queryByText('5 km+')).not.toBeInTheDocument();
     const legenda = screen.getByTestId('recordes-intervalos');
-    expect(legenda).toHaveTextContent('4 a 6,5 km');
-    expect(legenda).toHaveTextContent('8,5 a 12 km');
-    expect(legenda).toHaveTextContent('19 a 23 km');
+    expect(legenda).toHaveTextContent('O melhor ritmo dos primeiros 5, 10 e 21,1 km de cada corrida, pelas voltas do relógio. Uma corrida com essa distância (até +3%) conta inteira; sem voltas, só essa.');
   });
 
-  it('a legenda diz o mesmo que bestPace.ts: as fronteiras dos intervalos', () => {
+  it('a legenda diz o mesmo que bestPace.ts: as fronteiras dos intervalos (corrida sem voltas)', () => {
     const run = (km) => [{ date: '2026-09-01', distance_km: km, duration_seconds: km * 300, details: {} }];
     const dentro = (alvo, km) => computeBestPace(run(km), alvo) !== null;
-    expect([dentro(5, 3.99), dentro(5, 4), dentro(5, 6.5), dentro(5, 6.51)]).toEqual([false, true, true, false]);
-    expect([dentro(10, 8.49), dentro(10, 8.5), dentro(10, 12), dentro(10, 12.01)]).toEqual([false, true, true, false]);
-    expect([dentro(21, 18.99), dentro(21, 19), dentro(21, 23), dentro(21, 23.01)]).toEqual([false, true, true, false]);
+    expect([dentro(5, 4.94), dentro(5, 4.95), dentro(5, 5.15), dentro(5, 5.16)]).toEqual([false, true, true, false]);
+    expect([dentro(10, 9.89), dentro(10, 9.9), dentro(10, 10.3), dentro(10, 10.31)]).toEqual([false, true, true, false]);
+    expect([dentro(21, 20.88), dentro(21, 20.89), dentro(21, 21.73), dentro(21, 21.74)]).toEqual([false, true, true, false]);
   });
 });
 

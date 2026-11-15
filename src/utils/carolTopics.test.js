@@ -390,6 +390,11 @@ describe('interventionTopicLine', () => {
     expect(linha('[adaptacao] qualquer coisa')).toBe('Vi os teus últimos treinos do plano. Quero ajustá-lo contigo.');
   });
 
+  it('a volta sozinha a Prudente ([perfil], dev-back 510e6310): sem alarme e sem o sinal', () => {
+    const linha = interventionTopicLine({ profile: { coach_intervention_status: 'needed', coach_intervention_reason: '[perfil] O perfil de carga de «Meia dos Descobrimentos» voltou de Mais volume a Prudente sozinho: uma dor registada. Diz-lhe uma vez…' } });
+    expect(linha).toBe('Pus o teu perfil de carga de volta em Prudente, por segurança. Quero saber como estás.');
+  });
+
   it('sem intervenção pendente, nenhuma — mesmo com propostas', () => {
     expect(interventionTopicLine({ profile: { coach_intervention_status: 'resolved' }, coachPlans: [{ id: 'p1', status: 'proposto' }] })).toBeNull();
   });

@@ -506,6 +506,15 @@ describe('RaceHubView — plano para o dia', () => {
     expect(screen.queryByText(/Não conheço o percurso/)).not.toBeInTheDocument();
   });
 
+  it('o site da prova só é link se for http(s); um «javascript:» fica texto', () => {
+    const { unmount } = render(<RaceHubView race={{ ...MEIA_PROXIMA, website: 'https://meiadelisboa.pt' }} runs={[]} profile={PROFILE} onFetchWebInfo={vi.fn()} />);
+    expect(screen.getByRole('link', { name: 'https://meiadelisboa.pt' })).toHaveAttribute('href', 'https://meiadelisboa.pt');
+    unmount();
+    render(<RaceHubView race={{ ...MEIA_PROXIMA, website: 'javascript:alert(1)' }} runs={[]} profile={PROFILE} onFetchWebInfo={vi.fn()} />);
+    expect(screen.getByTestId('race-website-text')).toHaveTextContent('javascript:alert(1)');
+    expect(document.querySelector('a[href^="javascript"]')).toBeNull();
+  });
+
   it('sem informação do site mas com site da prova, oferece buscar o percurso', () => {
     const onFetchWebInfo = vi.fn();
     render(
@@ -795,5 +804,25 @@ describe('RaceHubView — «Marcar a próxima prova» passa pelo navGuard', () =
     fireEvent.click(screen.getByRole('button', { name: /Marcar a próxima prova/i }));
     expect(useAppStore.getState().editingRaceId).toBeNull();
     expect(useAppStore.getState().openCreationMode).toBe('race');
+  });
+});
+
+/* #113/#114 (2026-11-06): o aviso «volume insuficiente» passa a uma leitura única e neutra do
+   volume até à prova — nunca um aviso de falha. */
+describe('RaceHubView — volume até à prova (#113/#114)', () => {
+  const futureISO = (days) => { const d = new Date(); d.setDate(d.getDate() + days); return d.toISOString().slice(0, 10); };
+  const pastISO = (days) => { const d = new Date(); d.setDate(d.getDate() - days); return d.toISOString().slice(0, 10); };
+  const meia = { id: 'race-2', name: 'Meia dos Descobrimentos', date: futureISO(70), distance_km: 21.1, race_type: 'estrada', race_priority: 'a', status: 'agendada', experience_level: 'basico', created_at: new Date().toISOString() };
+  const poucos = [2, 5, 9, 12, 16, 19, 23, 26].map((n, i) => ({ id: `v${i}`, kind: 'treino', training_type: 'continuo', date: pastISO(n), distance_km: 6, duration_seconds: 2100 }));
+
+  // Sem plano até à prova (dev-back 2c5f32b6): as semanas por planear não contam como zero — o
+  // atual e o recomendado, uma linha neutra, e nunca o «para completar».
+  it('sem plano até à prova: a leitura neutra, «ainda não há plano», sem «para completar» nem alerta de volume', () => {
+    render(<RaceHubView race={meia} runs={poucos} profile={{ experience_level: 'basico' }} />);
+    expect(screen.getByTestId('volume-outlook-line')).toHaveTextContent(/^Corres 12 km\/semana · a meia pede 35\.$/);
+    expect(screen.getByTestId('volume-outlook-note')).toHaveTextContent('Ainda não há plano até à semana da prova.');
+    expect(screen.queryByText(/para completar/)).toBeNull();
+    expect(screen.queryByText(/volume médio recente/)).toBeNull();
+    expect(screen.queryByText(/insuficiente/i)).toBeNull();
   });
 });

@@ -1,20 +1,24 @@
 /* Os exercícios de um treino de ginásio do plano, prontos a mostrar.
    Lê coach_plan_items.prescription = { blocks: [...] } (a forma que o coach-chat grava,
    supabase/functions/_shared/formulas/planPrescription.ts): força { type:'forca', name,
-   sets, reps, goal }, cardio { type:'cardio', name, duration_min, distance_km, laps, goal }.
+   sets, reps | seconds, goal }, cardio { type:'cardio', name, duration_min, distance_km, laps, goal }.
    Lê o que está gravado sem confiar na forma: um bloco sem nome cai; um alvo em falta
    (sem reps, em cardio sem tempo) deixa o alvo vazio e o exercício fica na mesma. */
 
 // Defesa extra: os mesmos tetos do servidor (planPrescription.ts: 10 séries, 50 reps; cardio até 300 min,
 // 100 km, 500 voltas) com folga; um valor fora disto não é um alvo, é lixo — fica de fora.
-const MAX = { sets: 20, reps: 100, duration_min: 600, distance_km: 200, laps: 1000 };
+const MAX = { sets: 20, reps: 100, seconds: 1200, duration_min: 600, distance_km: 200, laps: 1000 };
 const num = (v, max) => (typeof v === 'number' && Number.isFinite(v) && v > 0 && v <= max ? v : null);
 const fmt = (n) => String(Math.round(n * 100) / 100).replace('.', ',');
 
-/** O alvo de um bloco: "3×12", "20 min", "2 km · 4 voltas"; '' sem alvo nenhum. */
+/** O alvo de um bloco: "3×12", "3×30 s", "20 min", "2 km · 4 voltas"; '' sem alvo nenhum.
+ *  #118: um isométrico traz `seconds` por série em vez de reps — espelha o
+ *  prescriptionBlockTarget do servidor (planPrescription.ts). */
 export function blockTarget(b) {
   const sets = num(b?.sets, MAX.sets);
   const reps = num(b?.reps, MAX.reps);
+  const seconds = num(b?.seconds, MAX.seconds);
+  if (sets && seconds) return `${fmt(sets)}×${fmt(seconds)} s`;
   if (sets && reps) return `${fmt(sets)}×${fmt(reps)}`;
   const parts = [];
   if (num(b?.duration_min, MAX.duration_min)) parts.push(`${fmt(b.duration_min)} min`);

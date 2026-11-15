@@ -177,33 +177,66 @@ export async function saveFoodVariant({ userId, parent, label, values, existing 
   return data;
 }
 
+/** Meia-vida do peso de uma refeição nas sugestões (pedido do Rui, 2026-11-09). */
+export const HABITUAL_HALF_LIFE_DAYS = 21;
+/** Quantas vezes um alimento FORA da despensa tem de aparecer para ser sugerido. */
+export const HABITUAL_MIN_OUTSIDE_PANTRY = 3;
+
+const daysBetween = (fromISO, toISO) => Math.max(0, Math.round((Date.parse(`${toISO}T00:00:00Z`) - Date.parse(`${fromISO}T00:00:00Z`)) / 86400000));
+
 /**
- * "O que costumas comer ao pequeno-almoço": os alimentos da despensa que
- * aparecem pelo menos 2 vezes nas refeições desse tipo dos últimos 90 dias.
+ * "O que costumas comer ao pequeno-almoço" (desde 2026-11-09, pedido do Rui):
+ * - cada refeição pesa pela idade, com meia-vida de HABITUAL_HALF_LIFE_DAYS (0,5^(dias/21)); ordena-se
+ *   pela soma dos pesos — o que comeste ontem vem antes do que comias há dois meses;
+ * - da despensa: pelo menos 2 refeições nos `days` dias (devolve o alimento da despensa);
+ * - fora da despensa: pelo menos 3 refeições — devolve { name, name_key, fromHistory: true, lastGrams }
+ *   com o nome e as gramas da última vez (entra na análise como um alimento escrito). No empate,
+ *   a despensa primeiro;
+ * - fora o que já está na lista desta refeição (`exclude`, nomes); até `limit` (4).
  */
-export function habitualsForMealType({ meals, foods, mealType, today, days = 90, limit = 3 }) {
+export function habitualsForMealType({ meals, foods, mealType, today, days = 90, limit = 4, exclude = [] }) {
   if (!mealType || !today) return [];
   const types = compatibleMealTypes(mealType);
   const since = new Date(`${today}T00:00:00Z`);
   since.setUTCDate(since.getUTCDate() - days);
   const sinceISO = since.toISOString().slice(0, 10);
   const byKey = new Map((foods || []).map((f) => [f.name_key, f]));
-  const counts = new Map();
+  const excluded = new Set((exclude || []).map((n) => foodKey(n)).filter(Boolean));
+  const stats = new Map(); // key → { count, weight, lastDate, lastName, lastGrams }
   for (const m of meals || []) {
     if (!types.includes(m?.meal_type) || !m.date || m.date < sinceISO || m.date > today) continue;
+    const w = 0.5 ** (daysBetween(m.date, today) / HABITUAL_HALF_LIFE_DAYS);
     const seen = new Set();
     for (const it of m.meal_items || []) {
       const k = foodKey(it?.name);
-      if (!byKey.has(k) || seen.has(k)) continue;
+      if (!k || seen.has(k) || excluded.has(k)) continue;
       seen.add(k);
-      counts.set(k, (counts.get(k) || 0) + 1);
+      const st = stats.get(k) || { count: 0, weight: 0, lastDate: '', lastName: null, lastGrams: null };
+      st.count += 1;
+      st.weight += w;
+      if (m.date >= st.lastDate) {
+        st.lastDate = m.date;
+        st.lastName = String(it.name).trim();
+        const g = Number(it.quantity_grams);
+        st.lastGrams = Number.isFinite(g) && g > 0 ? Math.round(g) : null;
+      }
+      stats.set(k, st);
     }
   }
-  return [...counts.entries()]
-    .filter(([, n]) => n >= 2)
-    .sort((a, b) => b[1] - a[1])
+  const out = [];
+  for (const [k, st] of stats) {
+    const food = byKey.get(k);
+    if (food) {
+      if (st.count >= 2) out.push({ weight: st.weight, inPantry: true, value: food });
+    } else if (st.count >= HABITUAL_MIN_OUTSIDE_PANTRY) {
+      out.push({ weight: st.weight, inPantry: false, value: { name: st.lastName, name_key: k, fromHistory: true, lastGrams: st.lastGrams } });
+    }
+  }
+  return out
+    // Pesos iguais (a menos de um arredondamento): a despensa primeiro.
+    .sort((a, b) => (Math.abs(b.weight - a.weight) > 1e-9 ? b.weight - a.weight : Number(b.inPantry) - Number(a.inPantry)))
     .slice(0, limit)
-    .map(([k]) => byKey.get(k));
+    .map((e) => e.value);
 }
 
 /** O que diz cada regra de cozinha, por baixo do valor. */
@@ -260,9 +293,42 @@ export function isDishlessRule(rule) {
   return GENERIC_TOPICS.has(foodKey(core));
 }
 
-/** As regras que aparecem no Armário: as que ela já usa, ou que variam. */
+/* Bug #109 (2026-11-01): os ingredientes opcionais — manteiga, azeite, óleo, molhos — a Carol
+   pergunta sempre; as regras aprendidas sobre eles já não se usam nem se aprendem. A mesma
+   regra de isLearnedAdditionRule em supabase/functions/analyze-meal/optionalAdditions.ts
+   (dev-back dfad1095) — mudar uma é mudar a outra. Valem as escritas à mão (manual), a
+   quantidade do próprio ingrediente à parte («manteiga · quantidade», «molhos · quantidade»,
+   «quantidade de azeite») e a de um alimento composto com o ingrediente no nome («atum em
+   azeite», «frango com molho de caril»). A manteiga de amendoim (e as outras vegetais) é um
+   alimento, não conta. */
+const ADDITION_FAMILY = {
+  manteiga: 'manteiga', margarina: 'manteiga', 'creme vegetal': 'manteiga',
+  azeite: 'azeite', oleo: 'azeite',
+  molho: 'molho', maionese: 'molho', ketchup: 'molho',
+};
+const ADDITION_RE = new RegExp(`\\b(${Object.keys(ADDITION_FAMILY).join('|')})s?\\b`);
+const NUT_BUTTER_RE = /\bmanteigas? de (amendoim|caju|amendoa|amendoas|avela|avelas|noz|nozes|pistacio|cacau|coco|karite|sementes|girassol|sesamo|frutos secos)\b/g;
+const additionKey = (text) => foodKey(text).replace(NUT_BUTTER_RE, ' ');
+// O tema COMEÇA pelo ingrediente opcional; no meio é o nome de um alimento composto.
+const ADDITION_HEAD_RE = new RegExp(`^(${Object.keys(ADDITION_FAMILY).join('|')})s?\\b(.*)$`);
+// Numa quantidade, o ingrediente tem de estar num prato: «manteiga no pão · quantidade».
+const IN_DISH_RE = /^ (no|na|nos|nas|em|sobre|para) \S/;
+
+export function isLearnedAdditionRule(rule) {
+  if (!rule || rule.source === 'manual') return false;
+  const topic = String(rule.topic ?? '');
+  const isQuantity = /\bquantidades?\b/i.test(topic);
+  const food = additionKey(topic.replace(/\bquantidades?\b/gi, ' ')).trim().replace(/^(de|do|da|dos|das) /, '');
+  const head = food.match(ADDITION_HEAD_RE);
+  if (isQuantity) return !!head && IN_DISH_RE.test(head[2]);
+  return !!head || ADDITION_RE.test(additionKey(rule.value));
+}
+
+/** As regras que aparecem no Armário: as que ela já usa, ou que variam — sem as dos
+ *  ingredientes opcionais, que ela já não usa (#109). */
 export function visibleRules(rules) {
-  return (rules || []).filter((r) => r.status === 'confirmado' || r.status === 'varia' || r.source === 'manual');
+  return (rules || []).filter((r) => (r.status === 'confirmado' || r.status === 'varia' || r.source === 'manual')
+    && !isLearnedAdditionRule(r));
 }
 
 // ── Pedidos ───────────────────────────────────────────────────────────────

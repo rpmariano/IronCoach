@@ -31,6 +31,8 @@ import {
 import { calculateRaceTrainingPlan } from '../../utils/racePlanEngine';
 import { todayISO } from '../../lib/utils';
 import { startTimeInputValue } from '../../utils/startTime';
+import { raceResultLine } from '../../utils/raceDay';
+import { safeHttpUrl } from '../../utils/safeUrl';
 
 function formatDatePT(isoStr) {
   if (!isoStr) return '';
@@ -115,6 +117,13 @@ export default function RaceCard({ ev, onEdit, onToggleStatus, onDelete, onRegis
             {isPast && !done ? ' · já passou' : ''}
             {ev.location ? ` · ${ev.location}` : ''}
           </p>
+          {/* Bug #117: o resultado da corrida ligada fica aqui — no Calendário ela já não tem
+              cartão à parte (a mesma prova aparecia duas vezes). */}
+          {raceRun && raceResultLine(raceRun) && (
+            <p data-testid="race-card-result" className="text-[12px] font-bold mt-1" style={{ color: 'var(--text-1)' }}>
+              {raceResultLine(raceRun)}
+            </p>
+          )}
         </div>
         <div className="flex items-start justify-end shrink-0">
           <button
@@ -239,9 +248,14 @@ export default function RaceCard({ ev, onEdit, onToggleStatus, onDelete, onRegis
           {ev.website && (
             <div className="text-[11px] text-[var(--text-3)] flex items-center gap-1 px-0.5 truncate">
               <LinkIcon size={11} className="shrink-0 text-[var(--text-3)]" />
-              <a href={ev.website} target="_blank" rel="noopener noreferrer" className="underline hover:text-[var(--mod-prova)] transition truncate">
-                {ev.website}
-              </a>
+              {/* Só é link o que é http(s) — um «javascript:…» fica texto (utils/safeUrl.js). */}
+              {safeHttpUrl(ev.website) ? (
+                <a href={safeHttpUrl(ev.website)} target="_blank" rel="noopener noreferrer" className="underline hover:text-[var(--mod-prova)] transition truncate">
+                  {ev.website}
+                </a>
+              ) : (
+                <span className="truncate" data-testid="race-website-text">{ev.website}</span>
+              )}
             </div>
           )}
 
@@ -313,7 +327,8 @@ export default function RaceCard({ ev, onEdit, onToggleStatus, onDelete, onRegis
               className="flex-1 text-xs"
               icon={<Trash2 size={14} />}
             >
-              Eliminar
+              {/* Sempre «Eliminar prova»: o botão diz o que apaga (regra do Rui, 2026-11-15). */}
+              Eliminar prova
             </Button>
           </div>
         </div>

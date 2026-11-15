@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act, within } from '@testing-library/react';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { useAppStore } from '../../store';
 import GymRegistration from './GymRegistration';
@@ -41,7 +41,11 @@ vi.mock('../../lib/supabase', () => ({
       return {};
     },
   },
-  invokeEdgeFunctionWithTimeout: (...args) => mocks.invoke(...args),
+  // #106: nos testes que não são sobre a leitura, selectPhoto passa o passo «Ler os prints»
+  // com uma leitura falhada (mocks.skipRead) — fora de mocks.invoke, para não mexer nas contagens.
+  invokeEdgeFunctionWithTimeout: (...args) => (mocks.skipRead && args[1]?.body?.mode === 'preview'
+    ? Promise.resolve({ data: null, error: 'leitura saltada no teste' })
+    : mocks.invoke(...args)),
 }));
 
 // Evita FileReader/Image/canvas do jsdom — a compressão em si já está fora
@@ -52,11 +56,24 @@ vi.mock('../../lib/image', () => ({
 
 const PROFILE = { id: 'user-1' };
 
-const selectPhoto = async () => {
+/* #106: com prints, o primeiro passo é «Ler os prints e preencher». selectPhoto() passa-o (uma
+   leitura falhada abre o «Analisar» sem mudar o pedido); selectPhoto({ ler: false }) deixa-o por fazer,
+   para os testes da leitura. */
+const passarLeitura = async () => {
+  mocks.skipRead = true;
+  try {
+    fireEvent.click(screen.getByRole('button', { name: 'Ler os prints e preencher' }));
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Ler os prints e preencher' })).not.toBeInTheDocument());
+  } finally {
+    mocks.skipRead = false;
+  }
+};
+const selectPhoto = async ({ ler = true } = {}) => {
   const input = document.querySelector('input[type="file"]');
   const file = new File(['conteudo'], 'treino.jpg', { type: 'image/jpeg' });
   await fireEvent.change(input, { target: { files: [file] } });
   await screen.findByAltText('Print 1');
+  if (ler) await passarLeitura();
 };
 
 // Ao gravar com séries do plano por confirmar aparece um aviso (revisão
@@ -114,7 +131,7 @@ describe('GymRegistration — formulário único (registo unificado, F1)', () =>
     const { body } = mocks.invoke.mock.calls[0][1];
     expect(body.mode).toBe('manual');
     expect(body.sets).toEqual([{ exercise_name: 'Extensões de pernas', set_index: 0, reps: 12, weight: 40 }]);
-    expect(body.exercises_meta).toEqual([{ name: 'Extensões de pernas', goal: 'chegar às 12', block_type: 'forca', plan_block_index: null, goal_met: null }]);
+    expect(body.exercises_meta).toEqual([{ name: 'Extensões de pernas', goal: 'chegar às 12', block_type: 'forca', rep_unit: 'reps', plan_block_index: null, goal_met: null }]);
   });
 
   it('modo Live: o ✓ de uma série vazia confirma a sugestão da série anterior', () => {
@@ -285,6 +302,25 @@ describe('GymRegistration — registo manual também passa pelo Coach (analyze-g
     expect(useAppStore.getState().gymSessions).toEqual([{ ...newSession, workout_session_sets: sets }]);
   });
 
+  /* #121 (2026-11-10, o Rui: «Primeiro treino?»): a app acabada de abrir, o registo aberto antes de
+     as sessões chegarem. Chegaram durante a análise — e a gravação punha [esta] por cima delas. */
+  it('#121: as sessões que chegam durante a gravação ficam — a nova junta-se a elas', async () => {
+    let resolve;
+    mocks.invoke.mockReturnValue(new Promise((r) => { resolve = r; }));
+    render(<GymRegistration onClose={onClose} />);
+    fireEvent.click(screen.getByRole('button', { name: /Analisar treino/i }));
+    gravarAssimSeHouver();
+    await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(1));
+    const antigas = Array.from({ length: 16 }, (_, i) => ({ id: `antiga-${i}`, date: '2026-10-06' }));
+    act(() => { useAppStore.setState({ gymSessions: antigas }); });
+    await act(async () => { resolve({ data: { session: { id: 'passadeira', name: 'Passadeira' }, sets: [] }, error: null }); });
+    await dispensarConfirmacao();
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+    const ids = useAppStore.getState().gymSessions.map((x) => x.id);
+    expect(ids).toHaveLength(17);
+    expect(ids[0]).toBe('passadeira');
+  });
+
   it('mostra o erro da Edge Function e não fecha o formulário', async () => {
     mocks.invoke.mockResolvedValue({ data: null, error: 'Falha a gravar treino.' });
     render(<GymRegistration onClose={onClose} />);
@@ -294,6 +330,28 @@ describe('GymRegistration — registo manual também passa pelo Coach (analyze-g
     gravarAssimSeHouver();
 
     await screen.findByText('Falha a gravar treino.');
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  /* #116 (2026-11-07): a falha de rede diz-se numa frase clara, nunca «Edge Function», e o «Tentar
+     de novo» repete a gravação com o MESMO client_request_id (a idempotência não a duplica). */
+  it('#116: falha de rede — frase clara e «Tentar de novo» com o mesmo client_request_id', async () => {
+    mocks.invoke.mockResolvedValueOnce({ data: null, error: 'Failed to send a request to the Edge Function', isNetwork: true, isTimeout: false, status: null });
+    render(<GymRegistration onClose={onClose} />);
+    goManual();
+
+    fireEvent.click(screen.getByRole('button', { name: /Analisar treino/i }));
+    gravarAssimSeHouver();
+
+    await screen.findByText(/^A ligação falhou\./);
+    expect(screen.queryByText(/Edge Function/)).toBeNull();
+    const firstId = mocks.invoke.mock.calls.at(-1)[1].body.client_request_id;
+    expect(firstId).toBeTruthy();
+
+    mocks.invoke.mockResolvedValueOnce({ data: null, error: 'Failed to send a request to the Edge Function', isNetwork: true });
+    fireEvent.click(screen.getByRole('button', { name: /Tentar de novo/ }));
+    await waitFor(() => expect(mocks.invoke.mock.calls.length).toBeGreaterThanOrEqual(2));
+    expect(mocks.invoke.mock.calls.at(-1)[1].body.client_request_id).toBe(firstId);
     expect(onClose).not.toHaveBeenCalled();
   });
 });
@@ -674,7 +732,9 @@ describe('GymRegistration — BUG CORRIGIDO (2026-08-30) — rascunho sobrevive 
   it('gravar com sucesso limpa o rascunho — o próximo treino novo não vem com nome antigo', async () => {
     // Simula um rascunho já persistido de uma sessão anterior (poupa esperar
     // pelo debounce real de formDraftPersistence.js).
-    localStorage.setItem('ironcoach:treino-rascunho:nova', JSON.stringify({ name: 'Rascunho Antigo' }));
+    // A chave do rascunho leva a conta (auditoria B2).
+    useAppStore.setState({ session: { user: { id: 'user-1' } } });
+    localStorage.setItem('ironcoach:u:user-1:treino-rascunho:nova', JSON.stringify({ name: 'Rascunho Antigo' }));
     mocks.invoke.mockResolvedValue({ data: { session: { id: 'sess-9' }, sets: [] }, error: null });
 
     const { unmount } = render(<GymRegistration onClose={onClose} />);
@@ -688,7 +748,7 @@ describe('GymRegistration — BUG CORRIGIDO (2026-08-30) — rascunho sobrevive 
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
     unmount();
 
-    expect(localStorage.getItem('ironcoach:treino-rascunho:nova')).toBeNull();
+    expect(localStorage.getItem('ironcoach:u:user-1:treino-rascunho:nova')).toBeNull();
 
     // Próximo treino novo: sem vestígios do rascunho gravado.
     render(<GymRegistration onClose={onClose} />);
@@ -882,25 +942,36 @@ describe('GymRegistration — ler os prints e as notas para o formulário (F2, O
     useAppStore.setState({ profile: PROFILE, gymSessions: [] });
   });
 
-  // Bug #72 (2026-10-19): já não há botão "Ler os prints e preencher" — a
-  // Carol lê os prints ao "Analisar treino" e o que ele escreveu ganha
-  // (servidor: mergeMetrics, mergeTypedWithRead).
-  it('com prints: sem botão de ler, uma nota diz que a leitura é automática, e gravar lê os prints (reviewed: false)', async () => {
+  // #106 (2026-10-31, desfaz o bug #72): com prints, o primeiro passo é «Ler os prints e
+  // preencher»; o «Analisar treino» só aparece depois da leitura, e gravar já não volta a ler.
+  it('#106: com prints, primeiro lê e preenche; só depois analisa, com os prints já revistos (reviewed: true)', async () => {
     render(<GymRegistration onClose={onClose} />);
-    await selectPhoto();
-    expect(screen.queryByRole('button', { name: /Ler os prints e preencher/ })).not.toBeInTheDocument();
-    expect(screen.getByTestId('photo-auto-read-note')).toHaveTextContent('Ao analisar, leio os prints sozinha');
-    expect(screen.getByTestId('photo-auto-read-note')).toHaveTextContent('não apago nada');
-
+    await selectPhoto({ ler: false });
+    // #110: a leitura está junto das fotos desde o início; o «Analisar treino» fica desativado até lá.
+    expect(screen.getAllByRole('button', { name: 'Ler os prints e preencher' })).toHaveLength(1);
+    expect(screen.getByRole('button', { name: /Analisar treino/ })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /Analisar treino/ })).toHaveAccessibleDescription(/Primeiro lê os prints/);
+    mocks.invoke.mockResolvedValueOnce({ data: { preview: PREVIEW, readable: true }, error: null });
+    fireEvent.click(screen.getByRole('button', { name: 'Ler os prints e preencher' }));
+    await waitFor(() => expect(screen.getByDisplayValue('Extensões de pernas')).toBeInTheDocument());
+    expect(mocks.invoke.mock.calls[0][1].body).toMatchObject({ mode: 'preview', images: ['AAA'] });
+    // Lidos: o botão principal passa a «Analisar treino».
     mocks.invoke.mockResolvedValueOnce({ data: { session: { id: 'sess-1' }, sets: [] }, error: null });
     fireEvent.click(screen.getByRole('button', { name: /Analisar treino/i }));
     gravarAssimSeHouver();
-    await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(1));
-    const { body } = mocks.invoke.mock.calls[0][1];
-    expect(body.mode).toBeUndefined();
-    expect(body.reviewed).toBe(false);
-    expect(body.images).toEqual(['AAA']);
+    await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(2));
+    expect(mocks.invoke.mock.calls[1][1].body).toMatchObject({ reviewed: true, images: ['AAA'] });
   });
+
+  it('#106: uma leitura que falha não prende — o «Analisar» abre-se e a Carol lê ao gravar', async () => {
+    render(<GymRegistration onClose={onClose} />);
+    await selectPhoto({ ler: false });
+    mocks.invoke.mockResolvedValueOnce({ data: null, error: 'O Coach está ocupado.' });
+    fireEvent.click(screen.getByRole('button', { name: 'Ler os prints e preencher' }));
+    expect(await screen.findByText('O Coach está ocupado.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Analisar treino/i })).toBeEnabled();
+  });
+
 
   it('#99: sem o botão «Preencher o formulário com isto», mesmo só com observações', () => {
     render(<GymRegistration onClose={onClose} />);
@@ -1040,7 +1111,7 @@ describe('GymRegistration — pré-preenchimento pelo plano (F3)', () => {
     // A análise recebe o treino do plano e a origem, para comparar o planeado com o feito.
     expect(body).toMatchObject({ plan_item_id: 'item-1', completion_source: 'plano' });
     expect(body.exercises_meta).toEqual([
-      { name: 'Extensões de pernas', goal: 'chegar às 12 sem falhar', block_type: 'forca', plan_block_index: 0, goal_met: null },
+      { name: 'Extensões de pernas', goal: 'chegar às 12 sem falhar', block_type: 'forca', rep_unit: 'reps', plan_block_index: 0, goal_met: null },
       { name: 'Bicicleta', goal: 'Z2', block_type: 'cardio', plan_block_index: 1, goal_met: null },
     ]);
   });
@@ -1343,10 +1414,166 @@ describe('GymRegistration — bugs de 2026-10-29/31', () => {
     expect(screen.getByText(/Escolheste 7/)).toBeInTheDocument();
   });
 
-  it('#98: os prints vêm depois dos exercícios (último passo)', () => {
+  /* #120 (2026-11-10, o Rui: «As fotos têm de estar antes do ponto 3»): os prints continuam depois
+     dos exercícios (#98), mas passam a ser o passo 3 — antes de «Como correu». */
+  it('#120: os prints são o passo 3, entre os exercícios e «Como correu»', () => {
     render(<GymRegistration onClose={onClose} />);
     const titulos = screen.getAllByRole('heading', { level: 3 }).map(h => h.textContent);
-    expect(titulos.indexOf('Prints da sessão')).toBeGreaterThan(titulos.indexOf('Exercícios'));
-    expect(titulos[titulos.length - 1]).toBe('Prints da sessão');
+    expect(titulos).toEqual(['Que treino foi', 'Exercícios', 'Prints da sessão', 'Como correu']);
+    const passo = (titulo) => screen.getByRole('heading', { level: 3, name: titulo }).parentElement.textContent;
+    expect(passo('Prints da sessão')).toMatch(/^3/);
+    expect(passo('Como correu')).toMatch(/^4/);
+  });
+});
+
+describe('GymRegistration — #106: as perguntas da leitura seguem com o registo', () => {
+  const onClose = vi.fn();
+  const Q = { id: 'q1', kind: 'contexto', topic: 'máquina', item_name: 'Leg press', question: 'A leg press era a 45°?', options: ['Sim', 'Não'], assumed: 'Sim', impact_kcal: 0, impact_protein_g: 0, answer: null, answered_at: null };
+  const Q2 = { ...Q, id: 'q2', question: 'Foi até à falha?', assumed: 'Não' };
+  beforeEach(() => {
+    mocks.invoke.mockReset();
+    useAppStore.setState({ profile: PROFILE, gymSessions: [], exerciseLocker: [], planItemPrefill: null });
+  });
+
+  it('a leitura mostra as perguntas; gravar manda carol_questions com a resposta (ou null)', async () => {
+    render(<GymRegistration onClose={onClose} />);
+    await selectPhoto({ ler: false });
+    mocks.invoke.mockResolvedValueOnce({ data: { preview: { exercises: [], metrics: {}, categories: [], class_types: [], session_name: '' }, readable: true, questions: [Q, Q2] }, error: null });
+    fireEvent.click(screen.getByRole('button', { name: 'Ler os prints e preencher' }));
+    expect(await screen.findByTestId('carol-question-q1')).toBeInTheDocument();
+    fireEvent.click(within(screen.getByTestId('carol-question-q1')).getByRole('button', { name: 'Não' }));
+    mocks.invoke.mockResolvedValueOnce({ data: { session: { id: 'sess-1' }, sets: [] }, error: null });
+    fireEvent.click(screen.getByRole('button', { name: /Analisar treino/i }));
+    gravarAssimSeHouver();
+    await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(2));
+    const sent = mocks.invoke.mock.calls[1][1].body.carol_questions;
+    expect(sent.map(q => [q.id, q.answer])).toEqual([['q1', 'Não'], ['q2', null]]);
+    expect(sent[0].answered_at).toBeTruthy();
+    expect(sent[1].answered_at).toBeNull();
+  });
+
+  it('sem perguntas na leitura, o pedido não leva carol_questions (como antes)', async () => {
+    render(<GymRegistration onClose={onClose} />);
+    await selectPhoto({ ler: false });
+    mocks.invoke.mockResolvedValueOnce({ data: { preview: { exercises: [], metrics: {}, categories: [], class_types: [], session_name: '' }, readable: true }, error: null });
+    fireEvent.click(screen.getByRole('button', { name: 'Ler os prints e preencher' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: /Analisar treino/i })).toBeInTheDocument());
+    mocks.invoke.mockResolvedValueOnce({ data: { session: { id: 'sess-1' }, sets: [] }, error: null });
+    fireEvent.click(screen.getByRole('button', { name: /Analisar treino/i }));
+    gravarAssimSeHouver();
+    await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(2));
+    expect(mocks.invoke.mock.calls[1][1].body).not.toHaveProperty('carol_questions');
+  });
+});
+
+describe('GymRegistration — #106: trocar um print volta a pedir a leitura', () => {
+  beforeEach(() => {
+    mocks.invoke.mockReset();
+    useAppStore.setState({ profile: PROFILE, gymSessions: [], exerciseLocker: [], planItemPrefill: null });
+  });
+
+  it('tirar o print lido e juntar outro (mesma contagem) volta a pedir «Ler os prints e preencher»', async () => {
+    render(<GymRegistration onClose={vi.fn()} />);
+    await selectPhoto(); // lido (leitura falhada simulada): o Analisar abre-se
+    expect(screen.getByRole('button', { name: /Analisar treino/i })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Remover print 1' }));
+    await selectPhoto({ ler: false });
+    expect(screen.getByRole('button', { name: 'Ler os prints e preencher' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Analisar treino/i })).toBeDisabled();
+  });
+});
+
+describe('GymRegistration — #106: as perguntas são dos prints que estão lá', () => {
+  const Q = { id: 'q1', kind: 'contexto', topic: 'máquina', item_name: null, question: 'Era a prensa a 45°?', options: ['Sim', 'Não'], assumed: 'Sim', impact_kcal: 0, impact_protein_g: 0, answer: null, answered_at: null };
+  const lerComPergunta = async () => {
+    mocks.invoke.mockResolvedValueOnce({ data: { preview: { exercises: [], metrics: {}, categories: [], class_types: [], session_name: '' }, readable: true, questions: [Q] }, error: null });
+    fireEvent.click(screen.getByRole('button', { name: 'Ler os prints e preencher' }));
+    fireEvent.click(within(await screen.findByTestId('carol-question-q1')).getByRole('button', { name: 'Não' }));
+  };
+  beforeEach(() => {
+    mocks.invoke.mockReset();
+    useAppStore.setState({ profile: PROFILE, gymSessions: [], exerciseLocker: [], planItemPrefill: null });
+  });
+
+  it('trocar de print e a releitura falhar: as perguntas antigas saem e não vão no pedido', async () => {
+    render(<GymRegistration onClose={vi.fn()} />);
+    await selectPhoto({ ler: false });
+    await lerComPergunta();
+    fireEvent.click(screen.getByRole('button', { name: 'Remover print 1' }));
+    expect(screen.queryByTestId('carol-question-q1')).not.toBeInTheDocument();
+    await selectPhoto({ ler: false });
+    mocks.invoke.mockResolvedValueOnce({ data: null, error: 'O Coach está ocupado.' });
+    fireEvent.click(screen.getByRole('button', { name: 'Ler os prints e preencher' }));
+    await screen.findByText('O Coach está ocupado.');
+    mocks.invoke.mockResolvedValueOnce({ data: { session: { id: 'sess-1' }, sets: [] }, error: null });
+    fireEvent.click(screen.getByRole('button', { name: /Analisar treino/i }));
+    gravarAssimSeHouver();
+    await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(3));
+    expect(mocks.invoke.mock.calls[2][1].body).not.toHaveProperty('carol_questions');
+  });
+
+  it('ler e depois tirar todos os prints: gravar não manda carol_questions', async () => {
+    render(<GymRegistration onClose={vi.fn()} />);
+    await selectPhoto({ ler: false });
+    await lerComPergunta();
+    fireEvent.click(screen.getByRole('button', { name: 'Remover print 1' }));
+    fireEvent.click(screen.getByRole('button', { name: /Adicionar exercício/ }));
+    fireEvent.change(screen.getByPlaceholderText('Nome do exercício'), { target: { value: 'Prensa' } });
+    mocks.invoke.mockResolvedValueOnce({ data: { session: { id: 'sess-1' }, sets: [] }, error: null });
+    fireEvent.click(screen.getByRole('button', { name: /Analisar treino/i }));
+    gravarAssimSeHouver();
+    await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(2));
+    expect(mocks.invoke.mock.calls[1][1].body).not.toHaveProperty('carol_questions');
+  });
+});
+
+/* Idempotência (2026-11-01): a 31-10 o mesmo treino ficou gravado 4 vezes — a resposta não chegou e
+   cada tentativa era um pedido novo. Um client_request_id por formulário novo, igual em todas as
+   tentativas; o servidor devolve o que já tinha gravado (replayed). */
+describe('GymRegistration — client_request_id (idempotência)', () => {
+  const onClose = vi.fn();
+  beforeEach(() => {
+    mocks.invoke.mockReset();
+    onClose.mockClear();
+    useAppStore.setState({ profile: PROFILE, gymSessions: [] });
+  });
+  const preencherEGravar = () => {
+    fireEvent.change(screen.getByPlaceholderText('Ex: 45m'), { target: { value: '50:00' } });
+    fireEvent.click(screen.getByRole('button', { name: /Analisar treino/i }));
+    gravarAssimSeHouver();
+  };
+
+  it('um timeout diz que tentar outra vez não duplica, e a 2.ª tentativa leva o mesmo id', async () => {
+    mocks.invoke
+      .mockResolvedValueOnce({ data: null, error: 'A operação demorou demasiado tempo a responder (timeout).', isTimeout: true })
+      .mockResolvedValueOnce({ data: { session: { id: 'sess-x' }, sets: [] }, error: null });
+    render(<GymRegistration onClose={onClose} />);
+    preencherEGravar();
+    expect(await screen.findByText(/tentar outra vez não o repete/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /Analisar treino/i }));
+    gravarAssimSeHouver();
+    await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(2));
+    const [a, b] = mocks.invoke.mock.calls.map((c) => c[1].body.client_request_id);
+    expect(a).toMatch(/^[0-9a-f-]{36}$/);
+    expect(b).toBe(a);
+  });
+
+  it('replayed: true conta como sucesso e não aparece duas vezes no store', async () => {
+    useAppStore.setState({ gymSessions: [{ id: 'sess-x', date: '2026-10-31' }] });
+    mocks.invoke.mockResolvedValue({ data: { session: { id: 'sess-x', date: '2026-10-31' }, sets: [], replayed: true }, error: null });
+    render(<GymRegistration onClose={onClose} />);
+    preencherEGravar();
+    await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(useAppStore.getState().gymSessions.filter((s) => s.id === 'sess-x')).toHaveLength(1));
+  });
+
+  it('a leitura dos prints (preview) não leva o id', async () => {
+    mocks.invoke.mockResolvedValue({ data: { preview: { exercises: [], metrics: {}, categories: [], class_types: [], session_name: '' }, readable: true }, error: null });
+    render(<GymRegistration onClose={onClose} />);
+    await selectPhoto({ ler: false });
+    fireEvent.click(screen.getByRole('button', { name: 'Ler os prints e preencher' }));
+    await waitFor(() => expect(mocks.invoke).toHaveBeenCalled());
+    expect(mocks.invoke.mock.calls[0][1].body.mode).toBe('preview');
+    expect(mocks.invoke.mock.calls[0][1].body).not.toHaveProperty('client_request_id');
   });
 });

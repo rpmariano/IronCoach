@@ -1,5 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useAppStore, selectCoachHasPendingTopic } from '../../store';
+import { scopedDraftKey } from '../../utils/draftScope';
+import { useDraftUserId } from '../../utils/useDraftUserId';
 import { invokeEdgeFunctionWithTimeout, supabase } from '../../lib/supabase';
 import { Send, Loader2, Sparkles, RotateCcw, ImagePlus, X } from 'lucide-react';
 import { compressImage } from '../../lib/image';
@@ -168,6 +170,8 @@ export default function Coach() {
   const [pendingContinuation, setPendingContinuation] = useState(null);
   const continuationRunsRef = useRef(0);
   const lastProposedPlanIdRef = useRef(null);
+  // O último coachIntent tratado (o efeito dos pedidos não trata o mesmo duas vezes).
+  const handledIntentRef = useRef(null);
   /* A cadeia das partes de um plano longo (tudo-ou-nada): { of, parts: [{ planId,
      part }] } com as propostas já recebidas. Nada se aplica até a última ser
      aceite; recusar uma recusa todas. Vive aqui (recarregar a página deixa as
@@ -646,6 +650,13 @@ export default function Coach() {
   });
 
   useEffect(() => {
+    /* Um pedido trata-se uma vez (2026-11-01): o efeito podia correr duas vezes com o MESMO
+       intent antes de o `setCoachIntent(null)` chegar (o StrictMode em desenvolvimento, ou um
+       re-render pelo meio) — e um `say` ia duas vezes para o chat. O ref volta a null quando o
+       intent é consumido, para um pedido igual mais tarde ser tratado. */
+    if (!coachIntent) { handledIntentRef.current = null; return; }
+    if (handledIntentRef.current === coachIntent) return;
+    handledIntentRef.current = coachIntent;
     if (coachIntent && coachIntent.kind === 'proactive_intervention') {
       setCoachIntent(null);
       handleProactiveIntervention(coachIntent);
@@ -975,14 +986,16 @@ export default function Coach() {
   // uma única vez ao montar — este ecrã desmonta/remonta ao trocar de
   // separador, por isso não precisa do guard restoredForKeyRef usado nos
   // formulários (que ficam montados durante várias sessões de edição).
+  // Por conta (auditoria B2): o texto por enviar do atleta anterior não aparece ao seguinte.
+  const chatDraftKey = scopedDraftKey(COACH_CHAT_DRAFT_KEY, useDraftUserId());
   useEffect(() => {
-    const persisted = restorePersistedFormDraft(COACH_CHAT_DRAFT_KEY);
+    const persisted = restorePersistedFormDraft(chatDraftKey);
     if (persisted?.inputStr) setInputStr(persisted.inputStr);
-  }, []);
+  }, [chatDraftKey]);
 
   // Grava o rascunho (com debounce) enquanto houver texto por enviar —
   // handleSend limpa-o assim que a mensagem é enviada (ver abaixo).
-  usePersistedFormDraft(COACH_CHAT_DRAFT_KEY, { inputStr }, { isDirty: true });
+  usePersistedFormDraft(chatDraftKey, { inputStr }, { isDirty: true });
 
   const cutoffTime = Date.now() - (hoursToShow * 60 * 60 * 1000);
   const visibleMessages = (coachMessages || []).filter(msg => {
@@ -1395,7 +1408,7 @@ export default function Coach() {
     const nPhotos = Array.isArray(extras?.images) ? extras.images.length : 0;
 
     setInputStr('');
-    clearPersistedFormDraft(COACH_CHAT_DRAFT_KEY);
+    clearPersistedFormDraft(chatDraftKey);
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto';
     }
@@ -1445,12 +1458,16 @@ export default function Coach() {
         ...(extras && typeof extras === 'object' ? extras : null),
       };
 
-      const { data, error, isTimeout, isNetwork, isBusy, serverText, serverMessageId } = await invokeEdgeFunctionWithTimeout('coach-chat', {
+      const { data, error, isTimeout, isNetwork, isBusy, isQuota, serverText, serverMessageId } = await invokeEdgeFunctionWithTimeout('coach-chat', {
         body: JSON.stringify(payload)
       });
 
       if (error) {
-        if (isBusy && !afterBusy) {
+        if (isQuota) {
+          // A quota do dia (429): a frase dela, como uma resposta normal — sem «Reenviar», que
+          // repetir dava o mesmo 429.
+          handleImmediateFailure(serverText, serverMessageId);
+        } else if (isBusy && !afterBusy) {
           // Ela ainda está a responder à mensagem anterior, e esta não foi
           // gravada: espera essa resposta, mostra-a e manda esta a seguir —
           // em vez de devolver ao atleta o "manda outra vez".

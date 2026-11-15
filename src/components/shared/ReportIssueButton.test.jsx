@@ -24,6 +24,10 @@ vi.mock('../../lib/supabase', () => ({
   },
 }));
 
+// Auditoria M4: os anexos vão comprimidos (JPEG) — a compressão real precisa de canvas.
+const compressMock = vi.fn(async () => ({ dataUrl: 'data:image/jpeg;base64,QUJD', base64: 'QUJD' }));
+vi.mock('../../lib/image', () => ({ compressImage: (...a) => compressMock(...a) }));
+
 function renderButton() {
   return render(
     <ToastProvider>
@@ -106,8 +110,6 @@ describe('ReportIssueButton', () => {
     const payload = insertMock.mock.calls[0][0];
     expect(payload).toEqual({
       user_id: 'user-1',
-      user_email: 'atleta@ironcoach.app',
-      user_name: 'Atleta Teste',
       title: 'Botão de guardar sem resposta',
       description: 'O botão de guardar não responde.',
       page: 'Carol',
@@ -115,6 +117,12 @@ describe('ReportIssueButton', () => {
       attachment_urls: null,
     });
     expect(payload).not.toHaveProperty('screenshot_path');
+    // O email e o nome preenche-os o servidor.
+    expect(payload).not.toHaveProperty('user_email');
+    expect(payload).not.toHaveProperty('user_name');
+    // Os limites do servidor: título curto, descrição até 5000.
+    expect(screen.getByPlaceholderText(/Resume o problema/).maxLength).toBeLessThanOrEqual(200);
+    expect(screen.getByPlaceholderText(/Descreve o problema/).maxLength).toBe(5000);
 
     expect(await screen.findByText('Obrigado! O teu report foi enviado à equipa.')).toBeInTheDocument();
     await waitFor(() => expect(screen.queryByText('O que aconteceu?')).not.toBeInTheDocument());
@@ -172,7 +180,19 @@ describe('ReportIssueButton', () => {
     expect(await screen.findByText(/1 ficheiro\(s\) não foram anexados/)).toBeInTheDocument();
   });
 
-  it('permite selecionar ficheiros (imagens/vídeos)', async () => {
+  it('o bucket a recusar o tamanho: o aviso diz porquê', async () => {
+    uploadMock.mockResolvedValueOnce({ error: { statusCode: '413', message: 'The object exceeded the maximum allowed size' } });
+    renderButton();
+    fireEvent.click(screen.getByLabelText('Reportar um problema'));
+    fillTitle('Título');
+    fireEvent.change(screen.getByPlaceholderText(/Descreve o problema/), { target: { value: 'Algo.' } });
+    fireEvent.change(document.querySelector('input[type="file"]'), { target: { files: [new File(['x'], 'a.jpg', { type: 'image/jpeg' })] } });
+    await waitFor(() => expect(screen.getByText('1 ficheiro(s) selecionado(s)')).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: /Enviar report/ }));
+    expect(await screen.findByText(/não foram anexados\. A imagem é demasiado grande para guardar\./)).toBeInTheDocument();
+  });
+
+  it('permite selecionar imagens', async () => {
     renderButton();
     fireEvent.click(screen.getByLabelText('Reportar um problema'));
 
@@ -199,8 +219,34 @@ describe('ReportIssueButton', () => {
     if (fileInput) {
       fireEvent.change(fileInput, { target: { files: [file] } });
 
-      expect(await screen.findByText(/Tipo de ficheiro não suportado/)).toBeInTheDocument();
+      expect(await screen.findByText(/Só dá para anexar imagens/)).toBeInTheDocument();
     }
+  });
+
+  it('auditoria M4: vídeos e GIF já não entram; um HEIC sem tipo entra pela extensão', async () => {
+    renderButton();
+    fireEvent.click(screen.getByLabelText('Reportar um problema'));
+    const fileInput = document.querySelector('input[type="file"]');
+    expect(fileInput.getAttribute('accept')).not.toMatch(/video|gif/);
+    fireEvent.change(fileInput, { target: { files: [new File(['v'], 'ecra.mp4', { type: 'video/mp4' }), new File(['g'], 'a.gif', { type: 'image/gif' })] } });
+    expect(await screen.findAllByText(/Só dá para anexar imagens/)).toHaveLength(2);
+    fireEvent.change(fileInput, { target: { files: [new File(['h'], 'IMG_0001.HEIC', { type: '' }), new File(['w'], 'x.webp', { type: 'image/webp' })] } });
+    await waitFor(() => expect(screen.getByText('2 ficheiro(s) selecionado(s)')).toBeInTheDocument());
+  });
+
+  it('auditoria M4: uma imagem que não se consegue ler não sobe, e o report vai na mesma', async () => {
+    compressMock.mockRejectedValueOnce(new Error('decode'));
+    renderButton();
+    fireEvent.click(screen.getByLabelText('Reportar um problema'));
+    fillTitle('Título');
+    fireEvent.change(screen.getByPlaceholderText(/Descreve o problema/), { target: { value: 'Algo.' } });
+    fireEvent.change(document.querySelector('input[type="file"]'), { target: { files: [new File(['h'], 'a.heic', { type: 'image/heic' })] } });
+    await waitFor(() => expect(screen.getByText('1 ficheiro(s) selecionado(s)')).toBeInTheDocument());
+    uploadMock.mockClear();
+    fireEvent.click(screen.getByRole('button', { name: /Enviar report/ }));
+    await waitFor(() => expect(insertMock).toHaveBeenCalled());
+    expect(uploadMock).not.toHaveBeenCalled();
+    expect(await screen.findByText(/1 ficheiro\(s\) não foram anexados/)).toBeInTheDocument();
   });
 
   it('submete título, descrição e o caminho do ficheiro anexado no storage', async () => {
@@ -228,7 +274,15 @@ describe('ReportIssueButton', () => {
 
       // O upload tem de acontecer com a primeira pasta a ser o id do
       // utilizador (é o que a RLS do bucket exige) — sem prefixo extra.
-      expect(uploadMock).toHaveBeenCalledWith(expect.stringMatching(/^user-1\/.+test\.jpg$/), file);
+      // Auditoria M4: sobe a imagem comprimida (um Blob JPEG), nunca o File cru, com o
+      // contentType forçado; o nome é nosso.
+      expect(compressMock).toHaveBeenCalledWith(file);
+      const [path, body, opts] = uploadMock.mock.calls.at(-1);
+      expect(path).toMatch(/^user-1\/\d+-[a-z0-9]+\.jpg$/);
+      expect(body).not.toBe(file);
+      expect(body).toBeInstanceOf(Blob);
+      expect(body.type).toBe('image/jpeg');
+      expect(opts).toEqual({ contentType: 'image/jpeg' });
 
       const payload = insertMock.mock.calls[0][0];
       expect(payload).toEqual(
@@ -236,7 +290,7 @@ describe('ReportIssueButton', () => {
           user_id: 'user-1',
           title: 'Upload de ficheiro falha',
           description: 'Problema com upload.',
-          attachment_urls: [expect.stringMatching(/^user-1\/.+test\.jpg$/)],
+          attachment_urls: [expect.stringMatching(/^user-1\/.+\.jpg$/)],
         }),
       );
     }

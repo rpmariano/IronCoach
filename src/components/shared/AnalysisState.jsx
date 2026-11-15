@@ -71,6 +71,8 @@ export function analysisLacksReference(kind, { coachPlans, coachPlanItems, bodyA
 export function classifyAnalysisFailure(detail, online = typeof navigator === 'undefined' ? true : navigator.onLine !== false) {
   const d = String(detail || '');
   if (!online || /failed to fetch|networkerror|network request failed|load failed|offline|sem rede/i.test(d)) return 'offline';
+  // #116: a ligação que falhou (FunctionsFetchError) com o telemóvel «com rede» não é «sem rede».
+  if (/^a ligação falhou\.|failed to send a request/i.test(d)) return 'network';
   if (/timeout|timed out|demorou|aborted|tempo esgotado/i.test(d)) return 'timeout';
   // Só o que é mesmo autenticação: "sessão" também é a do ginásio ("Máximo
   // de N imagens por sessão"), e isso não é uma sessão expirada.
@@ -80,6 +82,7 @@ export function classifyAnalysisFailure(detail, online = typeof navigator === 'u
 
 const CAUSA = {
   offline: { title: 'Estás sem rede', lead: 'Sem rede, a foto não chega a sair do telemóvel.' },
+  network: { title: 'A ligação falhou', lead: null },
   timeout: { title: 'A análise demorou demais', lead: 'A rede está lenta, ou o servidor está ocupado.' },
   session: { title: 'A tua sessão expirou', lead: 'Volta a entrar na app; o que tens aqui não se perde.' },
   other: { title: 'Não consegui analisar', lead: null },
@@ -251,6 +254,9 @@ export function AnalysisSkeleton({
  *   onManual     alternativa manual; sem ela, só aparece "Tentar de novo"
  *   manualLabel  rótulo da alternativa (mock: "Escrever")
  *   retrying     bool — desativa as ações enquanto a repetição corre
+ *   quota        false | true | 'hour' | 'day' — a quota (429): o corpo é a frase da Carol (`detail`), sem
+ *                «Tentar de novo» nem a causa técnica — é uma resposta dela, não uma falha.
+ *                Título: «Por hoje chega» só no limite diário; no da hora ou sem campo, «Uma pausa».
  */
 export function AnalysisFailure({
   title,
@@ -260,11 +266,15 @@ export function AnalysisFailure({
   onManual,
   manualLabel = 'Escrever',
   retrying = false,
+  quota = false,
   ...rest
 }) {
   // A causa diz-se primeiro (sem rede, rede lenta, sessão); o que fazer vem
   // de quem monta (`children`), porque depende do registo.
-  const causa = CAUSA[classifyAnalysisFailure(detail)];
+  const cause = quota === 'final' ? 'final' : quota ? 'quota' : classifyAnalysisFailure(detail);
+  const causa = quota
+    ? { title: quota === 'day' ? 'Por hoje chega' : quota === 'final' ? 'Não consegui usar esta imagem' : 'Uma pausa', lead: null }
+    : CAUSA[cause];
   /* O aviso vive no topo do formulário, e o botão que lançou a análise está
      na barra de baixo: com o formulário descido (a juntar prints), a falha
      aparecia fora do ecrã e a app parecia ter parado sem dizer nada
@@ -282,12 +292,12 @@ export function AnalysisFailure({
       tone="warn"
       title={title || causa.title}
       icon={<CoachAvatar size={20} mood="worried" />}
-      data-cause={classifyAnalysisFailure(detail)}
+      data-cause={cause}
       data-testid="analysis-failure"
       style={{ marginBottom: 16 }}
       actions={
         <>
-          {onRetry && (
+          {onRetry && !quota && (
             <WarningAction
               tone="warn"
               onClick={onRetry}
@@ -321,9 +331,11 @@ export function AnalysisFailure({
       }
       {...rest}
     >
+      {quota ? (detail || null) : (<>
       {causa.lead && <>{causa.lead} </>}
       {children}
-      {detail && (
+      </>)}
+      {detail && !quota && (
         <span
           data-testid="analysis-failure-detail"
           style={{ display: 'block', marginTop: 6, fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}

@@ -3,10 +3,14 @@ import { Bug, Send, Upload, X } from 'lucide-react';
 import { useAppStore } from '../../store';
 import { supabase } from '../../lib/supabase';
 import { currentPageLabel } from '../../lib/utils';
+import { compressImage } from '../../lib/image';
+import { dataUrlToBlob } from '../../utils/raceMemories';
+import { isAcceptedReportImage, REPORT_IMAGE_ACCEPT, REPORT_IMAGE_MAX_BYTES } from '../../utils/reportImages';
 import { useToast } from './ToastProvider';
 import PremiumModal from './PremiumModal';
 import { Button } from './Button';
 import { FieldInput, FieldTextarea } from './registration/Field';
+import { storageRefusalText } from '../../utils/storageErrors';
 
 /* O botão arrasta-se (pedido 2026-09-23: tapava a caixa de texto do Coach).
    Ao largar encosta à margem mais perto e a posição fica neste telemóvel
@@ -44,7 +48,7 @@ export function clampBottom(bottom, viewportH) {
  * data/hora/utilizador/página são gravados automaticamente em bug_reports.
  */
 export default function ReportIssueButton() {
-  const { session, profile, activeTab, openCreationMode, editingRaceId } = useAppStore();
+  const { session, activeTab, openCreationMode, editingRaceId } = useAppStore();
   const { showToast } = useToast();
 
   const [isOpen, setIsOpen] = useState(false);
@@ -120,15 +124,17 @@ export default function ReportIssueButton() {
 
   const handleFileSelect = (e) => {
     const selectedFiles = Array.from(e.target.files || []);
-    const validTypes = ['image/png', 'image/jpeg', 'image/gif', 'video/mp4', 'video/webm'];
+    e.target.value = '';
 
+    /* Auditoria M4: só imagens (JPEG, PNG, WebP, HEIC). Vão comprimidas para JPEG ao enviar,
+       com o contentType forçado — nunca o ficheiro cru com o tipo que o cliente diz. */
     const filtered = selectedFiles.filter(file => {
-      if (!validTypes.includes(file.type)) {
-        showToast(`Tipo de ficheiro não suportado: ${file.type}`, 'error');
+      if (!isAcceptedReportImage(file)) {
+        showToast(`Só dá para anexar imagens (JPEG, PNG, WebP ou HEIC): ${file.name}`, 'error');
         return false;
       }
-      if (file.size > 50 * 1024 * 1024) { // 50MB limit
-        showToast(`Ficheiro demasiado grande: ${file.name} (máx. 50MB)`, 'error');
+      if (file.size > REPORT_IMAGE_MAX_BYTES) {
+        showToast(`Imagem demasiado grande: ${file.name} (máx. 25 MB)`, 'error');
         return false;
       }
       return true;
@@ -172,6 +178,8 @@ export default function ReportIssueButton() {
       // partir deste caminho no momento em que abre o report.
       const attachmentPaths = [];
       let failedUploads = 0;
+      // A razão de uma recusa do bucket (tamanho, tipo), para o aviso dizer porquê.
+      let refusalText = null;
 
       // Upload ficheiros se existirem.
       //
@@ -182,18 +190,29 @@ export default function ReportIssueButton() {
       if (files.length > 0) {
         for (let i = 0; i < files.length; i++) {
           const file = files[i];
-          const fileName = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}-${file.name}`;
+          // O nome é nosso (o do atleta pode trazer de tudo) e a extensão é a do que sobe: JPEG.
+          const fileName = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}.jpg`;
           // A política de storage exige que a primeira pasta do caminho
           // seja o id do utilizador (ver migração 20260822180000_bug_reports.sql,
           // "authenticated insert own bug report photos") — um prefixo
           // extra antes do userId faz o upload falhar por RLS.
           const filePath = `${userId}/${fileName}`;
 
-          const { error: uploadError } = await supabase.storage
-            .from('bug-report-photos')
-            .upload(filePath, file);
+          let uploadError = null;
+          try {
+            // Comprimida como nos outros registos (JPEG, 1600 px): fica sempre muito abaixo do
+            // limite do bucket, e o tipo é o nosso, não o do cliente.
+            const { dataUrl } = await compressImage(file);
+            ({ error: uploadError } = await supabase.storage
+              .from('bug-report-photos')
+              .upload(filePath, dataUrlToBlob(dataUrl), { contentType: 'image/jpeg' }));
+          } catch (err) {
+            // Uma imagem que o browser não lê (um HEIC fora do Safari) não chega a subir.
+            uploadError = err;
+          }
 
           if (uploadError) {
+            refusalText = refusalText || storageRefusalText(uploadError);
             console.error(`[ReportIssueButton] Falha ao anexar ${file.name}:`, uploadError);
             failedUploads++;
           } else {
@@ -206,8 +225,8 @@ export default function ReportIssueButton() {
 
       const { error } = await supabase.from('bug_reports').insert({
         user_id: userId,
-        user_email: session?.user?.email || null,
-        user_name: profile?.full_name || null,
+        // O email e o nome preenche-os o servidor (guarda dos bug_reports, 2026-11-14): o que o
+        // cliente mandava não era de confiança (e o full_name nem existia no perfil).
         title: trimmedTitle,
         description: trimmed,
         page: currentPageLabel({ activeTab, openCreationMode, editingRaceId }),
@@ -218,7 +237,7 @@ export default function ReportIssueButton() {
 
       showToast(
         failedUploads > 0
-          ? `Report enviado, mas ${failedUploads} ficheiro(s) não foram anexados.`
+          ? `Report enviado, mas ${failedUploads} ficheiro(s) não foram anexados.${refusalText ? ` ${refusalText}` : ''}`
           : 'Obrigado! O teu report foi enviado à equipa.',
         failedUploads > 0 ? 'info' : 'success',
       );
@@ -290,6 +309,7 @@ export default function ReportIssueButton() {
               onChange={(e) => setDescription(e.target.value)}
               placeholder="Descreve o problema — o que fizeste e o que esperavas que acontecesse..."
               className="resize-none"
+              maxLength={5000}
               disabled={submitting}
             />
           </div>
@@ -297,16 +317,16 @@ export default function ReportIssueButton() {
           {/* File Upload Section */}
           <div className="space-y-2">
             <label className="text-xs font-semibold text-[var(--text-3)]">
-              Adicionar imagens ou vídeos (opcional)
+              Adicionar imagens (opcional)
             </label>
             <label className="flex flex-col items-center justify-center gap-2 w-full bg-[var(--bg-app)] border-2 border-dashed border-[var(--border-glass-strong)] rounded-xl py-6 px-3 cursor-pointer hover:border-[var(--border-control)] transition">
               <Upload size={18} className="text-[var(--text-3)]" />
               <span className="text-xs text-[var(--text-3)]">Clica para selecionar ficheiros</span>
-              <span className="text-[11px] text-[var(--text-3)]">PNG, JPG, GIF, MP4, WebM (máx. 50MB cada)</span>
+              <span className="text-[11px] text-[var(--text-3)]">JPEG, PNG, WebP ou HEIC</span>
               <input
                 type="file"
                 multiple
-                accept="image/png,image/jpeg,image/gif,video/mp4,video/webm"
+                accept={REPORT_IMAGE_ACCEPT}
                 onChange={handleFileSelect}
                 disabled={submitting}
                 className="hidden"

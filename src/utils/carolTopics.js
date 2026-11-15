@@ -16,6 +16,7 @@
    falar: antes do treino de hoje, antes da partida, no dia sem treino. */
 import { goalsInterventionKind } from '@formulas/goalsIntervention.ts';
 import { runLoadInterventionKind } from '@formulas/runLoadAlert.ts';
+import { isLoadProfileRevertIntervention } from '@formulas/loadProfile.ts';
 import { adaptationKindOf, isAdaptationIntervention } from '@formulas/planAdaptation.ts';
 import { evaluateCheckinAlarms } from '@formulas/checkinAlarms.ts';
 import { checkinOptions, checkinReasonNow, readCheckinReason } from './checkin';
@@ -243,6 +244,9 @@ export function interventionTopicLine({
   // A carga conta-se numa janela de 7 dias, não na semana do calendário
   // (2026-09-26): aberta ao domingo e vista na terça, "esta semana" era
   // uma semana com uma corrida.
+  // O perfil de carga voltou sozinho de Mais volume a Prudente (dev-back 510e6310, etiqueta [perfil]):
+  // um sinal vermelho (dor, RPE, recuperação). Sem alarme, e sem dizer qual — esse é para ela.
+  if (isLoadProfileRevertIntervention(reason)) return 'Pus o teu perfil de carga de volta em Prudente, por segurança. Quero saber como estás.';
   if (carga === 'acima_do_plano') return 'Nos últimos dias correste bem mais do que o plano previa. Quero ver contigo como ficam os próximos.';
   if (carga === 'sem_plano') return 'A tua carga de corrida subiu muito face às últimas semanas. Quero ver contigo como ficam os próximos dias.';
   // Aberta por uma refeição de segunda e vista na quarta, "o teu último

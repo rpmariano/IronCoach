@@ -260,6 +260,15 @@ export default function ACWRChart({ weeklyData = [], acwr, className = '' }) {
       axis={maxLoad > 0 ? { min: '0 km', max: `${Math.round(maxLoad)} km` } : undefined}
       legend={legend}
       height={208}
+      explain={weeklyData.length ? {
+        title: 'Carga aguda : crónica',
+        period: 'últimas 12 semanas',
+        series: [
+          { label: 'Carga semanal', unit: 'km', values: loads, decimals: 1 },
+          { label: 'ACWR', values: weeklyData.map((d) => (d.ratio == null ? null : d.ratio)), decimals: 2 },
+        ],
+        note: hasEnoughData ? `O ACWR de hoje é ${fmtRatio(ratio)} (7 dias contra a média semanal dos últimos 28).` : null,
+      } : undefined}
       footer={footer}
     >
       <Chart

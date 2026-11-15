@@ -120,7 +120,10 @@ describe('RaceLevelSuggestion', () => {
     expect(screen.queryByRole('button', { name: /Usar nível/i })).not.toBeInTheDocument();
   });
 
-  it('estrada: só menciona o tempo em pé na evidência, nunca D+ (eixo desligado)', () => {
+  /* #113 (2026-11-06): em estrada o nível sai dos km semanais (bandWeeklyKm), não do tempo em pé —
+     o Rui via «Avançado» nos 10 km por correr muitas horas devagar. 10 km/semana para um 10 km é
+     Iniciante (o Básico pede 25). A evidência diz os km, nunca o tempo nem o D+. */
+  it('estrada: o nível sai dos km semanais e a evidência diz os km, nunca o tempo nem o D+', () => {
     getRacePrediction.mockReturnValue({ predictedSeconds: 3600 });
     render(<RaceLevelSuggestion {...baseProps({
       raceType: 'estrada',
@@ -130,8 +133,35 @@ describe('RaceLevelSuggestion', () => {
     })} />);
 
     expect(screen.getByText(/classificas-te como/i)).toBeInTheDocument();
-    expect(screen.getByText('Básico')).toBeInTheDocument();
+    expect(screen.getByText('Iniciante')).toBeInTheDocument();
+    expect(screen.getByText(/corres 10 km por semana/)).toBeInTheDocument();
+    expect(screen.queryByText(/corres \d+h|corres \d+\s?min/)).not.toBeInTheDocument();
     expect(screen.queryByText(/sobes .* por semana/)).not.toBeInTheDocument();
+  });
+
+  it('estrada: «Nível pelo volume», sem rótulo de falha, e o ritmo acima do nível como coisa boa', () => {
+    getRacePrediction.mockReturnValue({ predictedSeconds: 3000 });
+    // 10 km/semana (Iniciante pelos km) a ritmo de prova de 4'57"/km (VDOT ~41, Médio).
+    const runs = ['2026-08-25', '2026-08-18', '2026-08-11', '2026-08-04'].map((date) => ({ date, duration_seconds: 2969, distance_km: 10, training_type: 'tempo', details: { elevation_gain_m: 0 } }));
+    render(<RaceLevelSuggestion {...baseProps({ raceType: 'estrada', distanceKm: 21.1, elevationGainM: null, runs, declaredLevel: 'basico' })} />);
+    expect(screen.getByText('Nível pelo volume')).toBeInTheDocument();
+    expect(screen.getByText(/é uma leitura do volume, não uma falha/)).toBeInTheDocument();
+    expect(screen.getByTestId('level-pace-positive')).toHaveTextContent('O teu ritmo já é de Médio — falta volume, não ritmo.');
+  });
+
+  it('trail: sem o sinal do ritmo (o nível continua a ser o do tempo em pé e do D+)', () => {
+    getRacePrediction.mockReturnValue({ predictedSeconds: 4000 });
+    render(<RaceLevelSuggestion {...baseProps({ declaredLevel: 'avancado' })} />);
+    expect(screen.queryByTestId('level-pace-positive')).toBeNull();
+    expect(screen.getByText('Nível calculado')).toBeInTheDocument();
+  });
+
+  it('estrada com muitos km: Avançado pelos km (40 km/semana num 5 km)', () => {
+    getRacePrediction.mockReturnValue({ predictedSeconds: 1500 });
+    const runs = ['2026-08-25', '2026-08-18', '2026-08-11', '2026-08-04'].map((date) => ({ date, duration_seconds: 14000, distance_km: 40, details: { elevation_gain_m: 0 } }));
+    render(<RaceLevelSuggestion {...baseProps({ raceType: 'estrada', distanceKm: 5, elevationGainM: null, runs, declaredLevel: 'iniciante' })} />);
+    expect(screen.getByText('Avançado')).toBeInTheDocument();
+    expect(screen.getByText(/corres 40 km por semana/)).toBeInTheDocument();
   });
 
   /* Voz única (P.7): é uma fórmula, e diz que o é — nunca passa por ela. */

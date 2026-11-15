@@ -28,6 +28,13 @@ const DELETE_CONFIG = {
   body: { table: 'body_assessments', message: 'Tem a certeza que deseja eliminar esta avaliação corporal? Esta ação não pode ser desfeita.', toast: 'Avaliação eliminada' },
 };
 
+/** A nota das respostas que não se aplicaram ao gravar (dev-back 33fccf8a). */
+export function unappliedText(n) {
+  return n === 1
+    ? 'Há 1 pergunta por aplicar — responde-lhe de novo.'
+    : `Há ${n} perguntas por aplicar — responde-lhes de novo.`;
+}
+
 export default function CreatedRecordModal() {
   const {
     newlyCreatedRecord,
@@ -86,6 +93,8 @@ export default function CreatedRecordModal() {
   if (!newlyCreatedRecord) return null;
 
   const { type, record } = newlyCreatedRecord;
+  const unappliedIds = new Set(newlyCreatedRecord.unappliedQuestionIds || []);
+  const unappliedOpen = type === 'meal' ? openCarolQuestions(record).filter((q) => unappliedIds.has(q.id)).length : 0;
   // O motivo do pedido ao chat: o da análise deste registo; o do perfil só
   // quando foi esta análise a marcá-lo (as marcas intervention_needed /
   // 'needed' que a Edge Function devolve no próprio registo).
@@ -136,6 +145,15 @@ export default function CreatedRecordModal() {
               Da próxima, escreve o nome e já não preciso de analisar. Podes ajustá-lo no Perfil → Armário.
             </p>
           </div>
+        )}
+
+        {/* dev-back 33fccf8a: respostas dadas antes de gravar que não se aplicaram (a reestimativa
+            falhou). As perguntas ficaram por responder e estão logo abaixo, pelo modo answer. Sai
+            quando já não há nenhuma delas aberta. */}
+        {unappliedOpen > 0 && (
+          <p data-testid="unapplied-questions" role="status" className="text-[13px] leading-[1.5] rounded-2xl px-3.5 py-3" style={{ background: 'var(--tint-coach-bg)', border: '1px solid var(--tint-coach-bd)', color: 'var(--text-2)' }}>
+            {unappliedText(unappliedOpen)}{questionsLater ? ' Ficam no cartão da refeição.' : ''}
+          </p>
         )}
 
         {/* Bug #52 (fase B): as perguntas da Carol, logo a seguir à análise.

@@ -1,12 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useAppStore } from '../../store';
-import { LayoutGrid, Users, BarChart3, CircleDollarSign, ScrollText, CheckCircle2, ShieldAlert, Utensils, Activity, FileQuestion, Eye, Check, Filter, Bug, RotateCcw, Send, User, Hourglass, XCircle, Trophy } from 'lucide-react';
+import { LayoutGrid, Users, BarChart3, CircleDollarSign, ScrollText, CheckCircle2, ShieldAlert, Utensils, Activity, FileQuestion, Eye, Check, Filter, Bug, RotateCcw, Send, User, Hourglass, XCircle, Trophy, Trash2 } from 'lucide-react';
 import CarolIcon from '../Coach/CarolIcon';
 import PremiumModal from '../shared/PremiumModal';
 import Button from '../shared/Button';
 import CompetitionsTab from './Competitions';
 import CostsTab from './CostsTab';
+import UnknownAppPhoto, { UNKNOWN_APP_BUCKET } from './UnknownAppPhoto';
+import { isVideoAttachment } from '../../utils/reportImages';
 
 const ADMIN_TABS = [
   { key: 'overview', label: 'Visão Geral', icon: LayoutGrid },
@@ -149,7 +151,8 @@ export default function Admin() {
       const results = await Promise.all(
         paths.map(path => supabase.storage.from('bug-report-photos').createSignedUrl(path, 3600))
       );
-      setBugAttachmentUrls(results.map(r => r.data?.signedUrl).filter(Boolean));
+      // Com o caminho ao lado: um anexo antigo em vídeo mostra-se num <video>, não num <img>.
+      setBugAttachmentUrls(results.map((r, i) => (r.data?.signedUrl ? { url: r.data.signedUrl, path: paths[i] } : null)).filter(Boolean));
     } catch (err) {
       console.error('Error creating signed urls for bug attachments:', err);
       setBugAttachmentUrls([]);
@@ -273,6 +276,41 @@ export default function Admin() {
     } catch (err) {
       console.error('Error saving unknown log:', err);
       alert('Falha ao guardar alterações no log.');
+    } finally {
+      setSavingLog(false);
+    }
+  };
+
+  /* Apagar um registo de app desconhecida (auditoria de segurança, 2026-11-14): sai também o
+     print do storage — antes ficava lá para sempre, órfão. Primeiro a imagem: se falhar, a
+     linha fica e o admin pode tentar de novo (ao contrário, um print com dados de saúde ficava
+     no bucket sem nada que o apontasse). Uma imagem que já não existe não impede apagar. */
+  const handleDeleteUnknownLog = async () => {
+    const log = selectedUnknownLog;
+    if (!log) return;
+    if (!window.confirm('Apagar este registo e a imagem? Não dá para desfazer.')) return;
+    setSavingLog(true);
+    try {
+      if (log.image_path) {
+        const bucket = supabase.storage.from(UNKNOWN_APP_BUCKET);
+        const { data: removed, error: removeError } = await bucket.remove([log.image_path]);
+        if (removeError) throw removeError;
+        /* A RLS a recusar o DELETE não dá erro: o remove devolve data: [] (revisão do 9a8b5e88).
+           Sem o objeto na resposta, só se apaga a linha se a imagem já não existir — um URL
+           assinado que falha com «not found». Se ela ainda lá está, a linha fica. */
+        if (!Array.isArray(removed) || removed.length === 0) {
+          const { error: signError } = await bucket.createSignedUrl(log.image_path, 60);
+          const gone = signError && (String(signError.statusCode ?? signError.status ?? '') === '404' || /not.?found/i.test(String(signError.message || '')));
+          if (!gone) throw new Error('A imagem não foi apagada do storage.');
+        }
+      }
+      const { error } = await supabase.from('unknown_app_image_logs').delete().eq('id', log.id);
+      if (error) throw error;
+      setUnknownLogs(prev => prev.filter(item => item.id !== log.id));
+      setSelectedUnknownLog(null);
+    } catch (err) {
+      console.error('Error deleting unknown log:', err);
+      alert('Falha ao apagar o registo.');
     } finally {
       setSavingLog(false);
     }
@@ -591,16 +629,16 @@ export default function Admin() {
                         {bugAttachmentUrls.length === 0 ? (
                           <p className="text-[11px] text-[var(--text-3)]">A gerar links de acesso...</p>
                         ) : (
-                          bugAttachmentUrls.map((url, idx) => (
-                            <a
-                              key={idx}
-                              href={url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-[11px] text-[var(--run)] hover:text-[var(--coach-soft)] break-all truncate block"
-                            >
-                              Ver anexo {idx + 1}
-                            </a>
+                          /* Auditoria M4: o anexo abre aqui, num <img>, e não numa aba nova com o
+                             URL assinado (que ficava no histórico do browser). */
+                          bugAttachmentUrls.map(({ url, path }, idx) => (
+                            isVideoAttachment(path) ? (
+                              <video key={idx} src={url} controls preload="metadata" aria-label={`Anexo ${idx + 1}`} data-testid="bug-attachment"
+                                className="w-full max-h-72 rounded-xl border border-[var(--border-glass)] bg-[var(--bg-app)]" />
+                            ) : (
+                              <img key={idx} src={url} alt={`Anexo ${idx + 1} do report`} data-testid="bug-attachment" loading="lazy"
+                                className="w-full max-h-96 object-contain rounded-xl border border-[var(--border-glass)] bg-[var(--bg-app)]" />
+                            )
                           ))
                         )}
                       </div>
@@ -765,8 +803,6 @@ export default function Admin() {
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 {filtered.map(item => {
-                  const imageUrl = supabase.storage.from('unknown-app-photos').getPublicUrl(item.image_path).data?.publicUrl;
-
                   return (
                     <div key={item.id} className="card rounded-2xl p-4 bg-[var(--surface-glass)] border border-[var(--border-glass)] space-y-3 flex flex-col justify-between">
                       <div className="space-y-2">
@@ -780,14 +816,7 @@ export default function Admin() {
                         </div>
 
                         <div className="flex gap-3 items-center">
-                          {imageUrl && (
-                            <img
-                              src={imageUrl}
-                              alt="Screenshot da app"
-                              className="w-16 h-16 object-cover rounded-xl border border-[var(--border-glass-strong)] shrink-0 bg-[var(--bg-app)]"
-                              onError={(e) => { e.target.style.display = 'none'; }}
-                            />
-                          )}
+                          <UnknownAppPhoto path={item.image_path} variant="thumb" />
                           <div className="min-w-0 flex-1">
                             <p className="text-xs font-semibold text-[var(--text-2)] truncate">
                               {item.detected_app_guess ? `Palpite: ${item.detected_app_guess}` : 'App não identificada'}
@@ -818,8 +847,6 @@ export default function Admin() {
 
             {/* Inspection Modal */}
             {selectedUnknownLog && (() => {
-              const modalImgUrl = supabase.storage.from('unknown-app-photos').getPublicUrl(selectedUnknownLog.image_path).data?.publicUrl;
-              
               return (
                 <PremiumModal
                   isOpen={!!selectedUnknownLog}
@@ -834,15 +861,7 @@ export default function Admin() {
                   <div className="p-6 space-y-5 bg-[var(--bg-sheet)] text-[var(--text-2)]">
                     {/* Screenshot Preview */}
                     <div className="flex justify-center bg-[var(--bg-app)] rounded-2xl p-2 border border-[var(--border-glass)] max-h-72 overflow-hidden">
-                      {modalImgUrl ? (
-                        <img
-                          src={modalImgUrl}
-                          alt="Screenshot submetido pelo atleta"
-                          className="max-h-68 object-contain rounded-xl"
-                        />
-                      ) : (
-                        <p className="text-xs text-[var(--text-3)] py-8">Imagem não disponível no storage.</p>
-                      )}
+                      <UnknownAppPhoto path={selectedUnknownLog.image_path} variant="modal" />
                     </div>
 
                     {/* Extracted Best Effort Result */}
@@ -883,6 +902,17 @@ export default function Admin() {
                           className="w-full bg-[var(--bg-app)] border border-[var(--border-glass-strong)] rounded-xl py-2 px-3 text-xs text-[var(--text-2)] outline-none resize-none"
                         />
                       </div>
+
+                      <button
+                        type="button"
+                        onClick={handleDeleteUnknownLog}
+                        disabled={savingLog}
+                        data-testid="unknown-log-delete"
+                        className="w-full flex items-center justify-center gap-1.5 min-h-[44px] text-xs font-semibold rounded-xl border transition disabled:opacity-50"
+                        style={{ color: 'var(--danger)', borderColor: 'var(--tint-danger-bd)' }}
+                      >
+                        <Trash2 size={14} /> Apagar registo e imagem
+                      </button>
 
                       <div className="flex gap-2 pt-2">
                         <Button

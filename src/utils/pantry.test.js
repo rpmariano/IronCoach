@@ -26,7 +26,7 @@ vi.mock('../lib/supabase', () => ({
 }));
 
 const {
-  pantrySuggestions, habitualsForMealType, portionText, foodSubline, ruleInfo, visibleRules, isKnownFood, savePantryFood, saveFoodRule,
+  pantrySuggestions, habitualsForMealType, portionText, foodSubline, ruleInfo, visibleRules, isLearnedAdditionRule, isKnownFood, savePantryFood, saveFoodRule,
   microOrNull, foodKey, microsTrusted, pantryMicro, missingMicroWords, isPantryComplete, listWords, MICRO_COLUMNS,
   isDishlessRule, isQuantityRule, ruleLabel, templateItems, templateTotals, templatesForMealType, templateForMeal, saveMealTemplate, variantsOf, topLevelFoods, saveFoodVariant, suggestedTemplateName, markMealTemplateUsed, foodDefaultGrams,
 } = await import('./pantry');
@@ -65,6 +65,57 @@ describe('habitualsForMealType', () => {
     const h = habitualsForMealType({ meals, foods: FOODS, mealType: 'pequeno-almoco', today: '2026-10-04' });
     // Aveia 3 refeições (uma vez por refeição), iogurte 2; o pão só há 5 meses.
     expect(h.map((f) => f.name)).toEqual(['Aveia em flocos', 'Iogurte grego 0%']);
+  });
+});
+
+/* Pedido do Rui (2026-11-09): recência (meia-vida de 21 dias), alimentos fora da despensa com 3
+   ocorrências, nada do que já está na lista, e até 4 sugestões. */
+describe('habitualsForMealType — recência, fora da despensa, exclusão e limite', () => {
+  const meal = (date, type, items) => ({ date, meal_type: type, meal_items: items.map((it) => (typeof it === 'string' ? { name: it } : it)) });
+  const food = (name) => ({ id: name, name, name_key: foodKey(name) });
+  const TODAY = '2026-11-09';
+
+  it('recência: com as mesmas contagens, o de ontem ganha ao de há ~80 dias', () => {
+    const foods = [food('Aveia'), food('Granola')];
+    const meals = [
+      meal('2026-08-20', 'pequeno-almoco', ['Granola']),
+      meal('2026-08-21', 'pequeno-almoco', ['Granola']),
+      meal('2026-11-07', 'pequeno-almoco', ['Aveia']),
+      meal('2026-11-08', 'pequeno-almoco', ['Aveia']),
+    ];
+    expect(habitualsForMealType({ meals, foods, mealType: 'pequeno-almoco', today: TODAY }).map((f) => f.name)).toEqual(['Aveia', 'Granola']);
+    // A ordem é a do peso, não a da contagem: 3 antigas perdem para 2 recentes.
+    meals.push(meal('2026-08-22', 'pequeno-almoco', ['Granola']));
+    expect(habitualsForMealType({ meals, foods, mealType: 'pequeno-almoco', today: TODAY })[0].name).toBe('Aveia');
+  });
+
+  it('fora da despensa: entra com 3 ocorrências (2 não chegam), com o nome e as gramas da última vez', () => {
+    const meals = [
+      meal('2026-11-01', 'lanche', [{ name: 'pão com manteiga', quantity_grams: 60 }, 'Kiwi']),
+      meal('2026-11-03', 'lanche', [{ name: 'Pão com manteiga', quantity_grams: 70 }, 'Kiwi']),
+      meal('2026-11-05', 'lanche', [{ name: 'Pão com Manteiga', quantity_grams: 80.4 }]),
+    ];
+    const h = habitualsForMealType({ meals, foods: [], mealType: 'lanche', today: TODAY });
+    expect(h).toEqual([{ name: 'Pão com Manteiga', name_key: foodKey('pão com manteiga'), fromHistory: true, lastGrams: 80 }]);
+  });
+
+  it('no empate de peso, a despensa primeiro', () => {
+    const meals = [1, 3, 5].map((d) => meal(`2026-11-0${d}`, 'lanche', ['Kiwi', 'Iogurte']));
+    const h = habitualsForMealType({ meals, foods: [food('Iogurte')], mealType: 'lanche', today: TODAY });
+    expect(h.map((f) => f.name)).toEqual(['Iogurte', 'Kiwi']);
+    expect(h[1].fromHistory).toBe(true);
+  });
+
+  it('não sugere o que já está na lista desta refeição', () => {
+    const meals = [1, 2, 3].map((d) => meal(`2026-11-0${d}`, 'lanche', ['Iogurte', 'Kiwi']));
+    const h = habitualsForMealType({ meals, foods: [food('Iogurte')], mealType: 'lanche', today: TODAY, exclude: ['iogurte', ' KIWI '] });
+    expect(h).toEqual([]);
+  });
+
+  it('até 4 sugestões', () => {
+    const names = ['A1', 'B2', 'C3', 'D4', 'E5', 'F6'];
+    const meals = [1, 2].map((d) => meal(`2026-11-0${d}`, 'jantar', names));
+    expect(habitualsForMealType({ meals, foods: names.map(food), mealType: 'jantar', today: TODAY })).toHaveLength(4);
   });
 });
 
@@ -150,6 +201,39 @@ describe('textos', () => {
     expect(visibleRules([{ status: 'por_confirmar' }, { status: 'confirmado' }, { status: 'varia' }]).length).toBe(2);
     expect(isKnownFood('IOGURTE grego 0 %', FOODS)).toBe(true);
     expect(isKnownFood('Banana', FOODS)).toBe(false);
+  });
+});
+
+describe('isLearnedAdditionRule (#109, o mesmo do servidor)', () => {
+  const r = (topic, value, source = 'resposta') => ({ topic, value, source, status: 'confirmado' });
+  it('manteiga, margarina, creme vegetal, azeite, óleo, molho, maionese e ketchup aprendidos', () => {
+    for (const v of ['com manteiga', 'margarina', 'creme vegetal', 'em azeite', 'óleo de girassol', 'molho de tomate', 'maionese', 'ketchup']) {
+      expect(isLearnedAdditionRule(r('sandes', v))).toBe(true);
+    }
+    // O tema começa pelo ingrediente (dfad1095): conta mesmo que o valor não o diga.
+    expect(isLearnedAdditionRule(r('Azeite na salada', 'um fio', 'observacao'))).toBe(true);
+    expect(isLearnedAdditionRule(r('manteiga no pão · quantidade', 'camada fina'))).toBe(true);
+    // A meio do tema, sem o valor o dizer, não: «ovos · azeite» não começa pelo ingrediente.
+    expect(isLearnedAdditionRule(r('Ovos · azeite', 'um fio', 'observacao'))).toBe(false);
+  });
+  it('alimentos compostos com o ingrediente no nome não contam (dfad1095)', () => {
+    expect(isLearnedAdditionRule(r('atum em azeite', 'escorrido'))).toBe(false);
+    expect(isLearnedAdditionRule(r('frango com molho de caril', 'pouco'))).toBe(false);
+    expect(isLearnedAdditionRule(r('atum em azeite · quantidade', '1 lata (~80 g)'))).toBe(false);
+  });
+  it('não contam: manuais, a quantidade do próprio ingrediente, manteigas vegetais, nem tempero/gordura', () => {
+    expect(isLearnedAdditionRule(r('salada', 'azeite e vinagre', 'manual'))).toBe(false);
+    expect(isLearnedAdditionRule(r('manteiga · quantidade', 'camada fina'))).toBe(false);
+    expect(isLearnedAdditionRule(r('quantidade de azeite', '1 colher'))).toBe(false);
+    expect(isLearnedAdditionRule(r('molhos · quantidade', '1 colher de sopa'))).toBe(false);
+    expect(isLearnedAdditionRule(r('manteiga de amendoim · quantidade', '1 colher'))).toBe(false);
+    expect(isLearnedAdditionRule(r('tosta', 'com manteiga de amendoim'))).toBe(false);
+    expect(isLearnedAdditionRule(r('frango · tempero', 'sal e limão'))).toBe(false);
+    expect(isLearnedAdditionRule(r('carne picada · gordura', '5%'))).toBe(false);
+    expect(isLearnedAdditionRule(null)).toBe(false);
+  });
+  it('visibleRules deixa-as de fora', () => {
+    expect(visibleRules([r('sandes', 'com manteiga'), r('salada', 'azeite', 'manual'), { ...r('ovos', 'em azeite'), status: 'varia' }])).toHaveLength(1);
   });
 });
 

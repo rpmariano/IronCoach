@@ -764,6 +764,26 @@ describe('Coach — falha imediata (sem timeout, isTimeout=false)', () => {
     expect(supabase.from).not.toHaveBeenCalledWith('coach_messages');
   });
 
+  it('quota do dia (429): a frase dela como resposta normal, sem "Reenviar" e sem sondagem', async () => {
+    invokeEdgeFunctionWithTimeout.mockResolvedValue({
+      data: null, error: 'Por hoje já falámos muito. Amanhã continuamos.', isTimeout: false, isNetwork: false, isQuota: true, status: 429,
+      serverText: 'Por hoje já falámos muito. Amanhã continuamos.', serverMessageId: null,
+    });
+    supabase.from.mockImplementation((table) => {
+      if (table === 'coach_messages') return coachMessagesChain({ data: [], error: null });
+      return profilesChain({ data: null, error: null });
+    });
+
+    renderCoach();
+    await sendOla();
+    await waitFor(() => expect(useAppStore.getState().coachMessages.at(-1)?.content).toBe('Por hoje já falámos muito. Amanhã continuamos.'));
+    const last = useAppStore.getState().coachMessages.at(-1);
+    expect(last.retryText).toBeUndefined();
+    expect(screen.queryByTestId('coach-retry')).not.toBeInTheDocument();
+    expect(useAppStore.getState().coachLoading).toBe(false);
+    expect(supabase.from).not.toHaveBeenCalledWith('coach_messages');
+  });
+
   // Revisão pré-deploy de 2026-09-25: um erro do gateway (546 WORKER_LIMIT,
   // 503 BOOT_ERROR) responde sem frase dela — o `error` é o texto em inglês
   // da supabase-js, que aparecia na bolha da Carol.
@@ -854,7 +874,7 @@ describe('Coach — BUG CORRIGIDO (2026-08-30) — rascunho da mensagem sobreviv
   it('enviar a mensagem limpa o rascunho — a próxima visita ao chat não vem com texto antigo', async () => {
     // Simula um rascunho já persistido de uma sessão anterior (poupa
     // esperar pelo debounce real de formDraftPersistence.js).
-    localStorage.setItem('ironcoach:carol-chat-rascunho', JSON.stringify({ inputStr: 'Rascunho Antigo' }));
+    localStorage.setItem('ironcoach:u:user-1:carol-chat-rascunho', JSON.stringify({ inputStr: 'Rascunho Antigo' }));
     invokeEdgeFunctionWithTimeout.mockResolvedValue({ data: { model_message: { content: 'Olá!' } }, error: null });
 
     const { unmount } = renderCoach();
@@ -863,7 +883,7 @@ describe('Coach — BUG CORRIGIDO (2026-08-30) — rascunho da mensagem sobreviv
     fireEvent.click(screen.getByRole('button', { name: /Enviar pergunta à Carol/i }));
 
     await waitFor(() => expect(screen.getByPlaceholderText('Escreve a tua pergunta...').value).toBe(''));
-    expect(localStorage.getItem('ironcoach:carol-chat-rascunho')).toBeNull();
+    expect(localStorage.getItem('ironcoach:u:user-1:carol-chat-rascunho')).toBeNull();
     unmount();
 
     // Reabrir o chat: sem vestígios do rascunho enviado.
@@ -2772,5 +2792,32 @@ describe('Coach — retomar um plano partido (plan_resume)', () => {
     renderCoach();
     await screen.findByRole('button', { name: 'Agora não' });
     expect(bodies().filter((b) => b.message === 'Agora não')).toHaveLength(0);
+  });
+});
+
+/* 2026-11-01: o efeito dos pedidos (coachIntent) corria duas vezes com o mesmo intent no
+   StrictMode — o «Pedir à Carol que explique» (um `say`) ia duas vezes para o chat. */
+describe('Coach — um pedido (coachIntent) trata-se uma vez', () => {
+  it('em StrictMode, um `say` vai uma só vez para o chat', async () => {
+    useAppStore.setState({ coachIntent: { kind: 'say', text: 'Explica-me a leitura do gráfico «Volume-carga semanal».' } });
+    invokeEdgeFunctionWithTimeout.mockResolvedValue({
+      data: { model_message: { id: 's1', content: 'Claro.' }, suggestions: [] },
+      error: null,
+    });
+    render(
+      <React.StrictMode>
+        <ToastProvider>
+          <Coach />
+        </ToastProvider>
+      </React.StrictMode>,
+    );
+    await waitFor(() => expect(invokeEdgeFunctionWithTimeout).toHaveBeenCalled());
+    await new Promise((r) => setTimeout(r, 50));
+    const sends = invokeEdgeFunctionWithTimeout.mock.calls
+      .map((c) => { try { return JSON.parse(c[1].body); } catch { return null; } })
+      .filter((b) => b?.message === 'Explica-me a leitura do gráfico «Volume-carga semanal».');
+    expect(sends).toHaveLength(1);
+    expect(useAppStore.getState().coachMessages.filter((m) => m.role === 'user' && m.content.startsWith('Explica-me'))).toHaveLength(1);
+    expect(useAppStore.getState().coachIntent).toBeNull();
   });
 });

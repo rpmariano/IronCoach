@@ -14,6 +14,8 @@
 import { isWalk, runsOnly, walksOnly } from '@formulas/runKinds.ts';
 
 const LISTA = { run: 'runs', meal: 'meals', gym: 'gymSessions', body: 'bodyAssessments' };
+// As corridas e as sessões de ginásio vêm no mesmo pedido (a fatia 'training' do store).
+const TREINO = new Set(['run', 'gym']);
 
 const FRASE = {
   run: (record) => primeiraCorrida(record),
@@ -116,6 +118,12 @@ function semEste(list, record) {
 export function firstRecordMoment(kind, state = {}, record = null) {
   const chave = LISTA[kind];
   if (!chave || !FRASE[kind]) return null;
+  /* #121 (2026-11-10): sem as corridas e as sessões carregadas desta conta (o pedido ainda não
+     chegou, ou falhou), a lista vazia não diz que é o primeiro — diz que não se sabe. O
+     trainingLoadedFor só se escreve quando o pedido chega bem (store/index.js). Em demo, e nos
+     estados sem sessão, fica como estava. */
+  const uid = state.session?.user?.id || state.profile?.id;
+  if (TREINO.has(kind) && uid && uid !== 'demo-user' && state.trainingLoadedFor !== uid) return null;
   let anteriores = semEste(state[chave], record);
   // Corridas e caminhadas contam-se à parte: a primeira corrida depois de
   // semanas de caminhadas (o regresso de uma lesão) continua a ser a primeira.

@@ -17,6 +17,8 @@
 import { MIN_VOLUME_KM, categorizeDistance } from '@formulas/vocabulary.ts';
 import { getTaperDays } from '@formulas/taper.ts';
 import { longRunGuide } from '@formulas/longRun.ts';
+import { LOW_BASE_RAMP_KM, LOW_BASE_WEEKLY_KM } from '@formulas/runLoadAlert.ts';
+import { ACWR_DANGER } from '@formulas/acwr.ts';
 import { formatHoursMinutes, formatPace } from './run';
 
 const LEVELS = ['iniciante', 'basico', 'medio', 'avancado'];
@@ -78,13 +80,19 @@ export function phaseGuidance(o) {
   switch (o.phaseId) {
     case 'base': {
       const alvo = MIN_VOLUME_KM[level]?.[cat];
-      // Corrida 2.1 #1: o iniciante sobe mais devagar.
-      const sobe = !declared ? null : level === 'iniciante' ? 'no máximo 2 a 3 km por semana' : 'no máximo 10% por semana';
+      /* Quanto pode subir (2026-11-06): a mesma régua da guarda de carga do servidor
+         (runLoadAlert.ts, acuteLimitKm) — com base baixa, até LOW_BASE_RAMP_KM acima da média das 3
+         semanas anteriores; acima dela, o ACWR até ACWR_DANGER. O «10% por semana» (e os «2 a 3 km»
+         do iniciante) diziam ao atleta que não podia o que o plano já lhe propunha. */
+      const sobe = !declared ? null
+        : vol != null && vol < LOW_BASE_WEEKLY_KM
+          ? `até ${LOW_BASE_RAMP_KM} km por semana acima da média das últimas 3`
+          : `a semana sem passar ${num(ACWR_DANGER)} vezes a tua média das últimas 4`;
       let t;
       if (alvo == null) t = 'Na base, quase tudo em ritmo fácil, a conversar.';
       else if (vol == null) t = `Para ${prova}, quero que chegues aos ${alvo} km por semana, quase todos em ritmo fácil.`;
       else if (vol >= alvo) t = `Para ${prova}, quero que aguentes ${alvo} km por semana sem cansaço; já andas nos ${num(vol)}, por isso aqui é mantê-los fáceis.`;
-      else t = `Para ${prova}, quero que chegues aos ${alvo} km por semana; andas nos ${num(vol)}. Sobe devagar${sobe ? `: ${sobe}` : ''}.`;
+      else t = `Para ${prova}, quero que chegues aos ${alvo} km por semana; andas nos ${num(vol)}. Sobe com calma${sobe ? `: ${sobe}` : ''}.`;
       if (!dMais) return t + pergunta;
       if (!declared) return `${t} Com ${dMais} m de D+ na prova, as subidas também vão entrar.${pergunta}`;
       return level === 'iniciante'

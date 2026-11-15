@@ -1,7 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 
-const previewPath = path.join(__dirname, 'public', 'all_widgets_preview.html');
+const previewPath = path.join(__dirname, 'specs', 'mockups', 'all_widgets_preview.html');
 const hydroCssPath = path.join(__dirname, 'src', 'components', 'GraphicsLibrary', 'HydrationOptionA.css');
 const nutriCssPath = path.join(__dirname, 'src', 'components', 'GraphicsLibrary', 'NutritionOptionA.css');
 const nextRaceCssPath = path.join(__dirname, 'src', 'components', 'GraphicsLibrary', 'NextRaceCard.css');

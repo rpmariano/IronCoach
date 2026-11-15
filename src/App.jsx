@@ -1,5 +1,7 @@
 import React, { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
-import { supabase } from './lib/supabase';
+import { supabase, logAppEvent, sendPendingAppLogs } from './lib/supabase';
+import { bootInfoOnce, bootMessage, trackHiddenAt } from './utils/bootTelemetry';
+import { announceBuildToServiceWorker } from './lib/assetCache';
 import { registerServiceWorker, maybeSyncPushSubscription, pushWantedFor, forgetPushSubscriptionOnThisDevice } from './lib/push';
 import { cenasPreviewAtiva } from './utils/cenasPreview';
 import { reloadFresh, isBusy, resumeParams, entryTabFromSearch, stripResumeParam, markEntryApplied, markEntryWelcomeHandled } from './lib/appUpdate';
@@ -29,6 +31,8 @@ import { cupPushRoute } from './utils/cupPushRoute';
 // dinâmico — ver o bloco a seguir.
 import Home from './components/Home/Home';
 import LogoLoader from './components/shared/LogoLoader';
+import { bootSessionState, isServerDownAuthError, readStoredAuthSession } from './utils/authNetwork';
+import { clearRefreshFailureCache, createBootRetry, probeNetwork } from './utils/bootRetry';
 import { adoptBootSplash, holdForLogo, logoIntroMs, registerSkeletonLogo, releaseBootSplash, useHeldWhile, SKELETON_DELAY_MS } from './utils/logoIntro';
 import { DASHBOARD_TABS } from './utils/scrollToTop';
 
@@ -305,6 +309,37 @@ function FullScreenLoader({ still = false, decorative = false }) {
   );
 }
 
+/* Sem rede no arranque, com a sessão guardada (2026-11-09, a Patty): nunca o login. O logo, a
+   frase, e a app volta a tentar sozinha quando a rede voltar (evento online e de 15 em 15 s) —
+   ou já, no botão. utils/authNetwork.js explica a causa. */
+function OfflineBootScreen({ onRetry, retrying = false, reason = 'network' }) {
+  const server = reason === 'server';
+  return (
+    <div className="min-h-screen flex flex-col items-center justify-center bg-transparent px-6 text-center" data-testid="boot-offline" data-reason={reason} style={{ gap: 20 }}>
+      <LogoLoader size={112} label={null} still />
+      <div className="flex flex-col items-center" style={{ gap: 8 }}>
+        <p role="status" aria-live="polite" className="text-[15px] font-bold" style={{ color: 'var(--text-1)' }}>
+          {retrying ? 'A ligar…' : server ? 'O servidor não está a responder' : 'Sem ligação à internet'}
+        </p>
+        <p className="text-[13px] leading-relaxed max-w-[280px]" style={{ color: 'var(--text-2)' }}>
+          {server
+            ? 'A tua sessão está guardada. Tenta daqui a pouco — eu também volto a tentar.'
+            : 'A tua sessão está guardada. Entro assim que a rede voltar.'}
+        </p>
+      </div>
+      <button
+        type="button"
+        onClick={onRetry}
+        disabled={retrying}
+        className="min-h-[44px] px-5 rounded-xl text-[13px] font-bold disabled:opacity-60"
+        style={{ border: '1px solid var(--border-glass-strong)', color: 'var(--text-1)', background: 'var(--surface-glass)' }}
+      >
+        {retrying ? 'A tentar…' : 'Tentar agora'}
+      </button>
+    </div>
+  );
+}
+
 const DEMO_PROFILE = {
   id: 'demo-user',
   full_name: 'Atleta IronCoach',
@@ -522,6 +557,44 @@ function buildProvasDemoData() {
   };
 }
 
+/* Variante de ?demo=true&carga=1 — o conflito do perfil de carga (2026-11-09): as corridas e o
+   plano reais da Patty a 9 nov, com hoje no lugar de 9 nov. A carga destes 7 dias pede cautela
+   (ACWR 1,31) e o volume fica abaixo do que a meia pede: um só cartão, Prudente ou Mais volume. */
+function buildCargaDemoData() {
+  const base = buildDemoData();
+  const today = new Date();
+  const inDays = (n) => {
+    const d = new Date(today);
+    d.setDate(d.getDate() + n);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  };
+  const R = (n, km, training_type, kind = 'treino', effort_rpe = 5) => ({
+    id: `demo-carga-run${n}`, date: inDays(n), distance_km: km, duration_seconds: Math.round(km * 340), kind, training_type, effort_rpe,
+  });
+  const I = (n, km, training_type, kind = 'corrida', status = 'pendente') => ({
+    id: `demo-carga-item${n}`, plan_id: 'demo-carga-plan', planned_date: inDays(n), kind, training_type, status, target_distance_km: km,
+  });
+  return {
+    ...base,
+    raceEvents: [
+      { id: 'demo-carga-trail', date: inDays(6), name: 'Atlantic Cliff Adventure', location: 'Ericeira', race_type: 'trail', distance_km: 10, race_priority: 'b', status: 'agendada', experience_level: 'basico' },
+      { id: 'demo-carga-meia', date: inDays(20), name: 'Meia dos Descobrimentos', location: 'Lisboa', race_type: '21k', distance_km: 21.0975, race_priority: 'a', status: 'agendada', experience_level: 'basico' },
+    ],
+    runs: [
+      R(-27, 5.01, 'continuo'), R(-24, 6.04, 'continuo'), R(-23, 18.38, 'caminhada', 'treino', 6),
+      R(-20, 5.02, 'continuo'), R(-17, 4, 'recuperacao'), R(-15, 10.12, null, 'competicao', 8),
+      R(-13, 4.03, 'recuperacao', 'treino', null), R(-10, 5.04, 'continuo'), R(-8, 8.01, 'longo'),
+      R(-6, 8.01, 'longo'), R(-4, 5.18, 'continuo', 'treino', 6), R(-1, 9.95, null, 'competicao', 7),
+    ],
+    coachPlans: [{ id: 'demo-carga-plan', status: 'aceite', period_start: inDays(-6), period_end: inDays(20), summary: 'Até à meia.' }],
+    coachPlanItems: [
+      I(-6, 8, 'longo', 'corrida', 'concluido'), I(-4, 5, 'continuo', 'corrida', 'concluido'), I(-1, 10, 'prova', 'corrida', 'concluido'),
+      I(1, 6, 'continuo'), I(2, null, null, 'ginasio'), I(3, 6, 'continuo'), I(4, 4, 'ativacao'),
+      I(6, 10, 'prova'), I(13, 3, 'prova'), I(20, 21.0975, 'prova'),
+    ],
+  };
+}
+
 // Variante de ?demo=true&onboarding=1: um atleta mesmo acabado de chegar —
 // sem registos e sem provas. É a segunda metade da regra de arranque (a
 // primeira é onboarding_done a false, posto no perfil demo).
@@ -586,6 +659,35 @@ export default function App() {
      (a app escondida durante o arranque, uma recarga logo a seguir) punha
      por cima o estado de partida e o ecrã perdia-se. */
   const [navigationDecided, setNavigationDecided] = useState(false);
+  // Sem rede no arranque, com a sessão guardada: o ecrã «sem ligação», nunca o login (2026-11-09).
+  // null | 'network' | 'server' (um 5xx do auth: «o servidor não está a responder»).
+  const [bootOffline, setBootOffline] = useState(null);
+  const [bootRetrying, setBootRetrying] = useState(false);
+  const retryBootRef = useRef(null);
+  /* Uma só tentativa de cada vez, partilhada pelo botão, pelo evento online e pelo temporizador
+     (utils/bootRetry.js): confirma a rede (version.json), esquece o refresh falhado que o auth-js
+     guarda 60 s, e só então volta ao getSession. */
+  const bootRetryRef = useRef(null);
+  const bootOfflineRef = useRef(null);
+  bootOfflineRef.current = bootOffline;
+  if (!bootRetryRef.current) {
+    bootRetryRef.current = createBootRetry({
+      probe: () => probeNetwork(),
+      clearCooldown: () => clearRefreshFailureCache(supabase.auth),
+      // Com o Supabase em baixo (5xx), respeita-se o cooldown do auth-js (o botão também).
+      canClearCooldown: () => bootOfflineRef.current !== 'server',
+      attempt: () => (retryBootRef.current ? retryBootRef.current() : Promise.resolve()),
+      onBusy: setBootRetrying,
+    });
+  }
+  useEffect(() => {
+    if (!bootOffline) return undefined;
+    const retry = () => { bootRetryRef.current.run(); };
+    window.addEventListener('online', retry);
+    // Sem rede, de 15 em 15 s; com o servidor em baixo, de minuto a minuto (o cooldown do auth-js).
+    const timer = setInterval(retry, bootOffline === 'server' ? 60000 : 15000);
+    return () => { window.removeEventListener('online', retry); clearInterval(timer); };
+  }, [bootOffline]);
   useEffect(() => (navigationDecided ? startNavigationPersistence(useAppStore) : undefined), [navigationDecided]);
 
   /* Onboarding (ponto 8 do redesenho 2026-09). Duas entradas distintas:
@@ -682,6 +784,27 @@ export default function App() {
      sessão, e as boas-vindas esperam por ela no máximo 1,5 s: uma memória
      lenta ou em falha não atrasa a saudação, só a deixa sem esse contexto. */
   const sessionUserId = session?.user?.id || null;
+  /* #97 (2026-11-04): telemetria do arranque (utils/bootTelemetry.js) — uma linha em app_logs por
+     carregamento da página, com sessão: se o sistema a descartou, o tipo de navegação e há quanto
+     tempo estava escondida. Para confirmar com dados reais porque é que a app «recarrega sempre». */
+  // Lido já no 1.º render, antes de a página poder voltar a esconder-se e reescrever a hora.
+  useState(bootInfoOnce);
+  useEffect(() => trackHiddenAt(), []);
+  const bootLoggedRef = useRef(false);
+  useEffect(() => {
+    if (!sessionUserId || sessionUserId === 'demo-user' || bootLoggedRef.current) return;
+    bootLoggedRef.current = true;
+    const info = bootInfoOnce();
+    logAppEvent('info', 'app_boot', bootMessage(info), info);
+  }, [sessionUserId]);
+  /* #116: os logs que falharam por falta de rede (lib/pendingLogs.js) vão quando a rede volta; no
+     arranque vão atrás do app_boot. */
+  useEffect(() => {
+    if (!sessionUserId || sessionUserId === 'demo-user') return undefined;
+    const online = () => { sendPendingAppLogs(); };
+    window.addEventListener('online', online);
+    return () => window.removeEventListener('online', online);
+  }, [sessionUserId]);
   const [notesReadyFor, setNotesReadyFor] = useState(null);
   useEffect(() => {
     if (!sessionUserId || notesReadyFor === sessionUserId) return undefined;
@@ -912,6 +1035,10 @@ export default function App() {
 
   useEffect(() => {
     registerServiceWorker();
+    // Bug #97: a cache dos ficheiros com hash fica a saber a versão que corre (public/sw.js).
+    const announce = () => { announceBuildToServiceWorker(); };
+    if (document.readyState === 'complete') setTimeout(announce, 3000);
+    else window.addEventListener('load', () => setTimeout(announce, 3000), { once: true });
 
     const params = new URLSearchParams(window.location.search);
     const tabParam = params.get('tab');
@@ -979,7 +1106,27 @@ export default function App() {
       useAppStore.getState().setOnboardingOpen(true);
     }
 
-    supabase.auth.getSession().then(({ data: { session: existingSession } }) => {
+    /* Só o erro que vem do getSession (resolvido com error, ou rejeitado) decide «sem ligação» —
+       nunca uma exceção do código que corre depois (revisão do 0c1a88af: um TypeError de código
+       ligava o ecrã sem ligação e o temporizador repetia o arranque em ciclo). */
+    const startBoot = () => supabase.auth.getSession().then(
+      (res) => ({ session: res?.data?.session ?? null, error: res?.error ?? null }),
+      (err) => ({ session: null, error: err, rejected: true }),
+    ).then(({ session: existingSession, error: sessionError, rejected }) => {
+      /* Sem rede, com o access token expirado, o getSession devolve session null e um erro de
+         rede — com a sessão ainda guardada. Isso não é «sem sessão» (utils/authNetwork.js). */
+      if (!isDemo && bootSessionState({ session: existingSession, error: sessionError, storedSession: readStoredAuthSession() }) === 'offline') {
+        setBootOffline(isServerDownAuthError(sessionError) ? 'server' : 'network');
+        setIsInitializing(false);
+        return;
+      }
+      setBootOffline(null);
+      if (rejected && !isDemo) {
+        setSession(null);
+        setNavigationDecided(true);
+        setIsInitializing(false);
+        return;
+      }
       if (isDemo) {
         const demoSession = { user: { id: 'demo-user', email: 'atleta@ironcoach.app' } };
         setSession(demoSession);
@@ -1006,9 +1153,11 @@ export default function App() {
         // ?demo=true&provas=1 — provas já corridas e nenhuma marcada: o
         // dia a seguir no Início, o hub com conquistas e a Vitrina cheia.
         const verProvas = params.get('provas') === '1';
+        const verCarga = params.get('carga') === '1';
         useAppStore.setState(
           forcarOnboarding ? buildEmptyDemoData()
             : verProvas ? buildProvasDemoData()
+              : verCarga ? buildCargaDemoData()
               : buildDemoData(),
         );
         // Também em demo, como com sessão: é onde isto se consegue ver sem conta.
@@ -1018,6 +1167,8 @@ export default function App() {
         setNavigationDecided(true);
         setIsInitializing(false);
       } else if (existingSession?.user) {
+        // Também ao voltar a rede depois do ecrã «sem ligação»: o logo enquanto os dados chegam.
+        setIsInitializing(true);
         setSession(existingSession);
         loadedUserIdRef.current = existingSession.user.id;
         if (forcarOnboarding) {
@@ -1058,7 +1209,17 @@ export default function App() {
         setNavigationDecided(true);
         setIsInitializing(false);
       }
+    }).catch((err) => {
+      /* Uma exceção do arranque (não da rede): não liga o ecrã sem ligação, mas também não deixa a
+         app presa no logo — sai dele (com a sessão, a app; sem ela, o login) e fica em app_logs
+         (revisão do ff955623). */
+      console.error('[arranque]', err);
+      setNavigationDecided(true);
+      setIsInitializing(false);
+      logAppEvent('error', 'boot_exception', String(err?.message || err || 'Exceção no arranque').slice(0, 200), { errorName: err?.name || null });
     });
+    retryBootRef.current = startBoot;
+    startBoot();
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, newSession) => {
       if (isDemo) return;
@@ -1073,6 +1234,8 @@ export default function App() {
         sameUser: !!userId && loadedUserIdRef.current === userId,
       });
       if (action === 'signed-out') {
+        // Um SIGNED_OUT real (refresh recusado, logout): aí sim, o login.
+        setBootOffline(null);
         loadedUserIdRef.current = null;
         /* A sessão pode ter acabado fora do Perfil (logout global a partir de
            outro dispositivo, refresh recusado): as notificações de quem saiu
@@ -1089,6 +1252,8 @@ export default function App() {
         return;
       }
       if (action === 'ignore') return;
+      // A rede voltou e o auth-js renovou a sessão sozinho: sai do ecrã «sem ligação».
+      setBootOffline(null);
       setSession(newSession);
       if (action === 'session-only') return;
       loadedUserIdRef.current = userId;
@@ -1140,6 +1305,16 @@ export default function App() {
        tiver saído por outra razão (a rede de segurança dele). */
     // `decorative`: o anúncio "A carregar" é o do logo do HTML, por cima.
     return <FullScreenLoader still={!firstBootDone} decorative={!firstBootDone} />;
+  }
+
+  if (!session && bootOffline) {
+    return (
+      <OfflineBootScreen
+        retrying={bootRetrying}
+        reason={bootOffline}
+        onRetry={() => { bootRetryRef.current.run(); }}
+      />
+    );
   }
 
   if (!session) {

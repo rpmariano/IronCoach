@@ -387,6 +387,12 @@ export default function GymDashboard() {
               valueColor="var(--gym)"
               legend={[{ label: 'Séries por semana', color: 'var(--gym)' }]}
               height={192}
+              explain={{
+                title: 'Séries por músculo',
+                period: semanasFechadas(muscle.weeks),
+                series: [],
+                note: `Séries por semana: ${groups.map((g) => `${g.name} ${perWeekNum(g.perWeek)}`).join(', ')}.`,
+              }}
               footer={multiNote ? <p data-testid="multi-grupo" style={{ margin: 0 }}>{multiNote}</p> : undefined}
             >
               <Bar data={muscleData} options={muscleOptions} updateMode="period" />

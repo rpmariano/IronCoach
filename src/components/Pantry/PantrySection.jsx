@@ -194,6 +194,10 @@ export default function PantrySection() {
               Isto é o que já não te pergunto — como cozinhas e quanto costumas pôr. Guardo à segunda resposta igual, ou quando o escreves nas observações. Se estiver errado, corrige aqui.
             </p>
           </div>
+          {/* #109: as regras aprendidas sobre estes não aparecem — ela já não as usa. */}
+          <p data-testid="pantry-additions-note" className="text-[11.5px] leading-[1.5]" style={{ color: 'var(--text-3)' }}>
+            Manteiga, azeite, óleo e molhos pergunto sempre — a não ser que mo digas no registo ou aqui.
+          </p>
           {rules.length === 0 ? (
             <p className="text-[12px] leading-relaxed py-1" style={{ color: 'var(--text-muted)' }}>Ainda não sei nada de como cozinhas.</p>
           ) : (

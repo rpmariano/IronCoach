@@ -33,7 +33,9 @@ import { computeCompositionTrend } from '@formulas/compositionTrend.ts';
 import { computeRunAcwr, RUN_ACWR_MIN_HISTORY_WEEKS } from '@formulas/runAcwr.ts';
 import { computeCrossMetrics } from '@formulas/crossMetrics.ts';
 import { computeReadinessIndex as sharedComputeReadinessIndex } from '@formulas/readinessIndex.ts';
+import { calorieGoalResolver } from '@formulas/goalHistory.ts';
 import { runsOnly } from '@formulas/runKinds.ts';
+import { loadStateFor, filterLoadInsights } from './loadProfileState';
 
 /**
  * Filtra dados por um intervalo de datas relativo à data atual.
@@ -836,7 +838,7 @@ export function detectCoachInsights(dataIn, profile) {
               id: 'race_volume', severity: 'warning',
               title: `Volume de Treino Insuficiente: ${raceName}`,
               message: `O teu volume semanal médio (${weeklyVol} km) não suporta em segurança a distância de ${dist}km. Recomendo-te aumentar a carga gradualmente (regra dos 10%/semana) ou rever a distância.`,
-              metric: 'Volume', value: weeklyVol, threshold: 0, module: 'corrida'
+              metric: 'Volume', value: weeklyVol, threshold: 0, module: 'corrida', raceId: next.id || null
             });
           } else if (targetPace && predictedPaceReal > 0) {
             const paceDiffPct = (predictedPaceReal - targetPace) / targetPace;
@@ -878,6 +880,12 @@ export function detectCoachInsights(dataIn, profile) {
 
     // Ordenar por severidade: critical > warning > info
     const severityOrder = { critical: 0, warning: 1, info: 2 };
+    // Perfil de carga (2026-11-09): os avisos de carga e de volume da prova que manda seguem um só
+    // estado (utils/loadProfileState.js) — nunca os dois juntos; em conflito, o cartão das duas opções.
+    const loadState = loadStateFor({ raceEvents: dataIn?.raceEvents, runs: allRuns, coachPlans: dataIn?.coachPlans, coachPlanItems: dataIn?.coachPlanItems, profile, todayISO: todayISO() });
+    const shown = [...filterLoadInsights(insights, loadState)];
+    insights.length = 0;
+    insights.push(...shown);
     insights.sort((a, b) => (severityOrder[a.severity] ?? 3) - (severityOrder[b.severity] ?? 3));
 
     return insights;
@@ -894,11 +902,14 @@ export function detectCoachInsights(dataIn, profile) {
  * única implementação, partilhada com a Carol (specs/formulas-checklist.md
  * Fase E, o gap original que motivou toda a fase).
  */
-export function calculateReadinessIndex(runs, meals, bodyAssessments, gymSessions, profile, nextRace = null, dailyCheckins = [], trainingToday = undefined) {
+export function calculateReadinessIndex(runs, meals, bodyAssessments, gymSessions, profile, nextRace = null, dailyCheckins = [], trainingToday = undefined, goalHistory = null) {
   try {
     const today = todayISO();
     const todayCheckin = (dailyCheckins || []).find((c) => c?.date === today) || null;
-    return sharedComputeReadinessIndex(runs || [], meals || [], bodyAssessments || [], gymSessions || [], profile, today, nextRace, todayCheckin, trainingToday);
+    // O objetivo calórico de CADA dia (2026-11-02, como o servidor — dev-back 197683ee): um dia
+    // completo ou parcial julga-se com o objetivo desse dia, não com o de hoje.
+    const calorieGoalFor = calorieGoalResolver(goalHistory || [], profile, today);
+    return sharedComputeReadinessIndex(runs || [], meals || [], bodyAssessments || [], gymSessions || [], profile, today, nextRace, todayCheckin, trainingToday, calorieGoalFor);
   } catch (e) {
     return { score: 0, pillars: [], level: 'low', calibrating: true };
   }

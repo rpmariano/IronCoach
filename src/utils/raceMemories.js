@@ -1,5 +1,6 @@
 import { supabase } from '../lib/supabase';
 import { compressImage } from '../lib/image';
+import { storageRefusalError } from './storageErrors';
 
 /* Memórias da prova — diploma, medalha e fotografias do dia. Vivem em
    race_events (diploma_path, medal_path, photo_paths), num bucket privado,
@@ -148,7 +149,8 @@ export async function persistRaceMemories({ userId, raceId, current, diploma, me
       upsert: true,
       contentType: memory.mime || 'image/jpeg',
     });
-    if (error) throw error;
+    // O bucket a recusar o tamanho ou o tipo: a frase, sem «Tentar de novo» (storageErrors.js).
+    if (error) throw storageRefusalError(error);
     return path;
   };
 

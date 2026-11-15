@@ -66,7 +66,8 @@ function formatDatePT(dateStr) {
 // DISTANCE_RANGES de bestPace.ts (4–6,5 / 8,5–12 / 19–23 km); o teste do
 // dashboard prova as fronteiras contra computeBestPace, para os dois não
 // divergirem em silêncio.
-const BEST_PACE_LEGEND = '≈5 km: corridas e splits de 4 a 6,5 km · ≈10 km: de 8,5 a 12 km · ≈21 km: de 19 a 23 km.';
+// O melhor pace de 5/10/21 km são os primeiros D km de cada corrida, pelas voltas (bestPace.ts, dev-back ebb73b60).
+const BEST_PACE_LEGEND = 'O melhor ritmo dos primeiros 5, 10 e 21,1 km de cada corrida, pelas voltas do relógio. Uma corrida com essa distância (até +3%) conta inteira; sem voltas, só essa.';
 
 /* Estado do ACWR de hoje → o vocabulário do PeriodSummary (✓ ↓ ↑). */
 const ACWR_ROW_STATUS = { safe: 'ok', caution: 'above', danger: 'above', undertrained: null };
@@ -542,6 +543,12 @@ export default function RunDashboard() {
               axis={{ min: '0 km', max: `${fmtNumber(bars.max, 1)} km` }}
               legend={[{ label: bars.unit === 'day' ? 'Distância diária' : 'Distância semanal', color: 'var(--run)' }]}
               height={176}
+              explain={{
+                title: bars.unit === 'day' ? 'Distância por dia' : 'Distância por semana',
+                period: cal.label?.title || null,
+                series: [{ label: bars.unit === 'day' ? 'Distância diária' : 'Distância semanal', unit: 'km', values: bars.values, decimals: 1 }],
+                note: `Total do período: ${fmtNumber(bars.total, 1)} km em ${corridas(cur.count)}.`,
+              }}
               footer={bars.unit === 'week' && bars.counts.some((c) => c < 7)
                 ? <p data-testid="semanas-parciais" style={{ margin: 0 }}>As semanas com menos de 7 dias estão só parcialmente dentro do período — o total é a soma das barras.</p>
                 : undefined}

@@ -203,6 +203,11 @@ export default function VolumeLoadChart({ weeklyData = [], hint, ready, classNam
       valueColor="var(--text-1)"
       delta={delta}
       axis={maxVal > 0 ? { min: '0 kg', max: `${fmtNumber(maxVal, 0)} kg` } : undefined}
+      explain={values.length ? {
+        title: 'Volume-carga semanal',
+        period: hint || `semanas de ${weeklyData[0].weekLabel} a ${weeklyData[weeklyData.length - 1].weekLabel}`,
+        series: [{ label: 'Volume-carga', unit: 'kg', values, decimals: 0 }],
+      } : undefined}
       legend={legend}
       height={208}
       footer={notes.length ? <p data-testid="volume-notas" style={{ margin: 0 }}>{notes.join(' ')}</p> : undefined}

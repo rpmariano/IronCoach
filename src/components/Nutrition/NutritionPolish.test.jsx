@@ -2,6 +2,13 @@ import React from 'react';
 import { render, screen, fireEvent, within } from '@testing-library/react';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
+/* Opção B (2026-11-01): os dias com registo parcial inferem-se (utils/partialMealDays.js, com testes
+   próprios). Os dias destes testes são de uma refeição só, sem tipo — com a regra real seriam todos
+   parciais. Aqui a regra desliga-se: o que se testa é outra coisa. */
+vi.mock('../../utils/partialMealDays', () => ({
+  partialMealDays: () => ({ profile: { kind: 'completo' }, isPartial: () => false }),
+}));
+
 /* Reparos da verificação no browser (Chromium 390×844, 2026-10-04) que ficaram
    como não-bloqueantes na Nutrição: o dia de HOJE não se julga, a comparação do
    mês fechado diz o anterior por extenso com a %, os dias do mapa de calor e os

@@ -66,7 +66,11 @@ vi.mock('../../lib/supabase', () => ({
       }),
     },
   },
-  invokeEdgeFunctionWithTimeout: (...args) => mocks.invoke(...args),
+  // #106: nos testes que não são sobre a leitura, selectPhoto passa o passo «Ler os prints»
+  // com uma leitura falhada (mocks.skipRead) — fora de mocks.invoke, para não mexer nas contagens.
+  invokeEdgeFunctionWithTimeout: (...args) => (mocks.skipRead && args[1]?.body?.mode === 'preview'
+    ? Promise.resolve({ data: null, error: 'leitura saltada no teste' })
+    : mocks.invoke(...args)),
 }));
 
 // Evita FileReader/Image/canvas do jsdom — a compressão em si já está fora
@@ -77,12 +81,25 @@ vi.mock('../../lib/image', () => ({
 
 const PROFILE = { id: 'user-1' };
 
-const selectPhoto = async () => {
+/* #106: com prints, o primeiro passo é «Ler os prints e preencher». selectPhoto() passa-o (uma
+   leitura falhada abre o «Analisar» sem mudar o pedido); selectPhoto({ ler: false }) deixa-o por fazer,
+   para os testes da leitura. */
+const passarLeitura = async () => {
+  mocks.skipRead = true;
+  try {
+    fireEvent.click(screen.getByRole('button', { name: 'Ler os prints e preencher' }));
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Ler os prints e preencher' })).not.toBeInTheDocument());
+  } finally {
+    mocks.skipRead = false;
+  }
+};
+const selectPhoto = async ({ ler = true } = {}) => {
   const input = document.querySelector('input[type="file"]');
   const file = new File(['conteudo'], 'print.jpg', { type: 'image/jpeg' });
   await fireEvent.change(input, { target: { files: [file] } });
   // handlePhotoSelected é assíncrono (compressImage) — espera o print aparecer.
   await screen.findByAltText('Print 1');
+  if (ler) await passarLeitura();
 };
 
 describe('RunRegistration — Analisar corrida (analyze-run)', () => {
@@ -1498,9 +1515,9 @@ describe('RunRegistration — modo prova', () => {
     target_pace_seconds_per_km: 318,
   };
 
-  const entrarPeloPrefill = () => {
+  const entrarPeloPrefill = (extra = {}) => {
     useAppStore.setState({
-      profile: PROFILE, runs: [], raceEvents: [PROVA], shoes: [],
+      profile: PROFILE, runs: [], raceEvents: [{ ...PROVA, ...extra }], shoes: [],
       runRacePrefill: { raceId: 'race-1' },
     });
   };
@@ -1652,7 +1669,8 @@ describe('RunRegistration — modo prova', () => {
   });
 
   it('pelos prints do relógio, o tempo oficial e a posição escritos gravam-se na corrida na mesma', async () => {
-    entrarPeloPrefill();
+    // 51:27 numa meia seria mais rápido do que o recorde do mundo (raceTimeSanity): é um 10 km.
+    entrarPeloPrefill({ distance_km: 10, target_time: '52:00', target_pace_seconds_per_km: 312 });
     mocks.invoke.mockResolvedValue({ data: { run: { id: 'run-race-1', distance_km: 10, duration_seconds: 3088, details: { avg_heart_rate_bpm: 160, cadence_spm: 170, elevation_gain_m: 40, avg_pace_seconds_per_km: 309 } } }, error: null });
     render(<RunRegistration onClose={onClose} />);
     fireEvent.change(screen.getByLabelText(/Tempo oficial/), { target: { value: '51:27' } });
@@ -1697,7 +1715,8 @@ describe('RunRegistration — modo prova', () => {
      resultado, por cima do que lá estiver. Era preciso tocar em "Aplicar"
      (pedido do utilizador para o tirar do caminho). */
   it('ao juntar o diploma, a Carol lê-o e preenche sozinha o registo com o tempo de chip', async () => {
-    entrarPeloPrefill();
+    // 51:27 numa meia seria mais rápido do que o recorde do mundo (raceTimeSanity): é um 10 km.
+    entrarPeloPrefill({ distance_km: 10, target_time: '52:00', target_pace_seconds_per_km: 312 });
     mocks.invoke.mockImplementation((fn) => fn === 'analyze-diploma'
       ? Promise.resolve({ data: { reading: { athlete_name: 'RUI MARIANO', chip_time_seconds: 3087, gun_time_seconds: 3111, position: 1668, age_group: null, age_group_position: 226, gender_position: null, participants: null, bib_number: null, splits: [{ km: 5, seconds: 1515 }] } }, error: null })
       : Promise.resolve({ data: { run: { id: 'run-race-1' } }, error: null }));
@@ -1866,6 +1885,25 @@ describe('RunRegistration — modo prova', () => {
     // outra vez duplicava a corrida (revisão pré-deploy de 6e92d67).
     await act(async () => { await new Promise((r) => setTimeout(r, 900)); });
     expect(localStorage.getItem('ironcoach:corrida-rascunho:nova')).toBeNull();
+  });
+
+  it('o bucket a recusar a imagem (tamanho/tipo): a frase, sem "Tentar de novo"', async () => {
+    entrarPeloPrefill();
+    mocks.uploadError = { statusCode: '413', message: 'The object exceeded the maximum allowed size' };
+    try {
+      render(<RunRegistration onClose={onClose} />);
+      fireEvent.change(screen.getByLabelText(/Tempo oficial/), { target: { value: '1:53:42' } });
+      await act(async () => {
+        fireEvent.change(inputDaEtiqueta('Adicionar a medalha'), { target: { files: [ficheiroImagem('medalha.jpg')] } });
+      });
+      fireEvent.click(screen.getByRole('button', { name: /Registar a prova/i }));
+      fireEvent.click(await screen.findByRole('button', { name: /Prosseguir sem estas métricas/i }));
+      expect(await screen.findByText(/A corrida ficou gravada\. A imagem é demasiado grande para guardar\. Troca a imagem/)).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Tentar de novo' })).toBeNull();
+      expect(onClose).not.toHaveBeenCalled();
+    } finally {
+      mocks.uploadError = null;
+    }
   });
 
   /* Revisão pré-deploy 2026-09-13: o rascunho guardava as memórias já no
@@ -2380,5 +2418,47 @@ describe('RunRegistration — Caminhada', () => {
     render(<RunRegistration onClose={onClose} />);
     expect(screen.getByTestId('nota-caminhada')).toBeTruthy();
     expect(screen.getByDisplayValue('Caminhada de Hoje')).toBeTruthy();
+  });
+});
+
+describe('RunRegistration — #106: com prints, primeiro ler e preencher', () => {
+  beforeEach(() => {
+    mocks.invoke.mockReset();
+    useAppStore.setState({ profile: PROFILE, runs: [], raceEvents: [] });
+  });
+
+  it('#110: «Ler os prints e preencher» junto das fotos; o «Analisar corrida» só se ativa depois da leitura', async () => {
+    render(<RunRegistration onClose={vi.fn()} />);
+    expect(screen.getByRole('button', { name: /Analisar corrida/ })).toBeInTheDocument();
+    await selectPhoto({ ler: false });
+    // #110: a leitura está junto das fotos desde o início; o «Analisar corrida» fica desativado até lá.
+    expect(screen.getAllByRole('button', { name: 'Ler os prints e preencher' })).toHaveLength(1);
+    expect(screen.getByRole('button', { name: /Analisar corrida/ })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /Analisar corrida/ })).toHaveAccessibleDescription(/Primeiro lê os prints/);
+    mocks.invoke.mockResolvedValueOnce({ data: { preview: { distance_km: 8.2 } }, error: null });
+    fireEvent.click(screen.getByRole('button', { name: 'Ler os prints e preencher' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: /Analisar corrida/ })).toBeEnabled());
+    expect(mocks.invoke.mock.calls[0][1].body.mode).toBe('preview');
+  });
+});
+
+describe('RunRegistration — #106: as perguntas da leitura seguem com a corrida', () => {
+  beforeEach(() => {
+    mocks.invoke.mockReset();
+    useAppStore.setState({ profile: PROFILE, runs: [], raceEvents: [] });
+  });
+
+  it('a pergunta respondida vai em carol_questions no pedido de analisar', async () => {
+    const Q = { id: 'r1', kind: 'contexto', topic: 'local', item_name: null, question: 'Foi em passadeira?', options: ['Sim', 'Não'], assumed: 'Não', impact_kcal: 0, impact_protein_g: 0, answer: null, answered_at: null };
+    render(<RunRegistration onClose={vi.fn()} />);
+    await selectPhoto({ ler: false });
+    mocks.invoke.mockResolvedValueOnce({ data: { preview: {}, questions: [Q] }, error: null });
+    fireEvent.click(screen.getByRole('button', { name: 'Ler os prints e preencher' }));
+    const card = await screen.findByTestId('carol-question-r1');
+    fireEvent.click(within(card).getByRole('button', { name: 'Sim' }));
+    mocks.invoke.mockResolvedValueOnce({ data: { run: { id: 'run-1', name: 'Corrida de Hoje' } }, error: null });
+    fireEvent.click(screen.getByRole('button', { name: /Analisar corrida/ }));
+    await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(2));
+    expect(mocks.invoke.mock.calls[1][1].body.carol_questions).toEqual([expect.objectContaining({ id: 'r1', answer: 'Sim' })]);
   });
 });

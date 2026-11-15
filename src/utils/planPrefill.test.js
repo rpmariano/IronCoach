@@ -119,3 +119,58 @@ describe('mealSuggestionsFor — a refeição sugerida no plano (Refeição, §1
     expect(mealSuggestionsFor(DAY, PLANS, [dia({ plan_id: 'p2' })], [], 'almoco')).toEqual([]);
   });
 });
+
+/* #118: o plano só tem reps; num isométrico, o alvo vem em segundos — o do objetivo, senão o número. */
+describe('exercisesFromPrescription — isométricos em segundos (#118)', () => {
+  it('hollow 3×30 → 3 séries com alvo de 30 s; prancha com «hold 45 s» no objetivo → 45 s', async () => {
+    const { exercisesFromPrescription } = await import('./planPrefill');
+    const [hollow, prancha, supino] = exercisesFromPrescription({ blocks: [
+      { type: 'forca', name: 'Hollow hold', sets: 3, reps: 30, goal: 'lombar colada ao chão' },
+      { type: 'forca', name: 'Prancha', sets: 2, reps: 1, goal: 'hold 45 s' },
+      { type: 'forca', name: 'Supino', sets: 3, reps: 10 },
+    ] });
+    expect([hollow.repUnit, hollow.sets.length, hollow.sets[0].plan.reps]).toEqual(['s', 3, '30']);
+    expect([prancha.repUnit, prancha.sets[0].plan.reps]).toEqual(['s', '45']);
+    expect([supino.repUnit, supino.sets[0].plan.reps]).toEqual([undefined, '10']);
+  });
+});
+
+/* Seguimento do #118: o plano traz `seconds` nos blocos de força isométricos (sem reps). */
+describe('exercisesFromPrescription — bloco com seconds', () => {
+  it('abre em segundos com o alvo do bloco, mesmo com um nome que não parece isométrico', async () => {
+    const { exercisesFromPrescription } = await import('./planPrefill');
+    const [hollow, ponte] = exercisesFromPrescription({ blocks: [
+      { type: 'forca', name: 'Hollow hold', sets: 3, seconds: 30, goal: 'hold 20 s' },
+      { type: 'forca', name: 'Ponte de glúteos', sets: 2, seconds: 45 },
+    ] });
+    expect([hollow.repUnit, hollow.sets.length, hollow.sets[0].plan.reps]).toEqual(['s', 3, '30']);
+    expect([ponte.repUnit, ponte.sets.length, ponte.sets[0].plan.reps]).toEqual(['s', 2, '45']);
+  });
+});
+
+/* Revisão do c4fa1fa9: «Elevação de pernas em suspensão 3×12» é de reps — nunca «12 s». */
+describe('exercisesFromPrescription — falso isométrico', () => {
+  it('Elevação de pernas em suspensão 3×12 fica em reps', async () => {
+    const { exercisesFromPrescription } = await import('./planPrefill');
+    const [ex] = exercisesFromPrescription({ blocks: [{ type: 'forca', name: 'Elevação de pernas em suspensão', sets: 3, reps: 12 }] });
+    expect([ex.repUnit, ex.sets[0].plan.reps]).toEqual([undefined, '12']);
+  });
+});
+
+/* Seguimento do #118 (dev-back 1a481508): só um isométrico forte lê as reps como segundos. */
+describe('exercisesFromPrescription — isométrico ambíguo fica em reps', () => {
+  it('«Pallof hold 3×10» abre em reps (10 reps, não 10 s); com seconds no bloco, em segundos', async () => {
+    const { exercisesFromPrescription } = await import('./planPrefill');
+    const { repUnitOf } = await import('./gymSets');
+    const [pallof, ponte, pallofS, lateral] = exercisesFromPrescription({ blocks: [
+      { type: 'forca', name: 'Pallof hold', sets: 3, reps: 10 },
+      { type: 'forca', name: 'Glute bridge hold', sets: 2, reps: 12, goal: 'hold 30 s' },
+      { type: 'forca', name: 'Pallof hold', sets: 3, seconds: 20 },
+      { type: 'forca', name: 'Prancha lateral', sets: 2, reps: 30 },
+    ] });
+    expect([pallof.repUnit, repUnitOf(pallof), pallof.sets[0].plan.reps]).toEqual(['reps', 'reps', '10']);
+    expect([repUnitOf(ponte), ponte.sets[0].plan.reps]).toEqual(['reps', '12']);
+    expect([repUnitOf(pallofS), pallofS.sets[0].plan.reps]).toEqual(['s', '20']);
+    expect([repUnitOf(lateral), lateral.sets[0].plan.reps]).toEqual(['s', '30']);
+  });
+});

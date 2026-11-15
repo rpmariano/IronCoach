@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useAppStore } from '../../store';
-import ConfirmDeleteModal from '../shared/ConfirmDeleteModal';
+import { scopedDraftKey } from '../../utils/draftScope';
+import { useDraftUserId } from '../../utils/useDraftUserId';
+import RaceRemoveDialog from './RaceRemoveDialog';
 import UnsavedChangesModal from '../shared/UnsavedChangesModal';
 import PremiumModal from '../shared/PremiumModal';
 import useCarouselActiveHeight from '../../utils/useCarouselActiveHeight';
@@ -34,6 +36,7 @@ import { EXPERIENCE_LEVELS, experienceLevelDescription } from '../../utils/exper
 import ExperienceLevelHelp from '../shared/ExperienceLevelHelp';
 import { useToast } from '../shared/ToastProvider';
 import { assessRaceViability, knownRecentWeeklyVolume } from '../../utils/raceViability';
+import { outlookForRace, volumeReadingNote, volumeReadingText } from '../../utils/raceVolumeText';
 import { raceLabel } from '../../utils/planDivergence';
 import { getRecommendedPrepWeeks, computeEffectivePrepStartDate } from '../../utils/racePlanEngine';
 import { usePersistedFormDraft, restorePersistedFormDraft, clearPersistedFormDraft } from '../../utils/formDraftPersistence';
@@ -42,6 +45,9 @@ import RecordConfirmation from '../shared/RecordConfirmation';
 import DurationInput from '../shared/DurationInput';
 import { todayISO } from '../../lib/utils';
 import { FieldInput, FieldSelect, FieldTextarea } from '../shared/registration/Field';
+import { enrichErrorText } from '../../utils/enrichErrorText';
+import CourseProfilePanel from './CourseProfilePanel';
+import { courseProfileFromFile, saveCourseProfile, readCourseProfile, COURSE_BUILD_ERRORS } from '../../utils/courseProfileUpload';
 
 function formatDatePT(isoStr) {
   if (!isoStr) return '';
@@ -96,6 +102,9 @@ const EMPTY_DRAFT = {
   // uma já gravada, o pedido persiste-o de imediato (ver
   // handleFetchWebInfo), este campo só reflete esse valor.
   web_info: null,
+  // O perfil do percurso do GPX (utils/courseProfileUpload.js). A editar uma prova gravada,
+  // carregar/remover grava logo (como o web_info); numa prova nova vai no insert.
+  course_profile: null,
   notes: '',
 };
 
@@ -148,7 +157,9 @@ export default function RunAgenda({ onClose }) {
   // Identifica este rascunho de forma única para o sobreviver a um
   // recarregamento (ver formDraftPersistence.js) — nunca partilhado entre
   // provas diferentes nem entre uma edição e uma criação nova a seguir.
-  const draftStorageKey = editingEventId ? `ironcoach:prova-rascunho:${editingEventId}` : 'ironcoach:prova-rascunho:nova';
+  // Por conta (auditoria B2): num telemóvel partilhado, o atleta seguinte não vê o rascunho do anterior.
+  const draftUserId = useDraftUserId();
+  const draftStorageKey = scopedDraftKey(editingEventId ? `ironcoach:prova-rascunho:${editingEventId}` : 'ironcoach:prova-rascunho:nova', draftUserId);
   // Só tenta restaurar UMA VEZ por sessão de edição/criação — sem isto, o
   // efeito de inicialização (que também corre sempre que `raceEvents`
   // muda, ex.: outra prova gravada em paralelo) repunha o rascunho
@@ -172,14 +183,13 @@ export default function RunAgenda({ onClose }) {
   const [experienceLevelCategoryKey, setExperienceLevelCategoryKey] = useState(null);
   const [fetchingWebInfo, setFetchingWebInfo] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const [isDeleting, setIsDeleting] = useState(false);
 
   const activePageIndex = PAGE_KEYS.indexOf(activePage);
   /* Prova concluída: os detalhes de criação (data, distância, objetivo…)
      ficam como estavam — mudá-los depois reescrevia o palmarés, a régua do
      objetivo e o balanço da Carol. O que se edita a partir daqui é o
      RESULTADO, pelo "Editar o registo" do hub (pedido 2026-09-13). Sem a
-     página "Detalhes da prova", sem "Guardar prova"; fica "Eliminar". */
+     página "Detalhes da prova", sem "Guardar prova"; fica "Eliminar prova". */
   const detailsLocked = !!editingEventId && draft.status === 'concluida';
 
   /* A prova de uma jornada do Troféu (race_events.cup_round_id, specs/
@@ -192,20 +202,6 @@ export default function RunAgenda({ onClose }) {
      sempre null e nada disto muda o formulário (revisão da Fase 1,
      2026-09-26). */
   const isCupRound = !!editingEventId && !!draft.cup_round_id;
-
-  /* Apagar a prova-objetivo de um plano deixa o plano sem objetivo
-     (race_lost_at, migration 20260918074705) — e a Carol vai querer falar
-     disso. O atleta pode fazê-lo, mas sabendo o que acontece a seguir; é o
-     mesmo princípio de decisão informada do resto do plano vinculado
-     (specs/plano-vinculado-a-prova.md §2.5). */
-  const isPlanObjective = !!editingEventId && (coachPlans || []).some(
-    // todayISO() e não todayIso: essa constante só é declarada mais abaixo,
-    // e lê-la aqui seria um ReferenceError no primeiro render (TDZ).
-    (p) => p?.status === 'aceite' && p.race_id === editingEventId && String(p.period_end || '').slice(0, 10) >= todayISO(),
-  );
-  const deleteMessage = isPlanObjective
-    ? 'Esta prova é o objetivo do teu plano de treino. Se a eliminares, o plano fica sem objetivo e a Carol vai querer falar contigo sobre o que fazer a seguir. Esta ação não pode ser desfeita.'
-    : 'Tens a certeza que queres eliminar esta prova? Esta ação não pode ser desfeita.';
 
   /* Aviso informativo: esta prova, como está a ser gravada, entra em conflito
      com o plano ativo. Só quando é PRINCIPAL e cai dentro de um plano aceite
@@ -252,6 +248,7 @@ export default function RunAgenda({ onClose }) {
   useCarouselActiveHeight(scrollRef, pageRefs, PAGE_KEYS.indexOf(activePage));
 
   const activeTab = useAppStore(state => state.activeTab);
+  const coachPlanItems = useAppStore(state => state.coachPlanItems);
   const [initialTab] = useState(activeTab);
 
   // Destino pendente quando se tenta sair (nav para outro módulo) com
@@ -323,10 +320,19 @@ export default function RunAgenda({ onClose }) {
     return !!currentKey && currentKey !== experienceLevelCategoryKey;
   }, [editingEventId, draft.experience_level, draft.race_type, draft.distance_km, draft.elevation_gain_m, experienceLevelCategoryKey]);
 
+  /* #113/#114 (2026-11-06): o volume até à prova numa leitura neutra (utils/raceVolumeText.js), no
+     lugar de «Volume de treino insuficiente» — que parecia acusar o atleta de falhar o plano. */
+  const volumeOutlook = useMemo(() => outlookForRace({
+    race: { date: draft.date, distance_km: parseFormNumber(draft.distance_km), experience_level: draft.experience_level || null },
+    profile, runs, coachPlans, coachPlanItems, todayISO: todayIso,
+  }), [draft.date, draft.distance_km, draft.experience_level, profile, runs, coachPlans, coachPlanItems, todayIso]);
+  const volumeLine = volumeReadingText(volumeOutlook);
+  const volumeNote = volumeReadingNote(volumeOutlook);
+  const otherFlags = viability.flags.filter((f) => f !== 'volume_insuficiente');
+
   const FLAG_LABELS = {
     ultra_para_iniciante: 'Ultra desaconselhado para iniciante',
     tempo_insuficiente:   `Tempo insuficiente para a preparação`,
-    volume_insuficiente:  `Volume de treino insuficiente`,
   };  // Trava a navegação para fora da app enquanto houver alterações por
   // gravar no formulário — mesmo mecanismo usado em Perfil.jsx.
   useEffect(() => {
@@ -384,6 +390,7 @@ export default function RunAgenda({ onClose }) {
           target_pace: ev.target_pace_seconds_per_km ? formatPace(ev.target_pace_seconds_per_km) : '',
           website: ev.website || '',
           web_info: ev.web_info || null,
+          course_profile: readCourseProfile(ev),
           notes: ev.notes || '',
           // Não é um campo do formulário — nunca editável — mas o
           // RaceHubView embutido (aba "Treino e Evolução", abaixo, `race=
@@ -548,6 +555,60 @@ export default function RunAgenda({ onClose }) {
     setDraft(prev => ({ ...prev, [key]: val }));
   };
 
+  /* O percurso (GPX), no Hub e nos Detalhes. A editar uma prova gravada, carregar e remover gravam
+     logo — como o «Obter do site»: setDraft direto, sem sujar o rascunho. Numa prova nova fica no
+     rascunho até «Guardar prova». O ficheiro nunca sobe (utils/courseProfileUpload.js). */
+  const [courseBusy, setCourseBusy] = useState(false);
+  const [courseError, setCourseError] = useState(null);
+  const persistCourse = async (nextProfile) => {
+    if (!editingEventId) {
+      updateDraft('course_profile', nextProfile);
+      return true;
+    }
+    const res = await saveCourseProfile({ raceId: editingEventId, userId: profile?.id, profile: nextProfile });
+    if (!res.ok) { setCourseError(res.message); return false; }
+    writeRaceEventsLocally(raceEvents.map(e => (e.id === editingEventId ? { ...e, ...res.patch } : e)));
+    setDraft(prev => ({ ...prev, course_profile: nextProfile }));
+    return true;
+  };
+  const handleCourseFile = async (file) => {
+    setCourseBusy(true);
+    setCourseError(null);
+    try {
+      const next = await courseProfileFromFile(file);
+      if (await persistCourse(next)) showToast('Percurso carregado.', 'success');
+    } catch (err) {
+      setCourseError(err?.message || COURSE_BUILD_ERRORS.poucos_pontos);
+    } finally {
+      setCourseBusy(false);
+    }
+  };
+  const handleCourseRemove = async () => {
+    setCourseBusy(true);
+    setCourseError(null);
+    try {
+      if (await persistCourse(null)) showToast('Percurso removido.', 'success');
+    } finally {
+      setCourseBusy(false);
+    }
+  };
+  // A sugestão do GPX (distância, D+) só entra quando o atleta a aceita — e pelo caminho dos
+  // campos, para o ritmo/tempo e o nível acompanharem como se a escrevesse à mão.
+  const handleCourseApply = (s) => {
+    if (s?.distance_km != null) updateDistance(String(s.distance_km));
+    if (s?.elevation_gain_m != null) updateElevation(String(s.elevation_gain_m));
+  };
+  const courseSuggest = { distance: !isCupRound && !detailsLocked, elevation: draft.race_type === 'trail' && !detailsLocked };
+  const coursePanelProps = {
+    profile: draft.course_profile,
+    race: draft,
+    onFile: handleCourseFile,
+    onRemove: handleCourseRemove,
+    busy: courseBusy,
+    error: courseError,
+    suggest: courseSuggest,
+  };
+
   // Numa jornada do Troféu, "Principal" mostra primeiro o custo (specs/
   // trofeu.md §4.3, CupPromoteDialog.jsx); só o "Promover" dele o põe aqui.
   const promoverJornada = useCupPromoteGuard(isCupRound ? draft : null, () => updateDraft('race_priority', 'a'));
@@ -617,9 +678,12 @@ export default function RunAgenda({ onClose }) {
               ? (parseFloat((draft.elevation_gain_m || '').toString().replace(',', '.')) || undefined)
               : undefined,
           };
-      const { data, error } = await invokeEdgeFunctionWithTimeout('enrich-race-event', { body }, 90000);
+      const res = await invokeEdgeFunctionWithTimeout('enrich-race-event', { body }, 90000);
+      const { data, error } = res;
       if (error) {
-        showToast(typeof error === 'string' ? error : 'Não consegui obter informação deste site.', 'error');
+        // A frase do servidor; num timeout ou falha de rede, a da ligação — não culpa o site
+        // (utils/enrichErrorText.js).
+        showToast(enrichErrorText(res), 'error');
         return;
       }
       if (data?.race_event) {
@@ -784,6 +848,12 @@ export default function RunAgenda({ onClose }) {
       web_info: draft.web_info || null,
       notes: draft.notes?.trim() || null,
     };
+    /* O percurso do GPX vai no insert de uma prova nova (numa edição já foi gravado ao carregar).
+       Só com percurso: sem a coluna (migration por aplicar), uma prova sem GPX grava na mesma. */
+    if (!editingEventId && draft.course_profile) {
+      payload.course_profile = draft.course_profile;
+      payload.course_profile_at = new Date().toISOString();
+    }
     if (isCupRound) {
       // Dados do organizador: não se enviam (ver isCupRound).
       delete payload.date;
@@ -902,28 +972,14 @@ export default function RunAgenda({ onClose }) {
     }
   };
 
-  // "Eliminar prova" — só existe a editar uma prova já gravada (uma prova
-  // nova ainda sem id não tem o que apagar na BD; "Cancelar"/fechar já
-  // descarta o rascunho). Confirmação via ConfirmDeleteModal, não
-  // window.confirm — consistente com RunCard/GymSessionCard/MealCard/
-  // BodyAssessmentCard, que já usam este popup para o mesmo tipo de ação.
-  const handleDeleteRace = async () => {
-    if (!editingEventId) return;
-    setShowDeleteConfirm(false);
-    setIsDeleting(true);
-    try {
-      const { error } = await supabase.from('race_events').delete().eq('id', editingEventId);
-      if (error) throw error;
-      setRaceEvents(raceEvents.filter(e => e.id !== editingEventId));
-      showToast('Prova eliminada');
-      setNavGuard(null);
-      handleCloseForm();
-    } catch (err) {
-      console.error('Error deleting race event:', err);
-      showToast('Erro ao eliminar prova.', 'error');
-    } finally {
-      setIsDeleting(false);
-    }
+  /* «Eliminar prova» (RaceRemoveDialog, o mesmo da agenda): o botão diz sempre o que apaga — a
+     prova (regra do Rui, 2026-11-15). Refazer só o tempo faz-se em «Editar o registo» →
+     «Eliminar registo». Uma prova nova ainda sem id não tem o que apagar: "Cancelar"/fechar já
+     descarta o rascunho. */
+  const editingRace = editingEventId ? (raceEvents || []).find(e => e.id === editingEventId) : null;
+  const handleRaceDeleted = () => {
+    setNavGuard(null);
+    handleCloseForm();
   };
 
   // Botão "Cancelar" do formulário — só interrompe com o aviso se houver
@@ -1032,13 +1088,11 @@ export default function RunAgenda({ onClose }) {
       {leaveModal}
       {validationModal}
       {confirmation && <RecordConfirmation label={confirmation.label} onDone={confirmation.done} />}
-      <ConfirmDeleteModal
-        isOpen={showDeleteConfirm}
+      <RaceRemoveDialog
+        isOpen={showDeleteConfirm && !!editingRace}
+        race={editingRace}
         onClose={() => setShowDeleteConfirm(false)}
-        onConfirm={handleDeleteRace}
-        isDeleting={isDeleting}
-        title="Eliminar prova"
-        message={deleteMessage}
+        onDeleted={handleRaceDeleted}
       />
 
       <div className="space-y-4">
@@ -1108,6 +1162,11 @@ export default function RunAgenda({ onClose }) {
                 gymSessions={gymSessions}
                 onFetchWebInfo={handleFetchWebInfo}
                 fetchingWebInfo={fetchingWebInfo}
+                course={{
+                  ...coursePanelProps,
+                  // No Hub a sugestão só se diz: os campos mudam-se nos Detalhes.
+                  suggestionHint: detailsLocked ? null : 'Para usar estes valores, abre «Detalhes da prova».',
+                }}
                 onMarkCompleted={editingEventId ? handleMarkCompleted : undefined}
                 onMemoriesSaved={editingEventId ? handleMemoriesSaved : undefined}
                 calendarRaceId={editingEventId && !isDirty ? editingEventId : undefined}
@@ -1122,11 +1181,12 @@ export default function RunAgenda({ onClose }) {
                   <Button
                     variant="light-danger"
                     onClick={() => setShowDeleteConfirm(true)}
-                    disabled={isSubmitting || isDeleting}
+                    disabled={isSubmitting}
                     className="flex-1 text-xs"
                     icon={<Trash2 size={14} />}
+                    data-testid="race-remove-button"
                   >
-                    Eliminar
+                    Eliminar prova
                   </Button>
                 )}
                 {!detailsLocked && (
@@ -1398,6 +1458,12 @@ export default function RunAgenda({ onClose }) {
                 />
               </div>
 
+              {/* Percurso (GPX, opcional) */}
+              <div>
+                <span className="text-[11px] text-[var(--text-3)] mb-1 block">Percurso (opcional)</span>
+                <CourseProfilePanel {...coursePanelProps} onApplySuggestion={handleCourseApply} showMap={false} />
+              </div>
+
               {/* Notas (opcional) */}
               <div>
                 <label htmlFor="ra-notas-opcional" className="text-[11px] text-[var(--text-3)] mb-1 block">Notas (opcional)</label>
@@ -1416,8 +1482,14 @@ export default function RunAgenda({ onClose }) {
                   <span className="text-[11px] font-bold text-[var(--text-3)] uppercase tracking-wider flex items-center gap-1.5">
                     Avaliação da Carol
                   </span>
-                  {viability.flags.length > 0 ? (
-                    viability.flags.map(flag => (
+                  {volumeLine && (
+                    <p className="text-[11px] font-medium text-[var(--text-2)]" data-testid="volume-outlook-line">
+                      {volumeLine}
+                      {volumeNote && <span className="block text-[var(--text-3)]" data-testid="volume-outlook-note">{volumeNote}</span>}
+                    </p>
+                  )}
+                  {otherFlags.length > 0 ? (
+                    otherFlags.map(flag => (
                       <p key={flag} className="text-[11px] font-medium flex items-center gap-1.5" style={{ color: 'var(--color-warn)' }}>
                         <AlertTriangle size={12} />
                         {FLAG_LABELS[flag] || flag}
@@ -1439,12 +1511,12 @@ export default function RunAgenda({ onClose }) {
                   <Button
                     variant="light-danger"
                     onClick={() => setShowDeleteConfirm(true)}
-                    disabled={isSubmitting || isDeleting}
+                    disabled={isSubmitting}
                     type="button"
                     className="text-xs"
                     icon={<Trash2 size={14} />}
                   >
-                    Eliminar
+                    Eliminar prova
                   </Button>
                 )}
                 <Button

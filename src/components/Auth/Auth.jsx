@@ -4,6 +4,7 @@ import Button from '../shared/Button';
 import BrandMark from '../shared/BrandMark';
 import AppBackground from '../Layout/AppBackground';
 import { FieldInput } from '../shared/registration/Field';
+import { authErrorText } from '../../utils/authNetwork';
 export default function Auth() {
   const [authMode, setAuthMode] = useState('signin'); // 'signin' | 'signup'
   const [email, setEmail] = useState('');
@@ -40,7 +41,8 @@ export default function Auth() {
         setAuthMode('signin');
       }
     } catch (err) {
-      setErrorMsg(err.message || 'Erro ao efetuar autenticação.');
+      // Sem rede: uma frase clara, nunca «Failed to fetch» (2026-11-09).
+      setErrorMsg(authErrorText(err, 'Erro ao efetuar autenticação.'));
     } finally {
       setLoading(false);
     }
@@ -57,7 +59,7 @@ export default function Auth() {
       });
       if (error) throw error;
     } catch (err) {
-      setErrorMsg(err.message || 'Erro ao autenticar com o Google.');
+      setErrorMsg(authErrorText(err, 'Erro ao autenticar com o Google.'));
     }
   };
 

@@ -89,6 +89,9 @@ describe('AnalysisFailure — a causa, dita por ela', () => {
     expect(classifyAnalysisFailure('TypeError: Failed to fetch')).toBe('offline');
     expect(classifyAnalysisFailure('qualquer coisa', false)).toBe('offline');
     expect(classifyAnalysisFailure('Timeout na análise.')).toBe('timeout');
+    // #116: a ligação que falhou com o telemóvel «com rede» é «A ligação falhou», não «sem rede» nem uma demora.
+    expect(classifyAnalysisFailure('A ligação falhou. Pode já ter ficado gravado — tentar de novo não o repete.')).toBe('network');
+    expect(classifyAnalysisFailure('Failed to send a request to the Edge Function')).toBe('network');
     expect(classifyAnalysisFailure('Edge Function returned 401')).toBe('session');
     expect(classifyAnalysisFailure('Falha na análise.')).toBe('other');
   });
@@ -107,6 +110,40 @@ describe('AnalysisFailure — a causa, dita por ela', () => {
     unmount();
     render(<AnalysisFailure title="Outro título" detail="Failed to fetch">x</AnalysisFailure>);
     expect(screen.getByText('Outro título')).toBeInTheDocument();
+  });
+});
+
+describe('AnalysisFailure — quota do dia (429)', () => {
+  it('o corpo é a frase da Carol, sem «Tentar de novo», sem a causa técnica nem o texto de quem monta', () => {
+    const onRetry = vi.fn();
+    render(<AnalysisFailure quota detail="Por hoje já li muito. Amanhã continuo." onRetry={onRetry} onManual={() => {}}>Podes tentar outra vez.</AnalysisFailure>);
+    const aviso = screen.getByTestId('analysis-failure');
+    expect(aviso).toHaveAttribute('data-cause', 'quota');
+    expect(aviso).toHaveTextContent('Por hoje já li muito. Amanhã continuo.');
+    expect(aviso).not.toHaveTextContent('Podes tentar outra vez.');
+    expect(screen.queryByText(/Tentar de novo/)).toBeNull();
+    expect(screen.queryByTestId('analysis-failure-detail')).toBeNull();
+    expect(screen.getByText('Escrever')).toBeInTheDocument();
+  });
+
+  it('uma recusa final (413): a frase do servidor, sem «Tentar de novo», título próprio', () => {
+    render(<AnalysisFailure quota="final" detail="Imagem demasiado grande." onRetry={() => {}} onManual={() => {}}>Podes tentar outra vez.</AnalysisFailure>);
+    expect(screen.getByText('Não consegui usar esta imagem')).toBeInTheDocument();
+    expect(screen.getByTestId('analysis-failure')).toHaveTextContent('Imagem demasiado grande.');
+    expect(screen.queryByText(/Tentar de novo/)).toBeNull();
+    expect(screen.getByTestId('analysis-failure')).toHaveAttribute('data-cause', 'final');
+  });
+
+  it('o título: «Por hoje chega» só no limite diário; no da hora ou sem o campo, «Uma pausa»', () => {
+    const { unmount } = render(<AnalysisFailure quota="day" detail="Amanhã continuo." />);
+    expect(screen.getByText('Por hoje chega')).toBeInTheDocument();
+    unmount();
+    const r2 = render(<AnalysisFailure quota="hour" detail="Tenta outra vez daqui a 10 minutos." />);
+    expect(screen.getByText('Uma pausa')).toBeInTheDocument();
+    r2.unmount();
+    render(<AnalysisFailure quota detail="x" />);
+    expect(screen.getByText('Uma pausa')).toBeInTheDocument();
+    expect(screen.queryByText('Por hoje chega')).toBeNull();
   });
 });
 

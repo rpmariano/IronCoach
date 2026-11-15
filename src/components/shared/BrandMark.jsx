@@ -1,5 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { publicUrl } from '../../lib/utils';
+import iconSvg from '../../assets/brand/ironcoach-icon.svg?raw';
+import iconAnimatedSvg from '../../assets/brand/ironcoach-icon-animated.svg?raw';
+import lockupSvg from '../../assets/brand/ironcoach-lockup.svg?raw';
+import lockupAnimatedSvg from '../../assets/brand/ironcoach-lockup-animated.svg?raw';
 import { prefersReducedMotion } from '../../utils/coachBubbles';
 
 /* A marca IronCoach (2026-09-13): brasão hexagonal com dois chevrons — ouro
@@ -25,20 +28,43 @@ import { prefersReducedMotion } from '../../utils/coachBubbles';
    Carol tem a sua própria identidade (CoachAvatar, ciano) — a marca não a
    substitui nem se mistura com ela. */
 
+/* No bundle, não na rede (2026-11-09): sem rede o ecrã de login mostrava o logótipo partido — o
+   <img> ia buscar public/brand/*.svg, que nem o service worker guarda (só /assets/ com hash). Os
+   SVGs (uns KB cada) vão dentro do JS como data URL: onde o login abre, o logótipo está. As cópias
+   de src/assets/brand/ são as de public/brand/ (o teste BrandMark.test.jsx compara-as); public/
+   fica para quem as pede por URL (raceMural, ícones). */
 const FILES = {
-  icon: 'brand/ironcoach-icon.svg',
-  'icon-animated': 'brand/ironcoach-icon-animated.svg',
-  lockup: 'brand/ironcoach-lockup.svg',
-  'lockup-animated': 'brand/ironcoach-lockup-animated.svg',
+  icon: 'ironcoach-icon.svg',
+  'icon-animated': 'ironcoach-icon-animated.svg',
+  lockup: 'ironcoach-lockup.svg',
+  'lockup-animated': 'ironcoach-lockup-animated.svg',
 };
+const SVGS = {
+  icon: iconSvg,
+  'icon-animated': iconAnimatedSvg,
+  lockup: lockupSvg,
+  'lockup-animated': lockupAnimatedSvg,
+};
+const dataUrl = (svg) => `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+const DATA_URLS = Object.fromEntries(Object.entries(SVGS).map(([k, svg]) => [k, dataUrl(svg)]));
+
+function brandKey(variant, animated) {
+  const key = animated && !prefersReducedMotion() ? `${variant}-animated` : variant;
+  return FILES[key] ? key : 'icon';
+}
+
+/** O nome do ficheiro da marca (o de public/brand/) para a variante e o movimento. */
+export function brandFile(variant, animated) {
+  return FILES[brandKey(variant, animated)];
+}
 
 /** Um ciclo completo da cadência dos chevrons (2,2 s) — o tempo que o ícone
  *  do cabeçalho anima ao toque antes de voltar a parar. */
 export const BRAND_PLAY_ONCE_MS = 2200;
 
+/** O src do <img>: o SVG como data URL, sem ir à rede. */
 export function brandSrc(variant, animated) {
-  const key = animated && !prefersReducedMotion() ? `${variant}-animated` : variant;
-  return publicUrl(FILES[key] || FILES.icon);
+  return DATA_URLS[brandKey(variant, animated)];
 }
 
 /**
@@ -63,6 +89,7 @@ export default function BrandMark({ variant = 'icon', animated = false, playOnce
   useEffect(() => () => { if (timerRef.current) clearTimeout(timerRef.current); }, []);
 
   const src = brandSrc(variant, animated || playing);
+  const file = brandFile(variant, animated || playing);
   const ratio = variant === 'lockup' ? 600 / 800 : 1;
   const dims = size ? { width: size, height: Math.round(size * ratio) } : {};
 
@@ -72,6 +99,7 @@ export default function BrandMark({ variant = 'icon', animated = false, playOnce
       alt={alt}
       draggable={false}
       data-brand={variant}
+      data-file={file}
       data-animated={animated || playing ? 'true' : 'false'}
       className={className}
       style={{ display: 'block', ...dims, ...style }}

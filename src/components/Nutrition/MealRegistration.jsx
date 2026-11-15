@@ -2,6 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Camera, ImagePlus, X, Trash2, Plus } from 'lucide-react';
 import { format } from 'date-fns';
 import { useAppStore } from '../../store';
+import { scopedDraftKey } from '../../utils/draftScope';
+import { useDraftUserId } from '../../utils/useDraftUserId';
 import { supabase, invokeEdgeFunctionWithTimeout } from '../../lib/supabase';
 import { ANALYZE_TIMEOUT_MS } from '../../lib/edgeTimeouts';
 import { compressImage } from '../../lib/image';
@@ -23,6 +25,13 @@ import useRegistrationExit from '../shared/registration/useRegistrationExit';
 import PlanPrefillBanner from '../shared/registration/PlanPrefillBanner';
 import { mealSuggestionsFor } from '../../utils/planPrefill';
 import { FieldInput, FieldTextarea, caretToEnd } from '../shared/registration/Field';
+import { useClientRequestId, upsertById, } from '../../utils/clientRequestId';
+import { saveError, saveRefusal, isNoRetryError } from '../../utils/saveFailure';
+import { saveErrorText } from '../../utils/clientRequestId';
+import { ReadPrintsButton } from '../shared/registration/PhotoReadSection';
+import { printsNeedRead, AwaitingReadAction } from '../shared/registration/printsGate';
+import { PrintQuestions, questionsPayload, readQuestions } from '../shared/CarolQuestionsForm';
+import { MEAL_MAX_QUESTIONS, mealReadNote, previewItems, reviewedItemsPayload, reviewedItemsProblem, writtenItemsPayload, writtenSignature } from '../../utils/mealRead';
 
 /* Espelha MEAL_TYPES em supabase/functions/analyze-meal e mealTypeLabel()
    em src/utils/nutrition.js — as duas usam hífen (ex.: "pequeno-almoco"). A
@@ -67,8 +76,18 @@ function getDefaultMealType() {
   return 'ceia';                                         // 22:30 - 05:00
 }
 
+/** As gramas escritas ou coladas (bug #100): só dígitos e UM separador decimal, com a vírgula
+ *  a passar a ponto — «12,5» e «12.5» dão «12.5», nunca «125» (os dígitos não se juntam). */
+export function cleanGrams(v) {
+  const s = String(v ?? '').replace(/,/g, '.').replace(/[^0-9.]/g, '');
+  const i = s.indexOf('.');
+  return i < 0 ? s : s.slice(0, i + 1) + s.slice(i + 1).replace(/\./g, '');
+}
+
 export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit = null }) {
   const { profile, meals, setMeals, loadInitialData, setNavGuard, coachPlans, coachPlanItems, session, pantryFoods: storedPantry, mealTemplates: storedTemplates, foodRules: storedRules, pantryLoaded, pantryUserId, loadPantry } = useAppStore();
+  // Idempotência (2026-11-01): o mesmo id em todas as tentativas de gravar este registo novo.
+  const requestId = useClientRequestId();
   // A despensa (bugs #48/#52, fase C): sugestões ao escrever e os habituais
   // desta refeição. Um alimento da despensa já não é analisado.
   // A que está em memória pode ser de outra conta (sessão trocada sem recarregar).
@@ -86,7 +105,9 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
   // Identifica este rascunho de forma única para sobreviver a um
   // recarregamento (ver formDraftPersistence.js) — nunca partilhado entre
   // refeições diferentes nem entre uma edição e uma criação nova a seguir.
-  const draftStorageKey = mealIdToEdit ? `ironcoach:refeicao-rascunho:${mealIdToEdit}` : 'ironcoach:refeicao-rascunho:nova';
+  // Por conta (auditoria B2): num telemóvel partilhado, o atleta seguinte não vê o rascunho do anterior.
+  const draftUserId = useDraftUserId();
+  const draftStorageKey = scopedDraftKey(mealIdToEdit ? `ironcoach:refeicao-rascunho:${mealIdToEdit}` : 'ironcoach:refeicao-rascunho:nova', draftUserId);
   // Só tenta restaurar UMA VEZ por sessão de edição/criação — sem isto, o
   // efeito de carregamento reporia o rascunho guardado por cima de
   // alterações mais recentes ainda não persistidas.
@@ -120,6 +141,23 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
   // Foto (IA)
   const [photos, setPhotos] = useState([]); // [{ dataUrl, base64 }]
 
+  /* #106 nas refeições (2026-11-07, utils/mealRead.js): com fotos, primeiro «Ler e preencher» — a
+     Carol lê as fotos (mode "preview"), enche os alimentos e faz as perguntas — e só depois se grava
+     (reviewed). `readState` é a leitura que correu bem: quantas fotos e que alimentos escritos havia
+     (assinatura) e o que veio; `readAttempt` a última tentativa, mesmo falhada (abre o gravar, e aí a
+     Carol lê as fotos ao gravar, como antes). Mexer nas fotos ou nos escritos volta a pedir a leitura. */
+  const [reading, setReading] = useState(false);
+  const [readNote, setReadNote] = useState(null);
+  const [readState, setReadState] = useState(null); // { count, written, items, facts } | null
+  const [readAttempt, setReadAttempt] = useState(null); // { count, written } | null
+  const [readQs, setReadQs] = useState([]);
+  const [readAnswers, setReadAnswers] = useState({});
+  const readSeqRef = useRef(0);
+  const forgetRead = () => {
+    readSeqRef.current += 1;
+    setReadState(null); setReadAttempt(null); setReadQs([]); setReadAnswers({}); setReadNote(null);
+  };
+
   /* Ponto 7 do redesenho: espera e erro da análise num só estado
      (src/utils/useAnalysis.js). Antes eram três booleanos independentes
      (isAnalyzing, isFinalizing, isSaving) e um errorMsg partilhado com as
@@ -127,7 +165,7 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
      preenchido e não havia forma de repetir sem refazer tudo. `errorMsg`
      fica, mas só para as validações locais (nome do alimento, gramas,
      número de fotos). */
-  const analysis = useAnalysis();
+  const analysis = useAnalysis({ kind: 'meal' });
   const isAnalyzing = analysis.isAnalyzing;
 
   // Manual — "Adicionar alimento" só acrescenta {name, grams} a uma lista
@@ -349,14 +387,82 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
       try {
         const { dataUrl, base64 } = await compressImage(file);
         setPhotos(prev => [...prev, { dataUrl, base64 }]);
+        forgetRead();
       } catch (err) {
         console.warn('Falha a processar imagem', err);
       }
     }
   };
 
-  const removePhoto = (idx) => setPhotos(prev => prev.filter((_, i) => i !== idx));
-  const clearPhotos = () => setPhotos([]);
+  const removePhoto = (idx) => { setPhotos(prev => prev.filter((_, i) => i !== idx)); forgetRead(); };
+  const clearPhotos = () => { setPhotos([]); forgetRead(); };
+
+  // A leitura vale enquanto as fotos, os alimentos escritos e as observações forem os mesmos.
+  const writtenSig = writtenSignature(manualItems, notes);
+  const readValid = !!readState && readState.count === photos.length && readState.written === writtenSig;
+  const attemptValid = !!readAttempt && readAttempt.count === photos.length && readAttempt.written === writtenSig;
+  const needsRead = !mealIdToEdit && printsNeedRead({
+    photosCount: photos.length,
+    readCount: readValid ? readState.count : null,
+    attemptedCount: attemptValid ? readAttempt.count : null,
+  });
+
+  // «Ler e preencher»: lê as fotos (com os escritos e as observações) sem gravar.
+  const handleRead = async () => {
+    if (!photos.length || reading || analysis.isAnalyzing) return;
+    setErrorMsg('');
+    setReading(true);
+    const seq = ++readSeqRef.current;
+    const count = photos.length;
+    const written = writtenSig;
+    try {
+      const writtenItems = writtenItemsPayload(manualItems);
+      const res = await invokeEdgeFunctionWithTimeout('analyze-meal', {
+        body: {
+          mode: 'preview',
+          images: photos.map(p => p.base64),
+          mime_type: 'image/jpeg',
+          ...(writtenItems.length ? { items: writtenItems } : {}),
+          notes: notes.trim() || null,
+        },
+      }, ANALYZE_TIMEOUT_MS);
+      if (seq !== readSeqRef.current) return; // as fotos mudaram a meio: esta leitura já não vale
+      // A quota do dia (429): saveError marca-a — a frase da Carol, sem «Tentar de novo».
+      if (res.error) throw (res.isQuota || res.status === 413) ? saveError(res) : new Error(saveErrorText(res));
+      if (res.data?.error) throw new Error(res.data.error);
+      const items = previewItems(res.data);
+      if (!items.length) {
+        setReadState(null); setReadQs([]); setReadAnswers({});
+        setReadNote({ tone: 'warn', text: 'Não vi alimentos nas fotos. Escreve-os abaixo, ou grava assim — eu volto a olhar para elas ao gravar.' });
+      } else {
+        const qs = readQuestions(res.data, MEAL_MAX_QUESTIONS);
+        setReadState({ count, written, items, facts: Array.isArray(res.data?.facts) ? res.data.facts : [] });
+        setReadQs(qs);
+        setReadAnswers({});
+        setReadNote({ tone: 'ok', text: mealReadNote(items.length, qs.length) });
+        setIsFormDirty(true);
+      }
+    } catch (err) {
+      if (seq !== readSeqRef.current) return;
+      console.error(err);
+      setReadState(null); setReadQs([]); setReadAnswers({});
+      setReadNote({ tone: 'warn', text: isNoRetryError(err) ? err.message : `${err.message || 'Não consegui ler as fotos agora.'} Podes tentar outra vez, ou gravar assim — eu leio as fotos ao gravar.` });
+    } finally {
+      if (seq === readSeqRef.current) {
+        setReadAttempt({ count, written });
+        setReading(false);
+      }
+    }
+  };
+
+  const updateReadItem = (key, patch) => {
+    setReadState(prev => (prev ? { ...prev, items: prev.items.map(i => (i.key === key ? { ...i, ...patch } : i)) } : prev));
+    setIsFormDirty(true);
+  };
+  const removeReadItem = (key) => {
+    setReadState(prev => (prev ? { ...prev, items: prev.items.filter(i => i.key !== key) } : prev));
+    setIsFormDirty(true);
+  };
 
   // ----------------------------------
   // ANALISAR REFEIÇÃO COM FOTOS (analyze-meal) — e com os alimentos escritos,
@@ -365,19 +471,31 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
   // A tarefa em si, separada do gesto: é ela que o "Tentar de novo" repete,
   // com as MESMAS fotos, alimentos, data, tipo e observações (useAnalysis guarda-a).
   const analyzePhotosTask = async () => {
-    const { data, error } = await invokeEdgeFunctionWithTimeout('analyze-meal', {
+    // #106: com a leitura revista, grava o que ele reviu e as respostas — sem voltar a ler as fotos.
+    // Sem ela (a leitura falhou), a Carol lê as fotos ao gravar, como antes.
+    const writtenItems = writtenItemsPayload(manualItems);
+    const reviewedBody = readValid ? {
+      reviewed: true,
+      items: reviewedItemsPayload(readState.items),
+      ...questionsPayload(readQs, readAnswers, undefined, MEAL_MAX_QUESTIONS),
+      facts: readState.facts,
+      ...(writtenItems.length ? { items_written: writtenItems } : {}),
+    } : (manualItems.length ? { items: manualItems.map(i => ({ name: i.name, grams: i.grams })) } : {});
+    const saveRes = await invokeEdgeFunctionWithTimeout('analyze-meal', {
       body: {
+        client_request_id: requestId.get(),
         images: photos.map(p => p.base64),
         mime_type: 'image/jpeg',
         date,
         meal_type: mealType,
         meal_time: normalizeStartTime(mealTime),
         notes: notes.trim() || null,
-        ...(manualItems.length ? { items: manualItems.map(i => ({ name: i.name, grams: i.grams })) } : {}),
+        ...reviewedBody,
       },
     }, ANALYZE_TIMEOUT_MS);
-    if (error) throw new Error(error);
-    if (data?.error) throw new Error(data.error);
+    const { data, error } = saveRes;
+    if (error) throw saveError(saveRes);
+    if (data?.error) throw saveRefusal(data.error);
 
     // A resposta traz meal e items em separado — o store espera-os juntos,
     // tal como loadInitialData os carrega (select('*, meal_items(*)')).
@@ -385,10 +503,17 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
     if (!Array.isArray(mealWithItems.meal_items) || mealWithItems.meal_items.length === 0) {
       console.warn('Aviso: análise retornou 0 itens', data);
     }
-    setMeals([...meals, mealWithItems]);
+    setMeals(upsertById(useAppStore.getState().meals, mealWithItems));
+    requestId.renew();
     // A refeição ensinou a despensa (fase A): as sugestões seguintes já a contam.
     useAppStore.getState().loadPantry?.();
-    finishCreateAndGoToCalendar(mealWithItems, 'Refeição registada', data.pantry_added?.length ? { pantryAdded: data.pantry_added } : {});
+    // dev-back 33fccf8a: as respostas que a Carol não conseguiu aplicar ao gravar (a reestimativa
+    // falhou) — as perguntas ficam por responder, e o Registo Guardado pede-as de novo.
+    const unapplied = Array.isArray(data.unapplied_question_ids) ? data.unapplied_question_ids.filter(Boolean) : [];
+    finishCreateAndGoToCalendar(mealWithItems, 'Refeição registada', {
+      ...(data.pantry_added?.length ? { pantryAdded: data.pantry_added } : {}),
+      ...(unapplied.length ? { unappliedQuestionIds: unapplied } : {}),
+    });
   };
 
   // ----------------------------------
@@ -536,8 +661,19 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
     return () => obs.disconnect();
   }, []);
 
-  const habituals = habitualsForMealType({ meals, foods: pantryFoods, mealType, today: date })
-    .filter((f) => !manualItems.some((i) => isKnownFood(i.name, [f])));
+  // Fora o que já está na lista desta refeição (pedido do Rui, 2026-11-09); até 4.
+  const habituals = habitualsForMealType({ meals, foods: pantryFoods, mealType, today: date, exclude: manualItems.map((i) => i.name) });
+  /* Um habitual fora da despensa entra como um alimento escrito (o caminho normal da análise), com
+     as gramas da última vez. */
+  const addHabitual = (h) => {
+    if (!h?.fromHistory) { addPantryFood(h); return; }
+    setErrorMsg('');
+    setManualItems(prev => [...prev, { key: `${Date.now()}-${prev.length}`, name: h.name, grams: h.lastGrams ?? null }]);
+    setIsFormDirty(true);
+  };
+  const habitualLabel = (h) => (h?.fromHistory
+    ? (h.lastGrams ? `da última vez: ${h.lastGrams} g` : '')
+    : portionLabel(h));
 
   /* Uma refeição predefinida (bug #63, fase D, 2026-10-17): junta os
      alimentos dela que ainda não estão na lista, com as gramas dela — tudo
@@ -590,8 +726,9 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
   };
 
   const finalizeManualTask = async () => {
-    const { data, error } = await invokeEdgeFunctionWithTimeout('analyze-meal', {
+    const saveRes = await invokeEdgeFunctionWithTimeout('analyze-meal', {
       body: {
+        client_request_id: requestId.get(),
         mode: 'manual',
         date,
         meal_type: mealType,
@@ -600,11 +737,13 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
         items: manualItems.map(i => ({ name: i.name, grams: i.grams })),
       },
     }, ANALYZE_TIMEOUT_MS);
-    if (error) throw new Error(error);
-    if (data?.error) throw new Error(data.error);
+    const { data, error } = saveRes;
+    if (error) throw saveError(saveRes);
+    if (data?.error) throw saveRefusal(data.error);
 
     const savedMeal = await persistMealTime(data.meal);
-    setMeals([...meals, savedMeal]);
+    setMeals(upsertById(useAppStore.getState().meals, savedMeal));
+    requestId.renew();
     useAppStore.getState().loadPantry?.();
     finishCreateAndGoToCalendar(savedMeal, 'Refeição registada');
   };
@@ -616,7 +755,13 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
   const notesOnly = notes.trim().length >= 3;
   const canAnalyze = photos.length > 0 || manualItems.length > 0 || notesOnly;
   const handleAnalyze = () => {
-    if (!canAnalyze || isAnalyzing) return;
+    if (!canAnalyze || isAnalyzing || reading) return;
+    // #106: com fotos por ler, o primeiro passo é lê-las.
+    if (needsRead) { handleRead(); return; }
+    if (readValid) {
+      const problem = reviewedItemsProblem(readState.items);
+      if (problem) { setErrorMsg(problem); return; }
+    }
     setErrorMsg('');
     analysis.run(photos.length ? analyzePhotosTask : finalizeManualTask);
   };
@@ -635,7 +780,7 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
     {
       let savedMeal = null;
       if (needsReanalysis) {
-        const { data, error } = await invokeEdgeFunctionWithTimeout('analyze-meal', {
+        const editRes = await invokeEdgeFunctionWithTimeout('analyze-meal', {
           body: {
             mode: 'manual',
             meal_id: mealIdToEdit,
@@ -646,8 +791,9 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
             items: manualItems.map(i => ({ name: i.name, grams: i.grams })),
           },
         }, ANALYZE_TIMEOUT_MS);
-        if (error) throw new Error(error);
-        if (data?.error) throw new Error(data.error);
+        const { data, error } = editRes;
+        if (error) throw saveError(editRes);
+        if (data?.error) throw saveRefusal(data.error);
         savedMeal = data?.meal;
         useAppStore.getState().clearDismissedIntervention(mealIdToEdit);
       } else {
@@ -686,10 +832,12 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
       busy={isAnalyzing}
       label={needsReanalysis ? "Guardar e reanalisar" : "Guardar alterações"}
     />
+  ) : needsRead ? (
+    <AwaitingReadAction label="Analisar refeição" hint="Primeiro lê as fotos, no botão «Ler e preencher» junto delas." />
   ) : (
     <CoachAnalyzeButton
       onClick={handleAnalyze}
-      disabled={!canAnalyze || isAnalyzing}
+      disabled={!canAnalyze || isAnalyzing || reading}
       busy={isAnalyzing}
       label="Analisar refeição"
     />
@@ -730,7 +878,8 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
         {analysis.hasFailed && (
           <AnalysisFailure
             detail={analysis.error}
-            onRetry={analysis.retry}
+            onRetry={analysis.quota ? undefined : analysis.retry}
+            quota={analysis.quota}
             onManual={!isEditing && photos.length > 0
               ? () => { analysis.reset(); itemNameRef.current?.focus(); }
               : undefined}
@@ -871,6 +1020,13 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
                     <Trash2 size={14} /> Limpar todas
                   </button>
                 </div>
+                {/* #106: a leitura, junto das fotos — preenche os alimentos e faz as perguntas. */}
+                <div className="mb-2" data-testid="meal-read">
+                  <ReadPrintsButton onRead={handleRead} reading={reading} label="Ler e preencher" busyLabel="A ler as fotos…" accent="var(--mod-nutricao-to)" />
+                  <p role="status" aria-live="polite" data-testid="meal-read-note" className="text-[12px] mt-2 px-1" style={{ color: readNote?.tone === 'warn' ? 'var(--warn)' : 'var(--text-2)' }}>
+                    {readNote?.text || ''}
+                  </p>
+                </div>
               </>
             )}
             {photos.length < MAX_PHOTOS && (
@@ -928,11 +1084,11 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
                   <button
                     key={f.id ?? f.name_key}
                     type="button"
-                    onClick={() => addPantryFood(f)}
+                    onClick={() => addHabitual(f)}
                     className="min-h-[44px] px-3 rounded-full text-[12.5px] font-bold"
                     style={{ border: '1px solid var(--tint-nutrition-bd)', background: 'var(--tint-nutrition-bg)', color: 'var(--text-1)' }}
                   >
-                    + {f.name}{portionLabel(f) ? ` · ${portionLabel(f)}` : ''}
+                    + {f.name}{habitualLabel(f) ? ` · ${habitualLabel(f)}` : ''}
                   </button>
                 ))}
               </div>
@@ -1030,7 +1186,57 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
             )}
           </div>
 
-          {manualItems.length > 0 && (
+          {readValid && (
+            <div className="space-y-1.5 mb-3" data-testid="meal-read-items">
+              <p className="text-[11px] font-bold text-[var(--text-3)] px-1">Lido das fotos · {readState.items.length} — revê as quantidades</p>
+              {readState.items.map(item => (
+                <div key={item.key} className="flex items-center gap-2 bg-[var(--surface-faint)] border border-[var(--border-glass)] rounded-xl px-3 py-2">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-bold text-[var(--text-1)] first-letter:uppercase">{item.name}</p>
+                    <p className="text-[11px] text-[var(--text-3)]">
+                      {Number.isFinite(Number(item.calories_per_100g)) ? `${Math.round(Number(item.calories_per_100g))} kcal/100 g` : ''}{item.from_label ? ' · do rótulo' : ''}
+                    </p>
+                  </div>
+                  <label className="flex items-center gap-1 shrink-0">
+                    <FieldInput
+                      type="text" inputMode="decimal"
+                      aria-label={`Gramas de ${item.name}`}
+                      value={item.quantity_grams ?? ''}
+                      placeholder="g"
+                      onFocus={(e) => { keepFieldVisible(e); caretToEnd(e.currentTarget); }}
+                      onChange={e => { const v = cleanGrams(e.target.value); updateReadItem(item.key, { quantity_grams: v === '' || v === '.' ? null : (v.endsWith('.') ? v : Number(v)) }); }}
+                      className="w-[72px]! px-2! text-right"
+                    />
+                    <span className="text-[11px] text-[var(--text-3)]">g</span>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => removeReadItem(item.key)}
+                    className="tap-44 text-[var(--text-3)] hover:text-[var(--danger)] shrink-0"
+                    aria-label={`Tirar ${item.name}`}
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+              ))}
+              {manualItems.length > 0 && (
+                <p className="text-[11px] text-[var(--text-3)] px-1">Os alimentos que escreveste já estão nesta lista. Juntar ou mudar um escrito, ou as observações, volta a pedir a leitura.</p>
+              )}
+            </div>
+          )}
+          {readValid && readQs.length > 0 && (
+            <div className="mb-3">
+              <PrintQuestions
+                questions={readQs}
+                answers={readAnswers}
+                onChange={(a) => { setReadAnswers(a); setIsFormDirty(true); }}
+                testid="meal-read-questions"
+                intro={`Li as fotos. ${readQs.length === 1 ? 'Uma pergunta' : 'Umas perguntas'} para acertar a análise — se não souberes, deixa: fico com o que assumi.`}
+              />
+            </div>
+          )}
+
+          {manualItems.length > 0 && !readValid && (
             <div className="space-y-1.5" data-testid="meal-items">
               {!isEditing && (
                 <p className="text-[11px] font-bold text-[var(--text-3)] px-1">Nesta refeição · {manualItems.length}</p>
@@ -1048,11 +1254,11 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
                         className="flex-1 font-bold"
                       />
                       <FieldInput
-                        type="text" inputMode="numeric" pattern="[0-9]*"
+                        type="text" inputMode="decimal"
                         aria-label={`Gramas de ${item.name}`}
                         value={item.grams}
                         onFocus={(e) => { keepFieldVisible(e); caretToEnd(e.currentTarget); }}
-                        onChange={e => { updateManualItem(item.key, { grams: e.target.value.replace(/[^0-9]/g, '') }); setIsFormDirty(true); }}
+                        onChange={e => { updateManualItem(item.key, { grams: cleanGrams(e.target.value) }); setIsFormDirty(true); }}
                         className="w-16! px-2! text-right"
                       />
                       <span className="text-[11px] text-[var(--text-3)]">g</span>
@@ -1073,12 +1279,12 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
                        (90 g) e não havia forma de pôr os 150 g antes de gravar. */
                     <label className="flex items-center gap-1 shrink-0">
                       <FieldInput
-                        type="text" inputMode="numeric" pattern="[0-9]*"
+                        type="text" inputMode="decimal"
                         aria-label={`Gramas de ${item.name}`}
                         value={item.grams ?? ''}
                         placeholder="g"
                         onFocus={(e) => { keepFieldVisible(e); caretToEnd(e.currentTarget); }}
-                        onChange={e => { const v = e.target.value.replace(/[^0-9]/g, ''); updateManualItem(item.key, { grams: v === '' ? null : Number(v) }); setIsFormDirty(true); }}
+                        onChange={e => { const v = cleanGrams(e.target.value); updateManualItem(item.key, { grams: v === '' || v === '.' ? null : (v.endsWith('.') ? v : Number(v)) }); setIsFormDirty(true); }}
                         className="w-[72px]! px-2! text-right"
                       />
                       <span className="text-[11px] text-[var(--text-3)]">g</span>

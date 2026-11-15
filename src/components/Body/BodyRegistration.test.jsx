@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act, within } from '@testing-library/react';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { useAppStore } from '../../store';
 import BodyRegistration from './BodyRegistration';
@@ -24,7 +24,11 @@ vi.mock('../../lib/supabase', () => ({
       return {};
     },
   },
-  invokeEdgeFunctionWithTimeout: (...args) => mocks.invoke(...args),
+  // #106: nos testes que não são sobre a leitura, selectPhoto passa o passo «Ler os prints»
+  // com uma leitura falhada (mocks.skipRead) — fora de mocks.invoke, para não mexer nas contagens.
+  invokeEdgeFunctionWithTimeout: (...args) => (mocks.skipRead && args[1]?.body?.mode === 'preview'
+    ? Promise.resolve({ data: null, error: 'leitura saltada no teste' })
+    : mocks.invoke(...args)),
 }));
 
 // Evita FileReader/Image/canvas do jsdom — a compressão em si já está fora
@@ -39,11 +43,24 @@ const PROFILE = { id: 'user-1' };
 const setHora = (value = '07:15') =>
   fireEvent.change(screen.getByLabelText('Hora da avaliação'), { target: { value } });
 
-const selectPhoto = async () => {
+/* #106: com prints, o primeiro passo é «Ler os prints e preencher». selectPhoto() passa-o (uma
+   leitura falhada abre o «Analisar» sem mudar o pedido); selectPhoto({ ler: false }) deixa-o por fazer,
+   para os testes da leitura. */
+const passarLeitura = async () => {
+  mocks.skipRead = true;
+  try {
+    fireEvent.click(screen.getByRole('button', { name: 'Ler os prints e preencher' }));
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Ler os prints e preencher' })).not.toBeInTheDocument());
+  } finally {
+    mocks.skipRead = false;
+  }
+};
+const selectPhoto = async ({ ler = true } = {}) => {
   const input = document.querySelector('input[type="file"]');
   const file = new File(['conteudo'], 'pesagem.jpg', { type: 'image/jpeg' });
   await fireEvent.change(input, { target: { files: [file] } });
   await screen.findByAltText('Print 1');
+  if (ler) await passarLeitura();
 };
 
 describe('BodyRegistration — formulário único (registo unificado, decisão 12)', () => {
@@ -697,5 +714,91 @@ describe('bug #103 — o jejum vai como campo próprio', () => {
     expect(fastingField('Não estava em jejum.')).toEqual({ fasting: false });
     expect(fastingField('depois do treino')).toEqual({});
     expect(fastingField('')).toEqual({});
+  });
+});
+
+describe('BodyRegistration — #106: com prints, primeiro ler e preencher', () => {
+  beforeEach(() => {
+    mocks.invoke.mockReset();
+    useAppStore.setState({ profile: PROFILE, bodyAssessments: [] });
+  });
+
+  it('#110: «Ler os prints e preencher» junto das fotos; o «Analisar avaliação» só se ativa depois da leitura', async () => {
+    render(<BodyRegistration onClose={vi.fn()} />);
+    await selectPhoto({ ler: false });
+    // #110: a leitura está junto das fotos desde o início; o «Analisar avaliação» fica desativado até lá.
+    expect(screen.getAllByRole('button', { name: 'Ler os prints e preencher' })).toHaveLength(1);
+    expect(screen.getByRole('button', { name: /Analisar avaliação/ })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /Analisar avaliação/ })).toHaveAccessibleDescription(/Primeiro lê os prints/);
+    mocks.invoke.mockResolvedValueOnce({ data: { preview: { metrics: { weight_kg: 72.4 } } }, error: null });
+    fireEvent.click(screen.getByRole('button', { name: 'Ler os prints e preencher' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: /Analisar avaliação/ })).toBeEnabled());
+    expect(mocks.invoke.mock.calls[0][1].body.mode).toBe('preview');
+  });
+});
+
+describe('BodyRegistration — #106: as perguntas da leitura seguem com a avaliação', () => {
+  beforeEach(() => {
+    mocks.invoke.mockReset();
+    useAppStore.setState({ profile: PROFILE, bodyAssessments: [] });
+  });
+
+  it('a pergunta do jejum respondida vai em carol_questions; o fasting do formulário vai à parte', async () => {
+    const Q = { id: 'b1', kind: 'contexto', topic: 'jejum', item_name: null, question: 'Pesaste-te em jejum?', options: ['Sim', 'Não'], assumed: 'Sim', impact_kcal: 0, impact_protein_g: 0, answer: null, answered_at: null };
+    render(<BodyRegistration onClose={vi.fn()} />);
+    await selectPhoto({ ler: false });
+    mocks.invoke.mockResolvedValueOnce({ data: { preview: { metrics: { weight_kg: 72.4 } }, questions: [Q] }, error: null });
+    fireEvent.click(screen.getByRole('button', { name: 'Ler os prints e preencher' }));
+    const card = await screen.findByTestId('carol-question-b1');
+    fireEvent.click(within(card).getByRole('button', { name: 'Não' }));
+    setHora();
+    mocks.invoke.mockResolvedValueOnce({ data: { assessment: { id: 'a-1', date: '2026-11-01' } }, error: null });
+    fireEvent.click(screen.getByRole('button', { name: /Analisar avaliação/ }));
+    await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(2));
+    const body = mocks.invoke.mock.calls[1][1].body;
+    expect(body.carol_questions).toEqual([expect.objectContaining({ id: 'b1', answer: 'Não' })]);
+    expect(body).not.toHaveProperty('fasting');
+  });
+});
+
+describe('BodyRegistration — #106: trocar um print volta a pedir a leitura', () => {
+  beforeEach(() => {
+    mocks.invoke.mockReset();
+    useAppStore.setState({ profile: PROFILE, bodyAssessments: [] });
+  });
+
+  it('tirar o print lido e juntar outro volta ao «Ler os prints e preencher»', async () => {
+    render(<BodyRegistration onClose={vi.fn()} />);
+    await selectPhoto();
+    expect(screen.getByRole('button', { name: /Analisar avaliação/ })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Remover print 1' }));
+    await selectPhoto({ ler: false });
+    expect(screen.getByRole('button', { name: 'Ler os prints e preencher' })).toBeInTheDocument();
+  });
+});
+
+describe('BodyRegistration — #106: perguntas antigas não seguem depois de trocar de print', () => {
+  beforeEach(() => {
+    mocks.invoke.mockReset();
+    useAppStore.setState({ profile: PROFILE, bodyAssessments: [] });
+  });
+
+  it('trocar de print e a releitura falhar: o pedido sai sem carol_questions', async () => {
+    const Q = { id: 'b1', kind: 'contexto', topic: 'jejum', item_name: null, question: 'Em jejum?', options: ['Sim', 'Não'], assumed: 'Sim', impact_kcal: 0, impact_protein_g: 0, answer: null, answered_at: null };
+    render(<BodyRegistration onClose={vi.fn()} />);
+    await selectPhoto({ ler: false });
+    mocks.invoke.mockResolvedValueOnce({ data: { preview: { metrics: { weight_kg: 72.4 } }, questions: [Q] }, error: null });
+    fireEvent.click(screen.getByRole('button', { name: 'Ler os prints e preencher' }));
+    fireEvent.click(within(await screen.findByTestId('carol-question-b1')).getByRole('button', { name: 'Não' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Remover print 1' }));
+    await selectPhoto({ ler: false });
+    mocks.invoke.mockResolvedValueOnce({ data: null, error: 'O Coach está ocupado.' });
+    fireEvent.click(screen.getByRole('button', { name: 'Ler os prints e preencher' }));
+    await screen.findByText('O Coach está ocupado.');
+    setHora();
+    mocks.invoke.mockResolvedValueOnce({ data: { assessment: { id: 'a-1', date: '2026-11-01' } }, error: null });
+    fireEvent.click(screen.getByRole('button', { name: /Analisar avaliação/ }));
+    await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(3));
+    expect(mocks.invoke.mock.calls[2][1].body).not.toHaveProperty('carol_questions');
   });
 });

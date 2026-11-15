@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { ImagePlus, X, Sparkles, PencilLine, Footprints, Trophy, AlertTriangle, PersonStanding } from 'lucide-react';
 import { useAppStore } from '../../store';
+import { scopedDraftKey } from '../../utils/draftScope';
+import { useDraftUserId } from '../../utils/useDraftUserId';
 import { supabase, invokeEdgeFunctionWithTimeout } from '../../lib/supabase';
 import { ANALYZE_TIMEOUT_MS } from '../../lib/edgeTimeouts';
 import { compressImage } from '../../lib/image';
@@ -10,6 +12,7 @@ import { diplomaFormValues } from '../../utils/diplomaReading';
 import DiplomaReadingCard, { useDiplomaReading } from './DiplomaReadingCard';
 import { CoachAnalyzeButton } from '../shared/CoachButton';
 import { AnalysisSkeleton, AnalysisFailure } from '../shared/AnalysisState';
+import SaveErrorLine from '../shared/SaveErrorLine';
 import useAnalysis from '../../utils/useAnalysis';
 import SectionLabel from '../shared/SectionLabel';
 import GlassCard from '../shared/GlassCard';
@@ -28,6 +31,9 @@ import { ecrasQueSePerdem } from '../../../supabase/functions/_shared/sourceApps
 import PremiumModal from '../shared/PremiumModal';
 import { firstRecordMoment } from '../../utils/firstRecord';
 import { runRecordMoment } from '@formulas/runRecord.ts';
+import { checkRaceTime } from '@formulas/raceTimeSanity.ts';
+import { predictRaceSeconds } from './RaceLevelSuggestion';
+import RaceRemoveDialog from './RaceRemoveDialog';
 import { WALK_TRAINING_TYPE, isWalk, runMatchesPlanItem } from '@formulas/runKinds.ts';
 import RunTrainingTypeHelp from '../shared/RunTrainingTypeHelp';
 import Chip from '../shared/Chip';
@@ -46,6 +52,10 @@ import RegistrationSection from '../shared/registration/RegistrationSection';
 import { findPendingPlanItems } from '../../utils/planPrefill';
 import CarolInterventionActions from '../shared/CarolInterventionActions';
 import { FieldInput, FieldSelect, FieldTextarea } from '../shared/registration/Field';
+import { useClientRequestId, } from '../../utils/clientRequestId';
+import { saveError, saveRefusal, reportSaveFailure, saveFailureMessage, isNoRetryError } from '../../utils/saveFailure';
+import { printsNeedRead, AwaitingReadAction } from '../shared/registration/printsGate';
+import { PrintQuestions, questionsPayload, readQuestions } from '../shared/CarolQuestionsForm';
 
 // -------------------------------------
 // ICONS & UTILS
@@ -199,6 +209,8 @@ function planRunPrefill(item) {
 
 export default function RunRegistration({ onClose, dateIso = null, runIdToEdit = null }) {
   const { profile, runs, setRuns, setNavGuard, shoes, raceEvents, coachPlans, coachPlanItems } = useAppStore();
+  // Idempotência (2026-11-01): o mesmo id em todas as tentativas de gravar este registo novo.
+  const requestId = useClientRequestId();
 
   
 
@@ -241,10 +253,47 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
   // fora da agenda e o ecrã é o de sempre.
   const isRaceMode = !!raceEvent;
 
+  /* Tempo impossível não se aceita (bug de 2026-11-15: «1:23» lido como 1 min 23 s numa prova de
+     10 km com objetivo 56:40). A regra é a partilhada com o servidor (@formulas/raceTimeSanity.ts):
+     mais rápido do que 2:40/km, ou menos de metade do objetivo — ou da previsão, sem objetivo. Vale
+     no tempo oficial e na duração, ao sair do campo e ao gravar. */
+  const raceTimeReference = () => {
+    if (!raceEvent) return null;
+    const target = Number(raceEvent.target_time_seconds) || parseDurationToSeconds(raceEvent.target_time) || null;
+    if (target) return target;
+    try {
+      return predictRaceSeconds({
+        raceType: raceEvent.race_type, distanceKm: Number(raceEvent.distance_km) || null,
+        elevationGainM: raceEvent.elevation_gain_m, declaredLevel: raceEvent.experience_level,
+        profile, runs,
+      }) || null;
+    } catch { return null; }
+  };
+  const raceTimeProblem = (text, distanceKm) => {
+    if (!isRaceMode || !text) return null;
+    const res = checkRaceTime({ text, distanceKm: Number(distanceKm) || Number(raceEvent?.distance_km) || null, referenceSeconds: raceTimeReference() });
+    return res.ok ? null : res;
+  };
+  // O erro só aparece depois de o atleta sair do campo (ou tentar gravar): a escrever, «0:05» é a meio.
+  const [timeTouched, setTimeTouched] = useState({ official: false, duration: false });
+  const [showRemoveRecord, setShowRemoveRecord] = useState(false);
+  const officialTimeProblem = () => raceTimeProblem(officialTime, raceEvent?.distance_km);
+  const durationProblem = () => raceTimeProblem(runDuration, runDistance);
+  // A primeira das duas, para o diálogo de gravar.
+  const raceTimeBlock = () => {
+    const off = officialTimeProblem();
+    if (off) return `Tempo oficial: ${off.message}`;
+    const dur = durationProblem();
+    if (dur) return `Tempo pessoal: ${dur.message}`;
+    return null;
+  };
+
   // Identifica este rascunho de forma única para sobreviver a um
   // recarregamento (ver formDraftPersistence.js) — nunca partilhado entre
   // corridas diferentes nem entre uma edição e uma criação nova a seguir.
-  const draftStorageKey = runIdToEdit ? `ironcoach:corrida-rascunho:${runIdToEdit}` : 'ironcoach:corrida-rascunho:nova';
+  // Por conta (auditoria B2): num telemóvel partilhado, o atleta seguinte não vê o rascunho do anterior.
+  const draftUserId = useDraftUserId();
+  const draftStorageKey = scopedDraftKey(runIdToEdit ? `ironcoach:corrida-rascunho:${runIdToEdit}` : 'ironcoach:corrida-rascunho:nova', draftUserId);
   // Só tenta restaurar UMA VEZ por sessão de edição/criação — sem isto, o
   // efeito de carregamento reporia o rascunho guardado por cima de
   // alterações mais recentes ainda não persistidas.
@@ -391,7 +440,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
      (src/utils/useAnalysis.js). Só a análise por foto passa por aqui — o
      registo manual (handleSaveCorrida) é uma gravação, não uma leitura de
      print, e fica com o `errorMsg` de sempre. */
-  const analysis = useAnalysis();
+  const analysis = useAnalysis({ kind: 'run' });
   const analyzingRun = analysis.isAnalyzing;
   /* Formulário único (registo unificado, decisões 2 e 6): já não há
      "Foto | Manual". Os prints são opcionais e os campos estão sempre à
@@ -402,6 +451,12 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
   const [reading, setReading] = useState(false);
   const [readNote, setReadNote] = useState(null);
   const [readState, setReadState] = useState(null); // { count, details } | null
+  // #106: quantos prints havia na última tentativa de leitura (correu bem ou não).
+  const [readAttempt, setReadAttempt] = useState(null);
+  /* #106: as perguntas da Carol sobre o que leu nos prints (no máximo 3) e as respostas; seguem
+     com o registo em carol_questions ao gravar. Uma leitura nova substitui-as. */
+  const [printQuestions, setPrintQuestions] = useState([]);
+  const [printAnswers, setPrintAnswers] = useState({});
   /* "Do plano": o treino de corrida que a Carol marcou para o dia, escolhido
      no banner — { id, mode: 'plano' | 'livre' } | null. O "Registar sessão"
      do Início já vem com ele (planItem) e não mostra o banner. */
@@ -436,6 +491,8 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
   const [savingWithCarol, setSavingWithCarol] = useState(null);
   const showAnalysis = analyzingRun || !!savingWithCarol;
   const [errorMsg, setErrorMsg] = useState('');
+  // #116: a gravação que falhou, para o «Tentar de novo» ao lado da mensagem dela.
+  const [failedSave, setFailedSave] = useState(null);
   /* Um campo obrigatório em falta ao gravar era só uma linha vermelha no fundo
      do formulário, fora do ecrã quando se carrega em "Guardar" a meio de uma
      página longa — foi o que aconteceu com o tempo oficial da prova
@@ -1008,7 +1065,9 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
       try {
         const { dataUrl, base64 } = await compressImage(file);
         setRunPhotos(prev => [...prev, { dataUrl, base64 }]);
+        // Prints novos: a leitura anterior (bem ou mal sucedida) deixa de valer (#106).
         setReadState(null);
+        setReadAttempt(null); setPrintQuestions([]); setPrintAnswers({});
         setIsFormDirty(true);
       } catch (err) {
         console.warn('Falha a processar imagem', err);
@@ -1020,6 +1079,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
   const removePhoto = (index) => {
     setRunPhotos(prev => prev.filter((_, i) => i !== index));
     setReadState(null);
+    setReadAttempt(null); setPrintQuestions([]); setPrintAnswers({});
     setIsFormDirty(true);
     clearStaleMissingMetrics();
   };
@@ -1526,7 +1586,9 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
       // reabrir e gravar outra vez retoma ESTA, não cria uma segunda ligada
       // à mesma prova (revisão pré-deploy de 79c0bf9).
       adoptCreatedRun(run);
-      setMemoriesFailed(true);
+      // Uma recusa do bucket (tamanho, tipo) diz-se como é, sem «Tentar de novo» — como no
+      // RaceMemoriesSheet: repetir com a mesma imagem dava o mesmo.
+      setMemoriesFailed(err?.noRetry ? { text: err.message, final: true } : true);
       setIsSubmitting(false);
       return;
     }
@@ -1542,7 +1604,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
       finishRaceAndGoToHub();
     } catch (err) {
       console.error('Falha a guardar as memórias da prova (nova tentativa)', err);
-      setMemoriesFailed(true);
+      setMemoriesFailed(err?.noRetry ? { text: err.message, final: true } : true);
     } finally {
       setSavingMemories(false);
     }
@@ -1574,6 +1636,11 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
     // com o objetivo no hub, e o registo do dia fica pela metade.
     if (isRaceMode && !parseDurationToSeconds(officialTime)) {
       failValidation('Indica o tempo oficial da prova.');
+      return;
+    }
+    if (raceTimeBlock()) {
+      setTimeTouched({ official: true, duration: true });
+      failValidation(raceTimeBlock());
       return;
     }
 
@@ -1701,7 +1768,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
       await finishCreatedRun({ ...created.run, ...payload });
       return;
     }
-    const { data, error } = await invokeEdgeFunctionWithTimeout('analyze-run', {
+    const editRes = await invokeEdgeFunctionWithTimeout('analyze-run', {
       body: {
         run_id: created.run.id,
         keep_paths: keep,
@@ -1719,8 +1786,9 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
         ...(editedTypedSinceCreated() ? { typed: editedTypedSinceCreated() } : {}),
       },
     }, ANALYZE_TIMEOUT_MS);
-    if (error) throw new Error(error);
-    if (data?.error) throw new Error(data.error);
+    const { data, error } = editRes;
+    if (error) throw saveError(editRes);
+    if (data?.error) throw saveRefusal(data.error);
     applyExtractedRun(data.run);
     // Não se volta a insistir nas métricas: o atleta já juntou o que tinha.
     await finishCreatedRun(data.run);
@@ -1740,8 +1808,9 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
       const typed = typedFormFields();
       const hasTyped = Object.values(typed).some((v) => v !== null && !(Array.isArray(v) && v.length === 0));
       const reviewed = hasTyped && readState?.count === runPhotos.length;
-      const { data, error } = await invokeEdgeFunctionWithTimeout('analyze-run', {
+      const saveRes = await invokeEdgeFunctionWithTimeout('analyze-run', {
         body: {
+          client_request_id: requestId.get(),
           images: runPhotos.map(p => p.base64),
           mime_type: 'image/jpeg',
           date: runDate,
@@ -1755,12 +1824,16 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
           shoe_id: shoeId,
           ...(hasTyped ? { typed } : {}),
           ...(reviewed ? { reviewed: true, read_details: readState.details || null } : {}),
+          ...(runPhotos.length ? questionsPayload(printQuestions, printAnswers) : {}),
         },
       }, ANALYZE_TIMEOUT_MS);
-      if (error) throw new Error(error);
-      if (data?.error) throw new Error(data.error);
+      const { data, error } = saveRes;
+      if (error) throw saveError(saveRes);
+      if (data?.error) throw saveRefusal(data.error);
 
       const createdRun = data.run;
+      // Gravada: a próxima gravação é sobre ela (run_id); um registo novo terá outro id.
+      requestId.renew();
       const extractedDetails = applyExtractedRun(createdRun);
 
       const missing = detectMissingRunMetrics(extractedDetails, createdRun.distance_km, createdRun.duration_seconds, isWalk(createdRun));
@@ -1904,6 +1977,11 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
       failValidation('Indica o tempo oficial da prova.');
       return;
     }
+    if (raceTimeBlock()) {
+      setTimeTouched({ official: true, duration: true });
+      failValidation(raceTimeBlock());
+      return;
+    }
 
     const { details } = buildDetailsFromForm();
 
@@ -1960,7 +2038,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
       if (runIdToEdit) {
         if (signatureChanged) {
           setSavingWithCarol(photosChanged && runPhotos.length > 0 ? 'foto' : 'manual');
-          const { data, error } = await invokeEdgeFunctionWithTimeout('analyze-run', {
+          const editRes = await invokeEdgeFunctionWithTimeout('analyze-run', {
             body: photosChanged && runPhotos.length > 0 ? reanalysisBody() : {
               mode: 'manual',
               run_id: runIdToEdit,
@@ -2001,7 +2079,8 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
               leg_stiffness_kn_m: parseFloat(legStiffness) || null,
             },
           }, ANALYZE_TIMEOUT_MS);
-          if (error) throw new Error(error);
+          const { data, error } = editRes;
+          if (error) throw saveError(editRes);
           const updatedRun = data.run;
           if (photosChanged && runPhotos.length === 0 && originalPhotoPathsRef.current.length) {
             // Todos os prints removidos: a corrida fica sem imagens (os
@@ -2036,8 +2115,9 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
       // manual atualiza-a em vez de criar uma segunda.
       const created = createdRunRef.current;
       setSavingWithCarol('manual');
-      const { data, error } = await invokeEdgeFunctionWithTimeout('analyze-run', {
+      const saveRes = await invokeEdgeFunctionWithTimeout('analyze-run', {
         body: {
+          ...(created ? {} : { client_request_id: requestId.get() }),
           mode: 'manual',
           ...(created ? { run_id: created.run.id } : {}),
           date: runDate,
@@ -2077,10 +2157,12 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
           leg_stiffness_kn_m: parseFloat(legStiffness) || null,
         },
       }, ANALYZE_TIMEOUT_MS);
-      if (error) throw new Error(error);
-      if (data?.error) throw new Error(data.error);
+      const { data, error } = saveRes;
+      if (error) throw saveError(saveRes);
+      if (data?.error) throw saveRefusal(data.error);
 
       newlySavedRun = data.run;
+      if (!created) requestId.renew();
       forgetCreatedRun();
       upsertRunInStore(newlySavedRun);
 
@@ -2094,7 +2176,10 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
       await finishSavedRun(newlySavedRun, 'Corrida registada');
     } catch (err) {
       console.error(err);
-      setErrorMsg(err.message || 'Falha a gravar a corrida. Tenta novamente.');
+      reportSaveFailure('run', err, { step: 'manual' });
+      const message = saveFailureMessage(err, 'Não consegui gravar a corrida agora. Tenta de novo — não fica repetida.');
+      setErrorMsg(message);
+      setFailedSave(isNoRetryError(err) ? null : { message, retry: () => handleSaveCorrida(forceBypassMissing, forceReanalyze) });
     } finally {
       setIsSubmitting(false);
       setSavingWithCarol(null);
@@ -2171,7 +2256,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
     setReadNote(null);
     setErrorMsg('');
     try {
-      const { data, error } = await invokeEdgeFunctionWithTimeout('analyze-run', {
+      const { data, error, isQuota, quotaScope, status } = await invokeEdgeFunctionWithTimeout('analyze-run', {
         body: {
           mode: 'preview',
           images: runPhotos.map((p) => p.base64).filter(Boolean),
@@ -2182,8 +2267,9 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
           notes: runNotes.trim() || null,
         },
       }, ANALYZE_TIMEOUT_MS);
-      if (error) throw new Error(error);
-      if (data?.error) throw new Error(data.error);
+      // A quota do dia (429): a frase da Carol, sem «Tentar de novo» nem save_failed.
+      if (error) throw (isQuota || status === 413) ? saveError({ isQuota, quotaScope, status, serverText: error }) : new Error(error);
+      if (data?.error) throw saveRefusal(data.error);
       const read = data?.preview || {};
       const now = liveForm.current;
       let filled = 0;
@@ -2205,6 +2291,8 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
       // O que só os prints sabem segue com o registo revisto.
       const details = Object.fromEntries(READ_ONLY_KEYS.filter((k) => read[k] !== null && read[k] !== undefined).map((k) => [k, read[k]]));
       setReadState({ count: runPhotos.length, details });
+      setPrintQuestions(readQuestions(data));
+      setPrintAnswers({});
       // Lidos e revistos: o que fica nos campos é dele (um alvo confirmado pela
       // leitura, ou que os prints não trouxeram, grava-se como está).
       planValuesRef.current = {};
@@ -2216,11 +2304,16 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
           : { text: 'Não consegui ler valores nestes prints. Confirma que são do resumo da corrida e estão nítidos, ou escreve-os abaixo.', tone: 'warn' });
       setIsFormDirty(true);
     } catch (err) {
+      setPrintQuestions([]); setPrintAnswers({});
       setReadNote({ text: err.message || 'Não consegui ler os prints. Tenta outra vez.', tone: 'warn' });
     } finally {
+      setReadAttempt(runPhotos.length);
       setReading(false);
     }
   };
+  // #106: com prints novos por ler, o primeiro passo é lê-los; o «Analisar» vem depois.
+  const needsRead = !runIdToEdit && !createdRunRef.current
+    && printsNeedRead({ photosCount: runPhotos.length, readCount: readState?.count ?? null, attemptedCount: readAttempt });
 
   /** O que o atleta escreveu, na forma do modo manual — sem os alvos do plano por mexer. */
   const typedFormFields = () => {
@@ -2290,6 +2383,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
        data, notas, tipo mudados) reanalisam; sem mudanças fecha como estava. */
   const handleAnalyze = () => {
     if (isSubmitting || analyzingRun || reading) return;
+    if (needsRead) { handleReadRunPrints(); return; }
     const fresh = runPhotos.some((p) => p.base64);
     const created = createdRunRef.current;
     // Sem prints à vista (removidos, ou não carregaram) não há o que reler: pelos campos.
@@ -2355,6 +2449,8 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
       busy={isSubmitting}
       label={needsReanalysis ? "Guardar e reanalisar" : "Guardar alterações"}
     />
+  ) : needsRead ? (
+    <AwaitingReadAction label={isRaceMode ? 'Registar a prova' : 'Analisar corrida'} />
   ) : (
     // Uma só ação: com prints a Carol lê-os; sem eles, conta pelos campos.
     // No modo prova o botão nomeia o que está mesmo a acontecer.
@@ -2410,7 +2506,8 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
       {analysis.hasFailed && (
         <AnalysisFailure
           detail={analysis.error}
-          onRetry={analysis.retry}
+          onRetry={analysis.quota ? undefined : analysis.retry}
+            quota={analysis.quota}
           onManual={showToggle && runPhotos.some((p) => p.base64) && !createdRunRef.current
             ? () => { analysis.reset(); setRunPhotos((prev) => prev.filter((p) => !p.base64)); setReadState(null); }
             : undefined}
@@ -2520,10 +2617,44 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
         <DurationInput id="rr-duracao"
           placeholder="00:00"
           value={runDuration} onChange={(v) => { setRunDuration(v); setIsFormDirty(true); }}
+          onBlur={() => setTimeTouched(t => ({ ...t, duration: true }))}
+          aria-invalid={timeTouched.duration && !!durationProblem() ? true : undefined}
+          aria-describedby={timeTouched.duration && durationProblem() ? 'rr-duracao-erro' : undefined}
         />
+        {timeTouched.duration && renderTimeProblem(durationProblem(), 'rr-duracao-erro', (v) => { setRunDuration(v); setIsFormDirty(true); })}
       </div>
     </>
   );
+
+  /* O erro de um tempo impossível, por baixo do campo, com o valor provável a um toque. */
+  function renderTimeProblem(problem, id, apply, className = 'mt-1.5') {
+    if (!problem) return null;
+    return (
+      <div id={id} role="alert" data-testid={id} className={`${className} text-[12px] leading-[1.45] flex flex-wrap items-center gap-x-2 gap-y-1`} style={{ color: 'var(--danger)' }}>
+        <span>{problem.message}</span>
+        {problem.suggestion && (
+          <button
+            type="button"
+            onClick={() => apply(problem.suggestion.text)}
+            className="min-h-[44px] px-2 font-extrabold underline underline-offset-2"
+            style={{ color: 'var(--race)' }}
+          >
+            Usar {problem.suggestion.text}
+          </button>
+        )}
+      </div>
+    );
+  }
+
+  /* «Eliminar registo» — só a editar o registo de uma prova. Apaga a corrida, ou só o resultado
+     (a corrida fica como treino); a prova NUNCA (bug de 2026-11-15: quem queria refazer o tempo
+     apagava a prova inteira). A prova volta a agendada e o registo fecha. */
+  const handleRecordRemoved = () => {
+    clearPersistedFormDraft(draftStorageKey);
+    setIsFormDirty(false);
+    setNavGuard(null);
+    onClose?.();
+  };
 
   const renderProvaForm = () => {
     const objetivo = [
@@ -2600,6 +2731,9 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
                   placeholder="ex.: 1:45:00"
                   value={officialTime}
                   onChange={(v) => { setOfficialTime(v); setIsFormDirty(true); }}
+                  onBlur={() => setTimeTouched(t => ({ ...t, official: true }))}
+                  aria-invalid={timeTouched.official && !!officialTimeProblem() ? true : undefined}
+                  aria-describedby={timeTouched.official && officialTimeProblem() ? 'rr-tempo-oficial-erro' : undefined}
                 />
               </div>
               <div>
@@ -2613,6 +2747,8 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
                 />
               </div>
             </div>
+
+            {timeTouched.official && renderTimeProblem(officialTimeProblem(), 'rr-tempo-oficial-erro', (v) => { setOfficialTime(v); setIsFormDirty(true); }, 'mb-4 -mt-2')}
 
             {/* Hora de partida — vem preenchida da agenda, mas é a desta
                 corrida (runs.start_time): a partida real pode não ser a
@@ -2670,7 +2806,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
             {renderCoreMetrics()}
             {renderManualDetails()}
 
-            {errorMsg && <p role="alert" className="text-[13px] font-medium mt-3" style={{ color: 'var(--danger)' }}>{errorMsg}</p>}
+            <SaveErrorLine message={errorMsg} center={false} onRetry={failedSave && failedSave.message === errorMsg ? failedSave.retry : null} retrying={isSubmitting} />
           </div>
         </section>
 
@@ -2716,16 +2852,44 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
             <Warning
               title="Memórias por guardar"
               className="mt-3"
-              actions={(
+              actions={memoriesFailed?.final ? null : (
                 <WarningAction onClick={retryRaceMemories} disabled={savingMemories}>
                   {savingMemories ? 'A guardar…' : 'Tentar de novo'}
                 </WarningAction>
               )}
             >
-              A corrida ficou gravada. O que não consegui foi guardar as memórias da prova — podes tentar outra vez sem perder nada.
+              {memoriesFailed?.final
+                ? `A corrida ficou gravada. ${memoriesFailed.text} Troca a imagem e grava outra vez.`
+                : 'A corrida ficou gravada. O que não consegui foi guardar as memórias da prova — podes tentar outra vez sem perder nada.'}
             </Warning>
           )}
         </section>
+
+        {runIdToEdit && (
+          <div className="pt-1 pb-2">
+            <Button
+              type="button"
+              variant="light-danger"
+              className="w-full text-xs"
+              onClick={() => setShowRemoveRecord(true)}
+              disabled={isSubmitting}
+              data-testid="race-record-remove-button"
+            >
+              Eliminar registo
+            </Button>
+            <p className="text-[11px] mt-1.5 text-center" style={{ color: 'var(--text-4)' }}>
+              A prova fica na agenda, por registar.
+            </p>
+          </div>
+        )}
+        <RaceRemoveDialog
+          mode="registo"
+          isOpen={showRemoveRecord}
+          race={raceEvent}
+          runId={runIdToEdit}
+          onClose={() => setShowRemoveRecord(false)}
+          onCleared={handleRecordRemoved}
+        />
       </div>
     );
   };
@@ -2935,7 +3099,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
 
           {renderCarolIntervention()}
 
-          {errorMsg && <p role="alert" className="text-[13px] font-medium mt-3" style={{ color: 'var(--danger)' }}>{errorMsg}</p>}
+          <SaveErrorLine message={errorMsg} center={false} onRetry={failedSave && failedSave.message === errorMsg ? failedSave.retry : null} retrying={isSubmitting} />
       </>
     );
   };
@@ -2944,11 +3108,13 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
      Não confundir com as memórias da prova, que não passam pela IA. */
   function renderPhotoBlock() {
     return (
+      <>
       <PhotoReadSection
         photos={runPhotos}
         maxPhotos={MAX_PHOTOS}
         onSelect={handlePhotoSelected}
         onRemove={removePhoto}
+        // #110: a leitura faz-se sempre aqui, junto das fotos (por ler, o «Analisar» da barra fica desativado); depois de lidos, este deixa reler.
         onRead={handleReadRunPrints}
         reading={reading}
         note={readNote}
@@ -2968,6 +3134,8 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
           </>
         ) : null}
       />
+      <PrintQuestions questions={printQuestions} answers={printAnswers} onChange={setPrintAnswers} />
+      </>
     );
   }
 

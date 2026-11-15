@@ -1,6 +1,8 @@
 import { create } from 'zustand';
 import { supabase, invokeEdgeFunctionWithTimeout } from '../lib/supabase';
 import { planAcceptanceMode, closeOldBlock, isTrainingPlan, doneItemKeys } from '../utils/planAcceptance';
+import { quotaNotice } from '../utils/quotaNotice';
+import { clearAllDrafts, purgeUnscopedDrafts } from '../utils/draftScope';
 import { todayISO, lisbonTodayISO, addDaysISO } from '../lib/utils';
 import { markOnboardingDoneLocally } from '../utils/onboarding';
 import { newCheckinAlarms, interventionReasonFor, mergeCheckin, readCheckinReason, checkinReasonNow } from '../utils/checkin';
@@ -9,6 +11,7 @@ import { RACE_BALANCE_CACHE_PREFIX } from '../utils/coachProactive';
 import { isGoalsIntervention } from '@formulas/goalsIntervention.ts';
 import { INTERVENTION_OUTCOME, INTERVENTION_ORIGIN } from '@formulas/interventionOutcomes.ts';
 import { createCupSlice, CUP_EMPTY } from './cupSlice';
+import { loadProfileUpdate } from '../utils/loadProfileState';
 
 const getInitialDashboardTab = () => {
   try {
@@ -161,8 +164,7 @@ export function sameList(a, b, budget = { n: SAME_SLICE_BUDGET }) {
  *  `raceEvents`… são linhas simples; `impressions` não é uma fatia de dados
  *  (escreve conjuntos) e fica de fora. */
 const SHARED_LIST_KEYS = ['meals', 'runs', 'gymSessions', 'bodyAssessments', 'waterLogs', 'coachMessages', 'raceEvents',
-  'coachPlans', 'coachGoalProposals', 'coachPlanItems', 'shoes', 'dailyCheckins', 'percentileSnapshots', 'leaderboardEntries', 'goalHistory',
-  'nutritionIncompleteDays'];
+  'coachPlans', 'coachGoalProposals', 'coachPlanItems', 'shoes', 'dailyCheckins', 'percentileSnapshots', 'leaderboardEntries', 'goalHistory'];
 const SHARED_ROW_KEYS = ['profile', 'dailySummary'];
 
 /** Devolve `patch` com as fatias iguais às do estado `current` trocadas pela
@@ -189,18 +191,6 @@ const queryGoalHistory = (userId) => supabase
   .order('valid_from', { ascending: true });
 const goalsDiffer = (a, b) => GOAL_KEYS.some((k) => (a?.[k] ?? null) !== (b?.[k] ?? null));
 let goalHistoryReloadSeq = 0;
-
-// ── Dias marcados como incompletos na Nutrição (2026-10-06) ─────────────
-/** Das linhas de nutrition_incomplete_days às datas 'AAAA-MM-DD', ordenadas
- *  e sem repetidas. Exportada para os testes. */
-export function incompleteDatesOf(rows) {
-  const out = new Set();
-  for (const r of rows || []) {
-    const d = typeof r?.date === 'string' ? r.date.slice(0, 10) : null;
-    if (d && /^\d{4}-\d{2}-\d{2}$/.test(d)) out.add(d);
-  }
-  return [...out].sort();
-}
 
 // O pedido do resumo diário em curso, se houver — ver loadDailySummary.
 // Fora do estado do store porque não é coisa que a UI leia; é só a trava.
@@ -274,11 +264,6 @@ export const useAppStore = create((set, get) => ({
      quando o perfil muda de objetivos — ver reloadGoalHistory. Quem precisa do
      objetivo de um dia usa goalsResolver (utils/goalHistory.js). */
   goalHistory: [],
-  /* Dias que o atleta marcou como incompletos na Nutrição (2026-10-06):
-     'AAAA-MM-DD', da tabela nutrition_incomplete_days. Um dia marcado sai de
-     todas as contas da Evolução · Nutrição (views/nutrition.js). Lido no
-     carregamento inicial; mudado por setNutritionDayIncomplete. */
-  nutritionIncompleteDays: [],
   raceEvents: [],
   coachPlans: [],
   coachPlanItems: [],
@@ -313,6 +298,10 @@ export const useAppStore = create((set, get) => ({
   // Ver specs/plano-de-treino.md §11.
   dailySummary: null,
   dailySummaryLoading: false,
+  // A quota (dev-back fd125f9e): { text, scope: 'hour'|'day'|null, until, day } — a frase da Carol a
+  // dizer porque é que o «Atualizar» não trouxe um resumo novo; expira sozinha (utils/quotaNotice).
+  // null sem quota.
+  dailySummaryNotice: null,
   // De que conta são as corridas e o ginásio que estão no store — posto
   // quando chegam, no mesmo set. O dailySummaryRefresh espera por ele para
   // tomar o ponto de partida: uma lista vazia de antes do carregamento não
@@ -429,6 +418,8 @@ export const useAppStore = create((set, get) => ({
     // seguinte. Os 'ignored' do próprio voltam do servidor ao entrar.
     try { localStorage.removeItem('ironcoach_insight_states'); } catch { /* sem storage */ }
     try { localStorage.removeItem('ironcoach_insight_snoozes'); } catch { /* sem storage */ }
+    // Os rascunhos (texto e fotos) também não passam para quem entra a seguir (auditoria B2).
+    clearAllDrafts();
     // proactiveKeyRequested (P.9): uma chave pedida antes do sign-out não é
     // para o próximo utilizador deste telemóvel.
     // A competição (cupSlice.js) também: a inscrição de quem saiu não passa
@@ -639,6 +630,30 @@ export const useAppStore = create((set, get) => ({
     set({ raceEvents: data });
   },
 
+  /* Perfil de carga por prova (2026-11-09): Prudente ou Mais volume (utils/loadProfileState.js).
+     Update direto da prova do próprio (RLS «own rows»), que limpa a volta sozinha a Prudente. Sem
+     a migration, a coluna não existe e o pedido falha: devolve o erro e a prova fica como estava.
+     Em demo não há BD — muda só aqui. */
+  setRaceLoadProfile: async (raceId, profile) => {
+    const userId = get().session?.user?.id || get().profile?.id;
+    if (!userId || !raceId) return { ok: false, error: { message: 'Sem sessão' } };
+    const patch = loadProfileUpdate(profile);
+    const apply = (row) => set((state) => ({ raceEvents: (state.raceEvents || []).map((r) => (r?.id === raceId ? { ...r, ...row } : r)) }));
+    if (userId === 'demo-user') { apply(patch); return { ok: true }; }
+    let res;
+    try {
+      res = await supabase.from('race_events').update(patch).eq('id', raceId).eq('user_id', userId).select().maybeSingle();
+    } catch (err) {
+      return { ok: false, error: err };
+    }
+    if (res?.error || !res?.data) {
+      console.warn('[perfil de carga] gravar:', res?.error?.message || 'sem linha');
+      return { ok: false, error: res?.error || { message: 'Não encontrei a prova.' } };
+    }
+    if ((get().session?.user?.id || get().profile?.id) === userId) apply(res.data);
+    return { ok: true, data: res.data };
+  },
+
   // ── Armário de sapatilhas (tabela shoes) ───────────────────────────────
   // O acumulado de km de cada par NÃO vive aqui: é derivado das corridas com
   // runs.shoe_id a apontar para o par (ver src/utils/shoes.js). Guardar um
@@ -815,38 +830,6 @@ export const useAppStore = create((set, get) => ({
     }
   },
 
-  /* Marca (ou desmarca) um dia como incompleto na Nutrição (2026-10-06): o
-     atleta só registou parte do dia e não quer que conte nas médias. O ecrã
-     muda logo (otimista); se a BD recusar, volta ao que estava e devolve
-     { error } para o Dia o dizer. Marcar duas vezes não é erro (a chave
-     primária já lá está: 23505 conta como feito). */
-  setNutritionDayIncomplete: async (dateISO, incomplete) => {
-    const userId = get().session?.user?.id || get().profile?.id;
-    const date = typeof dateISO === 'string' ? dateISO.slice(0, 10) : '';
-    if (!userId || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return { error: 'sem sessão' };
-    const before = get().nutritionIncompleteDays || [];
-    const has = before.includes(date);
-    if (has === !!incomplete) return { error: null };
-    const after = incomplete ? [...before, date].sort() : before.filter((d) => d !== date);
-    set({ nutritionIncompleteDays: after });
-    let error = null;
-    try {
-      const res = incomplete
-        ? await supabase.from('nutrition_incomplete_days').insert({ user_id: userId, date })
-        : await supabase.from('nutrition_incomplete_days').delete().eq('user_id', userId).eq('date', date);
-      error = res?.error && res.error.code !== '23505' ? res.error : null;
-    } catch (e) {
-      error = e || new Error('falhou');
-    }
-    if (error) {
-      console.warn('Dia incompleto não gravado:', error?.message || error);
-      // Repõe só este dia: outra marca feita entretanto fica.
-      const now = get().nutritionIncompleteDays || [];
-      set({ nutritionIncompleteDays: has ? [...now.filter((d) => d !== date), date].sort() : now.filter((d) => d !== date) });
-      return { error };
-    }
-    return { error: null };
-  },
   setFoodRules: (foodRules) => set({ foodRules }),
 
   reloadCoachGoalProposals: async () => {
@@ -1359,10 +1342,23 @@ export const useAppStore = create((set, get) => ({
     }
 
     const run = (async () => {
-      set({ dailySummaryLoading: true });
+      set({ dailySummaryLoading: true, dailySummaryNotice: null });
       try {
-        const { data, error } = await invokeEdgeFunctionWithTimeout('coach-daily-summary', { body: { force } });
-        if (error) { console.error('Error loading daily summary:', error); return null; }
+        const { data, error, isQuota, quotaScope, retryAfterMinutes } = await invokeEdgeFunctionWithTimeout('coach-daily-summary', { body: { force } });
+        if (error) {
+          /* A quota sem resumo de hoje (429): a frase dela, em vez de o cartão não dizer nada. */
+          if (isQuota) {
+            set({ dailySummaryNotice: quotaNotice({ text: error, scope: quotaScope, retryAfterMinutes, nowMs: Date.now(), todayISO: today }) });
+            return null;
+          }
+          console.error('Error loading daily summary:', error);
+          return null;
+        }
+        /* Com force e a quota passada, o servidor devolve o resumo guardado (200, cached) com
+           quota + quota_message: sem esta frase, o «Atualizar» parecia não fazer nada. */
+        if (data?.quota && typeof data.quota_message === 'string' && data.quota_message.trim()) {
+          set({ dailySummaryNotice: quotaNotice({ text: data.quota_message, scope: data.quota, retryAfterMinutes: data.retry_after_minutes, nowMs: Date.now(), todayISO: today }) });
+        }
         // A carga que pede conversa abre um assunto por resolver no servidor
         // (runLoadAlert.ts): o Início mostra-o já, sem esperar pela próxima
         // carga do perfil.
@@ -1778,13 +1774,14 @@ const sliceSeq = {}; // por fatia, o carregamento que a escreveu por último
 
 const EMPTY_DATA = {
   profile: null, isAdmin: false, meals: [], runs: [], gymSessions: [], bodyAssessments: [], waterLogs: [], goalHistory: [],
-  nutritionIncompleteDays: [],
-  coachMessages: [], raceEvents: [], coachPlans: [], coachGoalProposals: [], coachPlanItems: [], shoes: [], dailyCheckins: [], dailySummary: null,
+  coachMessages: [], raceEvents: [], coachPlans: [], coachGoalProposals: [], coachPlanItems: [], shoes: [], dailyCheckins: [], dailySummary: null, dailySummaryNotice: null,
   percentileSnapshots: [], leaderboardEntries: [],
   trainingLoadedFor: null,
   loadedSlices: {},
   cup: CUP_EMPTY,
 };
+// Para os testes: o que se limpa ao trocar de conta (revisão do af9d2cb4 — o aviso de quota do A ao B).
+export const __emptyDataForTests = EMPTY_DATA;
 /** O dataPending nunca dura mais do que isto: um pedido que nunca responde
  *  não pode deixar o onboarding, as boas-vindas e o primeiro dia à espera
  *  para sempre (revisão pré-deploy de 90bfa9b). */
@@ -1842,13 +1839,13 @@ export const SLICE_ALIASES = {
      distribuição);
    - ginasio/corpo: só a sua tabela (as outras listas só contam em textos);
    - nutricao: refeições, água, objetivos (perfil + histórico) e treinos
-     (o "Comer para treinar" desenha os dias de treino) e os dias marcados
-     como incompletos (saem das contas — sem eles as barras saltavam). */
+     (o "Comer para treinar" desenha os dias de treino). Os dias com registo
+     parcial inferem-se das refeições (opção B, 2026-11-01). */
 export const EVOLUTION_TAB_SLICES = {
-  hub: ['profile', 'runs', 'gym', 'meals', 'body', 'goalHistory', 'nutritionIncompleteDays'],
+  hub: ['profile', 'runs', 'gym', 'meals', 'body', 'goalHistory'],
   corrida: ['profile', 'runs'],
   ginasio: ['gym'],
-  nutricao: ['profile', 'meals', 'water', 'goalHistory', 'runs', 'nutritionIncompleteDays'],
+  nutricao: ['profile', 'meals', 'water', 'goalHistory', 'runs'],
   corpo: ['body'],
 };
 
@@ -1921,11 +1918,6 @@ async function runInitialLoad(set, get, userId) {
     // Nutrição (e as vistas pré-calculadas) o terem pronto antes de entrar.
     // Poucas linhas (uma por mudança de objetivos): sem paginação.
     ['goalHistory', queryGoalHistory(userId), (data) => ({ goalHistory: list(data) })],
-    // Os dias marcados como incompletos (2026-10-06). Um erro (ex.: a tabela
-    // ainda não existe) não escreve — fica a lista que havia, vazia ao mudar
-    // de conta: sem marcas, a Nutrição conta como antes.
-    ['nutritionIncompleteDays', supabase.from('nutrition_incomplete_days').select('date').eq('user_id', userId),
-      (data) => ({ nutritionIncompleteDays: incompleteDatesOf(data) })],
     ['coachMessages', supabase.from('coach_messages').select('*').eq('user_id', userId).order('created_at', { ascending: true }),
       (data) => ({ coachMessages: keepTransientCoachMessages(list(data), get().coachMessages) })],
     ['raceEvents', supabase.from('race_events').select('*').eq('user_id', userId).order('date', { ascending: true }),
@@ -1977,6 +1969,9 @@ async function runInitialLoad(set, get, userId) {
   // conta já tenha estado completa antes (A → B → A).
   const firstForUser = completeUserId !== userId || switching;
   if (switching || firstForUser) set({ ...(switching ? EMPTY_DATA : {}), ...(firstForUser ? { dataPending: true } : {}) });
+  // Auditoria B2: na troca de conta, os rascunhos da anterior saem; ao entrar, os antigos sem conta na chave também.
+  if (switching) clearAllDrafts();
+  else if (firstForUser) purgeUnscopedDrafts();
   if (firstForUser) {
     setTimeout(() => {
       if (seq !== loadSeq || !get().dataPending) return;

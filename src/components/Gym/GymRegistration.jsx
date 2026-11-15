@@ -1,10 +1,13 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useAppStore } from '../../store';
+import { scopedDraftKey } from '../../utils/draftScope';
+import { useDraftUserId } from '../../utils/useDraftUserId';
 import { supabase, invokeEdgeFunctionWithTimeout } from '../../lib/supabase';
 import { ANALYZE_TIMEOUT_MS } from '../../lib/edgeTimeouts';
 import { compressImage } from '../../lib/image';
 import { CoachAnalyzeButton } from '../shared/CoachButton';
 import { AnalysisSkeleton, AnalysisFailure } from '../shared/AnalysisState';
+import SaveErrorLine from '../shared/SaveErrorLine';
 import useAnalysis from '../../utils/useAnalysis';
 import { Dumbbell, Users } from 'lucide-react';
 import { firstRecordMoment } from '../../utils/firstRecord';
@@ -25,6 +28,10 @@ import { usePersistedDraftMedia } from '../../utils/draftMediaPersistence';
 import { normalizeStartTime, startTimeInputValue } from '../../utils/startTime';
 import CarolInterventionActions from '../shared/CarolInterventionActions';
 import { FieldInput, FieldTextarea } from '../shared/registration/Field';
+import { useClientRequestId, upsertById, } from '../../utils/clientRequestId';
+import { saveError, saveRefusal, reportSaveFailure, saveFailureMessage, isNoRetryError } from '../../utils/saveFailure';
+import { printsNeedRead, AwaitingReadAction } from '../shared/registration/printsGate';
+import { PrintQuestions, questionsPayload, readQuestions } from '../shared/CarolQuestionsForm';
 
 const GYM_KINDS = [
   { key: 'forca', label: 'Força', icon: Dumbbell },
@@ -40,6 +47,8 @@ const MAX_PHOTOS = 6; // espelha MAX_PHOTOS em supabase/functions/analyze-gym
 
 export default function GymRegistration({ onClose, dateIso = null, sessionIdToEdit = null }) {
   const { profile, gymSessions, setGymSessions, loadInitialData, setNavGuard } = useAppStore();
+  // Idempotência (2026-11-01): o mesmo id em todas as tentativas de gravar este treino novo.
+  const requestId = useClientRequestId();
 
   
   const isEditing = !!sessionIdToEdit;
@@ -47,7 +56,9 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
   // Identifica este rascunho de forma única para sobreviver a um
   // recarregamento (ver formDraftPersistence.js) — nunca partilhado entre
   // treinos diferentes nem entre uma edição e uma criação nova a seguir.
-  const draftStorageKey = sessionIdToEdit ? `ironcoach:treino-rascunho:${sessionIdToEdit}` : 'ironcoach:treino-rascunho:nova';
+  // Por conta (auditoria B2): num telemóvel partilhado, o atleta seguinte não vê o rascunho do anterior.
+  const draftUserId = useDraftUserId();
+  const draftStorageKey = scopedDraftKey(sessionIdToEdit ? `ironcoach:treino-rascunho:${sessionIdToEdit}` : 'ironcoach:treino-rascunho:nova', draftUserId);
   // Só tenta restaurar UMA VEZ por sessão de edição/criação — sem isto, o
   // efeito de carregamento reporia o rascunho guardado por cima de
   // alterações mais recentes ainda não persistidas.
@@ -81,6 +92,8 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
      prints, a Carol lê-os; o que o atleta escreveu ganha sempre ao que ela
      ler (analyze-gym). Já não há "Foto | Manual" à escolha. */
   const [errorMsg, setErrorMsg] = useState('');
+  // #116: a gravação que falhou, para o «Tentar de novo» ao lado da mensagem dela.
+  const [failedSave, setFailedSave] = useState(null);
 
   // Limpa o item do plano do store assim que foi consumido para os estados
   // iniciais acima — nunca deve reaparecer numa próxima abertura "Novo Treino".
@@ -95,7 +108,7 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
      e que pode falhar. O registo manual e a edição continuam com `errorMsg`:
      são gravações, não análises de imagem, e não há alternativa manual para
      onde cair. */
-  const analysis = useAnalysis();
+  const analysis = useAnalysis({ kind: 'gym' });
   const isAnalyzing = analysis.isAnalyzing;
   /* Ler os prints e/ou as observações para o formulário, sem gravar (F2,
      Opção A). `reviewedPhotos` guarda quantos prints havia quando a leitura
@@ -103,6 +116,12 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
   const [reading, setReading] = useState(false);
   const [readNote, setReadNote] = useState(null);
   const [reviewedPhotos, setReviewedPhotos] = useState(null);
+  // #106: quantos prints havia na última tentativa de leitura (correu bem ou não).
+  const [readAttempt, setReadAttempt] = useState(null);
+  /* #106: as perguntas da Carol sobre o que leu nos prints (no máximo 3) e as respostas; seguem
+     com o registo em carol_questions ao gravar. Uma leitura nova substitui-as. */
+  const [printQuestions, setPrintQuestions] = useState([]);
+  const [printAnswers, setPrintAnswers] = useState({});
 
   // Métricas do relógio — opcionais, com ou sem prints.
   const [durationStr, setDurationStr] = useState(planItem?.target_duration_min ? String(planItem.target_duration_min) : '');
@@ -350,14 +369,16 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
       try {
         const { dataUrl, base64 } = await compressImage(file);
         setPhotos(prev => [...prev, { dataUrl, base64 }]);
+        // Prints novos: a leitura anterior (bem ou mal sucedida) deixa de valer (#106).
         setReviewedPhotos(null);
+        setReadAttempt(null); setPrintQuestions([]); setPrintAnswers({});
       } catch (err) {
         console.warn('Falha a processar imagem', err);
       }
     }
   };
 
-  const removePhoto = (idx) => { setPhotos(prev => prev.filter((_, i) => i !== idx)); setReviewedPhotos(null); };
+  const removePhoto = (idx) => { setPhotos(prev => prev.filter((_, i) => i !== idx)); setReviewedPhotos(null); setReadAttempt(null); setPrintQuestions([]); setPrintAnswers({}); };
 
   /* O plano do dia (F3): os treinos pendentes do tipo, nos planos aceites.
      Vindo do botão "Registar sessão" já está ligado, sem banner. */
@@ -417,7 +438,7 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
     setReading(true);
     setReadNote(null);
     try {
-      const { data, error } = await invokeEdgeFunctionWithTimeout('analyze-gym', {
+      const { data, error, isQuota, quotaScope, status } = await invokeEdgeFunctionWithTimeout('analyze-gym', {
         body: {
           mode: 'preview',
           images: photos.map(p => p.base64),
@@ -427,8 +448,9 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
           plan_blocks: planBlocks.map(b => ({ name: b.name, type: b.type })),
         },
       }, ANALYZE_TIMEOUT_MS);
-      if (error) throw new Error(error);
-      if (data?.error) throw new Error(data.error);
+      // A quota do dia (429): a frase da Carol, sem «Tentar de novo» nem save_failed.
+      if (error) throw (isQuota || status === 413) ? saveError({ isQuota, quotaScope, status, serverText: error }) : new Error(error);
+      if (data?.error) throw saveRefusal(data.error);
 
       const result = mergePreview(formRef.current, data.preview, planBlocks);
       const { patch } = result;
@@ -444,14 +466,20 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
       if (Object.keys(patch).length) setIsFormDirty(true);
       const readable = !!data.readable;
       setReviewedPhotos(fromPhotos && readable ? photos.length : null);
+      setPrintQuestions(fromPhotos ? readQuestions(data) : []); // só as de prints: uma leitura das notas não pergunta
+      setPrintAnswers({});
       setReadNote({ tone: readable ? 'ok' : 'warn', text: readSummary(result, fromPhotos ? 'foto' : 'notas') });
     } catch (err) {
       console.error(err);
+      setPrintQuestions([]); setPrintAnswers({});
       setReadNote({ tone: 'warn', text: err.message || 'Não consegui ler agora. Tenta outra vez, ou escreve o treino abaixo.' });
     } finally {
+      setReadAttempt(photos.length);
       setReading(false);
     }
   };
+  // #106: com prints por ler, o primeiro passo é lê-los; o «Analisar» vem depois.
+  const needsRead = !isEditing && printsNeedRead({ photosCount: photos.length, readCount: reviewedPhotos, attemptedCount: readAttempt });
 
   /* Bug #70: um treino do plano só com texto ("cadeira extensora, cadeira
      flexora e gémeos, 3-4 séries de 10-12 reps") traz o texto para as notas,
@@ -524,8 +552,9 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
   // mesmas fotos e os mesmos campos.
   const analyzePhotosTask = async () => {
     {
-      const { data, error } = await invokeEdgeFunctionWithTimeout('analyze-gym', {
+      const saveRes = await invokeEdgeFunctionWithTimeout('analyze-gym', {
         body: {
+          client_request_id: requestId.get(),
           images: photos.map(p => p.base64),
           mime_type: 'image/jpeg',
           date,
@@ -537,17 +566,23 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
           // Os prints já foram lidos e revistos: o servidor só os guarda.
           reviewed: reviewedPhotos !== null && reviewedPhotos === photos.length,
           ...metricsAndSetsBody(),
+          ...(photos.length ? questionsPayload(printQuestions, printAnswers) : {}),
         },
       }, ANALYZE_TIMEOUT_MS);
-      if (error) throw new Error(error);
-      if (data?.error) throw new Error(data.error);
+      const { data, error } = saveRes;
+      if (error) throw saveError(saveRes);
+      if (data?.error) throw saveRefusal(data.error);
 
       const analysed = { ...data.session, workout_session_sets: data.sets || [] };
       if (!Array.isArray(analysed.workout_session_sets) || analysed.workout_session_sets.length === 0) {
         console.warn('Aviso: análise retornou 0 séries', data);
       }
+      /* #121 (2026-11-10): a lista de AGORA, não a do render em que se tocou em gravar. A análise
+         demora; se as sessões chegaram ao store entretanto (a app acabada de abrir), a lista do clique
+         era [] — gravava-se [esta] por cima das 16 e a Carol dizia «O primeiro treino de ginásio». */
       const sessionWithSets = await persistSessionStartTime(analysed);
-      setGymSessions([sessionWithSets, ...gymSessions]);
+      setGymSessions(upsertById(useAppStore.getState().gymSessions, sessionWithSets));
+      requestId.renew();
       await completePlanItemForSession(sessionWithSets);
       useAppStore.getState().loadExerciseLocker?.();
       finishCreateAndGoToCalendar(sessionWithSets, 'Treino registado');
@@ -571,8 +606,9 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
     setIsSaving(true);
     setErrorMsg('');
     try {
-      const { data, error } = await invokeEdgeFunctionWithTimeout('analyze-gym', {
+      const saveRes = await invokeEdgeFunctionWithTimeout('analyze-gym', {
         body: {
+          client_request_id: requestId.get(),
           mode: 'manual',
           date,
           kind,
@@ -583,15 +619,17 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
           ...metricsAndSetsBody(),
         },
       }, ANALYZE_TIMEOUT_MS);
-      if (error) throw new Error(error);
-      if (data?.error) throw new Error(data.error);
+      const { data, error } = saveRes;
+      if (error) throw saveError(saveRes);
+      if (data?.error) throw saveRefusal(data.error);
 
       const analysed = { ...data.session, workout_session_sets: data.sets || [] };
       if (!Array.isArray(analysed.workout_session_sets) || analysed.workout_session_sets.length === 0) {
         console.warn('Aviso: análise retornou 0 séries', data);
       }
       const sessionWithSets = await persistSessionStartTime(analysed);
-      setGymSessions([sessionWithSets, ...gymSessions]);
+      setGymSessions(upsertById(useAppStore.getState().gymSessions, sessionWithSets));
+      requestId.renew();
 
       // Se esta sessão vem do plano (ou bate com um treino de ginásio
       // pendente nesse dia), marca o item como concluído — a data usada é a
@@ -603,7 +641,10 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
       finishCreateAndGoToCalendar(sessionWithSets, 'Treino registado');
     } catch (err) {
       console.error(err);
-      setErrorMsg(err.message || 'Falha a gravar o treino. Tenta novamente.');
+      reportSaveFailure('gym', err, { step: 'manual' });
+      const message = saveFailureMessage(err, 'Não consegui gravar o treino agora. Tenta de novo — não fica repetido.');
+      setErrorMsg(message);
+      setFailedSave(isNoRetryError(err) ? null : { message, retry: () => handleSaveManual() });
     } finally {
       setIsSaving(false);
     }
@@ -626,7 +667,7 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
 
       let savedSession = null;
       if (needsReanalysis) {
-        const { data, error } = await invokeEdgeFunctionWithTimeout('analyze-gym', {
+        const editRes = await invokeEdgeFunctionWithTimeout('analyze-gym', {
           body: {
             mode: 'manual',
             session_id: sessionIdToEdit,
@@ -639,8 +680,9 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
             ...metricsAndSetsBody(),
           },
         }, ANALYZE_TIMEOUT_MS);
-        if (error) throw new Error(error);
-        if (data?.error) throw new Error(data.error);
+        const { data, error } = editRes;
+        if (error) throw saveError(editRes);
+        if (data?.error) throw saveRefusal(data.error);
         savedSession = data?.session ? { ...data.session, workout_session_sets: data.sets || [] } : null;
         useAppStore.getState().clearDismissedIntervention(sessionIdToEdit);
       } else {
@@ -660,7 +702,10 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
       finishCreateAndGoToCalendar(savedSession, needsReanalysis ? 'Treino reanalisado pela Carol' : 'Treino atualizado');
     } catch (err) {
       console.error(err);
-      setErrorMsg(err.message || 'Falha a guardar alterações. Tenta novamente.');
+      reportSaveFailure('gym', err, { step: 'edit' });
+      const message = saveFailureMessage(err, 'Não consegui guardar as alterações agora. Tenta de novo.');
+      setErrorMsg(message);
+      setFailedSave(isNoRetryError(err) ? null : { message, retry: () => handleSaveEdit() });
     } finally {
       setIsSaving(false);
     }
@@ -684,6 +729,7 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
   const [confirmUnfinished, setConfirmUnfinished] = useState(false);
   const unfinishedExercises = exercises.filter(ex => (ex.name || '').trim() && ex.sets.some(st => !st.done));
   const handleAnalyze = () => {
+    if (needsRead) { handleRead(); return; }
     // Com prints, as séries do plano por confirmar caem e a leitura dos prints
     // preenche o que ele fez — "marcar todas" ali poria os alvos por cima do
     // que o print mostra (revisão pré-deploy, B1). O aviso é só sem prints.
@@ -737,10 +783,12 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
       busy={isSaving}
       label={needsReanalysis ? "Guardar e reanalisar" : "Guardar alterações"}
     />
+  ) : needsRead ? (
+    <AwaitingReadAction label="Analisar treino" />
   ) : (
     <CoachAnalyzeButton
       onClick={handleAnalyze}
-      disabled={isSaving || isAnalyzing}
+      disabled={isSaving || isAnalyzing || reading}
       busy={isSaving || isAnalyzing}
       label="Analisar treino"
     />
@@ -757,7 +805,8 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
         {analysis.hasFailed && (
           <AnalysisFailure
             detail={analysis.error}
-            onRetry={analysis.retry}
+            onRetry={analysis.quota ? undefined : analysis.retry}
+            quota={analysis.quota}
             onManual={!isEditing && photos.length
               ? () => { setPhotos([]); setReviewedPhotos(null); analysis.reset(); setIsFormDirty(true); }
               : undefined}
@@ -966,7 +1015,30 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
         />
       </RegistrationSection>
 
-      <RegistrationSection step={3} title="Como correu" optional className="[&>*]:mb-0!">
+      {/* #120 (2026-11-10, o Rui: «As fotos têm de estar antes do ponto 3»): os prints da app de
+          treino vêm a seguir aos exercícios e antes de «Como correu» (eram o passo 4, desde o #98) —
+          tiram-se depois de registar os exercícios, e a leitura preenche também as métricas do 4.
+          Escondido a editar: editar é sempre pelos campos, sem foto nova (mesmo
+          padrão da Corrida/Refeição). #106: com prints, o primeiro passo é «Ler os prints e
+          preencher» (desfaz o bug #72); o «Analisar treino» só vem depois da leitura. */}
+      {!isEditing && (
+        <RegistrationSection step={3} title="Prints da sessão" optional done={photos.length > 0} className="[&>*]:mb-0!">
+          <PhotoReadSection
+            photos={photos}
+            maxPhotos={MAX_PHOTOS}
+            onSelect={handlePhotoSelect}
+            onRemove={removePhoto}
+            // #110: a leitura faz-se sempre aqui, junto das fotos (por ler, o «Analisar» da barra fica desativado); depois de lidos, este deixa reler.
+            onRead={handleRead}
+            reading={reading}
+            note={readNote}
+          />
+          <PrintQuestions questions={printQuestions} answers={printAnswers} onChange={setPrintAnswers} />
+        </RegistrationSection>
+      )}
+
+      {/* A editar não há prints: «Como correu» é o passo 3. */}
+      <RegistrationSection step={isEditing ? 3 : 4} title="Como correu" optional className="[&>*]:mb-0!">
         <div>
           <label className="text-[11px] text-[var(--text-3)] mb-1.5 block font-semibold">Métricas do relógio (opcional)</label>
           <div className="grid grid-cols-2 gap-2.5">
@@ -1058,24 +1130,6 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
         </div>
       </RegistrationSection>
 
-      {/* #98: os prints da app de treino vêm no fim — tiram-se depois de registar os exercícios,
-          antes de gravar. Escondido a editar: editar é sempre pelos campos, sem foto nova (mesmo
-          padrão da Corrida/Refeição). Bug #72: sem botão "Ler os prints e preencher" — a Carol lê-os
-          ao "Analisar treino" e o que escreveste ganha sempre ao que ela ler. */}
-      {!isEditing && (
-        <RegistrationSection step={4} title="Prints da sessão" optional done={photos.length > 0} className="[&>*]:mb-0!">
-          <PhotoReadSection
-            photos={photos}
-            maxPhotos={MAX_PHOTOS}
-            onSelect={handlePhotoSelect}
-            onRemove={removePhoto}
-            autoReadNote="Ao analisar, leio os prints sozinha. O que escreveres aqui ganha sempre ao que eu ler — não apago nada."
-            reading={reading}
-            note={readNote}
-          />
-        </RegistrationSection>
-      )}
-
         {/* A intervenção da Carol neste registo — o mesmo componente do cartão
             e do "Registo Guardado" (2026-10-05): "Falar com a Carol" não
             dispensa e só fecha o formulário se o separador mudar de facto;
@@ -1091,7 +1145,7 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
           />
         )}
 
-        {errorMsg && <p role="alert" className="text-[13px] font-medium mt-3 text-center" style={{ color: 'var(--danger)' }}>{errorMsg}</p>}
+        <SaveErrorLine message={errorMsg} onRetry={failedSave && failedSave.message === errorMsg ? failedSave.retry : null} retrying={isSaving} />
     </RegistrationShell>
   );
 }

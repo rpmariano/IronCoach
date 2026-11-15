@@ -52,10 +52,14 @@ import { classifyRaceOutcome, describeRaceOutcome, raceResultSeconds } from '../
 import { achievementsForRace, missedInRace, describeMissedInRace } from '../../utils/achievements';
 import { badgesForRace } from '../../utils/badges';
 import { todayISO } from '../../lib/utils';
+import { outlookForRace, volumeReadingNote, volumeReadingText } from '../../utils/raceVolumeText';
+import LoadProfileCard, { useLoadState } from './LoadProfileCard';
 import { experienceLevelLabel } from '../../utils/experience';
 import { normalizeStartTime } from '../../utils/startTime';
 import './RaceHubView.css';
 import { runsOnly } from '@formulas/runKinds.ts';
+import { safeHttpUrl } from '../../utils/safeUrl';
+import CourseProfilePanel from './CourseProfilePanel';
 
 export default function RaceHubView({
   race,
@@ -70,6 +74,7 @@ export default function RaceHubView({
   onMarkCompleted,
   onMemoriesSaved,
   calendarRaceId,
+  course = null,
 }) {
   const [expandedPhaseId, setExpandedPhaseId] = useState(null);
   const [confirmCompleted, setConfirmCompleted] = useState(false);
@@ -87,6 +92,23 @@ export default function RaceHubView({
       coachPlanItems: storePlanItems,
     });
   }, [race, profile, runs, storePlans, storePlanItems]);
+
+  /* #113/#114 (2026-11-06): o volume até à prova numa só leitura, neutra (utils/raceVolumeText.js),
+     no lugar do aviso «volume insuficiente» — que parecia acusar o atleta de falhar o plano. */
+  const volumeOutlook = useMemo(
+    () => outlookForRace({ race, profile, runs, coachPlans: storePlans, coachPlanItems: storePlanItems, todayISO: todayISO() }),
+    [race, profile, runs, storePlans, storePlanItems],
+  );
+  /* Perfil de carga (2026-11-09): em conflito (carga a pedir cautela e volume abaixo, perfil por
+     escolher), o cartão das duas opções toma o lugar da leitura do volume — nunca os dois avisos. */
+  const loadState = useLoadState();
+  const loadConflictHere = loadState?.state === 'conflito' && loadState?.race?.id && loadState.race.id === race?.id;
+  const volumeLine = loadConflictHere ? null : volumeReadingText(volumeOutlook);
+  // Com Mais volume escolhido para esta prova, «a prova é para completar» contradizia a escolha dele.
+  const moreVolumeHere = loadState?.profile === 'mais_volume' && loadState?.race?.id === race?.id;
+  const volumeNote = moreVolumeHere ? null : volumeReadingNote(volumeOutlook);
+  // Os outros alertas de viabilidade ficam; o do volume passa à leitura acima.
+  const viabilityAlerts = plan.viability.flags.filter((f) => f !== 'volume_insuficiente');
 
   const {
     raceDate,
@@ -120,9 +142,10 @@ export default function RaceHubView({
   const info = race?.web_info || null;
 
   const dailyCheckins = useAppStore((s) => s.dailyCheckins);
+  const goalHistory = useAppStore((s) => s.goalHistory);
   const readiness = useMemo(() =>
-    calculateReadinessIndex(runs, meals, bodyAssessments, gymSessions, profile, race, dailyCheckins),
-  [runs, meals, bodyAssessments, gymSessions, profile, race, dailyCheckins]);
+    calculateReadinessIndex(runs, meals, bodyAssessments, gymSessions, profile, race, dailyCheckins, undefined, goalHistory),
+  [runs, meals, bodyAssessments, gymSessions, profile, race, dailyCheckins, goalHistory]);
 
   // Sem pilares com dados (readinessIndex.ts, 2026-10-04), nenhuma luz acende
   // e a pílula diz "a calibrar" — não "Baixa (0%)".
@@ -937,20 +960,28 @@ export default function RaceHubView({
           {carolAnalysis.overviewText}
         </p>
 
+        {volumeLine && (
+          <div data-testid="volume-outlook" className="mt-3 rounded-xl px-3 py-2.5" style={{ background: 'var(--surface-soft)', border: '1px solid var(--border-faint)' }}>
+            <p className="text-[11px] font-extrabold uppercase tracking-wider text-[var(--text-3)]">Volume até à prova</p>
+            <p className="text-[13px] mt-1 text-[var(--text-1)]" data-testid="volume-outlook-line">{volumeLine}</p>
+            {volumeNote && <p className="text-[12px] mt-1 text-[var(--text-2)]" data-testid="volume-outlook-note">{volumeNote}</p>}
+          </div>
+        )}
+        {race?.id && <LoadProfileCard variant="hub" raceId={race.id} />}
+
         {/* Os alertas de viabilidade eram âmbar dentro do ecrã da prova, onde
             tudo o resto também é âmbar — não se distinguiam do cenário. Coral
             (Warning), o bloco de aviso do sistema. Texto inalterado. */}
-        {plan.viability.flags.length > 0 && (
+        {viabilityAlerts.length > 0 && (
           <Warning
             title="Alertas de Viabilidade"
             icon={<AlertTriangle size={12} />}
             className="mt-4"
           >
-            {plan.viability.flags.map((flag) => (
+            {viabilityAlerts.map((flag) => (
               <span key={flag} className="block">
                 {flag === 'ultra_para_iniciante' && '• Prova de Ultra-Trail não recomendada para nível iniciante sem histórico de maratona.'}
                 {flag === 'tempo_insuficiente' && `• Faltam ${Math.floor(daysToRace / 7)} semanas — a preparação recomendada para esta distância é de ${totalWeeks} semanas.`}
-                {flag === 'volume_insuficiente' && `• O teu volume médio recente (${carolAnalysis.weeklyVolumeKm} km/sem) está abaixo do recomendado para esta distância.`}
               </span>
             ))}
           </Warning>
@@ -1091,6 +1122,14 @@ export default function RaceHubView({
 
       {confirmCompletedModal}
 
+      {/* ─── Percurso (GPX): o perfil de altitude e o traçado (CourseProfilePanel). Quem monta
+          (RunAgenda) lê o ficheiro e grava; sem `course`, não aparece. */}
+      {course && (
+        <div className="rh-web-info-card mb-4" data-testid="race-hub-course">
+          <CourseProfilePanel {...course} />
+        </div>
+      )}
+
       {/* ─── 4. Informação Oficial do Site da Prova & Extração ─────────────── */}
       <div className="rh-web-info-card mb-4">
         <div className="rh-web-header">
@@ -1122,14 +1161,19 @@ export default function RaceHubView({
             <div className="flex items-center justify-between p-2.5 rounded-xl bg-white/[0.04] border border-white/[0.08] gap-2">
               <div className="flex items-center gap-2 min-w-0">
                 <LinkIcon size={13} className="text-[var(--race)] shrink-0" />
-                <a
-                  href={race.website}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-xs font-semibold text-[var(--text-2)] underline hover:text-[var(--race)] transition truncate"
-                >
-                  {race.website}
-                </a>
+                {/* Só é link o que é http(s) — um «javascript:…» fica texto (utils/safeUrl.js). */}
+                {safeHttpUrl(race.website) ? (
+                  <a
+                    href={safeHttpUrl(race.website)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs font-semibold text-[var(--text-2)] underline hover:text-[var(--race)] transition truncate"
+                  >
+                    {race.website}
+                  </a>
+                ) : (
+                  <span className="text-xs font-semibold text-[var(--text-2)] truncate" data-testid="race-website-text">{race.website}</span>
+                )}
               </div>
             </div>
 

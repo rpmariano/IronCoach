@@ -53,6 +53,17 @@ describe('RaceCard — Detalhe da Prova no Calendário', () => {
     });
   });
 
+  it('o site da prova só é link se for http(s); um «javascript:» fica texto', () => {
+    const { unmount } = render(<RaceCard ev={sampleRace} onEdit={mockOnEdit} onToggleStatus={mockOnToggleStatus} onDelete={mockOnDelete} />);
+    fireEvent.click(screen.getByText('Corrida do Tejo'));
+    expect(screen.getByRole('link', { name: 'https://corradadotejo.pt' })).toHaveAttribute('href', 'https://corradadotejo.pt');
+    unmount();
+    render(<RaceCard ev={{ ...sampleRace, website: 'javascript:alert(1)' }} onEdit={mockOnEdit} onToggleStatus={mockOnToggleStatus} onDelete={mockOnDelete} />);
+    fireEvent.click(screen.getByText('Corrida do Tejo'));
+    expect(screen.getByTestId('race-website-text')).toHaveTextContent('javascript:alert(1)');
+    expect(document.querySelector('a[href^="javascript"]')).toBeNull();
+  });
+
   it('renderiza o cabeçalho do cartão fechado com nome e pílulas', () => {
     render(
       <RaceCard

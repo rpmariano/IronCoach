@@ -23,6 +23,19 @@ describe('firstRecordMoment', () => {
     expect(firstRecordMoment('meal', { meals: [] }, { id: 'm1' }).everFirst).toBe(true);
   });
 
+  /* #121 (2026-11-10): com sessão, uma lista vazia só diz «o primeiro» se as corridas e as sessões
+     desta conta já chegaram (trainingLoadedFor). Antes de chegarem, ou se o pedido falhou, não se sabe. */
+  it('#121: sem os treinos desta conta carregados, nem a primeira corrida nem o primeiro treino', () => {
+    const conta = { session: { user: { id: 'u1' } }, gymSessions: [], runs: [] };
+    expect(firstRecordMoment('gym', { ...conta, trainingLoadedFor: null }, { id: 'g1' })).toBeNull();
+    expect(firstRecordMoment('run', { ...conta, trainingLoadedFor: 'outra' }, { id: 'r1' })).toBeNull();
+    expect(firstRecordMoment('gym', { ...conta, trainingLoadedFor: 'u1' }, { id: 'g1' })).toMatchObject({ title: 'O primeiro treino de ginásio.' });
+    // As refeições e as avaliações vêm noutros pedidos: não dependem disto.
+    expect(firstRecordMoment('meal', { ...conta, meals: [], trainingLoadedFor: null }, { id: 'm1' })).toMatchObject({ title: 'A primeira refeição.' });
+    // Em demo, como sempre.
+    expect(firstRecordMoment('gym', { session: { user: { id: 'demo-user' } }, gymSessions: [] }, { id: 'g1' })).not.toBeNull();
+  });
+
   it('na voz dela: sem exclamações; e tipos desconhecidos não dão nada', () => {
     for (const k of ['run', 'meal', 'gym', 'body']) {
       const m = firstRecordMoment(k, {}, null);

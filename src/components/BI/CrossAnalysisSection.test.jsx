@@ -276,3 +276,44 @@ describe('CrossAnalysisSection — revelação dos gráficos (F5, 2026-10-04)', 
     expect(b.rightData).toBe(a.rightData);
   });
 });
+
+/* Pedido do Rui (2026-11-01): «as análises cruzadas não são afetadas pelas semanas escolhidas.
+   devia ficar visível que período afeta estas análises». */
+describe('CrossAnalysisSection — o período de cada análise', () => {
+  it('diz que não segue a semana escolhida e entrega a cada gráfico o período que usa', async () => {
+    const { periodRange } = await import('./crossPeriod');
+    render(
+      <CrossAnalysisSection
+        runs={[trial(100), trial(9), rodagem(5, 6)]}
+        gymSessions={[forca(4)]}
+        meals={[]}
+        bodyAssessments={[pesagem(100, 85), pesagem(10, 78)]}
+      />,
+    );
+    expect(screen.getByTestId('cross-period-note')).toHaveTextContent('não seguem a semana escolhida');
+    expect(chart('Eficiência Aeróbica vs. Peso').period).toBe(`Todo o histórico · ${periodRange(ago(100), ago(9))}`);
+    expect(chart('Impacto do Ginásio na Corrida').period).toMatch(/^Último mês · .+ – .+$/);
+    const { axisDate } = await import('./crossPeriod');
+    expect(chart('Impacto do Ginásio na Corrida').period.endsWith(axisDate(todayISO()))).toBe(true);
+  });
+});
+
+/* 2026-11-01: uma semana com RPE mas sem ginásio era desenhada a 0 (a curva caía ao chão); e o
+   volume aparecia «6 000,0 kg». */
+describe('CrossAnalysisSection — Impacto do Ginásio: buraco sem ginásio e kg sem casas', () => {
+  it('a semana sem ginásio é um buraco (null), não 0; o volume vai sem casas decimais', () => {
+    render(
+      <CrossAnalysisSection
+        runs={[rodagem(3, 5), rodagem(10, 6), rodagem(17, 5)]}
+        gymSessions={[forca(4, 6000), forca(18, 5000)]}
+        meals={[]}
+        bodyAssessments={[]}
+      />,
+    );
+    const c = chart('Impacto do Ginásio na Corrida');
+    const ys = c.leftData.data.map((d) => d.y);
+    expect(ys).toContain(null);
+    expect(ys).not.toContain(0);
+    expect(c.leftData.decimals).toBe(0);
+  });
+});

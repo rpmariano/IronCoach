@@ -10,7 +10,7 @@
 # Ruído pré-redesenho (julho/agosto 2026), decidido a 2026-09-17 ao construir o grafo:
 # mockups de conceitos, críticas ao index.html antigo, screenshots, ícones e os
 # scripts avulsos de captura/upload da raiz. Nada disto descreve a app atual.
-/public/*.html
+/specs/mockups/
 /index_legacy.html
 /.impeccable/
 /docs-images/
