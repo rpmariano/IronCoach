@@ -1,7 +1,7 @@
 import { invokeEdgeFunctionWithTimeout } from '../lib/supabase';
 import { useAppStore } from '../store';
 import { buildRaceAfterCandidate, markProactiveSent, wasProactiveSent, readRaceBalanceCache, writeRaceBalanceCache } from './coachProactive';
-import { raceBalanceFingerprint } from '@formulas/raceTime.ts';
+import { raceBalanceFingerprint } from '@formulas/raceBalanceFingerprint.ts';
 
 /* O balanço completo da Carol no hub da prova (pedido 2026-09-13).
 

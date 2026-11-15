@@ -598,7 +598,7 @@ export function readRaceBalanceCache(race, runId = null) {
  *  race_balance). */
 export function writeRaceBalanceCache(raceId, { text, suggestions = [], runId = null, fingerprint = null }) {
   // `fingerprint`: com que tempo, distância, objetivo e tipo o balanço foi feito
-  // (@formulas/raceTime.ts raceBalanceFingerprint). Se a prova mudar, a cópia
+  // (@formulas/raceBalanceFingerprint.ts). Se a prova mudar, a cópia
   // deixa de valer e o hub pede o balanço outra vez (regra do Rui, 2026-11-15).
   const entry = { text, suggestions, at: new Date().toISOString(), runId: runId || null, fingerprint: fingerprint || null };
   if (raceId) {

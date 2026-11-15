@@ -16,7 +16,7 @@
 
 import { getRacePrediction } from '@formulas/racePlanning.ts';
 import { categorizeDistance } from '@formulas/vocabulary.ts';
-import { isPlausibleRaceSeconds, suspectRaceTimeQuestion } from '@formulas/raceTime.ts';
+import { checkRaceTime } from '@formulas/raceTimeSanity.ts';
 import { findRaceRun, formatDuration, formatPace, parseDurationToSeconds, RACE_DISTANCE_OPTIONS } from './run';
 import { formatDistanceKm } from './paceMath';
 
@@ -152,7 +152,7 @@ export function previousBestSeconds(runs, race, run, races = []) {
     if (!sameRaceDistance(rDistanceKm, gps, raceDistanceKm, isMeasuredRace(race))) continue;
     if (terrainOf(racesById.get(r.race_id)?.race_type ?? r.details?.race_type) !== terrain) continue;
     const seconds = raceResultSeconds(r);
-    if (!seconds || !isPlausibleRaceSeconds(seconds, { distanceKm: rDistanceKm })) continue;
+    if (!seconds || !checkRaceTime({ seconds, distanceKm: rDistanceKm }).ok) continue;
     if (!best || seconds < best.seconds) best = { seconds, date: r.date.slice(0, 10), distanceKm: rDistanceKm };
   }
   return best;
@@ -227,12 +227,13 @@ export function classifyRaceOutcome({ race, run: givenRun, runs = [], profile = 
 
   /* Um tempo impossível é erro de entrada, não um resultado (bug de
      2026-11-15: «1:23» lido como 1 min 23 s deu «objetivo batido por 55:17»
-     e a conquista). Regra do Rui, em @formulas/raceTime.ts: mais rápido do
-     que 2:40/km, ou menos de metade do objetivo ou da previsão. Sem
-     veredicto, sem conquistas, sem recorde — o hub e a Carol pedem para o
-     confirmar. */
-  if (!isPlausibleRaceSeconds(officialSeconds, { distanceKm, targetSeconds, predictedSeconds })) {
-    return { ...base, predictedSeconds, timeSuspect: true };
+     e a conquista). Regra do Rui, em @formulas/raceTimeSanity.ts: mais
+     rápido do que 2:40/km, ou menos de metade do objetivo (ou, sem ele, da
+     previsão). Sem veredicto, sem conquistas, sem recorde — o hub e a Carol
+     pedem para o confirmar. */
+  const timeCheck = checkRaceTime({ seconds: officialSeconds, distanceKm, referenceSeconds: targetSeconds ?? predictedSeconds });
+  if (!timeCheck.ok) {
+    return { ...base, predictedSeconds, timeSuspect: true, timeMessage: timeCheck.message };
   }
 
   const best = previousBestSeconds(runs, race, run, races);
@@ -281,7 +282,7 @@ export function describeRaceOutcome(outcome, race) {
   if (!outcome) return '';
   const name = race?.name || 'A prova';
   if (outcome.timeSuspect) {
-    return `${suspectRaceTimeQuestion(outcome.officialSeconds, { distanceKm: outcome.distanceKm, targetSeconds: outcome.targetSeconds, predictedSeconds: outcome.predictedSeconds })} Corrige-o na corrida e eu faço as contas.`;
+    return `${outcome.timeMessage} Corrige-o na corrida e eu faço as contas.`;
   }
   if (outcome.verdict === 'sem_registo') {
     // Corrida ligada mas gravada sem tempo ("Prosseguir sem estas métricas"):

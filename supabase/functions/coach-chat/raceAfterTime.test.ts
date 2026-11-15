@@ -3,7 +3,7 @@ import {
   buildProactiveInstruction, buildRaceOutcomeContext, parseRaceOutcome, RACE_AFTER_SUSPECT_TIME_INSTRUCTION, raceAfterDecision,
   raceAfterInstruction, raceAfterStampOf, raceOutcomeHasBalance, replayRaceBalance,
 } from "./index.ts";
-import { raceBalanceFingerprint } from "../_shared/formulas/raceTime.ts";
+import { raceBalanceFingerprint } from "../_shared/formulas/raceBalanceFingerprint.ts";
 
 // O caso de 2026-11-15: um trail de 10,97 km, objetivo 56:40, previsão 53:26,
 // e o tempo oficial «1:23» lido como 83 s pela app.

@@ -70,7 +70,8 @@ import { computeSessionVolumeKg } from "../_shared/formulas/sessionVolumeKg.ts";
 import { formatPaceMinKm as sharedFormatPaceMinKm, formatPaceFromDistance } from "../_shared/formulas/paceFormat.ts";
 import { buildRacePacingPlan, compareSplitsToPlan, AMBITIOUS_RATIO, type RacePacingPlan, type SplitInput, type SplitComparison } from "../_shared/formulas/racePacing.ts";
 import { type CourseProfile, courseProfilePromptText, courseRouteSegments, sanitizeCourseProfile } from "../_shared/formulas/courseProfile.ts";
-import { isPlausibleRaceSeconds, raceBalanceFingerprint, suspectRaceTimeQuestion } from "../_shared/formulas/raceTime.ts";
+import { checkRaceTime } from "../_shared/formulas/raceTimeSanity.ts";
+import { raceBalanceFingerprint } from "../_shared/formulas/raceBalanceFingerprint.ts";
 import { computeRaceEve, hhmm as sharedHhmm } from "../_shared/formulas/raceEve.ts";
 import { buildCupMapTurn, dayMonth, DECISION_TEXT, fetchSeriesBlock, isCupSchemaMissing, SEASON_GOAL_TEXT, seriesRacePhaseText, type SeriesBlock } from "../_shared/seriesBlock.ts";
 import { fetchCupResultFacts } from "../_shared/cupResultFacts.ts";
@@ -1579,7 +1580,7 @@ export interface RaceOutcome {
   splits: SplitInput[];
   // As conquistas que esta prova acabou de dar (chaves de utils/achievements.js).
   achievements_new: string[];
-  /** O tempo oficial é erro de entrada (raceTime.ts, regras do Rui de
+  /** O tempo oficial é erro de entrada (raceTimeSanity.ts, regras do Rui de
    *  2026-11-15: mais rápido do que 2:40/km, ou menos de metade do objetivo
    *  ou da previsão — o bug de «1:23» lido como 1 min 23 s). Sem balanço nem
    *  conquistas com ele: a Carol pede para o confirmar. */
@@ -1606,6 +1607,13 @@ function shortStr(v: unknown, max = 80): string | null {
 /** Valida o `race_outcome` do body. Tudo o que não bater certo cai para
  *  null (o campo) ou para "sem balanço" (o objeto inteiro) — o turno
  *  continua a funcionar como o race_after de sempre. */
+/** O que se passa ao checkRaceTime (raceTimeSanity.ts, a regra partilhada com
+ *  a app): só os segundos, a distância e a referência — o objetivo ou, sem
+ *  ele, a previsão. */
+function raceTimeInput(seconds: number, distanceKm: number | null, o: { target_seconds?: unknown; predicted_seconds?: unknown }) {
+  return { seconds, distanceKm, referenceSeconds: posNum(o.target_seconds) ?? posNum(o.predicted_seconds) };
+}
+
 export function parseRaceOutcome(raw: unknown): RaceOutcome | null {
   if (!raw || typeof raw !== "object") return null;
   const r = raw as Record<string, unknown>;
@@ -1622,9 +1630,7 @@ export function parseRaceOutcome(raw: unknown): RaceOutcome | null {
   const distanceKm = posNum(r.distance_km);
   // A app nova marca-o (time_suspect); uma versão antiga não — o servidor
   // verifica sempre com a mesma régua (bug de 2026-11-15).
-  const timeSuspect = !!official && (r.time_suspect === true || !isPlausibleRaceSeconds(official, {
-    distanceKm, targetSeconds: posNum(r.target_seconds), predictedSeconds: posNum(r.predicted_seconds),
-  }));
+  const timeSuspect = !!official && (r.time_suspect === true || !checkRaceTime(raceTimeInput(official, distanceKm, r)).ok);
   return {
     race_id: shortStr(r.race_id, 64),
     name: shortStr(r.name),
@@ -1836,7 +1842,9 @@ export function buildRaceOutcomeContext(o: RaceOutcome): string {
   const cat = o.category ? RACE_CATEGORY_LABELS[o.category] || o.category : null;
   lines.push(`Prova: ${o.name || "(sem nome)"}${o.date ? `, ${o.date}` : ""}${o.race_type ? `, ${RACE_TYPE_LABELS[o.race_type] || o.race_type}` : ""}${o.distance_km ? `, ${o.distance_km} km` : ""}${cat ? ` (${cat})` : ""}.`);
   if (o.time_suspect && o.official_seconds) {
-    const question = suspectRaceTimeQuestion(o.official_seconds, { distanceKm: o.distance_km, targetSeconds: o.target_seconds, predictedSeconds: o.predicted_seconds });
+    const check = checkRaceTime(raceTimeInput(o.official_seconds, o.distance_km, o));
+    // Marcado pela app com uma regra que o servidor não reproduz: a pergunta genérica.
+    const question = !check.ok ? check.message : `${formatHms(o.official_seconds)} não bate certo com esta prova. Confirma o tempo.`;
     lines.push(`Tempo oficial registado: ${formatHms(o.official_seconds)} — ERRO DE ENTRADA, não é um tempo possível para esta prova. Não é um facto: nada de comparar com o objetivo, a previsão ou o melhor anterior, e nada de conquistas. A pergunta a fazer-lhe: «${question}»`);
     return lines.join("\n");
   }
