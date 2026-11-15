@@ -3,7 +3,7 @@ import { RefreshCw } from 'lucide-react';
 import CoachAvatar from '../Coach/CoachAvatar';
 import { inferMoodFromText } from '@formulas/carolMood.ts';
 import { useAppStore } from '../../store';
-import { existingRaceBalance, requestRaceBalance, balanceAlreadyGivenInChat, balanceParagraphs } from '../../utils/raceBalance';
+import { existingRaceBalance, requestRaceBalance, balanceAlreadyGivenInChat, balanceParagraphs, raceBalanceFingerprintFor } from '../../utils/raceBalance';
 
 /* O balanço da Carol no hub da prova (pedido 2026-09-13). Com a corrida
    registada, pede-se o balanço completo ao coach-chat à primeira abertura e
@@ -13,18 +13,47 @@ import { existingRaceBalance, requestRaceBalance, balanceAlreadyGivenInChat, bal
    que muda no treino. */
 export default function RaceBalanceCard({ race, run, runs = [], profile = {}, numbersLine, onLeave, onSaved }) {
   const { raceEvents } = useAppStore();
-  const [balance, setBalance] = useState(() => existingRaceBalance(race, run?.id));
+  // O que conta para o balanço agora (tempo, distância, objetivo, tipo — regra
+  // do Rui, 2026-11-15): um balanço feito com outra coisa refaz-se.
+  const fingerprint = run ? raceBalanceFingerprintFor({ race, run, runs, raceEvents, profile }) : null;
+  const [balance, setBalance] = useState(() => existingRaceBalance(race, run?.id, fingerprint));
   const [loading, setLoading] = useState(false);
   const [failed, setFailed] = useState(false);
   const requestedRef = useRef(null);
+  const verifiedRef = useRef(null);
 
-  // A coluna pode chegar depois (recarga da prova) — é ela que manda.
+  // A coluna pode chegar depois (recarga da prova) — é ela que manda, a não
+  // ser que a cópia local diga que foi feita com outra versão da prova.
   useEffect(() => {
-    if (race?.coach_balance && race.coach_balance !== balance?.text) {
-      setBalance({ text: race.coach_balance, suggestions: balance?.suggestions || [] });
+    if (race?.coach_balance && race.coach_balance !== balance?.text && existingRaceBalance(race, run?.id, fingerprint)) {
+      setBalance({ text: race.coach_balance, suggestions: balance?.suggestions || [], fingerprint: balance?.fingerprint ?? null });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [race?.coach_balance]);
+
+  // A prova mudou depois deste balanço: sai, e o efeito de baixo pede outro.
+  useEffect(() => {
+    if (balance?.fingerprint && fingerprint && balance.fingerprint !== fingerprint) setBalance(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fingerprint]);
+
+  // Um balanço sem impressão digital (de antes da regra, ou de outro
+  // dispositivo) mostra-se logo e confirma-se uma vez, em silêncio: se nada
+  // mudou, o servidor devolve o mesmo sem chamar o Gemini; se já não o tem
+  // (ou a prova mudou), refá-lo — e o novo substitui o que está à vista.
+  useEffect(() => {
+    if (!run || !race?.id || !balance || balance.fingerprint || !fingerprint || loading) return;
+    const key = `${race.id}|${fingerprint}`;
+    if (verifiedRef.current === key) return;
+    verifiedRef.current = key;
+    requestRaceBalance({ race, run, runs, raceEvents, profile })
+      .then((entry) => {
+        setBalance(entry);
+        if (entry.text !== balance.text) onSaved?.({ coach_balance: entry.text, coach_balance_at: entry.at });
+      })
+      .catch((err) => console.warn('Balanço da prova não confirmado', err));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [race?.id, run?.id, balance, fingerprint]);
 
   const ask = async () => {
     setLoading(true);
@@ -45,12 +74,17 @@ export default function RaceBalanceCard({ race, run, runs = [], profile = {}, nu
   // prova. Se o chat já fez este balanço (neste dispositivo) não se repete
   // sem o atleta o pedir: a mensagem já está lá.
   useEffect(() => {
-    if (!run || !race?.id || balance || requestedRef.current === race.id) return;
-    if (balanceAlreadyGivenInChat({ race, run, runs, raceEvents, profile })) return;
-    requestedRef.current = race.id;
+    const askKey = `${race?.id}|${fingerprint ?? ''}`;
+    if (!run || !race?.id || balance || requestedRef.current === askKey) return;
+    // Uma cópia local feita com outra versão da prova: refaz-se, mesmo que o
+    // chat já tenha dado o balanço antigo (regra do Rui, 2026-11-15).
+    const changed = !!fingerprint && !existingRaceBalance({ ...race, coach_balance: null }, run?.id, fingerprint)
+      && !!existingRaceBalance({ ...race, coach_balance: null }, run?.id);
+    if (!changed && balanceAlreadyGivenInChat({ race, run, runs, raceEvents, profile })) return;
+    requestedRef.current = askKey;
     ask();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [race?.id, run?.id, balance]);
+  }, [race?.id, run?.id, balance, fingerprint]);
 
   const reply = (text) => {
     const store = useAppStore.getState();

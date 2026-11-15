@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { useAppStore } from '../../store';
 import { scopedDraftKey } from '../../utils/draftScope';
 import { useDraftUserId } from '../../utils/useDraftUserId';
-import ConfirmDeleteModal from '../shared/ConfirmDeleteModal';
+import RaceRemoveDialog from './RaceRemoveDialog';
 import UnsavedChangesModal from '../shared/UnsavedChangesModal';
 import PremiumModal from '../shared/PremiumModal';
 import useCarouselActiveHeight from '../../utils/useCarouselActiveHeight';
@@ -183,14 +183,13 @@ export default function RunAgenda({ onClose }) {
   const [experienceLevelCategoryKey, setExperienceLevelCategoryKey] = useState(null);
   const [fetchingWebInfo, setFetchingWebInfo] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const [isDeleting, setIsDeleting] = useState(false);
 
   const activePageIndex = PAGE_KEYS.indexOf(activePage);
   /* Prova concluída: os detalhes de criação (data, distância, objetivo…)
      ficam como estavam — mudá-los depois reescrevia o palmarés, a régua do
      objetivo e o balanço da Carol. O que se edita a partir daqui é o
      RESULTADO, pelo "Editar o registo" do hub (pedido 2026-09-13). Sem a
-     página "Detalhes da prova", sem "Guardar prova"; fica "Eliminar". */
+     página "Detalhes da prova", sem "Guardar prova"; fica "Eliminar prova". */
   const detailsLocked = !!editingEventId && draft.status === 'concluida';
 
   /* A prova de uma jornada do Troféu (race_events.cup_round_id, specs/
@@ -203,20 +202,6 @@ export default function RunAgenda({ onClose }) {
      sempre null e nada disto muda o formulário (revisão da Fase 1,
      2026-09-26). */
   const isCupRound = !!editingEventId && !!draft.cup_round_id;
-
-  /* Apagar a prova-objetivo de um plano deixa o plano sem objetivo
-     (race_lost_at, migration 20260918074705) — e a Carol vai querer falar
-     disso. O atleta pode fazê-lo, mas sabendo o que acontece a seguir; é o
-     mesmo princípio de decisão informada do resto do plano vinculado
-     (specs/plano-vinculado-a-prova.md §2.5). */
-  const isPlanObjective = !!editingEventId && (coachPlans || []).some(
-    // todayISO() e não todayIso: essa constante só é declarada mais abaixo,
-    // e lê-la aqui seria um ReferenceError no primeiro render (TDZ).
-    (p) => p?.status === 'aceite' && p.race_id === editingEventId && String(p.period_end || '').slice(0, 10) >= todayISO(),
-  );
-  const deleteMessage = isPlanObjective
-    ? 'Esta prova é o objetivo do teu plano de treino. Se a eliminares, o plano fica sem objetivo e a Carol vai querer falar contigo sobre o que fazer a seguir. Esta ação não pode ser desfeita.'
-    : 'Tens a certeza que queres eliminar esta prova? Esta ação não pode ser desfeita.';
 
   /* Aviso informativo: esta prova, como está a ser gravada, entra em conflito
      com o plano ativo. Só quando é PRINCIPAL e cai dentro de um plano aceite
@@ -987,28 +972,14 @@ export default function RunAgenda({ onClose }) {
     }
   };
 
-  // "Eliminar prova" — só existe a editar uma prova já gravada (uma prova
-  // nova ainda sem id não tem o que apagar na BD; "Cancelar"/fechar já
-  // descarta o rascunho). Confirmação via ConfirmDeleteModal, não
-  // window.confirm — consistente com RunCard/GymSessionCard/MealCard/
-  // BodyAssessmentCard, que já usam este popup para o mesmo tipo de ação.
-  const handleDeleteRace = async () => {
-    if (!editingEventId) return;
-    setShowDeleteConfirm(false);
-    setIsDeleting(true);
-    try {
-      const { error } = await supabase.from('race_events').delete().eq('id', editingEventId);
-      if (error) throw error;
-      setRaceEvents(raceEvents.filter(e => e.id !== editingEventId));
-      showToast('Prova eliminada');
-      setNavGuard(null);
-      handleCloseForm();
-    } catch (err) {
-      console.error('Error deleting race event:', err);
-      showToast('Erro ao eliminar prova.', 'error');
-    } finally {
-      setIsDeleting(false);
-    }
+  /* «Eliminar prova» (RaceRemoveDialog, o mesmo da agenda): o botão diz sempre o que apaga — a
+     prova (regra do Rui, 2026-11-15). Refazer só o tempo faz-se em «Editar o registo» →
+     «Eliminar registo». Uma prova nova ainda sem id não tem o que apagar: "Cancelar"/fechar já
+     descarta o rascunho. */
+  const editingRace = editingEventId ? (raceEvents || []).find(e => e.id === editingEventId) : null;
+  const handleRaceDeleted = () => {
+    setNavGuard(null);
+    handleCloseForm();
   };
 
   // Botão "Cancelar" do formulário — só interrompe com o aviso se houver
@@ -1117,13 +1088,11 @@ export default function RunAgenda({ onClose }) {
       {leaveModal}
       {validationModal}
       {confirmation && <RecordConfirmation label={confirmation.label} onDone={confirmation.done} />}
-      <ConfirmDeleteModal
-        isOpen={showDeleteConfirm}
+      <RaceRemoveDialog
+        isOpen={showDeleteConfirm && !!editingRace}
+        race={editingRace}
         onClose={() => setShowDeleteConfirm(false)}
-        onConfirm={handleDeleteRace}
-        isDeleting={isDeleting}
-        title="Eliminar prova"
-        message={deleteMessage}
+        onDeleted={handleRaceDeleted}
       />
 
       <div className="space-y-4">
@@ -1212,11 +1181,12 @@ export default function RunAgenda({ onClose }) {
                   <Button
                     variant="light-danger"
                     onClick={() => setShowDeleteConfirm(true)}
-                    disabled={isSubmitting || isDeleting}
+                    disabled={isSubmitting}
                     className="flex-1 text-xs"
                     icon={<Trash2 size={14} />}
+                    data-testid="race-remove-button"
                   >
-                    Eliminar
+                    Eliminar prova
                   </Button>
                 )}
                 {!detailsLocked && (
@@ -1541,12 +1511,12 @@ export default function RunAgenda({ onClose }) {
                   <Button
                     variant="light-danger"
                     onClick={() => setShowDeleteConfirm(true)}
-                    disabled={isSubmitting || isDeleting}
+                    disabled={isSubmitting}
                     type="button"
                     className="text-xs"
                     icon={<Trash2 size={14} />}
                   >
-                    Eliminar
+                    Eliminar prova
                   </Button>
                 )}
                 <Button

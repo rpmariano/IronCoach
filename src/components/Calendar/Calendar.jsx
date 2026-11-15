@@ -19,7 +19,7 @@ import MealRegistration from '../Nutrition/MealRegistration';
 import BodyRegistration from '../Body/BodyRegistration';
 import CreatedRecordModal from '../shared/CreatedRecordModal';
 import CoachInsightsDock from '../BI/CoachInsightsDock';
-import { Dialog } from '../shared/Sheet';
+import RaceRemoveDialog from '../Run/RaceRemoveDialog';
 import { orderDayRecords } from '../../utils/dayOrder';
 import { runsWithoutRaceRuns } from '../../utils/raceDay';
 import { scrollToTop } from '../../utils/scrollToTop';
@@ -295,26 +295,6 @@ export default function Calendar() {
     }
   };
 
-  const handleDeleteRace = async (id) => {
-    const previous = [...raceEvents];
-    setRaceEvents(raceEvents.filter(e => e.id !== id));
-    try {
-      const { error } = await supabase.from('race_events').delete().eq('id', id);
-      if (error) throw error;
-      showToast('Prova eliminada');
-    } catch (err) {
-      console.error(err);
-      setRaceEvents(previous);
-      showToast('Não consegui eliminar a prova. Tenta outra vez.', 'error');
-    }
-  };
-
-  const confirmDeleteRace = () => {
-    const alvo = raceToDelete;
-    setRaceToDelete(null);
-    if (alvo) handleDeleteRace(alvo.id);
-  };
-
   /* Registar a prova abre o registo de corrida em MODO PROVA, pelo store
      (specs/prova-concluida.md §3) — ecrã de topo no separador Corrida, como
      as outras duas entradas. Antes disto era um planItemPrefill montado à
@@ -556,27 +536,13 @@ export default function Calendar() {
         })}
       </div>
       
-      {raceToDelete && (
-        <Dialog
-          title="Eliminar esta prova?"
-          tone="race"
-          onClose={() => setRaceToDelete(null)}
-          actions={(
-            <>
-              <button type="button" onClick={confirmDeleteRace} className="flex-1 min-h-[44px] rounded-[11px] text-[13px] font-extrabold" style={{ background: 'var(--tint-race-bg)', border: '1px solid var(--tint-race-bd)', color: 'var(--race)' }}>
-                Eliminar
-              </button>
-              <button type="button" onClick={() => setRaceToDelete(null)} className="flex-1 min-h-[44px] rounded-[11px] text-[13px] font-bold" style={{ background: 'rgba(255,255,255,.05)', border: '1px solid var(--border-glass-strong)', color: 'var(--text-3)' }}>
-                Cancelar
-              </button>
-            </>
-          )}
-        >
-          <p className="text-[12.5px] leading-[1.55]" style={{ color: 'var(--text-3)' }}>
-            {raceToDelete.name ? `"${raceToDelete.name}" sai do calendário` : 'A prova sai do calendário'} e o plano deixa de a ter como alvo. Os treinos já registados ficam.
-          </p>
-        </Dialog>
-      )}
+      {/* O mesmo diálogo do hub (RaceRemoveDialog): numa prova com resultado, «Apagar o resultado»
+          primeiro e «Eliminar a prova» como secundária (bug de 2026-11-15). */}
+      <RaceRemoveDialog
+        isOpen={!!raceToDelete}
+        race={raceToDelete}
+        onClose={() => setRaceToDelete(null)}
+      />
 
       <CreatedRecordModal />
       {/* Os avisos da Carol acompanham o atleta em todo o lado menos no

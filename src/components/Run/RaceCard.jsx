@@ -327,7 +327,8 @@ export default function RaceCard({ ev, onEdit, onToggleStatus, onDelete, onRegis
               className="flex-1 text-xs"
               icon={<Trash2 size={14} />}
             >
-              Eliminar
+              {/* Sempre «Eliminar prova»: o botão diz o que apaga (regra do Rui, 2026-11-15). */}
+              Eliminar prova
             </Button>
           </div>
         </div>
