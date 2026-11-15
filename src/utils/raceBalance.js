@@ -1,6 +1,7 @@
 import { invokeEdgeFunctionWithTimeout } from '../lib/supabase';
 import { useAppStore } from '../store';
 import { buildRaceAfterCandidate, markProactiveSent, wasProactiveSent, readRaceBalanceCache, writeRaceBalanceCache } from './coachProactive';
+import { raceBalanceFingerprint } from '@formulas/raceTime.ts';
 
 /* O balanço completo da Carol no hub da prova (pedido 2026-09-13).
 
@@ -23,10 +24,24 @@ import { buildRaceAfterCandidate, markProactiveSent, wasProactiveSent, readRaceB
 const asError = (error) => (error instanceof Error ? error : new Error(typeof error === 'string' ? error : error?.message || 'Falha na chamada ao servidor.'));
 
 /** O balanço que já existe para esta prova: a coluna, senão a cópia local
- *  — se ainda for desta corrida (readRaceBalanceCache). */
-export function existingRaceBalance(race, runId = null) {
-  if (race?.coach_balance) return { text: race.coach_balance, suggestions: [] };
-  return readRaceBalanceCache(race, runId);
+ *  — se ainda for desta corrida (readRaceBalanceCache).
+ *
+ *  Com `fingerprint` (a da prova agora — raceBalanceFingerprintFor): uma cópia
+ *  local feita com OUTRA (o atleta corrigiu o tempo, a distância, o objetivo
+ *  ou o tipo) já não vale — null, e o hub pede-o outra vez; o servidor refaz
+ *  o balanço e substitui o anterior (regra do Rui, 2026-11-15). Sem impressão
+ *  digital (de antes desta regra, ou só a coluna) mostra-se, com
+ *  `fingerprint: null` — o hub confirma-o em silêncio (staleUnknown). */
+export function existingRaceBalance(race, runId = null, fingerprint = null) {
+  const cached = readRaceBalanceCache(race, runId);
+  if (fingerprint && cached?.fingerprint && cached.fingerprint !== fingerprint) return null;
+  if (race?.coach_balance) return { text: race.coach_balance, suggestions: cached?.suggestions || [], fingerprint: cached?.fingerprint ?? null };
+  return cached ? { ...cached, fingerprint: cached.fingerprint ?? null } : null;
+}
+
+/** A impressão digital com que se pede o balanço desta prova agora. */
+export function raceBalanceFingerprintFor({ race, run, runs, raceEvents, profile }) {
+  return raceBalanceFingerprint(buildRaceAfterCandidate({ race, run, runs, raceEvents, profile })?.raceOutcome);
 }
 
 /** True se a Carol já fez este balanço a partir do chat (neste dispositivo)
@@ -61,13 +76,15 @@ export async function requestRaceBalance({ race, run, runs, raceEvents, profile 
   const suggestions = Array.isArray(data?.suggestions) ? data.suggestions.filter((s) => typeof s === 'string' && s.trim()) : [];
 
   markProactiveSent(profile?.id, candidate);
-  const entry = writeRaceBalanceCache(race.id, { text, suggestions, runId: candidate.runId });
+  const entry = writeRaceBalanceCache(race.id, { text, suggestions, runId: candidate.runId, fingerprint: raceBalanceFingerprint(candidate.raceOutcome) });
 
   // Só o chat: escrever em raceEvents a partir daqui fazia o efeito de
   // carregamento do RunAgenda repor o rascunho por gravar dos "Detalhes"
   // (revisão pré-deploy 2026-09-13). A prova atualiza-se por quem monta o
   // hub (RaceBalanceCard → onSaved → writeRaceEventsLocally).
-  useAppStore.getState().addCoachMessage({ id: data?.model_message?.id || `${Date.now()}`, role: 'assistant', content: text });
+  // Um balanço repetido (`replayed`: o servidor devolveu o que já tinha) já
+  // está no chat — não se põe outra vez.
+  if (!data?.replayed) useAppStore.getState().addCoachMessage({ id: data?.model_message?.id || `${Date.now()}`, role: 'assistant', content: text });
   return entry;
 }
 

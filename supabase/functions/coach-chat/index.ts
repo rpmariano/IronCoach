@@ -70,6 +70,7 @@ import { computeSessionVolumeKg } from "../_shared/formulas/sessionVolumeKg.ts";
 import { formatPaceMinKm as sharedFormatPaceMinKm, formatPaceFromDistance } from "../_shared/formulas/paceFormat.ts";
 import { buildRacePacingPlan, compareSplitsToPlan, AMBITIOUS_RATIO, type RacePacingPlan, type SplitInput, type SplitComparison } from "../_shared/formulas/racePacing.ts";
 import { type CourseProfile, courseProfilePromptText, courseRouteSegments, sanitizeCourseProfile } from "../_shared/formulas/courseProfile.ts";
+import { isPlausibleRaceSeconds, raceBalanceFingerprint, suspectRaceTimeQuestion } from "../_shared/formulas/raceTime.ts";
 import { computeRaceEve, hhmm as sharedHhmm } from "../_shared/formulas/raceEve.ts";
 import { buildCupMapTurn, dayMonth, DECISION_TEXT, fetchSeriesBlock, isCupSchemaMissing, SEASON_GOAL_TEXT, seriesRacePhaseText, type SeriesBlock } from "../_shared/seriesBlock.ts";
 import { fetchCupResultFacts } from "../_shared/cupResultFacts.ts";
@@ -1353,11 +1354,14 @@ export async function recordProactiveDelivered(
   // O que acompanha a entrega (a proposta de uma revisão dos objetivos);
   // sem a coluna (migração 20261025204514 por aplicar), grava-se sem ele.
   payload: unknown = null,
+  // replace: a linha que já houver fica com este payload (o balanço refeito
+  // com outro tempo); por omissão, a primeira entrega manda.
+  opts: { replace?: boolean } = {},
 ): Promise<void> {
   try {
     let { error } = await sb
       .from("coach_proactive_log")
-      .upsert({ user_id: userId, trigger, key, ...(payload ? { payload } : {}) }, { onConflict: "user_id,key", ignoreDuplicates: true });
+      .upsert({ user_id: userId, trigger, key, ...(payload ? { payload } : {}) }, { onConflict: "user_id,key", ignoreDuplicates: !opts.replace });
     if (error && payload) {
       console.warn("coach_proactive_log: gravado sem payload:", error.message ?? error);
       ({ error } = await sb
@@ -1575,6 +1579,11 @@ export interface RaceOutcome {
   splits: SplitInput[];
   // As conquistas que esta prova acabou de dar (chaves de utils/achievements.js).
   achievements_new: string[];
+  /** O tempo oficial é erro de entrada (raceTime.ts, regras do Rui de
+   *  2026-11-15: mais rápido do que 2:40/km, ou menos de metade do objetivo
+   *  ou da previsão — o bug de «1:23» lido como 1 min 23 s). Sem balanço nem
+   *  conquistas com ele: a Carol pede para o confirmar. */
+  time_suspect?: boolean;
 }
 
 const ACHIEVEMENT_LABELS: Record<string, string> = {
@@ -1610,6 +1619,12 @@ export function parseRaceOutcome(raw: unknown): RaceOutcome | null {
   const basis = r.basis === "objetivo" || r.basis === "previsao" ? r.basis : null;
   const vs = r.vs_training === "acima" || r.vs_training === "dentro" || r.vs_training === "abaixo" ? r.vs_training : null;
   const date = shortStr(r.date, 10);
+  const distanceKm = posNum(r.distance_km);
+  // A app nova marca-o (time_suspect); uma versão antiga não — o servidor
+  // verifica sempre com a mesma régua (bug de 2026-11-15).
+  const timeSuspect = !!official && (r.time_suspect === true || !isPlausibleRaceSeconds(official, {
+    distanceKm, targetSeconds: posNum(r.target_seconds), predictedSeconds: posNum(r.predicted_seconds),
+  }));
   return {
     race_id: shortStr(r.race_id, 64),
     name: shortStr(r.name),
@@ -1638,9 +1653,89 @@ export function parseRaceOutcome(raw: unknown): RaceOutcome | null {
         .filter((sp) => sp.distance_km && sp.time_seconds)
         .slice(0, 60)
       : [],
-    achievements_new: Array.isArray(r.achievements_new)
+    achievements_new: !timeSuspect && Array.isArray(r.achievements_new)
       ? (r.achievements_new as unknown[]).filter((k): k is string => typeof k === "string" && k in ACHIEVEMENT_LABELS).slice(0, 6)
       : [],
+    time_suspect: timeSuspect,
+  };
+}
+
+// ── O balanço da prova: um por versão da prova (regras do Rui, 2026-11-15) ──
+// A chave race_after:<prova>:<corrida> fica no coach_proactive_log com a
+// impressão digital do que conta (raceBalanceFingerprint: tempo, distância,
+// objetivo, tipo), a mensagem e a nota que deu. Com a MESMA impressão, um
+// segundo pedido (o hub e o chat, ou dois toques) devolve o balanço que já
+// existe, sem gerar outro — antes, o `proactive_force` do hub saltava a chave
+// e saíam dois. Com OUTRA (o atleta corrigiu alguma coisa), refaz-se tudo uma
+// vez — o balanço, os factos, as conquistas — e o novo substitui o anterior:
+// a mensagem e a nota antigas apagam-se, o coach_balance é reescrito.
+export type RaceAfterStamp = { fingerprint: string | null; message_id: string | null; note: string | null };
+export type RaceAfterDecision = "generate" | "skip" | "replay" | "redo";
+
+/** Há balanço a fazer com este race_outcome (com números, ou a pedir para
+ *  confirmar um tempo impossível)? */
+export function raceOutcomeHasBalance(o: RaceOutcome | null | undefined): o is RaceOutcome {
+  return !!o && (o.verdict !== "sem_registo" || !!o.time_suspect);
+}
+
+export function raceAfterStampOf(payload: unknown): RaceAfterStamp | null {
+  if (!payload || typeof payload !== "object") return null;
+  const p = payload as Record<string, unknown>;
+  return {
+    fingerprint: typeof p.fingerprint === "string" && p.fingerprint ? p.fingerprint.slice(0, 120) : null,
+    message_id: typeof p.message_id === "string" && p.message_id ? p.message_id.slice(0, 64) : null,
+    note: typeof p.note === "string" && p.note ? p.note.slice(0, 500) : null,
+  };
+}
+
+/** O que fazer com um race_after com balanço: `log` é a linha da chave (ou
+ *  null se ainda não houve). Sem impressão digital (linhas de antes desta
+ *  regra) não se sabe com que dados foi feito: conta como a mesma — e o
+ *  balanço guardado, se o houver, devolve-se e passa a ter carimbo. */
+export function raceAfterDecision(o: RaceOutcome, log: { payload: unknown } | null, force: boolean): RaceAfterDecision {
+  if (!log) return "generate";
+  const stamp = raceAfterStampOf(log.payload);
+  if (stamp?.fingerprint && stamp.fingerprint !== raceBalanceFingerprint(o)) return "redo";
+  return force ? "replay" : "skip";
+}
+
+/** A linha da chave no coach_proactive_log (com o payload), ou null. Uma
+ *  falha a ler conta como "não há" — como wasProactiveDelivered. */
+// deno-lint-ignore no-explicit-any
+export async function readProactiveLog(sb: any, userId: string, key: string): Promise<{ payload: unknown } | null> {
+  try {
+    let { data, error } = await sb.from("coach_proactive_log").select("key, payload").eq("user_id", userId).eq("key", key).maybeSingle();
+    if (error) {
+      // Sem a coluna payload (migração por aplicar): só a existência.
+      ({ data, error } = await sb.from("coach_proactive_log").select("key").eq("user_id", userId).eq("key", key).maybeSingle());
+    }
+    if (error || !data) return null;
+    return { payload: data.payload ?? null };
+  } catch (e) {
+    console.warn("coach_proactive_log: leitura falhou:", e);
+    return null;
+  }
+}
+
+/** O balanço que já existe (race_events.coach_balance), na forma da resposta
+ *  normal, marcado `replayed` — o cliente não o põe outra vez no chat. null se
+ *  não houver (aí gera-se). */
+// deno-lint-ignore no-explicit-any
+export async function replayRaceBalance(sb: any, userId: string, raceId: string | null, stamp: RaceAfterStamp | null) {
+  if (!raceId) return null;
+  const { data, error } = await sb.from("race_events").select("coach_balance, coach_balance_at").eq("id", raceId).eq("user_id", userId).maybeSingle();
+  const text = !error && typeof data?.coach_balance === "string" ? data.coach_balance.trim() : "";
+  if (!text) return null;
+  return {
+    replayed: true,
+    proactive: "race_after",
+    user_message: null,
+    model_message: { id: stamp?.message_id ?? null, role: "model", content: text, created_at: data.coach_balance_at ?? null },
+    suggestions: [],
+    usage: null,
+    plan_proposed: false,
+    goals_updated: false,
+    goal_proposed: false,
   };
 }
 
@@ -1740,6 +1835,11 @@ export function buildRaceOutcomeContext(o: RaceOutcome): string {
   const lines: string[] = ["=== BALANÇO DA PROVA (calculado pela app a partir dos registos — usa ESTES números) ==="];
   const cat = o.category ? RACE_CATEGORY_LABELS[o.category] || o.category : null;
   lines.push(`Prova: ${o.name || "(sem nome)"}${o.date ? `, ${o.date}` : ""}${o.race_type ? `, ${RACE_TYPE_LABELS[o.race_type] || o.race_type}` : ""}${o.distance_km ? `, ${o.distance_km} km` : ""}${cat ? ` (${cat})` : ""}.`);
+  if (o.time_suspect && o.official_seconds) {
+    const question = suspectRaceTimeQuestion(o.official_seconds, { distanceKm: o.distance_km, targetSeconds: o.target_seconds, predictedSeconds: o.predicted_seconds });
+    lines.push(`Tempo oficial registado: ${formatHms(o.official_seconds)} — ERRO DE ENTRADA, não é um tempo possível para esta prova. Não é um facto: nada de comparar com o objetivo, a previsão ou o melhor anterior, e nada de conquistas. A pergunta a fazer-lhe: «${question}»`);
+    return lines.join("\n");
+  }
   if (o.verdict === "sem_registo" || !o.official_seconds) {
     lines.push("Corrida da prova: ainda não registada.");
     return lines.join("\n");
@@ -1804,7 +1904,15 @@ export const RACE_AFTER_UNLINKED_INSTRUCTION =
   `Não lhe peças para registar a prova: a corrida já existe. Pergunta-lhe se foi essa a prova e, se foi, que a ligue à prova ` +
   `para fazerem o balanço com os números certos. Sem balanço inventado e sem parabéns automáticos: ainda não sabes se foi ela.`;
 
+/** O race_after com um tempo oficial impossível (bug de 2026-11-15). */
+export const RACE_AFTER_SUSPECT_TIME_INSTRUCTION =
+  `A prova já passou, mas o tempo registado é um erro de entrada (o bloco BALANÇO DA PROVA diz porquê). ` +
+  `Em vez do balanço, pede-lhe que confirme o tempo, com a pergunta do bloco, na tua voz — curto e sem drama. ` +
+  `Nada de parabéns, de objetivo batido, de diferenças nem de conquistas. Diz-lhe que o corrija na corrida da prova: ` +
+  `assim que estiver certo, fazes o balanço a sério.`;
+
 export function raceAfterInstruction(o: RaceOutcome | null): string {
+  if (o?.time_suspect) return RACE_AFTER_SUSPECT_TIME_INSTRUCTION;
   if (!o || o.verdict === "sem_registo") return PROACTIVE_INSTRUCTIONS.race_after;
   const common =
     `A prova já passou e a corrida está registada: os números do bloco BALANÇO DA PROVA são os que contam — não os recalcules nem os contradigas. ` +
@@ -1985,7 +2093,7 @@ async function generateRaceCaption(geminiKey: string, o: RaceOutcome, firstName:
  *  `raceOutcome` só conta no race_after: com ele, o bloco de números e a
  *  instrução por veredicto entram antes das regras do turno. */
 export function buildProactiveInstruction(trigger: ProactiveTrigger, details: string | null, raceOutcome: RaceOutcome | null = null): string {
-  const withOutcome = trigger === "race_after" && !!raceOutcome && raceOutcome.verdict !== "sem_registo";
+  const withOutcome = trigger === "race_after" && raceOutcomeHasBalance(raceOutcome);
   // A corrida desse dia existe mas não está ligada à prova: nunca "regista a
   // prova" (revisão pré-deploy de 2026-09-26; o prefixo é o do cliente).
   const unlinkedRun = trigger === "race_after" && !withOutcome && !!details?.startsWith(UNLINKED_RUN_DETAILS_PREFIX);
@@ -7926,7 +8034,30 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
         });
       }
     }
-    if (proactiveTrigger && proactiveKey && !raceAfterForce && await wasProactiveDelivered(sb, userId, proactiveKey)) {
+    // O balanço da prova: um por tempo (raceAfterDecision, bug de 2026-11-15).
+    let raceAfterRedo: RaceAfterStamp | null = null;
+    let raceAfterSkip = false;
+    if (proactiveTrigger === "race_after" && proactiveKey && raceOutcomeHasBalance(raceOutcome)) {
+      const log = await readProactiveLog(sb, userId, proactiveKey);
+      const decision = raceAfterDecision(raceOutcome, log, raceAfterForce);
+      if (decision === "replay") {
+        const stamp = raceAfterStampOf(log?.payload);
+        const replay = await replayRaceBalance(sb, userId, raceOutcome.race_id, stamp);
+        if (replay) {
+          // Uma linha de antes da impressão digital fica com ela a partir daqui.
+          if (!stamp?.fingerprint) {
+            await recordProactiveDelivered(sb, userId, "race_after", proactiveKey,
+              { fingerprint: raceBalanceFingerprint(raceOutcome), message_id: stamp?.message_id ?? null, note: stamp?.note ?? null }, { replace: true });
+          }
+          return jsonResponse(replay);
+        }
+      }
+      if (decision === "redo") raceAfterRedo = raceAfterStampOf(log?.payload);
+      raceAfterSkip = decision === "skip";
+    } else if (proactiveTrigger && proactiveKey && !raceAfterForce && await wasProactiveDelivered(sb, userId, proactiveKey)) {
+      raceAfterSkip = true;
+    }
+    if (raceAfterSkip) {
       return jsonResponse({
         skipped: true,
         reason: "already_sent",
@@ -9801,12 +9932,29 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
     // este como referência. runSaveCoachNote trata do teto de notas e da
     // repetição (a mesma nota duas vezes não é erro); qualquer falha aqui
     // fica só no log, o balanço já foi dito.
-    if (proactiveTrigger === "race_after" && raceOutcome && raceOutcome.verdict !== "sem_registo") {
-      try {
-        const noteResult = await runSaveCoachNote(sb, userId, { category: "outro", note: raceOutcomeNote(raceOutcome) });
-        if (noteResult.startsWith("Erro")) console.warn("Nota do balanço da prova não guardada:", noteResult);
-      } catch (noteErr) {
-        console.warn("Nota do balanço da prova não guardada:", noteErr);
+    let raceAfterNote: string | null = null;
+    if (proactiveTrigger === "race_after" && raceOutcomeHasBalance(raceOutcome)) {
+      // Refeito com outros dados: o balanço e a nota de antes saem (o novo
+      // substitui-os, sem ficarem os dois no chat e na memória dela).
+      if (raceAfterRedo && !modelMsgErr) {
+        if (raceAfterRedo.message_id && raceAfterRedo.message_id !== modelMsg?.id) {
+          const { error: delMsgErr } = await sb.from("coach_messages").delete().eq("id", raceAfterRedo.message_id).eq("user_id", userId);
+          if (delMsgErr) console.warn("Balanço anterior não apagado:", delMsgErr.message);
+        }
+        if (raceAfterRedo.note) {
+          const { error: delNoteErr } = await sb.from("coach_notes").delete().eq("user_id", userId).eq("note", raceAfterRedo.note);
+          if (delNoteErr) console.warn("Nota do balanço anterior não apagada:", delNoteErr.message);
+        }
+      }
+      // Com um tempo impossível não há balanço — nem nota para a memória dela.
+      if (!raceOutcome.time_suspect) {
+        raceAfterNote = raceOutcomeNote(raceOutcome);
+        try {
+          const noteResult = await runSaveCoachNote(sb, userId, { category: "outro", note: raceAfterNote });
+          if (noteResult.startsWith("Erro")) console.warn("Nota do balanço da prova não guardada:", noteResult);
+        } catch (noteErr) {
+          console.warn("Nota do balanço da prova não guardada:", noteErr);
+        }
       }
       // E o balanço em si fica na prova (race_events.coach_balance), que é de
       // onde o hub o lê em qualquer dispositivo. Best-effort: sem a coluna
@@ -9823,7 +9971,11 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
 
     // A mensagem já foi escrita e vai chegar ao atleta: a chave fica
     // registada, para nenhum outro dispositivo a repetir.
-    if (proactiveTrigger && proactiveKey) await recordProactiveDelivered(sb, userId, proactiveTrigger, proactiveKey);
+    if (proactiveTrigger === "race_after" && proactiveKey && raceOutcomeHasBalance(raceOutcome)) {
+      // O carimbo: com que dados, que mensagem e que nota (raceAfterDecision).
+      const stamp: RaceAfterStamp = { fingerprint: raceBalanceFingerprint(raceOutcome), message_id: modelMsg?.id ?? null, note: raceAfterNote };
+      await recordProactiveDelivered(sb, userId, proactiveTrigger, proactiveKey, stamp, { replace: true });
+    } else if (proactiveTrigger && proactiveKey) await recordProactiveDelivered(sb, userId, proactiveTrigger, proactiveKey);
     if (targetsReviewLogKey && !modelMsgErr) await recordProactiveDelivered(sb, userId, "targets_review", targetsReviewLogKey, targetsReviewPayload);
     // O mapa fica entregue quando a mensagem fica gravada — chegue a resposta
     // ao cliente ou não (sondagem depois dos 45 s).

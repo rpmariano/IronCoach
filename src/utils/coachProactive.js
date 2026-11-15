@@ -596,8 +596,11 @@ export function readRaceBalanceCache(race, runId = null) {
  *  refere, e devolve a entrada. Um só sítio para os dois que a escrevem: o
  *  hub (requestRaceBalance) e o aviso do Início (Coach, coachIntent
  *  race_balance). */
-export function writeRaceBalanceCache(raceId, { text, suggestions = [], runId = null }) {
-  const entry = { text, suggestions, at: new Date().toISOString(), runId: runId || null };
+export function writeRaceBalanceCache(raceId, { text, suggestions = [], runId = null, fingerprint = null }) {
+  // `fingerprint`: com que tempo, distância, objetivo e tipo o balanço foi feito
+  // (@formulas/raceTime.ts raceBalanceFingerprint). Se a prova mudar, a cópia
+  // deixa de valer e o hub pede o balanço outra vez (regra do Rui, 2026-11-15).
+  const entry = { text, suggestions, at: new Date().toISOString(), runId: runId || null, fingerprint: fingerprint || null };
   if (raceId) {
     try {
       window.localStorage.setItem(`${RACE_BALANCE_CACHE_PREFIX}${raceId}`, JSON.stringify(entry));
