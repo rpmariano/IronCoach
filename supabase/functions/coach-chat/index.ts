@@ -1356,24 +1356,40 @@ export async function recordProactiveDelivered(
   // sem a coluna (migração 20261025204514 por aplicar), grava-se sem ele.
   payload: unknown = null,
   // replace: a linha que já houver fica com este payload (o balanço refeito
-  // com outro tempo); por omissão, a primeira entrega manda.
+  // com outros dados); por omissão, a primeira entrega manda. Precisa da
+  // política de UPDATE (migração 20261115120000).
   opts: { replace?: boolean } = {},
-): Promise<void> {
+): Promise<boolean> {
   try {
     let { error } = await sb
       .from("coach_proactive_log")
       .upsert({ user_id: userId, trigger, key, ...(payload ? { payload } : {}) }, { onConflict: "user_id,key", ignoreDuplicates: !opts.replace });
-    if (error && payload) {
+    // Sem a coluna payload (migração 20261025204514 por aplicar): grava-se sem
+    // ele. Só nesse caso — uma recusa (42501) não se esconde atrás de um
+    // segundo upsert que não faz nada (revisão pré-deploy de 2026-11-15, B1).
+    if (error && payload && PROACTIVE_LOG_MISSING_COLUMN.has(String(error.code ?? ""))) {
       console.warn("coach_proactive_log: gravado sem payload:", error.message ?? error);
       ({ error } = await sb
         .from("coach_proactive_log")
         .upsert({ user_id: userId, trigger, key }, { onConflict: "user_id,key", ignoreDuplicates: true }));
     }
-    if (error) console.warn("coach_proactive_log: gravação falhou:", error.message ?? error);
+    if (error) {
+      const denied = String(error.code ?? "") === "42501";
+      console.error(
+        `coach_proactive_log: gravação FALHOU${denied ? " — sem permissão de UPDATE (política «own proactive log update», migração 20261115120000)" : ""}`,
+        JSON.stringify({ key, replace: !!opts.replace, code: error.code ?? null, message: error.message ?? String(error) }),
+      );
+      return false;
+    }
+    return true;
   } catch (e) {
-    console.warn("coach_proactive_log: gravação falhou:", e);
+    console.error("coach_proactive_log: gravação FALHOU:", e);
+    return false;
   }
 }
+
+/** Os códigos de "a coluna não existe" (PostgREST e Postgres). */
+const PROACTIVE_LOG_MISSING_COLUMN = new Set(["PGRST204", "42703"]);
 
 /** A última mensagem dela é a do retomar de um plano a meio? (o registo do
  *  plan_resume grava-se logo a seguir à mensagem, por isso as duas horas

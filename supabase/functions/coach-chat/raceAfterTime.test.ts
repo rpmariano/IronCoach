@@ -1,7 +1,7 @@
 import { assert, assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
 import {
   buildProactiveInstruction, buildRaceOutcomeContext, parseRaceOutcome, RACE_AFTER_SUSPECT_TIME_INSTRUCTION, raceAfterDecision,
-  raceAfterInstruction, raceAfterStampOf, raceOutcomeHasBalance, replayRaceBalance,
+  raceAfterInstruction, raceAfterStampOf, raceOutcomeHasBalance, recordProactiveDelivered, replayRaceBalance,
 } from "./index.ts";
 import { raceBalanceFingerprint } from "../_shared/formulas/raceBalanceFingerprint.ts";
 
@@ -88,4 +88,63 @@ Deno.test("o handler: decide antes do Gemini, refaz substituindo, carimba com a 
   // Tempo impossível: sem nota para a memória dela. O coach_balance é reescrito (o mesmo update de sempre).
   assert(src.indexOf("if (!raceOutcome.time_suspect) {") < src.indexOf("raceAfterNote = raceOutcomeNote(raceOutcome);"));
   assertStringIncludes(src, ".update({ coach_balance: replyText, coach_balance_at: new Date().toISOString() })");
+});
+
+// ── B1 (revisão pré-deploy de 2026-11-15): o carimbo tem de mudar mesmo ──
+// Uma tabela coach_proactive_log simulada com a RLS de produção: o upsert que
+// atualiza uma linha existente só passa com a política de UPDATE.
+function logTable(opts: { updatePolicy: boolean }) {
+  const rows = new Map<string, Record<string, unknown>>();
+  const sb = {
+    from(table: string) {
+      assertEquals(table, "coach_proactive_log");
+      return {
+        upsert(row: Record<string, unknown>, o: { onConflict: string; ignoreDuplicates: boolean }) {
+          const id = `${row.user_id}|${row.key}`;
+          if (!rows.has(id)) { rows.set(id, { ...row }); return Promise.resolve({ error: null }); }
+          if (o.ignoreDuplicates) return Promise.resolve({ error: null }); // ON CONFLICT DO NOTHING
+          if (!opts.updatePolicy) {
+            return Promise.resolve({ error: { code: "42501", message: 'new row violates row-level security policy (USING expression) for table "coach_proactive_log"' } });
+          }
+          rows.set(id, { ...rows.get(id), ...row });
+          return Promise.resolve({ error: null });
+        },
+      };
+    },
+  };
+  return { sb, rows };
+}
+
+Deno.test("B1: com a política de UPDATE, a segunda gravação muda a impressão digital e o message_id", async () => {
+  const { sb, rows } = logTable({ updatePolicy: true });
+  const key = "race_after:r1:run1";
+  assertEquals(await recordProactiveDelivered(sb, "u1", "race_after", key, { fingerprint: "v1|83|10.97|3400|trail", message_id: "m-old", note: "n-old" }, { replace: true }), true);
+  assertEquals(await recordProactiveDelivered(sb, "u1", "race_after", key, { fingerprint: "v1|4980|10|3400|trail", message_id: "m-new", note: "n-new" }, { replace: true }), true);
+  assertEquals(rows.get(`u1|${key}`)!.payload, { fingerprint: "v1|4980|10|3400|trail", message_id: "m-new", note: "n-new" });
+  // E o pedido seguinte com a mesma prova já não refaz: devolve o guardado.
+  const o = parseRaceOutcome({ ...BUG, distance_km: 10, official_seconds: 4980, verdict: "aquem" })!;
+  assertEquals(raceAfterDecision(o, { payload: rows.get(`u1|${key}`)!.payload }, true), "replay");
+});
+
+Deno.test("B1: sem a política, o 42501 não passa por gravado — devolve false e fica no log como erro", async () => {
+  const { sb, rows } = logTable({ updatePolicy: false });
+  const key = "race_after:r1:run1";
+  await recordProactiveDelivered(sb, "u1", "race_after", key, { fingerprint: "a", message_id: "m-old", note: null }, { replace: true });
+  const errors: unknown[][] = [];
+  const orig = console.error;
+  console.error = (...a: unknown[]) => { errors.push(a); };
+  try {
+    assertEquals(await recordProactiveDelivered(sb, "u1", "race_after", key, { fingerprint: "b", message_id: "m-new", note: null }, { replace: true }), false);
+  } finally {
+    console.error = orig;
+  }
+  assertEquals((rows.get(`u1|${key}`)!.payload as { fingerprint: string }).fingerprint, "a");
+  assertEquals(errors.length, 1);
+  assertStringIncludes(String(errors[0][0]), "sem permissão de UPDATE");
+  assertStringIncludes(String(errors[0][1]), '"code":"42501"');
+});
+
+Deno.test("B1: a migration cria a política de UPDATE do dono", async () => {
+  const sql = await Deno.readTextFile(new URL("../../migrations/20261115120000_coach_proactive_log_update_policy.sql", import.meta.url));
+  assertStringIncludes(sql.replace(/\s+/g, " "), 'create policy "own proactive log update" on public.coach_proactive_log for update to authenticated using (auth.uid() = user_id) with check (auth.uid() = user_id);');
 });

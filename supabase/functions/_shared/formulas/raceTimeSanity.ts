@@ -3,8 +3,9 @@
    O caso: 10 km, objetivo 56:40, a atleta escreveu «1:23» — o campo leu 1 min 23 s (m:ss), quando
    ela queria 1:23:00. Gravou-se uma prova a 8 s/km. Duas regras, as duas bloqueiam:
 
-   1. Ritmo mais rápido do que 2:40/km — mais rápido do que o recorde do mundo em qualquer distância
-      de estrada (o dos 10 km anda pelos 2:42/km).
+   1. Ritmo mais rápido do que 2:40/km — ritmo de elite mundial. Não é o recorde do mundo (o dos
+      5 km anda pelos 2:34/km e o dos 10 km pelos 2:38/km), mas nenhum atleta da app lá chega: um
+      tempo assim é erro de entrada (revisão pré-deploy de 2026-11-15).
    2. Menos de 50% da referência: o objetivo da prova ou, sem ele, a previsão.
 
    A frase explica o erro de entrada provável e sugere o valor: um «a:bb» que falha mas faria sentido
@@ -92,7 +93,7 @@ export function checkRaceTime(input: RaceTimeInput): RaceTimeCheck {
   }
 
   const message = reason === 'faster_than_world_record'
-    ? `${shown} dá um ritmo mais rápido do que o recorde do mundo. Confirma o tempo.`
+    ? `${shown} dá um ritmo de elite mundial (mais rápido do que 2:40/km). Confirma o tempo.`
     : `${shown} é menos de metade do objetivo (${formatClock(reference as number)}). Confirma o tempo.`;
   return { ok: false, reason, message, suggestion: null };
 }
