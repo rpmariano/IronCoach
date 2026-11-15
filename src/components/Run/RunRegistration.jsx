@@ -24,7 +24,7 @@ import {
 import { shoeLabel } from '../../utils/shoes';
 import { formatDatePTShort } from '../../utils/racePlanEngine';
 import { achievementsForRace } from '../../utils/achievements';
-import { raceResultSeconds, gpsMatchesOfficialDistance } from '../../utils/raceOutcome';
+import { raceResultSeconds, gpsMatchesOfficialDistance, raceTargetSeconds, racePredictionSeconds } from '../../utils/raceOutcome';
 import { todayISO } from '../../lib/utils';
 import MissingMetricsBottomSheet from './MissingMetricsBottomSheet';
 import { ecrasQueSePerdem } from '../../../supabase/functions/_shared/sourceApps.ts';
@@ -32,7 +32,6 @@ import PremiumModal from '../shared/PremiumModal';
 import { firstRecordMoment } from '../../utils/firstRecord';
 import { runRecordMoment } from '@formulas/runRecord.ts';
 import { checkRaceTime } from '@formulas/raceTimeSanity.ts';
-import { predictRaceSeconds } from './RaceLevelSuggestion';
 import RaceRemoveDialog from './RaceRemoveDialog';
 import { WALK_TRAINING_TYPE, isWalk, runMatchesPlanItem } from '@formulas/runKinds.ts';
 import RunTrainingTypeHelp from '../shared/RunTrainingTypeHelp';
@@ -257,17 +256,14 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
      10 km com objetivo 56:40). A regra é a partilhada com o servidor (@formulas/raceTimeSanity.ts):
      mais rápido do que 2:40/km, ou menos de metade do objetivo — ou da previsão, sem objetivo. Vale
      no tempo oficial e na duração, ao sair do campo e ao gravar. */
+  // A mesma referência do veredicto da prova e do servidor (classifyRaceOutcome, predicted_seconds):
+  // o objetivo; sem ele, a previsão do treino anterior à prova, sem a própria corrida.
   const raceTimeReference = () => {
     if (!raceEvent) return null;
-    const target = Number(raceEvent.target_time_seconds) || parseDurationToSeconds(raceEvent.target_time) || null;
+    const editing = runIdToEdit ? (runs || []).find(r => r.id === runIdToEdit) : null;
+    const target = raceTargetSeconds(raceEvent, editing?.duration_seconds);
     if (target) return target;
-    try {
-      return predictRaceSeconds({
-        raceType: raceEvent.race_type, distanceKm: Number(raceEvent.distance_km) || null,
-        elevationGainM: raceEvent.elevation_gain_m, declaredLevel: raceEvent.experience_level,
-        profile, runs,
-      }) || null;
-    } catch { return null; }
+    try { return racePredictionSeconds(raceEvent, runs, profile, runIdToEdit); } catch { return null; }
   };
   const raceTimeProblem = (text, distanceKm) => {
     if (!isRaceMode || !text) return null;

@@ -171,6 +171,32 @@ function bandAgainst(reference, actual) {
  * experiência à previsão; `races` (race_events) dá a distância oficial às
  * provas anteriores no recorde pessoal. Devolve null sem prova.
  */
+/* O objetivo computável da prova. target_time_seconds manda; o texto (target_time) é o recurso. Um
+   objetivo igual à duração gravada da própria corrida é sintético (autoCreateRaceForCompetition) e
+   conta como sem objetivo. Exportado para o registo da prova (o tempo impossível, raceTimeSanity)
+   usar a MESMA referência que o veredicto e o servidor (revisão pré-deploy, 2026-11-15). */
+export function raceTargetSeconds(race, recordedSeconds = null) {
+  if (!race) return null;
+  const statedTarget = num(race.target_time_seconds) ?? num(parseDurationToSeconds(race.target_time));
+  const recorded = num(recordedSeconds);
+  const synthetic = !!statedTarget && !!recorded && Math.round(statedTarget) === Math.round(recorded);
+  return synthetic ? null : statedTarget;
+}
+
+/* A previsão do TREINO para a prova: getRacePrediction com as corridas anteriores ao dia da prova,
+   nunca a própria (excludeRun: o objeto ou o id). É o predicted_seconds do payload. */
+export function racePredictionSeconds(race, runs = [], profile = {}, excludeRun = null) {
+  if (!race) return null;
+  const excludeId = excludeRun && typeof excludeRun === 'object' ? excludeRun.id : excludeRun;
+  const raceDay = typeof race.date === 'string' ? race.date.slice(0, 10) : null;
+  const trainingRuns = (runs || []).filter((r) =>
+    r && r !== excludeRun && !(excludeId && r.id === excludeId)
+    && typeof r.date === 'string' && (!raceDay || r.date.slice(0, 10) < raceDay)
+    && num(r.distance_km) && num(r.duration_seconds));
+  const prediction = trainingRuns.length ? getRacePrediction(race, profile || {}, trainingRuns) : null;
+  return prediction && prediction.predictedSeconds > 0 ? Math.round(prediction.predictedSeconds) : null;
+}
+
 export function classifyRaceOutcome({ race, run: givenRun, runs = [], profile = {}, races = [] } = {}) {
   if (!race) return null;
   const run = givenRun === undefined ? findRaceRun(runs, race) : givenRun;
@@ -181,7 +207,6 @@ export function classifyRaceOutcome({ race, run: givenRun, runs = [], profile = 
   // escreveu (target_time, "47" / "1:52:00") é o recurso — é o que o hub
   // recebe no rascunho da agenda, que só converte ao gravar, e o que existe
   // nas provas anteriores às colunas numéricas.
-  const statedTarget = num(race.target_time_seconds) ?? num(parseDurationToSeconds(race.target_time));
   // A prova criada sozinha para uma competição fora da agenda
   // (autoCreateRaceForCompetition, RunRegistration.jsx) grava como objetivo a
   // duração da própria corrida, porque a coluna não admite "sem meta". Esse
@@ -189,9 +214,7 @@ export function classifyRaceOutcome({ race, run: givenRun, runs = [], profile = 
   // "batido por 0:08", o oficial contra o relógio — e o prémio "objetivo
   // batido" a quem não marcou meta nenhuma (revisão das frases da Carol,
   // 2026-09-26). Conta como sem objetivo.
-  const recordedSeconds = num(run?.duration_seconds);
-  const syntheticTarget = !!statedTarget && !!recordedSeconds && Math.round(statedTarget) === Math.round(recordedSeconds);
-  const targetSeconds = syntheticTarget ? null : statedTarget;
+  const targetSeconds = raceTargetSeconds(race, run?.duration_seconds);
 
   const base = {
     raceId: race.id ?? null,
@@ -217,13 +240,7 @@ export function classifyRaceOutcome({ race, run: givenRun, runs = [], profile = 
 
   // A previsão é a do TREINO: só corridas anteriores ao dia da prova, e
   // nunca a própria — senão a prova "previa-se" a si mesma.
-  const raceDay = typeof race.date === 'string' ? race.date.slice(0, 10) : null;
-  const trainingRuns = (runs || []).filter((r) =>
-    r && r !== run && !(run.id && r.id === run.id)
-    && typeof r.date === 'string' && (!raceDay || r.date.slice(0, 10) < raceDay)
-    && num(r.distance_km) && num(r.duration_seconds));
-  const prediction = trainingRuns.length ? getRacePrediction(race, profile, trainingRuns) : null;
-  const predictedSeconds = prediction && prediction.predictedSeconds > 0 ? Math.round(prediction.predictedSeconds) : null;
+  const predictedSeconds = racePredictionSeconds(race, runs, profile, run);
 
   /* Um tempo impossível é erro de entrada, não um resultado (bug de
      2026-11-15: «1:23» lido como 1 min 23 s deu «objetivo batido por 55:17»
