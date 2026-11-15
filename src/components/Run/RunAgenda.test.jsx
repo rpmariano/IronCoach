@@ -279,30 +279,31 @@ describe('RunAgenda — "Obter informação do site" & Dual-Page', () => {
       renderAgenda();
 
       fireEvent.click(screen.getAllByRole('button', { name: /^Eliminar$/i })[0]);
-      expect(screen.getByText(/Tens a certeza que queres eliminar esta prova/i)).toBeInTheDocument();
+      expect(screen.getByTestId('race-remove-race')).toHaveTextContent('Isto não se desfaz.');
 
       fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: /^Cancelar$/i }));
-      // PremiumModal anima o fecho (400ms) antes de desmontar o conteúdo.
       await waitFor(() => {
-        expect(screen.queryByText(/Tens a certeza que queres eliminar esta prova/i)).not.toBeInTheDocument();
+        expect(screen.queryByTestId('race-remove-race')).not.toBeInTheDocument();
       });
       expect(useAppStore.getState().raceEvents).toEqual([EXISTING_RACE]);
     });
 
     it('a EDITAR: confirmar no popup elimina a prova, atualiza o store e fecha o formulário', async () => {
-      vi.spyOn(supabase, 'from').mockReturnValue({
-        delete: () => ({ eq: () => Promise.resolve({ error: null }) }),
-      });
+      const filtros = {};
+      const q = { delete: () => q, eq: (col, val) => { filtros[col] = val; return q; }, then: (res) => Promise.resolve({ error: null }).then(res) };
+      vi.spyOn(supabase, 'from').mockReturnValue(q);
       const onClose = vi.fn();
       useAppStore.setState({ editingRaceId: 'race-1' });
       render(<ToastProvider><RunAgenda onClose={onClose} /></ToastProvider>);
 
       fireEvent.click(screen.getAllByRole('button', { name: /^Eliminar$/i })[0]);
-      fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: /^Eliminar$/i }));
+      fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Eliminar prova' }));
 
       await waitFor(() => {
         expect(useAppStore.getState().raceEvents).toEqual([]);
       });
+      // O delete leva o user_id, por defesa (além da RLS).
+      expect(filtros).toEqual({ id: 'race-1', user_id: 'user-1' });
       expect(useAppStore.getState().editingRaceId).toBeNull();
       expect(onClose).toHaveBeenCalled();
     });
@@ -769,7 +770,7 @@ describe('RunAgenda — escrita local no store não apaga o rascunho', () => {
   const notas = () => screen.getByPlaceholderText('Logística, nutrição planeada...');
   const botaoGuardar = () => screen.getByRole('button', { name: /Guardar prova/i });
 
-  it('marcar concluída pelo Hub tranca os detalhes de criação: sem "Detalhes da prova" nem "Guardar prova", fica "Eliminar"', async () => {
+  it('marcar concluída pelo Hub tranca os detalhes de criação: sem "Detalhes da prova" nem "Guardar prova", fica "Apagar o resultado"', async () => {
     // Data passada: aí a ação vive no estado pós-prova do hub, já ativa.
     useAppStore.setState({
       raceEvents: [{ ...EXISTING_RACE, date: diasAntes(3), status: 'agendada' }],
@@ -793,13 +794,15 @@ describe('RunAgenda — escrita local no store não apaga o rascunho', () => {
     expect(screen.queryByRole('button', { name: /^Detalhes da prova$/i })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Editar Detalhes/i })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Guardar prova/i })).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Eliminar/i })).toBeInTheDocument();
+    // Com resultado, a ação é apagar o resultado, não a prova (bug de 2026-11-15).
+    expect(screen.getAllByRole('button', { name: 'Apagar o resultado' }).length).toBeGreaterThan(0);
+    expect(screen.queryByRole('button', { name: /^Eliminar$/i })).not.toBeInTheDocument();
     // E fechar não avisa de alterações por gravar que já não se podem gravar.
     fireEvent.click(screen.getByRole('button', { name: 'Voltar' }));
     expect(screen.queryByText('Tens alterações por gravar')).not.toBeInTheDocument();
   });
 
-  it('uma prova já concluída abre só com o hub e "Eliminar", e descarta um rascunho antigo dos detalhes', () => {
+  it('uma prova já concluída abre só com o hub e "Apagar o resultado", e descarta um rascunho antigo dos detalhes', () => {
     // Um rascunho por gravar de antes da conclusão já não tem onde ir: não
     // pode ficar invisível a marcar a prova como "suja" (revisão pré-deploy).
     localStorage.setItem('ironcoach:prova-rascunho:race-1', JSON.stringify({ notes: 'Levar géis extra.' }));
@@ -812,7 +815,9 @@ describe('RunAgenda — escrita local no store não apaga o rascunho', () => {
     expect(screen.queryByRole('button', { name: /^Detalhes da prova$/i })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /^Treino e Evolução$/i })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Guardar prova/i })).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Eliminar/i })).toBeInTheDocument();
+    // Com resultado, a ação é apagar o resultado, não a prova (bug de 2026-11-15).
+    expect(screen.getAllByRole('button', { name: 'Apagar o resultado' }).length).toBeGreaterThan(0);
+    expect(screen.queryByRole('button', { name: /^Eliminar$/i })).not.toBeInTheDocument();
     // O rascunho antigo foi descartado: fechar não avisa, e o localStorage ficou limpo.
     expect(localStorage.getItem('ironcoach:prova-rascunho:race-1')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Voltar' }));
@@ -894,7 +899,7 @@ describe('RunAgenda — eliminar a prova-objetivo de um plano', () => {
   it('sem plano vinculado, o aviso de sempre', () => {
     useAppStore.setState({ coachPlans: [{ id: 'p1', status: 'aceite', race_id: 'outra', period_start: todayISO(), period_end: EXISTING_RACE.date }] });
     abrirEliminar();
-    expect(screen.getByText(/Tens a certeza que queres eliminar esta prova/i)).toBeInTheDocument();
+    expect(screen.getByTestId('race-remove-race')).toHaveTextContent('Isto não se desfaz.');
     expect(screen.queryByText(/é o objetivo do teu plano/i)).not.toBeInTheDocument();
   });
 });

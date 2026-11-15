@@ -9,21 +9,35 @@ import Calendar from './Calendar';
 
 /* Auditoria a11y (passagem "harden"): eliminar uma prova passava por um
    window.confirm — popup do sistema, fora da linguagem da app, sem dizer o
-   que se perde e sem os 44px de toque. Passou a usar o Dialog partilhado,
-   como "Dispensar o aviso da Carol?" no Início. Este teste fixa as duas
-   metades: o confirm do browser nunca é chamado, e nada é apagado enquanto
-   o atleta não confirmar no popup da app. */
+   que se perde e sem os 44px de toque. Passou a um popup da app (hoje o
+   RaceRemoveDialog, o mesmo do hub). Este teste fixa as duas metades: o
+   confirm do browser nunca é chamado, e nada é apagado enquanto o atleta não
+   confirmar no popup da app.
 
-const mocks = vi.hoisted(() => ({ deleted: [] }));
+   Bug de 2026-11-15: numa prova concluída, «Eliminar» apagava a prova inteira
+   a quem só queria refazer o tempo. Com resultado, a ação principal passou a
+   «Apagar o resultado»; eliminar a prova ficou como secundária. */
+
+const mocks = vi.hoisted(() => ({ deleted: [], ops: [] }));
 
 vi.mock('../../lib/supabase', () => ({
   supabase: {
-    from: () => ({
-      delete: () => ({
-        eq: (_col, id) => { mocks.deleted.push(id); return Promise.resolve({ error: null }); },
-      }),
-      update: () => ({ eq: () => Promise.resolve({ error: null }) }),
-    }),
+    from: (table) => {
+      const op = { table, kind: null, patch: null, filters: {} };
+      const q = {
+        delete: () => { op.kind = 'delete'; return q; },
+        update: (patch) => { op.kind = 'update'; op.patch = patch; return q; },
+        eq: (col, val) => { op.filters[col] = val; return q; },
+        select: () => q,
+        maybeSingle: () => { mocks.ops.push(op); return Promise.resolve({ data: { id: op.filters.id }, error: null }); },
+        then: (res, rej) => {
+          mocks.ops.push(op);
+          if (op.kind === 'delete') mocks.deleted.push(op.filters.id);
+          return Promise.resolve({ error: null }).then(res, rej);
+        },
+      };
+      return q;
+    },
   },
 }));
 
@@ -38,18 +52,23 @@ const PROVA = {
   status: 'planeada',
   race_type: 'estrada',
 };
+const PROVA_FEITA = { ...PROVA, status: 'concluida', coach_balance: 'Boa prova.', coach_balance_at: '2026-11-15T20:00:00Z' };
+const CORRIDA = { id: 'run-1', user_id: 'user-1', date: iso(HOJE), distance_km: 21.2, duration_minutes: 110, race_id: 'race-1', run_kind: 'competicao' };
 
 const renderCalendario = () => render(<ToastProvider><Calendar /></ToastProvider>);
+const abrirCartao = () => fireEvent.click(screen.getByRole('button', { name: /Ver detalhes da prova/ }));
 
 describe('Calendário — eliminar prova', () => {
   let confirmSpy;
 
   beforeEach(() => {
     mocks.deleted.length = 0;
+    mocks.ops.length = 0;
     confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
     useAppStore.setState({
       runs: [], gymSessions: [], meals: [], bodyAssessments: [],
-      raceEvents: [PROVA],
+      raceEvents: [PROVA], coachPlans: [],
+      profile: { id: 'user-1' }, session: { user: { id: 'user-1' } },
       pendingCalendarDate: null,
     });
   });
@@ -58,35 +77,97 @@ describe('Calendário — eliminar prova', () => {
 
   it('pede confirmação no popup da app, não no window.confirm', async () => {
     renderCalendario();
-    fireEvent.click(screen.getByRole('button', { name: /Ver detalhes da prova/ }));
-    fireEvent.click(await screen.findByRole('button', { name: /Eliminar/ }));
+    abrirCartao();
+    fireEvent.click(await screen.findByRole('button', { name: /^Eliminar$/ }));
 
     expect(confirmSpy).not.toHaveBeenCalled();
-    expect(await screen.findByText('Eliminar esta prova?')).toBeInTheDocument();
+    expect(await screen.findByTestId('race-remove-race')).toHaveTextContent('«Meia de Lisboa» sai do calendário');
     expect(mocks.deleted).toEqual([]);
   });
 
   it('"Cancelar" fecha o popup e não apaga nada', async () => {
     renderCalendario();
-    fireEvent.click(screen.getByRole('button', { name: /Ver detalhes da prova/ }));
-    fireEvent.click(await screen.findByRole('button', { name: /Eliminar/ }));
-    await screen.findByText('Eliminar esta prova?');
+    abrirCartao();
+    fireEvent.click(await screen.findByRole('button', { name: /^Eliminar$/ }));
+    await screen.findByTestId('race-remove-race');
 
     fireEvent.click(screen.getByRole('button', { name: 'Cancelar' }));
-    await waitFor(() => expect(screen.queryByText('Eliminar esta prova?')).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.queryByTestId('race-remove-race')).not.toBeInTheDocument());
     expect(mocks.deleted).toEqual([]);
     expect(useAppStore.getState().raceEvents).toHaveLength(1);
   });
 
-  it('só apaga depois de confirmar', async () => {
+  it('só apaga depois de confirmar — e o delete leva o user_id', async () => {
     renderCalendario();
-    fireEvent.click(screen.getByRole('button', { name: /Ver detalhes da prova/ }));
-    fireEvent.click(await screen.findByRole('button', { name: /Eliminar/ }));
+    abrirCartao();
+    fireEvent.click(await screen.findByRole('button', { name: /^Eliminar$/ }));
     const popup = await screen.findByRole('dialog');
 
-    fireEvent.click(within(popup).getByRole('button', { name: 'Eliminar' }));
+    fireEvent.click(within(popup).getByRole('button', { name: 'Eliminar prova' }));
     await waitFor(() => expect(mocks.deleted).toEqual(['race-1']));
+    expect(mocks.ops[0]).toMatchObject({ table: 'race_events', kind: 'delete', filters: { id: 'race-1', user_id: 'user-1' } });
     expect(useAppStore.getState().raceEvents).toHaveLength(0);
+  });
+
+  describe('prova com resultado (concluída, com a corrida ligada)', () => {
+    beforeEach(() => {
+      useAppStore.setState({ raceEvents: [PROVA_FEITA], runs: [CORRIDA] });
+    });
+
+    it('«Apagar o resultado» é a ação principal: a prova volta a agendada e a corrida fica como treino', async () => {
+      renderCalendario();
+      abrirCartao();
+      expect(screen.queryByRole('button', { name: /^Eliminar$/ })).not.toBeInTheDocument();
+      fireEvent.click(await screen.findByRole('button', { name: 'Apagar o resultado' }));
+      const popup = await screen.findByTestId('race-remove-result');
+      expect(within(popup).getByLabelText(/Manter como treino/)).toBeChecked();
+
+      fireEvent.click(within(popup).getByRole('button', { name: 'Apagar o resultado' }));
+      await waitFor(() => expect(useAppStore.getState().raceEvents[0].status).toBe('agendada'));
+
+      expect(mocks.deleted).toEqual([]);
+      expect(mocks.ops).toEqual([
+        { table: 'runs', kind: 'update', patch: { race_id: null }, filters: { id: 'run-1', user_id: 'user-1' } },
+        { table: 'race_events', kind: 'update', patch: { status: 'agendada', coach_balance: null, coach_balance_at: null }, filters: { id: 'race-1', user_id: 'user-1' } },
+      ]);
+      const prova = useAppStore.getState().raceEvents[0];
+      expect(prova).toMatchObject({ id: 'race-1', name: 'Meia de Lisboa', coach_balance: null, coach_balance_at: null });
+      expect(useAppStore.getState().runs).toEqual([{ ...CORRIDA, race_id: null }]);
+    });
+
+    it('à escolha, apaga também a corrida', async () => {
+      renderCalendario();
+      abrirCartao();
+      fireEvent.click(await screen.findByRole('button', { name: 'Apagar o resultado' }));
+      const popup = await screen.findByTestId('race-remove-result');
+      fireEvent.click(within(popup).getByLabelText(/Apagar também a corrida/));
+      fireEvent.click(within(popup).getByRole('button', { name: 'Apagar o resultado' }));
+
+      await waitFor(() => expect(mocks.deleted).toEqual(['run-1']));
+      await waitFor(() => expect(useAppStore.getState().raceEvents[0].status).toBe('agendada'));
+      expect(mocks.ops[0]).toMatchObject({ table: 'runs', kind: 'delete', filters: { id: 'run-1', user_id: 'user-1' } });
+      expect(useAppStore.getState().runs).toEqual([]);
+      expect(useAppStore.getState().raceEvents).toHaveLength(1);
+    });
+
+    it('«Eliminar a prova inteira» é secundária e diz o que se perde', async () => {
+      renderCalendario();
+      abrirCartao();
+      fireEvent.click(await screen.findByRole('button', { name: 'Apagar o resultado' }));
+      const popup = await screen.findByTestId('race-remove-result');
+      fireEvent.click(within(popup).getByRole('button', { name: /Eliminar a prova inteira/ }));
+
+      const aviso = await screen.findByTestId('race-remove-race');
+      expect(aviso).toHaveTextContent('o resultado, as conquistas');
+      expect(aviso).toHaveTextContent('a ligação à corrida');
+      expect(mocks.ops).toEqual([]);
+
+      fireEvent.click(within(aviso).getByRole('button', { name: 'Eliminar prova' }));
+      await waitFor(() => expect(mocks.deleted).toEqual(['race-1']));
+      expect(useAppStore.getState().raceEvents).toHaveLength(0);
+      // A corrida fica, sem a ligação (como a FK SET NULL faz na BD).
+      expect(useAppStore.getState().runs).toEqual([{ ...CORRIDA, race_id: null }]);
+    });
   });
 });
 

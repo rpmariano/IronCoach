@@ -327,7 +327,8 @@ export default function RaceCard({ ev, onEdit, onToggleStatus, onDelete, onRegis
               className="flex-1 text-xs"
               icon={<Trash2 size={14} />}
             >
-              Eliminar
+              {/* Com resultado, o que abre é «Apagar o resultado» (RaceRemoveDialog, bug de 2026-11-15). */}
+              {done || raceRun ? 'Apagar o resultado' : 'Eliminar'}
             </Button>
           </div>
         </div>
