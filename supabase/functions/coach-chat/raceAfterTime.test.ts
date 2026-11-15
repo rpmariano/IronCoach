@@ -145,6 +145,6 @@ Deno.test("B1: sem a política, o 42501 não passa por gravado — devolve false
 });
 
 Deno.test("B1: a migration cria a política de UPDATE do dono", async () => {
-  const sql = await Deno.readTextFile(new URL("../../migrations/20261115120000_coach_proactive_log_update_policy.sql", import.meta.url));
+  const sql = await Deno.readTextFile(new URL("../../migrations/20261115205324_coach_proactive_log_update_policy.sql", import.meta.url));
   assertStringIncludes(sql.replace(/\s+/g, " "), 'create policy "own proactive log update" on public.coach_proactive_log for update to authenticated using (auth.uid() = user_id) with check (auth.uid() = user_id);');
 });

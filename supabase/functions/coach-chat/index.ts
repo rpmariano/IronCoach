@@ -1357,7 +1357,7 @@ export async function recordProactiveDelivered(
   payload: unknown = null,
   // replace: a linha que já houver fica com este payload (o balanço refeito
   // com outros dados); por omissão, a primeira entrega manda. Precisa da
-  // política de UPDATE (migração 20261115120000).
+  // política de UPDATE (migração 20261115205324).
   opts: { replace?: boolean } = {},
 ): Promise<boolean> {
   try {
@@ -1376,7 +1376,7 @@ export async function recordProactiveDelivered(
     if (error) {
       const denied = String(error.code ?? "") === "42501";
       console.error(
-        `coach_proactive_log: gravação FALHOU${denied ? " — sem permissão de UPDATE (política «own proactive log update», migração 20261115120000)" : ""}`,
+        `coach_proactive_log: gravação FALHOU${denied ? " — sem permissão de UPDATE (política «own proactive log update», migração 20261115205324)" : ""}`,
         JSON.stringify({ key, replace: !!opts.replace, code: error.code ?? null, message: error.message ?? String(error) }),
       );
       return false;
