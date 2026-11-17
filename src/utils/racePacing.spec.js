@@ -8,7 +8,7 @@ import { buildRacePacingPlan } from '@formulas/racePacing.ts';
    bundle do browser e que o plano que o hub mostra tem a forma esperada. */
 
 describe('racePacing através do alias @formulas', () => {
-  it('a meia com objetivo realista dá os 7 troços do plano', () => {
+  it('a meia com objetivo realista dá as 7 fases do plano, e a chegada é o objetivo', () => {
     const plan = buildRacePacingPlan({
       distanceKm: 21.1,
       raceType: 'estrada',
@@ -18,7 +18,11 @@ describe('racePacing através do alias @formulas', () => {
     });
 
     expect(plan).not.toBeNull();
-    expect(plan.rows).toHaveLength(7);
+    // 7 fases; o acerto do arredondamento (±1 s/km, espalhado pelos km de
+    // ritmo — revisão do #122) pode partir o bloco do ritmo em dois.
+    expect(plan.rows.map((r) => r.label).filter((l, i, a) => l !== a[i - 1])).toEqual(['controlar', 'ritmo', 'aguentar', 'decidir', 'acelerar']);
+    expect(plan.rows.length).toBeLessThanOrEqual(8);
+    expect(Math.abs(plan.plannedFinishSeconds - 6720)).toBeLessThanOrEqual(1);
     expect(plan.basis).toBe('objetivo');
     expect(plan.decisionKm).toBe(15);
     expect(plan.rows[0].fromKm).toBe(0);

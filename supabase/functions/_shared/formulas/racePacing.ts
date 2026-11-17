@@ -54,7 +54,12 @@ export interface RacePacingPlan {
   category: RaceDistanceCategory;
   basis: "objetivo" | "previsao";
   ambitious: boolean; // objetivo mais de 3% mais rápido do que a previsão
+  /** O ritmo MÉDIO da base (objetivo ou previsão ÷ distância). */
   basePaceSecPerKm: number;
+  /** O ritmo nos km planos — o «ritmo» da tabela: o de base escalado para a
+   *  soma dos troços dar a base (bug #122). Com subidas, descidas, o arranque
+   *  e o final, difere da média; sem eles, coincide com ela (±1 s). */
+  flatPaceSecPerKm: number;
   baseSeconds: number;
   targetSeconds: number | null;
   predictedSeconds: number | null;
@@ -79,8 +84,6 @@ const START_DELTA: Record<RaceDistanceCategory, number> = { "5k": 6, "10k": 6, m
 const FINAL_DELTA: Record<RaceDistanceCategory, number> = { "5k": -8, "10k": -8, meia: -5, maratona: -3, ultra: 0 };
 const HOLD_DELTA: Record<RaceDistanceCategory, number> = { "5k": 0, "10k": 0, meia: 0, maratona: 2, ultra: 3 };
 const PUSH_DELTA = -3;
-/** Quanto do acerto final (bug #122) cabe no km da decisão e no km 1, cada um. */
-const RESIDUAL_PER_ROW = 6;
 const CONTROL_DELTA = 3;
 
 const HILL_UP = { estrada: 0.08, trail: 0.15 };
@@ -218,38 +221,39 @@ export function buildRacePacingPlan(input: RacePacingInput): RacePacingPlan | nu
   })();
   let paceBase = basePace;
   let rows = buildRows(paceBase);
-  let best = { rows, gap: Math.abs(rows[rows.length - 1].cumulativeSeconds - baseSeconds) };
+  let best = { rows, gap: Math.abs(rows[rows.length - 1].cumulativeSeconds - baseSeconds), paceBase };
   for (let i = 0; i < 8 && best.gap > 1; i++) {
     const gap = baseSeconds - rows[rows.length - 1].cumulativeSeconds;
     paceBase += gap / slope;
     rows = buildRows(paceBase);
     const g = Math.abs(rows[rows.length - 1].cumulativeSeconds - baseSeconds);
-    if (g < best.gap) best = { rows, gap: g };
+    if (g < best.gap) best = { rows, gap: g, paceBase };
   }
   rows = best.rows;
 
-  // O que o arredondamento por km deixou (num 10 km plano, todos os km
-  // arredondam juntos e a soma salta de 10 em 10 s). Vai primeiro para o km
-  // da decisão e para o km 1 — linhas que já ficam sozinhas na tabela, por
-  // isso não a partem —, até ±RESIDUAL_PER_ROW cada; o resto, ±1 s/km pelos
-  // km de "ritmo" e "aguentar", um a um, até ficar a menos de 1 s.
+  // O que o arredondamento por km deixou (num percurso plano todos os km
+  // arredondam juntos e a soma salta de N em N s): ±1 s/km pelos km planos,
+  // um a um — primeiro os de "ritmo", depois "aguentar", "controlar" e
+  // "acelerar" —, até ficar a menos de 1 s. Espalhado, nunca concentrado
+  // numa linha (revisão do #122: o km da decisão chegava a ficar 6 s mais
+  // lento do que o ritmo).
   const totalOf = (rs: PacingRow[]) => rs.reduce((t, r) => t + r.paceSecPerKm * (r.toKm - r.fromKm), 0);
   let residual = Math.trunc(baseSeconds - totalOf(rows));
   if (residual !== 0) {
     rows = rows.map((r) => ({ ...r }));
     const sign = Math.sign(residual);
-    const full = (i: number) => i >= 0 && i < rows.length && rows[i].toKm - rows[i].fromKm === 1;
-    for (const i of [decisionKm - 1, 0]) {
-      if (!residual || !full(i)) continue;
-      const take = sign * Math.min(Math.abs(residual), RESIDUAL_PER_ROW);
-      rows[i].paceSecPerKm += take;
-      residual -= take;
-    }
-    const rest = rows
+    const order: PacingLabel[] = ["ritmo", "aguentar", "controlar", "acelerar"];
+    const neutral = rows
       .map((r, i) => ({ r, i }))
-      .filter(({ r, i }) => full(i) && !r.route && (r.label === "ritmo" || r.label === "aguentar"))
-      .slice(0, Math.abs(residual));
-    for (const { i } of rest) rows[i].paceSecPerKm += sign;
+      .filter(({ r, i }) => i > 0 && !r.route && r.toKm - r.fromKm === 1 && order.includes(r.label))
+      .sort((a, b) => order.indexOf(a.r.label) - order.indexOf(b.r.label) || a.i - b.i);
+    for (let pass = 0; residual !== 0 && neutral.length && pass < 10; pass++) {
+      for (const { i } of neutral) {
+        if (residual === 0) break;
+        rows[i].paceSecPerKm += sign;
+        residual -= sign;
+      }
+    }
     let cumulative = 0;
     for (const r of rows) {
       cumulative += r.paceSecPerKm * (r.toKm - r.fromKm);
@@ -306,6 +310,7 @@ export function buildRacePacingPlan(input: RacePacingInput): RacePacingPlan | nu
     basis,
     ambitious,
     basePaceSecPerKm: Math.round(basePace),
+    flatPaceSecPerKm: Math.round(best.paceBase),
     baseSeconds: Math.round(baseSeconds),
     targetSeconds: target,
     predictedSeconds: predicted,
