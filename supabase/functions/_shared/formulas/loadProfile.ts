@@ -223,6 +223,17 @@ export function loadVolumeState(
   };
 }
 
+/** O assunto da carga no chat (bug #123, pedido do Rui: o cartão do Início
+ *  passa a ser um alerta da Carol que abre o chat). Uma vez por mudança de
+ *  estado: `load:<prova>:<estado>`, mais `:<nome da prova que subiu a carga>`
+ *  quando a houver. null quando não há nada a dizer (sem prova, ou «ok»).
+ *  A app usa-a para não repetir o alerta; o servidor, como chave no
+ *  coach_proactive_log (load_topic:<assinatura>). */
+export function loadTopicSignature(s: LoadVolumeState | null | undefined): string | null {
+  if (!s?.race?.id || s.state === "ok") return null;
+  return `load:${s.race.id}:${s.state}${s.acuteFromRace?.name ? `:${s.acuteFromRace.name}` : ""}`.slice(0, 180);
+}
+
 // ── Os sinais vermelhos com Mais volume ──────────────────────────────────────
 
 export type LoadProfileRedFlag = "dor" | "rpe_alto" | "recuperacao_critica";
