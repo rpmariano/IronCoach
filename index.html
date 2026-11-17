@@ -89,13 +89,43 @@
   <script>
     // A hora a que o desenho começou — a app conta o que falta a partir daqui.
     window.__bootSplashAt = performance.now();
+    // O rasto do arranque (src/utils/bootTrace.js): abre-se aqui, antes de o
+    // JavaScript da app chegar, para um arranque que nunca chega a correr
+    // também deixar marca.
+    try {
+      var bt = JSON.parse(localStorage.getItem('ironcoach:boot-trace') || '[]');
+      if (!Array.isArray(bt)) bt = [];
+      window.__bootTraceAt = Date.now();
+      bt.push({ at: window.__bootTraceAt, p: { html: Math.round(window.__bootSplashAt) }, exit: null });
+      localStorage.setItem('ironcoach:boot-trace', JSON.stringify(bt.slice(-6)));
+    } catch (e) { /* sem storage */ }
     // Rede de segurança: se a app nunca chegar a adotá-lo (o JavaScript não
-    // carregou), o logo não fica no ecrã para sempre.
+    // carregou — a rede pendurada, ou um index.html em cache a apontar para
+    // ficheiros que já não existem), o logo não fica no ecrã para sempre:
+    // diz-se o que se passa e oferece-se uma recarga sem a cache.
     setTimeout(function () {
       if (window.__bootSplashAdopted) return;
       var el = document.getElementById('boot-splash');
-      if (el) el.parentNode.removeChild(el);
-    }, 30000);
+      if (!el) return;
+      var box = document.createElement('div');
+      box.setAttribute('role', 'alert');
+      box.style.cssText = 'display:flex;flex-direction:column;align-items:center;gap:12px;margin-top:8px;text-align:center;padding:0 24px';
+      var msg = document.createElement('p');
+      msg.textContent = 'A app está a demorar a abrir.';
+      msg.style.cssText = 'margin:0;font-size:15px;font-weight:700;color:#f8fafc';
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.textContent = 'Tentar outra vez';
+      btn.style.cssText = 'min-height:44px;padding:0 20px;border-radius:12px;font-size:13px;font-weight:700;color:#f8fafc;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.18)';
+      btn.addEventListener('click', function () {
+        var u = new URL(location.href);
+        u.searchParams.set('v', String(Date.now()));
+        location.replace(u.toString());
+      });
+      box.appendChild(msg);
+      box.appendChild(btn);
+      el.appendChild(box);
+    }, 12000);
   </script>
   <div id="root"></div>
   <script type="module" src="/src/main.jsx"></script>

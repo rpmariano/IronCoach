@@ -1,7 +1,8 @@
 import React, { useState, useRef } from 'react';
 import { Bug, Send, Upload, X } from 'lucide-react';
 import { useAppStore } from '../../store';
-import { supabase } from '../../lib/supabase';
+import { supabase, logAppEvent } from '../../lib/supabase';
+import { readBootTraces } from '../../utils/bootTrace';
 import { currentPageLabel } from '../../lib/utils';
 import { compressImage } from '../../lib/image';
 import { dataUrlToBlob } from '../../utils/raceMemories';
@@ -234,6 +235,12 @@ export default function ReportIssueButton() {
         attachment_urls: attachmentPaths.length > 0 ? attachmentPaths : null,
       });
       if (error) throw error;
+      /* O rasto dos últimos arranques vai com o report (utils/bootTrace.js), para um «fica preso no
+         logo» trazer a fase onde parou. Em app_logs (boot_trace), ao lado do report: bug_reports
+         não tem coluna para isto. Uma falha aqui não estraga o report. */
+      try {
+        logAppEvent('info', 'boot_trace', 'Rasto do arranque junto a um report', { title: trimmedTitle.slice(0, 80), traces: readBootTraces() });
+      } catch { /* sem log, o report vai na mesma */ }
 
       showToast(
         failedUploads > 0

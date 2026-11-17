@@ -8,6 +8,10 @@ import { startAppUpdateWatcher, reloadFresh, resumeParams, isBusy } from './lib/
 import { isScreenOpen } from './utils/navigationRestore';
 import { startDailySummaryRefresh } from './utils/dailySummaryRefresh';
 import './styles/globals.css';
+import { bootPhase } from './utils/bootTrace';
+
+// O JavaScript da app chegou e corre (utils/bootTrace.js).
+bootPhase('main');
 
 window.useAppStore = useAppStore;
 
