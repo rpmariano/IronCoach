@@ -37,6 +37,26 @@ describe('raceOutcome — a régua única do resultado da prova', () => {
     expect(raceResultSeconds(null)).toBeNull();
   });
 
+  it('bug de 2026-11-15: um tempo impossível («1:23» lido como 83 s em 10,97 km) não dá veredicto nem conquistas — pede-se para o confirmar', () => {
+    const trail = { id: 'r-t', name: 'Trail', date: '2026-11-15', race_type: 'trail', distance_km: 10.97, target_time_seconds: 3400 };
+    const run = { id: 'run-t', race_id: 'r-t', kind: 'competicao', date: '2026-11-15', distance_km: 10.97, duration_seconds: 4965, details: { official_time_seconds: 83 } };
+    const out = classifyRaceOutcome({ race: trail, run, runs: [run], profile: PROFILE });
+    expect(out.timeSuspect).toBe(true);
+    expect(out.officialSeconds).toBe(83);
+    expect(out.verdict).toBe('sem_registo');
+    expect(out.deltaTargetSeconds).toBeNull();
+    expect(bateuObjetivo(out)).toBe(false);
+    expect(describeRaceOutcome(out, trail)).toBe('1:23 parece minutos — querias dizer 1:23:00? Corrige-o na corrida e eu faço as contas.');
+    expect(buildRaceOutcomePayload(out, trail, run).time_suspect).toBe(true);
+    // Menos de metade do objetivo também é erro, mesmo sem distância.
+    expect(classifyRaceOutcome({ race: { ...trail, distance_km: null }, run: { ...run, distance_km: null, details: { official_time_seconds: 1600 } }, runs: [], profile: PROFILE }).timeSuspect).toBe(true);
+    // Corrigido para 1:23:00: um balanço normal — 26:20 acima do objetivo.
+    const fixed = classifyRaceOutcome({ race: { ...trail, distance_km: 10 }, run: { ...run, details: { official_time_seconds: 4980 } }, runs: [run], profile: PROFILE });
+    expect(fixed.timeSuspect).toBe(false);
+    expect(fixed.deltaTargetSeconds).toBe(1580);
+    expect(fixed.verdict).toBe('aquem');
+  });
+
   it('perto do objetivo, acima do que o treino perspetivava, e recorde pessoal', () => {
     const out = classifyRaceOutcome({ race: RACE, run: RACE_RUN, runs: [RACE_RUN, SLOW_TENK, OLD_HALF], profile: PROFILE });
     expect(out.verdict).toBe('perto');

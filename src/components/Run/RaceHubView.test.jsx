@@ -441,8 +441,8 @@ describe('RaceHubView — plano para o dia', () => {
     expect(screen.getByText('Plano para o dia')).toBeInTheDocument();
     const cartao = screen.getByTestId('race-pacing-card');
 
-    // A chegada planeada é a soma dos troços — anda à volta do objetivo.
-    expect(screen.getByTestId('race-pacing-finish')).toHaveTextContent(/^1:5\d:\d\d$/);
+    // A chegada planeada é a soma dos troços — e dá o objetivo (bug #122).
+    expect(screen.getByTestId('race-pacing-finish')).toHaveTextContent('1:52:00');
     expect(cartao).toHaveTextContent('sobre o objetivo 1:52:00');
 
     // Sete troços na meia, do km 0 ao 21,1, com ritmo e tempo de passagem.
@@ -452,7 +452,8 @@ describe('RaceHubView — plano para o dia', () => {
     // na distância real, com vírgula decimal.
     // os últimos 10% (mínimo 1 km): da meia, do km 18 em diante
     expect(linhas).toHaveTextContent('km 18 a 21,1');
-    expect(linhas).toHaveTextContent('5.26/km');
+    // O arranque: o ritmo do plano + 8 s (o plano ajusta-se para a soma dar o objetivo — bug #122).
+    expect(linhas).toHaveTextContent('5.27/km');
     // Os rótulos do plano, do arranque ao final.
     expect(linhas).toHaveTextContent('controlar');
     expect(linhas).toHaveTextContent('decidir');

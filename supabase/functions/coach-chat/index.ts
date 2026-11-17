@@ -50,8 +50,8 @@ import { classifyCalorieCompliance } from "../_shared/formulas/nutritionComplian
 import { computeRunAcwr, RUN_ACWR_MIN_HISTORY_WEEKS } from "../_shared/formulas/runAcwr.ts";
 import { fetchGeminiWithTimeout, hasTimeFor } from "../_shared/geminiFetch.ts";
 import { planLoadViolations, runLoadReading, type LoadPlanItem, type LoadProfile, type RunLoadReading } from "../_shared/formulas/runLoadAlert.ts";
-import { governingRace, LOAD_PROFILE_LABELS, loadVolumeState, raceLoadProfile } from "../_shared/formulas/loadProfile.ts";
-import { fetchAcceptedPlanUntil, fetchLoadProfileRaces, loadProfileContextLine, lowBaseRampKm } from "../_shared/loadProfileContext.ts";
+import { governingRace, LOAD_PROFILE_LABELS, loadTopicSignature, loadVolumeState, raceLoadProfile, TAPER_WINDOW_DAYS, type LoadVolumeState } from "../_shared/formulas/loadProfile.ts";
+import { buildLoadTopicTurn, fetchAcceptedPlanUntil, fetchLoadProfileRaces, loadProfileContextLine, lowBaseRampKm } from "../_shared/loadProfileContext.ts";
 import { computeCrossMetrics } from "../_shared/formulas/crossMetrics.ts";
 import { computeReadinessIndex, READINESS_MIN_COMPLETE_DAYS_OCASIONAL, readinessMealsStartISO } from "../_shared/formulas/readinessIndex.ts";
 import { daysCompleteness, type MealLoggingProfile, mealLoggingProfile, mealsOfCompleteDays } from "../_shared/formulas/dayCompleteness.ts";
@@ -70,6 +70,8 @@ import { computeSessionVolumeKg } from "../_shared/formulas/sessionVolumeKg.ts";
 import { formatPaceMinKm as sharedFormatPaceMinKm, formatPaceFromDistance } from "../_shared/formulas/paceFormat.ts";
 import { buildRacePacingPlan, compareSplitsToPlan, AMBITIOUS_RATIO, type RacePacingPlan, type SplitInput, type SplitComparison } from "../_shared/formulas/racePacing.ts";
 import { type CourseProfile, courseProfilePromptText, courseRouteSegments, sanitizeCourseProfile } from "../_shared/formulas/courseProfile.ts";
+import { checkRaceTime } from "../_shared/formulas/raceTimeSanity.ts";
+import { raceBalanceFingerprint } from "../_shared/formulas/raceBalanceFingerprint.ts";
 import { computeRaceEve, hhmm as sharedHhmm } from "../_shared/formulas/raceEve.ts";
 import { buildCupMapTurn, dayMonth, DECISION_TEXT, fetchSeriesBlock, isCupSchemaMissing, SEASON_GOAL_TEXT, seriesRacePhaseText, type SeriesBlock } from "../_shared/seriesBlock.ts";
 import { fetchCupResultFacts } from "../_shared/cupResultFacts.ts";
@@ -1349,26 +1351,45 @@ export async function wasProactiveDelivered(sb: any, userId: string, key: string
 // deno-lint-ignore no-explicit-any
 export async function recordProactiveDelivered(
   // deno-lint-ignore no-explicit-any
-  sb: any, userId: string, trigger: ProactiveTrigger | "targets_review", key: string,
+  sb: any, userId: string, trigger: ProactiveTrigger | "targets_review" | "load_topic", key: string,
   // O que acompanha a entrega (a proposta de uma revisão dos objetivos);
   // sem a coluna (migração 20261025204514 por aplicar), grava-se sem ele.
   payload: unknown = null,
-): Promise<void> {
+  // replace: a linha que já houver fica com este payload (o balanço refeito
+  // com outros dados); por omissão, a primeira entrega manda. Precisa da
+  // política de UPDATE (migração 20261115120000).
+  opts: { replace?: boolean } = {},
+): Promise<boolean> {
   try {
     let { error } = await sb
       .from("coach_proactive_log")
-      .upsert({ user_id: userId, trigger, key, ...(payload ? { payload } : {}) }, { onConflict: "user_id,key", ignoreDuplicates: true });
-    if (error && payload) {
+      .upsert({ user_id: userId, trigger, key, ...(payload ? { payload } : {}) }, { onConflict: "user_id,key", ignoreDuplicates: !opts.replace });
+    // Sem a coluna payload (migração 20261025204514 por aplicar): grava-se sem
+    // ele. Só nesse caso — uma recusa (42501) não se esconde atrás de um
+    // segundo upsert que não faz nada (revisão pré-deploy de 2026-11-15, B1).
+    if (error && payload && PROACTIVE_LOG_MISSING_COLUMN.has(String(error.code ?? ""))) {
       console.warn("coach_proactive_log: gravado sem payload:", error.message ?? error);
       ({ error } = await sb
         .from("coach_proactive_log")
         .upsert({ user_id: userId, trigger, key }, { onConflict: "user_id,key", ignoreDuplicates: true }));
     }
-    if (error) console.warn("coach_proactive_log: gravação falhou:", error.message ?? error);
+    if (error) {
+      const denied = String(error.code ?? "") === "42501";
+      console.error(
+        `coach_proactive_log: gravação FALHOU${denied ? " — sem permissão de UPDATE (política «own proactive log update», migração 20261115120000)" : ""}`,
+        JSON.stringify({ key, replace: !!opts.replace, code: error.code ?? null, message: error.message ?? String(error) }),
+      );
+      return false;
+    }
+    return true;
   } catch (e) {
-    console.warn("coach_proactive_log: gravação falhou:", e);
+    console.error("coach_proactive_log: gravação FALHOU:", e);
+    return false;
   }
 }
+
+/** Os códigos de "a coluna não existe" (PostgREST e Postgres). */
+const PROACTIVE_LOG_MISSING_COLUMN = new Set(["PGRST204", "42703"]);
 
 /** A última mensagem dela é a do retomar de um plano a meio? (o registo do
  *  plan_resume grava-se logo a seguir à mensagem, por isso as duas horas
@@ -1575,6 +1596,11 @@ export interface RaceOutcome {
   splits: SplitInput[];
   // As conquistas que esta prova acabou de dar (chaves de utils/achievements.js).
   achievements_new: string[];
+  /** O tempo oficial é erro de entrada (raceTimeSanity.ts, regras do Rui de
+   *  2026-11-15: mais rápido do que 2:40/km, ou menos de metade do objetivo
+   *  ou da previsão — o bug de «1:23» lido como 1 min 23 s). Sem balanço nem
+   *  conquistas com ele: a Carol pede para o confirmar. */
+  time_suspect?: boolean;
 }
 
 const ACHIEVEMENT_LABELS: Record<string, string> = {
@@ -1597,6 +1623,13 @@ function shortStr(v: unknown, max = 80): string | null {
 /** Valida o `race_outcome` do body. Tudo o que não bater certo cai para
  *  null (o campo) ou para "sem balanço" (o objeto inteiro) — o turno
  *  continua a funcionar como o race_after de sempre. */
+/** O que se passa ao checkRaceTime (raceTimeSanity.ts, a regra partilhada com
+ *  a app): só os segundos, a distância e a referência — o objetivo ou, sem
+ *  ele, a previsão. */
+function raceTimeInput(seconds: number, distanceKm: number | null, o: { target_seconds?: unknown; predicted_seconds?: unknown }) {
+  return { seconds, distanceKm, referenceSeconds: posNum(o.target_seconds) ?? posNum(o.predicted_seconds) };
+}
+
 export function parseRaceOutcome(raw: unknown): RaceOutcome | null {
   if (!raw || typeof raw !== "object") return null;
   const r = raw as Record<string, unknown>;
@@ -1610,6 +1643,10 @@ export function parseRaceOutcome(raw: unknown): RaceOutcome | null {
   const basis = r.basis === "objetivo" || r.basis === "previsao" ? r.basis : null;
   const vs = r.vs_training === "acima" || r.vs_training === "dentro" || r.vs_training === "abaixo" ? r.vs_training : null;
   const date = shortStr(r.date, 10);
+  const distanceKm = posNum(r.distance_km);
+  // A app nova marca-o (time_suspect); uma versão antiga não — o servidor
+  // verifica sempre com a mesma régua (bug de 2026-11-15).
+  const timeSuspect = !!official && (r.time_suspect === true || !checkRaceTime(raceTimeInput(official, distanceKm, r)).ok);
   return {
     race_id: shortStr(r.race_id, 64),
     name: shortStr(r.name),
@@ -1638,9 +1675,89 @@ export function parseRaceOutcome(raw: unknown): RaceOutcome | null {
         .filter((sp) => sp.distance_km && sp.time_seconds)
         .slice(0, 60)
       : [],
-    achievements_new: Array.isArray(r.achievements_new)
+    achievements_new: !timeSuspect && Array.isArray(r.achievements_new)
       ? (r.achievements_new as unknown[]).filter((k): k is string => typeof k === "string" && k in ACHIEVEMENT_LABELS).slice(0, 6)
       : [],
+    time_suspect: timeSuspect,
+  };
+}
+
+// ── O balanço da prova: um por versão da prova (regras do Rui, 2026-11-15) ──
+// A chave race_after:<prova>:<corrida> fica no coach_proactive_log com a
+// impressão digital do que conta (raceBalanceFingerprint: tempo, distância,
+// objetivo, tipo), a mensagem e a nota que deu. Com a MESMA impressão, um
+// segundo pedido (o hub e o chat, ou dois toques) devolve o balanço que já
+// existe, sem gerar outro — antes, o `proactive_force` do hub saltava a chave
+// e saíam dois. Com OUTRA (o atleta corrigiu alguma coisa), refaz-se tudo uma
+// vez — o balanço, os factos, as conquistas — e o novo substitui o anterior:
+// a mensagem e a nota antigas apagam-se, o coach_balance é reescrito.
+export type RaceAfterStamp = { fingerprint: string | null; message_id: string | null; note: string | null };
+export type RaceAfterDecision = "generate" | "skip" | "replay" | "redo";
+
+/** Há balanço a fazer com este race_outcome (com números, ou a pedir para
+ *  confirmar um tempo impossível)? */
+export function raceOutcomeHasBalance(o: RaceOutcome | null | undefined): o is RaceOutcome {
+  return !!o && (o.verdict !== "sem_registo" || !!o.time_suspect);
+}
+
+export function raceAfterStampOf(payload: unknown): RaceAfterStamp | null {
+  if (!payload || typeof payload !== "object") return null;
+  const p = payload as Record<string, unknown>;
+  return {
+    fingerprint: typeof p.fingerprint === "string" && p.fingerprint ? p.fingerprint.slice(0, 120) : null,
+    message_id: typeof p.message_id === "string" && p.message_id ? p.message_id.slice(0, 64) : null,
+    note: typeof p.note === "string" && p.note ? p.note.slice(0, 500) : null,
+  };
+}
+
+/** O que fazer com um race_after com balanço: `log` é a linha da chave (ou
+ *  null se ainda não houve). Sem impressão digital (linhas de antes desta
+ *  regra) não se sabe com que dados foi feito: conta como a mesma — e o
+ *  balanço guardado, se o houver, devolve-se e passa a ter carimbo. */
+export function raceAfterDecision(o: RaceOutcome, log: { payload: unknown } | null, force: boolean): RaceAfterDecision {
+  if (!log) return "generate";
+  const stamp = raceAfterStampOf(log.payload);
+  if (stamp?.fingerprint && stamp.fingerprint !== raceBalanceFingerprint(o)) return "redo";
+  return force ? "replay" : "skip";
+}
+
+/** A linha da chave no coach_proactive_log (com o payload), ou null. Uma
+ *  falha a ler conta como "não há" — como wasProactiveDelivered. */
+// deno-lint-ignore no-explicit-any
+export async function readProactiveLog(sb: any, userId: string, key: string): Promise<{ payload: unknown } | null> {
+  try {
+    let { data, error } = await sb.from("coach_proactive_log").select("key, payload").eq("user_id", userId).eq("key", key).maybeSingle();
+    if (error) {
+      // Sem a coluna payload (migração por aplicar): só a existência.
+      ({ data, error } = await sb.from("coach_proactive_log").select("key").eq("user_id", userId).eq("key", key).maybeSingle());
+    }
+    if (error || !data) return null;
+    return { payload: data.payload ?? null };
+  } catch (e) {
+    console.warn("coach_proactive_log: leitura falhou:", e);
+    return null;
+  }
+}
+
+/** O balanço que já existe (race_events.coach_balance), na forma da resposta
+ *  normal, marcado `replayed` — o cliente não o põe outra vez no chat. null se
+ *  não houver (aí gera-se). */
+// deno-lint-ignore no-explicit-any
+export async function replayRaceBalance(sb: any, userId: string, raceId: string | null, stamp: RaceAfterStamp | null) {
+  if (!raceId) return null;
+  const { data, error } = await sb.from("race_events").select("coach_balance, coach_balance_at").eq("id", raceId).eq("user_id", userId).maybeSingle();
+  const text = !error && typeof data?.coach_balance === "string" ? data.coach_balance.trim() : "";
+  if (!text) return null;
+  return {
+    replayed: true,
+    proactive: "race_after",
+    user_message: null,
+    model_message: { id: stamp?.message_id ?? null, role: "model", content: text, created_at: data.coach_balance_at ?? null },
+    suggestions: [],
+    usage: null,
+    plan_proposed: false,
+    goals_updated: false,
+    goal_proposed: false,
   };
 }
 
@@ -1679,6 +1796,28 @@ function pace(secPerKm: number): string {
   return `${sharedFormatPaceMinKm(Math.round(secPerKm))}/km`;
 }
 
+/** «Ritmo nos km planos» (revisão do #122), ou null quando não vale a pena:
+ *  sem troços e com menos de 2 s de diferença para a média (só
+ *  arredondamento). O que pesa na média diz-se conforme o plano tem: as
+ *  subidas, as descidas, o arranque, o aguentar (mais lento do que o ritmo
+ *  na maratona e no ultra) e o final. */
+export function flatPaceLine(plan: RacePacingPlan): string | null {
+  const diff = Math.abs(plan.flatPaceSecPerKm - plan.basePaceSecPerKm);
+  if (!plan.knowsRoute && diff < 2) return null;
+  if (diff < 1) return null;
+  const has = (l: string) => plan.rows.some((r) => r.label === l);
+  const parts = [
+    has("subida") ? "as subidas" : null,
+    has("descida") ? "as descidas" : null,
+    "o arranque",
+    // O aguentar só tem delta na maratona (+2 s) e no ultra (+3 s) — racePacing HOLD_DELTA.
+    (plan.category === "maratona" || plan.category === "ultra") && has("aguentar") ? "o aguentar" : null,
+    "o final",
+  ].filter((x): x is string => !!x);
+  const list = parts.length > 1 ? `${parts.slice(0, -1).join(", ")} e ${parts[parts.length - 1]}` : parts[0];
+  return `Ritmo nos km planos (o «ritmo» da tabela): ${pace(plan.flatPaceSecPerKm)} — o ${pace(plan.basePaceSecPerKm)} de cima é a MÉDIA, com ${list} lá dentro. Quando falares do ritmo a correr, é este.`;
+}
+
 export function buildRacePlanContext(plan: RacePacingPlan | null, raceName: string | null, daysUntil: number | null): string | null {
   if (!plan) return null;
   const when = daysUntil == null ? "" : daysUntil === 0 ? " — é hoje" : daysUntil === 1 ? " — é amanhã" : ` — daqui a ${daysUntil} dias`;
@@ -1690,6 +1829,11 @@ export function buildRacePlanContext(plan: RacePacingPlan | null, raceName: stri
       ? `Base: a previsão do treino, ${formatHms(plan.predictedSeconds!)} (${pace(plan.basePaceSecPerKm)}) — o objetivo ${formatHms(plan.targetSeconds)} é AMBICIOSO (mais de 3% abaixo) e decide-se ao km ${plan.decisionKm}.`
       : `Base: a previsão do treino, ${formatHms(plan.predictedSeconds!)} (${pace(plan.basePaceSecPerKm)}) — sem objetivo marcado.`;
   lines.push(base);
+  // A média da base não é o ritmo nos planos (revisão do #122): com troços,
+  // ou 2 s ou mais de diferença, ela recebe os dois — e cita o dos planos
+  // quando fala do ritmo a correr.
+  const flatLine = flatPaceLine(plan);
+  if (flatLine) lines.push(flatLine);
   lines.push(`Chegada planeada: ${formatHms(plan.plannedFinishSeconds)}. Primeiro km: ${pace(plan.firstKmPaceSecPerKm)}. Ponto de decisão: km ${plan.decisionKm}.${plan.effortMode ? " Trail: por esforço — os ritmos são referência." : ""}`);
   // Os nomes dos troços vêm do site da prova (enrich-race-event,
   // web_info.route_segments): dados, não instruções — como o PERCURSO das
@@ -1740,6 +1884,13 @@ export function buildRaceOutcomeContext(o: RaceOutcome): string {
   const lines: string[] = ["=== BALANÇO DA PROVA (calculado pela app a partir dos registos — usa ESTES números) ==="];
   const cat = o.category ? RACE_CATEGORY_LABELS[o.category] || o.category : null;
   lines.push(`Prova: ${o.name || "(sem nome)"}${o.date ? `, ${o.date}` : ""}${o.race_type ? `, ${RACE_TYPE_LABELS[o.race_type] || o.race_type}` : ""}${o.distance_km ? `, ${o.distance_km} km` : ""}${cat ? ` (${cat})` : ""}.`);
+  if (o.time_suspect && o.official_seconds) {
+    const check = checkRaceTime(raceTimeInput(o.official_seconds, o.distance_km, o));
+    // Marcado pela app com uma regra que o servidor não reproduz: a pergunta genérica.
+    const question = !check.ok ? check.message : `${formatHms(o.official_seconds)} não bate certo com esta prova. Confirma o tempo.`;
+    lines.push(`Tempo oficial registado: ${formatHms(o.official_seconds)} — ERRO DE ENTRADA, não é um tempo possível para esta prova. Não é um facto: nada de comparar com o objetivo, a previsão ou o melhor anterior, e nada de conquistas. A pergunta a fazer-lhe: «${question}»`);
+    return lines.join("\n");
+  }
   if (o.verdict === "sem_registo" || !o.official_seconds) {
     lines.push("Corrida da prova: ainda não registada.");
     return lines.join("\n");
@@ -1804,7 +1955,15 @@ export const RACE_AFTER_UNLINKED_INSTRUCTION =
   `Não lhe peças para registar a prova: a corrida já existe. Pergunta-lhe se foi essa a prova e, se foi, que a ligue à prova ` +
   `para fazerem o balanço com os números certos. Sem balanço inventado e sem parabéns automáticos: ainda não sabes se foi ela.`;
 
+/** O race_after com um tempo oficial impossível (bug de 2026-11-15). */
+export const RACE_AFTER_SUSPECT_TIME_INSTRUCTION =
+  `A prova já passou, mas o tempo registado é um erro de entrada (o bloco BALANÇO DA PROVA diz porquê). ` +
+  `Em vez do balanço, pede-lhe que confirme o tempo, com a pergunta do bloco, na tua voz — curto e sem drama. ` +
+  `Nada de parabéns, de objetivo batido, de diferenças nem de conquistas. Diz-lhe que o corrija na corrida da prova: ` +
+  `assim que estiver certo, fazes o balanço a sério.`;
+
 export function raceAfterInstruction(o: RaceOutcome | null): string {
+  if (o?.time_suspect) return RACE_AFTER_SUSPECT_TIME_INSTRUCTION;
   if (!o || o.verdict === "sem_registo") return PROACTIVE_INSTRUCTIONS.race_after;
   const common =
     `A prova já passou e a corrida está registada: os números do bloco BALANÇO DA PROVA são os que contam — não os recalcules nem os contradigas. ` +
@@ -1985,7 +2144,7 @@ async function generateRaceCaption(geminiKey: string, o: RaceOutcome, firstName:
  *  `raceOutcome` só conta no race_after: com ele, o bloco de números e a
  *  instrução por veredicto entram antes das regras do turno. */
 export function buildProactiveInstruction(trigger: ProactiveTrigger, details: string | null, raceOutcome: RaceOutcome | null = null): string {
-  const withOutcome = trigger === "race_after" && !!raceOutcome && raceOutcome.verdict !== "sem_registo";
+  const withOutcome = trigger === "race_after" && raceOutcomeHasBalance(raceOutcome);
   // A corrida desse dia existe mas não está ligada à prova: nunca "regista a
   // prova" (revisão pré-deploy de 2026-09-26; o prefixo é o do cliente).
   const unlinkedRun = trigger === "race_after" && !withOutcome && !!details?.startsWith(UNLINKED_RUN_DETAILS_PREFIX);
@@ -4594,7 +4753,8 @@ export async function runProposeTrainingPlan(
       ]);
       const planItems = [...(keptRes?.data || []), ...rows.map((r) => ({ ...r, status: "pendente" }))];
       const profileLevel = profileRes?.data?.experience_level ?? null;
-      volumeNote = raceVolumeNote(racesInPeriod.map((race) => ({
+      // Bug #123: as provas a 14 dias ou menos estão em afinação — sem nota de volume.
+      volumeNote = raceVolumeNote(racesInPeriod.filter((race) => daysBetweenISO(todayPlansISO, race.date) > TAPER_WINDOW_DAYS).map((race) => ({
         race,
         outlook: raceVolumeOutlook({
           race: { ...race, experience_level: race.experience_level || profileLevel },
@@ -5915,9 +6075,12 @@ export function buildRaceEventsContext(
     ].filter(Boolean).join(", ");
     // Bloco 1 — Viabilidade do objetivo (objetivo_inviavel). Numa jornada não:
     // é uma prova curta dentro da época, não um objetivo a preparar.
-    const viabFlags = daysUntil > 0 && !seriesIntent
+    const viabFlags = (daysUntil > 0 && !seriesIntent
       ? assessViability(e.distance_km ?? null, effectiveLevel, weeksUntil, weeklyVolumeKm)
-      : [];
+      : [])
+      // Bug #123: nas duas semanas antes da prova é afinação — o volume já
+      // não se sobe, e a Carol não o pede.
+      .filter((f) => !(f === "volume_insuficiente" && daysUntil <= TAPER_WINDOW_DAYS));
     const viabLines = viabFlags.map((f) => {
       if (f === "ultra_para_iniciante") return "⚠ OBJETIVO_INVIAVEL: ultra desaconselhado para iniciante";
       if (f === "tempo_insuficiente")   return `⚠ OBJETIVO_INVIAVEL: tempo insuficiente (${weeksUntil} sem. disponíveis)`;
@@ -7926,7 +8089,30 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
         });
       }
     }
-    if (proactiveTrigger && proactiveKey && !raceAfterForce && await wasProactiveDelivered(sb, userId, proactiveKey)) {
+    // O balanço da prova: um por tempo (raceAfterDecision, bug de 2026-11-15).
+    let raceAfterRedo: RaceAfterStamp | null = null;
+    let raceAfterSkip = false;
+    if (proactiveTrigger === "race_after" && proactiveKey && raceOutcomeHasBalance(raceOutcome)) {
+      const log = await readProactiveLog(sb, userId, proactiveKey);
+      const decision = raceAfterDecision(raceOutcome, log, raceAfterForce);
+      if (decision === "replay") {
+        const stamp = raceAfterStampOf(log?.payload);
+        const replay = await replayRaceBalance(sb, userId, raceOutcome.race_id, stamp);
+        if (replay) {
+          // Uma linha de antes da impressão digital fica com ela a partir daqui.
+          if (!stamp?.fingerprint) {
+            await recordProactiveDelivered(sb, userId, "race_after", proactiveKey,
+              { fingerprint: raceBalanceFingerprint(raceOutcome), message_id: stamp?.message_id ?? null, note: stamp?.note ?? null }, { replace: true });
+          }
+          return jsonResponse(replay);
+        }
+      }
+      if (decision === "redo") raceAfterRedo = raceAfterStampOf(log?.payload);
+      raceAfterSkip = decision === "skip";
+    } else if (proactiveTrigger && proactiveKey && !raceAfterForce && await wasProactiveDelivered(sb, userId, proactiveKey)) {
+      raceAfterSkip = true;
+    }
+    if (raceAfterSkip) {
       return jsonResponse({
         skipped: true,
         reason: "already_sent",
@@ -8197,7 +8383,7 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
     const runStartISO = runStartD.toISOString().slice(0, 10);
     const { data: recentRuns, error: err_recentRuns } = await sb
       .from("runs")
-      .select("date, start_time, kind, training_type, distance_km, duration_seconds, effort_rpe, details")
+      .select("date, start_time, kind, training_type, distance_km, duration_seconds, effort_rpe, details, race_id")
       .eq("user_id", userId)
       .gte("date", runStartISO)
       .lte("date", todayISO)
@@ -8241,7 +8427,7 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
         // deno-lint-ignore no-explicit-any
         .then((r: any) => { const list = r?.data || []; return list.find((x: any) => (x.race_priority || "a") === "a") ?? list[0] ?? null; }, () => null),
       // O perfil de carga por prova (2026-11-09): manda o da próxima principal.
-      fetchLoadProfileRaces(sb, userId, todayISO),
+      fetchLoadProfileRaces(sb, userId, addDaysISO(todayISO, -6)),
       // Até onde o plano aceite vai: depois disso, por planear (não zero).
       fetchAcceptedPlanUntil(sb, userId),
     ]);
@@ -8262,10 +8448,11 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
     // ambiguidade a desfazer.
     // O perfil de carga e o conflito carga/volume (loadProfile.ts): um só
     // estado, e a Carol nunca contradiz a escolha dele.
-    const loadProfileLine = loadProfileContextLine(loadVolumeState({
+    const loadStateNow: LoadVolumeState = loadVolumeState({
       races: profileRaces, runs: recentRuns || [], planItems: loadPlanItems, todayISO,
       profileLevel: (profile?.experience_level as string | null) ?? null, plannedUntilISO,
-    }), todayISO);
+    });
+    const loadProfileLine = loadProfileContextLine(loadStateNow, todayISO);
     const acwrLine = buildAcwrLine(acwr, loadReading, (recentRuns || []).length > 0, todayISO, levelReference) +
       (loadProfileLine ? `\n${loadProfileLine}` : "");
 
@@ -9114,7 +9301,22 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
       });
     }
 
-    const planCheckinPrompt = targetsReviewPrompt ? targetsReviewPrompt : planContinuationIn ? buildPlanContinuationTurn(planContinuationIn) : onboardingStartPrompt ? onboardingStartPrompt : raceConflictPrompt ? raceConflictPrompt : cupMapPrompt ? cupMapPrompt : planDivergence.length > 0
+    /* O assunto da carga (bug #123): o atleta abriu o chat pelo alerta da
+       Carol no Início (load_topic, pelo canal do check-in, como o mapa). O
+       estado é o do servidor (loadVolumeState, a mesma fórmula da app) — os
+       números da app não entram. Sem prova que mande, ou «ok», não há
+       assunto: skipped, e a app não marca nada. */
+    const loadTopicAsked = !!body.load_topic && typeof body.load_topic === "object";
+    const loadTopicSig = loadTopicAsked ? loadTopicSignature(loadStateNow) : null;
+    const loadTopicPrompt = loadTopicSig ? buildLoadTopicTurn(loadStateNow) : null;
+    if (loadTopicAsked && !loadTopicPrompt && !message) {
+      return jsonResponse({
+        skipped: true, reason: "load_topic_unavailable", user_message: null, model_message: null,
+        suggestions: [], usage: null, plan_proposed: false, goals_updated: false, goal_proposed: false,
+      });
+    }
+
+    const planCheckinPrompt = targetsReviewPrompt ? targetsReviewPrompt : planContinuationIn ? buildPlanContinuationTurn(planContinuationIn) : onboardingStartPrompt ? onboardingStartPrompt : raceConflictPrompt ? raceConflictPrompt : cupMapPrompt ? cupMapPrompt : loadTopicPrompt ? loadTopicPrompt : planDivergence.length > 0
       ? `A app detetou que o plano já não bate certo com a realidade e chamou-te — o atleta abriu o chat a partir desse aviso. ` +
         `Motivos: ${planDivergence.map((t) => `"${t}"`).join("; ")}. Começa por estes pontos, por ordem de gravidade. Se o plano tem de mudar, ` +
         `chama já propose_training_plan com o plano ajustado (replace_active_plan=true se houver plano aceite) — o dia da prova como prova, a véspera leve, ` +
@@ -9153,6 +9355,23 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
         plan_proposed: false,
         goals_updated: false,
         goal_proposed: false,
+      });
+    }
+
+    // O turno foi mesmo o da carga: uma vez por assinatura (load_topic:<sig>
+    // no coach_proactive_log) — a mesma situação não se repete; outra (o
+    // estado mudou) é conversa nova.
+    const loadTopicShown = loadTopicPrompt !== null && !message && !body.is_intervention_start && !!body.is_plan_checkin &&
+      planCheckinPrompt === loadTopicPrompt;
+    const loadTopicLogKey = loadTopicShown && loadTopicSig ? `load_topic:${loadTopicSig}` : null;
+    const loadProfileChoice = loadTopicShown && loadStateNow.race?.id
+      ? { race_id: loadStateNow.race.id, current: loadStateNow.profile, chosen: loadStateNow.chosen }
+      : null;
+    if (loadTopicLogKey && await wasProactiveDelivered(sb, userId, loadTopicLogKey)) {
+      return jsonResponse({
+        skipped: "already_sent", load_topic_shown: true, load_profile_choice: loadProfileChoice,
+        user_message: null, model_message: null, suggestions: [], usage: null,
+        plan_proposed: false, goals_updated: false, goal_proposed: false,
       });
     }
 
@@ -9801,12 +10020,29 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
     // este como referência. runSaveCoachNote trata do teto de notas e da
     // repetição (a mesma nota duas vezes não é erro); qualquer falha aqui
     // fica só no log, o balanço já foi dito.
-    if (proactiveTrigger === "race_after" && raceOutcome && raceOutcome.verdict !== "sem_registo") {
-      try {
-        const noteResult = await runSaveCoachNote(sb, userId, { category: "outro", note: raceOutcomeNote(raceOutcome) });
-        if (noteResult.startsWith("Erro")) console.warn("Nota do balanço da prova não guardada:", noteResult);
-      } catch (noteErr) {
-        console.warn("Nota do balanço da prova não guardada:", noteErr);
+    let raceAfterNote: string | null = null;
+    if (proactiveTrigger === "race_after" && raceOutcomeHasBalance(raceOutcome)) {
+      // Refeito com outros dados: o balanço e a nota de antes saem (o novo
+      // substitui-os, sem ficarem os dois no chat e na memória dela).
+      if (raceAfterRedo && !modelMsgErr) {
+        if (raceAfterRedo.message_id && raceAfterRedo.message_id !== modelMsg?.id) {
+          const { error: delMsgErr } = await sb.from("coach_messages").delete().eq("id", raceAfterRedo.message_id).eq("user_id", userId);
+          if (delMsgErr) console.warn("Balanço anterior não apagado:", delMsgErr.message);
+        }
+        if (raceAfterRedo.note) {
+          const { error: delNoteErr } = await sb.from("coach_notes").delete().eq("user_id", userId).eq("note", raceAfterRedo.note);
+          if (delNoteErr) console.warn("Nota do balanço anterior não apagada:", delNoteErr.message);
+        }
+      }
+      // Com um tempo impossível não há balanço — nem nota para a memória dela.
+      if (!raceOutcome.time_suspect) {
+        raceAfterNote = raceOutcomeNote(raceOutcome);
+        try {
+          const noteResult = await runSaveCoachNote(sb, userId, { category: "outro", note: raceAfterNote });
+          if (noteResult.startsWith("Erro")) console.warn("Nota do balanço da prova não guardada:", noteResult);
+        } catch (noteErr) {
+          console.warn("Nota do balanço da prova não guardada:", noteErr);
+        }
       }
       // E o balanço em si fica na prova (race_events.coach_balance), que é de
       // onde o hub o lê em qualquer dispositivo. Best-effort: sem a coluna
@@ -9823,11 +10059,16 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
 
     // A mensagem já foi escrita e vai chegar ao atleta: a chave fica
     // registada, para nenhum outro dispositivo a repetir.
-    if (proactiveTrigger && proactiveKey) await recordProactiveDelivered(sb, userId, proactiveTrigger, proactiveKey);
+    if (proactiveTrigger === "race_after" && proactiveKey && raceOutcomeHasBalance(raceOutcome)) {
+      // O carimbo: com que dados, que mensagem e que nota (raceAfterDecision).
+      const stamp: RaceAfterStamp = { fingerprint: raceBalanceFingerprint(raceOutcome), message_id: modelMsg?.id ?? null, note: raceAfterNote };
+      await recordProactiveDelivered(sb, userId, proactiveTrigger, proactiveKey, stamp, { replace: true });
+    } else if (proactiveTrigger && proactiveKey) await recordProactiveDelivered(sb, userId, proactiveTrigger, proactiveKey);
     if (targetsReviewLogKey && !modelMsgErr) await recordProactiveDelivered(sb, userId, "targets_review", targetsReviewLogKey, targetsReviewPayload);
     // O mapa fica entregue quando a mensagem fica gravada — chegue a resposta
     // ao cliente ou não (sondagem depois dos 45 s).
     if (cupMapLogKey && !modelMsgErr) await recordCupMapDelivered(sb, userId, cupMapLogKey);
+    if (loadTopicLogKey && !modelMsgErr) await recordProactiveDelivered(sb, userId, "load_topic", loadTopicLogKey);
 
     if (modelMsgErr) {
       console.error("Falha a guardar resposta:", modelMsgErr);
@@ -9844,6 +10085,7 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
         proactive: proactiveTrigger,
         ...(cupWasUpdated ? { cup_updated: true } : {}),
         ...(cupMapShown ? { cup_map_shown: true } : {}),
+        ...(loadTopicShown ? { load_topic_shown: true, load_profile_choice: loadProfileChoice } : {}),
         ...(planContinuationOut ? { plan_continuation: planContinuationOut } : {}),
       });
     }
@@ -9862,6 +10104,7 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
       proactive: proactiveTrigger,
       ...(cupWasUpdated ? { cup_updated: true } : {}),
       ...(cupMapShown ? { cup_map_shown: true } : {}),
+      ...(loadTopicShown ? { load_topic_shown: true, load_profile_choice: loadProfileChoice } : {}),
       ...(planContinuationOut ? { plan_continuation: planContinuationOut } : {}),
     });
 

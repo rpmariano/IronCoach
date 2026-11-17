@@ -1669,7 +1669,7 @@ describe('RunRegistration — modo prova', () => {
   });
 
   it('pelos prints do relógio, o tempo oficial e a posição escritos gravam-se na corrida na mesma', async () => {
-    // 51:27 numa meia seria mais rápido do que o recorde do mundo (raceTimeSanity): é um 10 km.
+    // 51:27 numa meia seria um ritmo de elite mundial (raceTimeSanity): é um 10 km.
     entrarPeloPrefill({ distance_km: 10, target_time: '52:00', target_pace_seconds_per_km: 312 });
     mocks.invoke.mockResolvedValue({ data: { run: { id: 'run-race-1', distance_km: 10, duration_seconds: 3088, details: { avg_heart_rate_bpm: 160, cadence_spm: 170, elevation_gain_m: 40, avg_pace_seconds_per_km: 309 } } }, error: null });
     render(<RunRegistration onClose={onClose} />);
@@ -1715,7 +1715,7 @@ describe('RunRegistration — modo prova', () => {
      resultado, por cima do que lá estiver. Era preciso tocar em "Aplicar"
      (pedido do utilizador para o tirar do caminho). */
   it('ao juntar o diploma, a Carol lê-o e preenche sozinha o registo com o tempo de chip', async () => {
-    // 51:27 numa meia seria mais rápido do que o recorde do mundo (raceTimeSanity): é um 10 km.
+    // 51:27 numa meia seria um ritmo de elite mundial (raceTimeSanity): é um 10 km.
     entrarPeloPrefill({ distance_km: 10, target_time: '52:00', target_pace_seconds_per_km: 312 });
     mocks.invoke.mockImplementation((fn) => fn === 'analyze-diploma'
       ? Promise.resolve({ data: { reading: { athlete_name: 'RUI MARIANO', chip_time_seconds: 3087, gun_time_seconds: 3111, position: 1668, age_group: null, age_group_position: 226, gender_position: null, participants: null, bib_number: null, splits: [{ km: 5, seconds: 1515 }] } }, error: null })

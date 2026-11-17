@@ -3,6 +3,9 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { TODAY, PATTY_RUNS, PATTY_PLAN_ITEMS, PATTY_PLANS, TRAIL, MEIA } from '../test/pattyLoad';
 import { loadTopicCandidate, loadTopicMessage, loadTopicSignature, markLoadTopicHandled, wasLoadTopicHandled } from './loadTopic';
+import { useAppStore } from '../store';
+import useCarolNotices from '../components/BI/useCarolNotices';
+import { ToastProvider } from '../components/shared/ToastProvider';
 
 /* Bug #123 (2026-11-17, o Rui: «não seria melhor ser um alerta da Carol e ir ao chat falar com
    ela?»): a carga e o volume deixam de ser um cartão no Início e passam a um assunto dela — uma vez
@@ -16,8 +19,11 @@ describe('loadTopic — a frase, a assinatura e a marca', () => {
   beforeEach(() => localStorage.clear());
 
   it('a frase na voz dela, sem números, pelo estado — com a prova concluída que subiu a carga', () => {
-    expect(loadTopicMessage({ state: 'carga', race: RACE, acuteFromRace: { name: 'Corrida do Tejo', km: 10 } }))
-      .toBe('A Corrida do Tejo subiu a tua carga desta semana. Quero falar contigo sobre os próximos dias.');
+    // 2026-11-15 é domingo: «a prova de domingo», sem o género do nome.
+    expect(loadTopicMessage({ state: 'carga', race: RACE, acuteFromRace: { raceId: 'tejo', name: 'Corrida do Tejo', date: '2026-11-15', km: 10 } }))
+      .toBe('A prova de domingo subiu a tua carga desta semana. Quero falar contigo sobre os próximos dias.');
+    expect(loadTopicMessage({ state: 'carga', race: RACE, acuteFromRace: { name: 'Trail da Serra' } }))
+      .toBe('A prova «Trail da Serra» subiu a tua carga desta semana. Quero falar contigo sobre os próximos dias.');
     expect(loadTopicMessage({ state: 'carga', race: RACE })).toBe('Nestes 7 dias correste bem mais do que o teu habitual. Quero falar contigo sobre os próximos dias.');
     expect(loadTopicMessage({ state: 'volume', race: RACE })).toBe('Para Meia dos Descobrimentos ainda corres menos do que ela pede. Quero ver contigo como chegar lá.');
     expect(loadTopicMessage({ state: 'conflito', race: RACE })).toMatch(/^Nestes 7 dias .* Quero decidir contigo o que pesa mais\.$/);
@@ -47,16 +53,10 @@ describe('loadTopic — a frase, a assinatura e a marca', () => {
 });
 
 describe('useCarolNotices — o aviso da carga no lugar do cartão', () => {
-  let useAppStore;
-  let useCarolNotices;
-  let ToastProvider;
-  beforeEach(async () => {
+  beforeEach(() => {
     localStorage.clear();
     vi.useFakeTimers({ toFake: ['Date'] });
     vi.setSystemTime(new Date(`${TODAY}T12:00:00`));
-    ({ useAppStore } = await import('../store'));
-    ({ default: useCarolNotices } = await import('../components/BI/useCarolNotices'));
-    ({ ToastProvider } = await import('../components/shared/ToastProvider'));
     useAppStore.setState({
       session: { user: { id: 'u1' } }, profile: { id: 'u1', experience_level: 'basico' },
       raceEvents: [TRAIL, MEIA], runs: PATTY_RUNS, coachPlans: PATTY_PLANS, coachPlanItems: PATTY_PLAN_ITEMS,

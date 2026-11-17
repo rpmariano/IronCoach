@@ -498,6 +498,8 @@ export default function Coach() {
     if (data?.race_updated) {
       const { data: freshRaces } = await supabase.from('race_events').select('*').eq('user_id', profile.id).order('date', { ascending: true });
       if (freshRaces) useAppStore.getState().setRaceEvents(freshRaces);
+      // Ela gravou a escolha do perfil de carga (escrita por ele): os botões já não fazem falta.
+      setLoadChoice(null);
     }
     // A Carol gravou numa jornada ou no objetivo da época (set_cup_*, só a
     // um inscrito — specs/trofeu.md §5): relê a competição, as provas (a

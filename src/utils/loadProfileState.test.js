@@ -102,6 +102,12 @@ describe('filterLoadInsights — a carga e o volume nunca juntos', () => {
     expect(s.state).toBe('volume');
     expect(filterLoadInsights(all, s).map((i) => i.id)).toEqual(['bf_low']);
   });
+  it('bug #123: nas duas semanas antes da prova (taper), o «volume insuficiente» não aparece', () => {
+    const s = stateWith([TRAIL, MEIA], '2026-11-17');
+    expect(s.taper).toBe(true);
+    expect(filterLoadInsights(all, s).map((i) => i.id).includes('race_volume')).toBe(false);
+    expect(filterLoadInsights([VOLUME, OTHER], { ...s, state: 'ok', loadAlert: false }).map((i) => i.id)).toEqual(['bf_low']);
+  });
   it('sem prova que mande, nada muda; o volume de outra prova também não', () => {
     expect(filterLoadInsights(all, stateWith([]))).toEqual(all);
     expect(filterLoadInsights([{ ...VOLUME, raceId: 'trail' }], stateWith([TRAIL, MEIA])).map((i) => i.id)).toEqual(['race_volume']);

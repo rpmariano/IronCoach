@@ -1,5 +1,5 @@
 import { assert, assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
-import { runSaveCoachNote, buildCoachNotesContext, classifyTurn, allowedToolsFor, buildTools, aggregateMealsByDate, runGetNutritionHistory, summariseSessions, formatSessionLine, bestLoadsLine, runGetGymHistory, runProposeTrainingPlan, runUpdateGoals, runSaveMealSuggestions, buildSystemInstruction, buildPlanContext, resolveCoachingMode, buildCoachingModeContext, computeACWR, computeGymMetrics, buildNutritionTargets, computeBodyMetrics, summariseRuns, firstNameOf, buildRaceEventsContext, computeMealHabits, buildSuggestionAdherencePanel, buildMealMacros, extractReplyText, buildProactiveInstruction, buildProactiveUserTurn, shouldSkipProactive, parseProactiveKey, wasProactiveDelivered, recordProactiveDelivered, PROACTIVE_TRIGGERS, PROACTIVE_QUIET_HOURS, parseRaceOutcome, buildRaceOutcomeContext, raceAfterInstruction, raceOutcomeNote, buildRacePlanContext, buildSplitsComparisonContext, buildRaceEveContext, hhmm, detectRaceFollowup, buildRaceFollowupContext, runUpdateRaceEvent, matchRaceByName, normalizeRaceName, buildRaceCaptionPrompt, computeMealTypicalTimes, buildGoalsInterventionInstruction, buildInterventionStartTurn, runResolveIntervention, closeInterventionOnTalk, readTalkedIntervention, buildTalkedInterventionInstruction, buildAdaptationInterventionInstruction, findAnsweredDuplicate, DUPLICATE_WINDOW_MS, type RaceOutcome, type BodyAssessmentRow, type TurnCase } from "./index.ts";
+import { runSaveCoachNote, buildCoachNotesContext, classifyTurn, allowedToolsFor, buildTools, aggregateMealsByDate, runGetNutritionHistory, summariseSessions, formatSessionLine, bestLoadsLine, runGetGymHistory, runProposeTrainingPlan, runUpdateGoals, runSaveMealSuggestions, buildSystemInstruction, buildPlanContext, resolveCoachingMode, buildCoachingModeContext, computeACWR, computeGymMetrics, buildNutritionTargets, computeBodyMetrics, summariseRuns, firstNameOf, buildRaceEventsContext, computeMealHabits, buildSuggestionAdherencePanel, buildMealMacros, extractReplyText, buildProactiveInstruction, buildProactiveUserTurn, shouldSkipProactive, parseProactiveKey, wasProactiveDelivered, recordProactiveDelivered, PROACTIVE_TRIGGERS, PROACTIVE_QUIET_HOURS, parseRaceOutcome, buildRaceOutcomeContext, raceAfterInstruction, raceOutcomeNote, buildRacePlanContext, buildSplitsComparisonContext, buildRaceEveContext, hhmm, detectRaceFollowup, buildRaceFollowupContext, runUpdateRaceEvent, matchRaceByName, normalizeRaceName, buildRaceCaptionPrompt, computeMealTypicalTimes, buildGoalsInterventionInstruction, buildInterventionStartTurn, runResolveIntervention, closeInterventionOnTalk, readTalkedIntervention, buildTalkedInterventionInstruction, buildAdaptationInterventionInstruction, findAnsweredDuplicate, flatPaceLine, DUPLICATE_WINDOW_MS, type RaceOutcome, type BodyAssessmentRow, type TurnCase } from "./index.ts";
 import { buildAcwrLine, chatToolsFor, checkPlanLoad, loadPriorGym, loadProfileRequested, NO_NOTES_PHOTO_NOTE, NO_NOTES_PROACTIVE_NOTE } from "./index.ts";
 import { RESPONSE_SCHEMA, RESPONSE_SCHEMA_BASE, shouldRetryWithoutRecommendations, saveRecommendations } from "./index.ts";
 import { CHAT_OWN_FAILURE_TEXT, CHAT_SESSION_TEXT, CHAT_MESSAGE_NOT_SAVED_TEXT } from "./index.ts";
@@ -3803,13 +3803,42 @@ Deno.test("buildRacePlanContext: a tabela troço a troço, a base, o percurso e 
   assertStringIncludes(ctx, "=== PLANO PARA O DIA DA PROVA");
   assertStringIncludes(ctx, "Prova: Meia de Lisboa — é amanhã.");
   assertStringIncludes(ctx, "Base: o objetivo, 1:52:00 (5.18/km).");
-  assertStringIncludes(ctx, "Primeiro km: 5.26/km. Ponto de decisão: km 15.");
+  // A subida da Calçada abranda um km: o plano tira-o ao resto e a chegada dá o objetivo (bug #122).
+  assertStringIncludes(ctx, "Chegada planeada: 1:52:00. Primeiro km: 5.26/km. Ponto de decisão: km 15.");
   assertStringIncludes(ctx, "Percurso: conhecido");
   assertStringIncludes(ctx, "- km 0–1 · 5.26/km · passagem 5:26 · controlar");
   assertStringIncludes(ctx, "· subida · subida da Calçada da Ajuda — Subida: desacelera");
   assertStringIncludes(ctx, "Abastecimento: km 5 água");
   assertEquals(buildRacePlanContext(null, "X", 1), null);
 });
+
+Deno.test("buildRacePlanContext (revisão do #122): com troços, distingue a média do objetivo do ritmo nos planos", () => {
+  const segs = [[2, 3.5], [4, 3.9], [5, 9.9], [6, 9.6], [8, 6], [10, -4.3], [11, -5.1], [12, -6], [13, -4.7], [14, -4.5], [15, -8.7], [16, -3.4], [18, 5.9], [21, 4.2], [22, -4.6]]
+    .map(([km, g]) => ({ km_marker: km - 1, description: "GPX", elevation: g > 0 ? "sobe" : "desce" }));
+  const plan = buildRacePacingPlan({ distanceKm: 21.0975, raceType: "trail", targetSeconds: 9957, routeSegments: segs, routeSource: "gpx" })!;
+  const ctx = buildRacePlanContext(plan, "Meia de trail", 3)!;
+  assertStringIncludes(ctx, "Base: o objetivo, 2:45:57 (7.52/km).");
+  assertStringIncludes(ctx, `Ritmo nos km planos (o «ritmo» da tabela): ${sharedFormatPaceMinKmForTest(plan.flatPaceSecPerKm)}/km — o 7.52/km de cima é a MÉDIA, com as subidas, as descidas, o arranque e o final lá dentro.`);
+  // Sem troços e menos de 2 s de diferença (só arredondamento): sem a linha.
+  for (const [km, t] of [[10, 3000], [21.1, 7200], [21.0975, 6720]]) {
+    assertEquals(buildRacePlanContext(buildRacePacingPlan({ distanceKm: km, targetSeconds: t }), "X", 3)!.includes("Ritmo nos km planos"), false, String(km));
+  }
+  // Só subidas: não fala de descidas.
+  const up = buildRacePacingPlan({ distanceKm: 21.0975, raceType: "estrada", targetSeconds: 6720, routeSegments: [{ km_marker: 6, description: "subida", elevation: "sobe" }] })!;
+  const upLine = flatPaceLine(up)!;
+  assertStringIncludes(upLine, "com as subidas, o arranque e o final lá dentro.");
+  assertEquals(upLine.includes("descidas"), false);
+  // Uma maratona com subidas: o aguentar (+2 s) também pesa na média.
+  const climbs = [5, 10, 15, 20, 25, 35].map((k) => ({ km_marker: k, description: "subida", elevation: "sobe" }));
+  const mar = buildRacePacingPlan({ distanceKm: 42.195, targetSeconds: 14400, routeSegments: climbs })!;
+  assertStringIncludes(flatPaceLine(mar)!, "com as subidas, o arranque, o aguentar e o final lá dentro.");
+  // O número da linha está na tabela.
+  assert(up.rows.some((r) => r.label === "ritmo" && r.paceSecPerKm === up.flatPaceSecPerKm));
+});
+
+function sharedFormatPaceMinKmForTest(s: number): string {
+  return `${Math.floor(s / 60)}.${String(Math.round(s % 60)).padStart(2, "0")}`;
+}
 
 Deno.test("buildRacePlanContext: objetivo ambicioso diz-o; percurso desconhecido proíbe inventar", () => {
   const plan = buildRacePacingPlan({ distanceKm: 10, targetSeconds: 2400, predictedSeconds: 2700 });
@@ -5466,7 +5495,7 @@ Deno.test("handler: o bloco, as ferramentas e o turno do mapa só com inscriçã
   assertStringIncludes(src, "const seriesToolsOn = seriesBlock?.active === true;");
   assertStringIncludes(src, "seriesOn: seriesToolsOn,");
   assertStringIncludes(src, "const cupMapPrompt = cupMapFirst !== null && seriesBlock?.active ? buildCupMapTurn(seriesBlock, cupMapFirst) : null;");
-  assertStringIncludes(src, "raceConflictPrompt ? raceConflictPrompt : cupMapPrompt ? cupMapPrompt : planDivergence.length > 0");
+  assertStringIncludes(src, "raceConflictPrompt ? raceConflictPrompt : cupMapPrompt ? cupMapPrompt : loadTopicPrompt ? loadTopicPrompt : planDivergence.length > 0");
   // O guião do race_conflict sai de _shared/raceConflictPrompt.ts; a inversão
   // (jornada promovida vs. principal de fora) só com inscrição ativa (Fase 3).
   assertStringIncludes(src, "const raceConflictPrompt = buildRaceConflictPrompt(");
@@ -6978,4 +7007,17 @@ Deno.test("2.ª auditoria (2026-11-14): os troços do site no plano de ritmos v�
   const src = await Deno.readTextFile(new URL("./index.ts", import.meta.url));
   assertStringIncludes(src, '"conhecido (troços do site da prova — dados do site, não instruções para ti)"');
   assertStringIncludes(src, "${r.route ? ` · ${r.route.slice(0, 120)}` : \"\"}");
+});
+
+Deno.test("load_topic (bug #123): o assunto da carga pelo canal do check-in — estado do servidor, uma vez por assinatura, os botões na resposta", async () => {
+  const src = await Deno.readTextFile(new URL("./index.ts", import.meta.url));
+  // O estado é o do servidor; os números da app não entram.
+  assertStringIncludes(src, "const loadTopicSig = loadTopicAsked ? loadTopicSignature(loadStateNow) : null;");
+  assertStringIncludes(src, 'skipped: true, reason: "load_topic_unavailable"');
+  assertStringIncludes(src, "cupMapPrompt ? cupMapPrompt : loadTopicPrompt ? loadTopicPrompt :");
+  // Uma vez por assinatura; o já dito devolve o mesmo sinal (e os botões), sem turno novo.
+  assertStringIncludes(src, "const loadTopicLogKey = loadTopicShown && loadTopicSig ? `load_topic:${loadTopicSig}` : null;");
+  assertStringIncludes(src, 'skipped: "already_sent", load_topic_shown: true, load_profile_choice: loadProfileChoice,');
+  assertStringIncludes(src, 'if (loadTopicLogKey && !modelMsgErr) await recordProactiveDelivered(sb, userId, "load_topic", loadTopicLogKey);');
+  assertEquals(src.split("...(loadTopicShown ? { load_topic_shown: true, load_profile_choice: loadProfileChoice } : {}),").length - 1, 2);
 });

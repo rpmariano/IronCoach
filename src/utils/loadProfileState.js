@@ -57,7 +57,9 @@ const ACWR_IDS = new Set(['acwr_caution', 'acwr_danger']);
 export function filterLoadInsights(insights, state) {
   if (!state?.race) return insights;
   const allowAcwr = false;
-  const allowVolume = state.state === 'ok';
+  // Nas duas semanas antes da prova (state.taper, dev-back ec9fd50c) é afinação: o «volume
+  // insuficiente» já não se mostra, nem com tudo bem.
+  const allowVolume = state.state === 'ok' && !state.taper;
   return insights.filter((i) => {
     if (ACWR_IDS.has(i.id)) return allowAcwr;
     // O «volume insuficiente» de outra prova (a próxima não é a principal) fica como estava.

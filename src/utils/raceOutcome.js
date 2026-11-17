@@ -16,6 +16,7 @@
 
 import { getRacePrediction } from '@formulas/racePlanning.ts';
 import { categorizeDistance } from '@formulas/vocabulary.ts';
+import { checkRaceTime } from '@formulas/raceTimeSanity.ts';
 import { findRaceRun, formatDuration, formatPace, parseDurationToSeconds, RACE_DISTANCE_OPTIONS } from './run';
 import { formatDistanceKm } from './paceMath';
 
@@ -151,7 +152,7 @@ export function previousBestSeconds(runs, race, run, races = []) {
     if (!sameRaceDistance(rDistanceKm, gps, raceDistanceKm, isMeasuredRace(race))) continue;
     if (terrainOf(racesById.get(r.race_id)?.race_type ?? r.details?.race_type) !== terrain) continue;
     const seconds = raceResultSeconds(r);
-    if (!seconds) continue;
+    if (!seconds || !checkRaceTime({ seconds, distanceKm: rDistanceKm }).ok) continue;
     if (!best || seconds < best.seconds) best = { seconds, date: r.date.slice(0, 10), distanceKm: rDistanceKm };
   }
   return best;
@@ -233,12 +234,24 @@ export function classifyRaceOutcome({ race, run: givenRun, runs = [], profile = 
     isPersonalRecord: false,
     basis: null,
     verdict: 'sem_registo',
+    timeSuspect: false,
   };
   if (!run || !officialSeconds) return base;
 
   // A previsão é a do TREINO: só corridas anteriores ao dia da prova, e
   // nunca a própria — senão a prova "previa-se" a si mesma.
   const predictedSeconds = racePredictionSeconds(race, runs, profile, run);
+
+  /* Um tempo impossível é erro de entrada, não um resultado (bug de
+     2026-11-15: «1:23» lido como 1 min 23 s deu «objetivo batido por 55:17»
+     e a conquista). Regra do Rui, em @formulas/raceTimeSanity.ts: mais
+     rápido do que 2:40/km, ou menos de metade do objetivo (ou, sem ele, da
+     previsão). Sem veredicto, sem conquistas, sem recorde — o hub e a Carol
+     pedem para o confirmar. */
+  const timeCheck = checkRaceTime({ seconds: officialSeconds, distanceKm, referenceSeconds: targetSeconds ?? predictedSeconds });
+  if (!timeCheck.ok) {
+    return { ...base, predictedSeconds, timeSuspect: true, timeMessage: timeCheck.message };
+  }
 
   const best = previousBestSeconds(runs, race, run, races);
 
@@ -285,6 +298,9 @@ export function formatDelta(seconds) {
 export function describeRaceOutcome(outcome, race) {
   if (!outcome) return '';
   const name = race?.name || 'A prova';
+  if (outcome.timeSuspect) {
+    return `${outcome.timeMessage} Corrige-o na corrida e eu faço as contas.`;
+  }
   if (outcome.verdict === 'sem_registo') {
     // Corrida ligada mas gravada sem tempo ("Prosseguir sem estas métricas"):
     // pedir para a registar era pedir o que já está feito.
@@ -336,6 +352,8 @@ export function buildRaceOutcomePayload(outcome, race, run) {
     basis: outcome.basis,
     vs_training: outcome.vsTraining,
     is_personal_record: outcome.isPersonalRecord,
+    // O servidor volta a verificar; vai para ele não fazer o balanço com ele.
+    time_suspect: !!outcome.timeSuspect,
     // Os parciais registados (runs.details.splits), para o servidor comparar
     // com o plano para o dia km a km (specs/plano-de-prova.md §4). Até 60,
     // só com distância e tempo válidos.

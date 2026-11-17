@@ -1,5 +1,5 @@
 import { assert, assertEquals } from "jsr:@std/assert@1";
-import { governingRace, isLoadProfileRevertIntervention, loadProfileChosen, loadProfileRedFlag, loadVolumeState, raceLoadProfile } from "./loadProfile.ts";
+import { acuteFromRaceOf, governingRace, isLoadProfileRevertIntervention, loadProfileChosen, loadProfileRedFlag, loadVolumeState, raceLoadProfile } from "./loadProfile.ts";
 import { acuteLimitKm, planLoadViolations, runLoadReading } from "./runLoadAlert.ts";
 
 // O perfil de carga por prova (pedido do Rui, 2026-11-09). A Patty recebeu no
@@ -134,4 +134,48 @@ Deno.test("loadProfileRedFlag (revisão de 5fea1e4e): só o registado depois da 
   assertEquals(loadProfileRedFlag({ race, runs: [], checkins: [critical], nowISO: "2026-11-11T07:00:00Z" })?.reason, "recuperacao_critica");
   assertEquals(loadProfileRedFlag({ race, runs: [], checkins: [critical], nowISO: "2026-11-13T08:00:00Z" }), null);
   assertEquals([isLoadProfileRevertIntervention("[perfil] O perfil…"), isLoadProfileRevertIntervention("[carga] …")], [true, false]);
+});
+
+// Bug #123 (2026-11-17): o cartão «Carga ou volume — escolhe tu» apareceu ao
+// Rui a 12 dias da meia. 7 dias: 26,6 km (4,84 a 13/11 e os 21,76 da prova
+// Atlantic Cliff a 15/11) contra ~15-19 de habitual; a meia (a, 29/11) pede ~35.
+const RUI_RUNS = [
+  R("2026-10-20", 5, "continuo"), R("2026-10-22", 5, "continuo"), R("2026-10-25", 7, "longo"),
+  R("2026-10-27", 5, "continuo"), R("2026-10-29", 5.5, "continuo"), R("2026-11-01", 8, "longo"),
+  R("2026-11-03", 5, "continuo"), R("2026-11-05", 4.5, "continuo"), R("2026-11-08", 7.5, "longo"),
+  R("2026-11-13", 4.84, "continuo"),
+  { ...R("2026-11-15", 21.76, null, "competicao", 8), race_id: "trail" },
+];
+const TRAIL_DONE = { ...TRAIL, status: "concluida" };
+
+Deno.test("bug #123: a 12 dias da prova que manda é afinação — sem conflito, só a carga, e a prova que a subiu", () => {
+  const s = loadVolumeState({ races: [TRAIL_DONE, MEIA], runs: RUI_RUNS, planItems: [], todayISO: "2026-11-17" });
+  assertEquals(s.race?.id, "meia");
+  assertEquals([s.daysToRace, s.taper], [12, true]);
+  assertEquals(s.acuteKm, 26.6);
+  assertEquals([s.loadAlert, s.volumeBelow, s.state], [true, false, "carga"]);
+  assertEquals(s.acuteFromRace, { raceId: "trail", name: "Atlantic Cliff Adventure", date: "2026-11-15", km: 21.76 });
+});
+
+Deno.test("bug #123: fora das duas semanas, o volume «abaixo» conta como antes (conflito)", () => {
+  // As mesmas corridas, mas a meia a 30 dias (mudada para 17/12): não é afinação.
+  const far = { ...MEIA, date: "2026-12-17" };
+  const s = loadVolumeState({ races: [TRAIL_DONE, far], runs: RUI_RUNS, planItems: [], todayISO: "2026-11-17", plannedUntilISO: "2026-12-17" });
+  assertEquals(s.taper, false);
+  assertEquals([s.volumeStatus, s.volumeBelow, s.loadAlert, s.state], ["abaixo", true, true, "conflito"]);
+  // O limiar: a 14 dias ainda é afinação, a 15 já não.
+  assertEquals(loadVolumeState({ races: [{ ...MEIA, date: "2026-12-01" }], runs: RUI_RUNS, todayISO: "2026-11-17" }).taper, true);
+  assertEquals(loadVolumeState({ races: [{ ...MEIA, date: "2026-12-02" }], runs: RUI_RUNS, todayISO: "2026-11-17" }).taper, false);
+});
+
+Deno.test("acuteFromRaceOf: só uma prova da última semana que pese ≥ metade da carga", () => {
+  // Sem a prova ligada (sem race_id): conta a corrida de competição desse dia.
+  const unlinked = RUI_RUNS.map((r) => ({ ...r, race_id: undefined }));
+  assertEquals(acuteFromRaceOf([TRAIL_DONE], unlinked, "2026-11-17", 26.6)?.km, 21.76);
+  // Uma prova pequena numa semana grande: não explica a carga.
+  assertEquals(acuteFromRaceOf([TRAIL_DONE], [{ date: "2026-11-15", distance_km: 5, kind: "competicao", race_id: "trail" }], "2026-11-17", 26.6), null);
+  // Fora dos 7 dias: nada.
+  assertEquals(acuteFromRaceOf([TRAIL_DONE], RUI_RUNS, "2026-11-22", 26.6), null);
+  // Uma prova agendada sem corrida ligada nem de competição nesse dia: não.
+  assertEquals(acuteFromRaceOf([TRAIL], [], "2026-11-17", 26.6), null);
 });

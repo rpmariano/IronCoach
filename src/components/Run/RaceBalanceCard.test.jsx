@@ -3,6 +3,7 @@ import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { useAppStore } from '../../store';
 import RaceBalanceCard from './RaceBalanceCard';
+import { raceBalanceFingerprintFor } from '../../utils/raceBalance';
 
 /* O balanço completo da Carol no hub (pedido 2026-09-13): pedido ao
    coach-chat à primeira abertura, guardado na prova, com as respostas do
@@ -63,11 +64,38 @@ describe('RaceBalanceCard', () => {
     expect(JSON.parse(window.localStorage.getItem('ironcoach:balanco:race-1'))).toMatchObject({ text: BALANCO, runId: 'run-1' });
   });
 
-  it('a cópia local desta corrida mostra-se logo, sem pedir outra vez', async () => {
-    window.localStorage.setItem('ironcoach:balanco:race-1', JSON.stringify({ text: 'Balanço guardado.', runId: 'run-1' }));
+  const FP = () => raceBalanceFingerprintFor({ race: RACE, run: RUN, runs: [RUN], raceEvents: [RACE], profile: PROFILE });
+
+  it('a cópia local desta corrida, feita com esta versão da prova, mostra-se logo, sem pedir outra vez', async () => {
+    window.localStorage.setItem('ironcoach:balanco:race-1', JSON.stringify({ text: 'Balanço guardado.', runId: 'run-1', fingerprint: FP() }));
     render(<RaceBalanceCard race={RACE} run={RUN} runs={[RUN]} profile={PROFILE} />);
     expect(await screen.findByText('Balanço guardado.')).toBeInTheDocument();
     expect(mocks.invoke).not.toHaveBeenCalled();
+  });
+
+  /* Regra do Rui (2026-11-15): se a prova muda (tempo, distância, objetivo,
+     tipo), o balanço refaz-se — mesmo que o chat já o tenha dado. */
+  it('a cópia local de outra versão da prova (o tempo foi corrigido) não se mostra: pede-se outra vez', async () => {
+    window.localStorage.setItem('ironcoach:balanco:race-1', JSON.stringify({ text: 'Balanço com o tempo errado.', runId: 'run-1', fingerprint: 'v1|83|10|3000|' }));
+    window.localStorage.setItem('ironcoach:carol-proativa:user-1', JSON.stringify({ race_after: 'race_after:race-1:run-1' }));
+    mocks.invoke.mockResolvedValue({ data: { model_message: { id: 'm9', content: 'Refeito.' }, suggestions: [] }, error: null });
+    render(<RaceBalanceCard race={RACE} run={RUN} runs={[RUN]} profile={PROFILE} />);
+    expect(await screen.findByText('Refeito.')).toBeInTheDocument();
+    expect(screen.queryByText('Balanço com o tempo errado.')).not.toBeInTheDocument();
+    expect(mocks.invoke).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(window.localStorage.getItem('ironcoach:balanco:race-1')).fingerprint).toBe(FP());
+  });
+
+  it('uma cópia sem impressão digital (de antes) mostra-se logo e confirma-se uma vez, em silêncio', async () => {
+    window.localStorage.setItem('ironcoach:balanco:race-1', JSON.stringify({ text: 'Balanço guardado.', runId: 'run-1' }));
+    mocks.invoke.mockResolvedValue({ data: { replayed: true, model_message: { id: 'm1', content: 'Balanço guardado.' }, suggestions: [] }, error: null });
+    render(<RaceBalanceCard race={RACE} run={RUN} runs={[RUN]} profile={PROFILE} />);
+    expect(screen.getByText('Balanço guardado.')).toBeInTheDocument();
+    expect(screen.queryByTestId('race-balance-loading')).not.toBeInTheDocument();
+    await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(JSON.parse(window.localStorage.getItem('ironcoach:balanco:race-1')).fingerprint).toBe(FP()));
+    // O repetido não volta a entrar no chat.
+    expect(useAppStore.getState().coachMessages).toHaveLength(0);
   });
 
   it('entrega o balanço a quem monta o hub, para o gravar pelo caminho do RunAgenda', async () => {
@@ -88,7 +116,16 @@ describe('RaceBalanceCard', () => {
     expect(useAppStore.getState().activeTab).toBe('coach');
   });
 
-  it('com o balanço já na prova não pede nada', () => {
+  it('com o balanço já na prova mostra-o logo; sem saber com que versão foi feito, confirma-o uma vez', async () => {
+    mocks.invoke.mockResolvedValue({ data: { replayed: true, model_message: { id: 'm1', content: 'Já feito.' }, suggestions: [] }, error: null });
+    render(<RaceBalanceCard race={{ ...RACE, coach_balance: 'Já feito.' }} run={RUN} runs={[RUN]} profile={PROFILE} />);
+    expect(screen.getByTestId('race-balance-carol')).toHaveTextContent('Já feito.');
+    await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(1));
+    expect(screen.getByTestId('race-balance-carol')).toHaveTextContent('Já feito.');
+  });
+
+  it('com o balanço na prova e a cópia local desta versão: não pede nada', () => {
+    window.localStorage.setItem('ironcoach:balanco:race-1', JSON.stringify({ text: 'Já feito.', runId: 'run-1', fingerprint: FP() }));
     render(<RaceBalanceCard race={{ ...RACE, coach_balance: 'Já feito.' }} run={RUN} runs={[RUN]} profile={PROFILE} />);
     expect(screen.getByTestId('race-balance-carol')).toHaveTextContent('Já feito.');
     expect(mocks.invoke).not.toHaveBeenCalled();

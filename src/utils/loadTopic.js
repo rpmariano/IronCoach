@@ -11,6 +11,8 @@
    load_topic_shown) ou quando ele escolhe o perfil (o estado muda), ou com «Dispensar». A marca
    fica neste dispositivo (localStorage) e, pela impressão 'moment', nos outros. */
 
+import { loadTopicSignature as sharedLoadTopicSignature } from '@formulas/loadProfile.ts';
+
 export const LOAD_TOPIC_TITLE = 'A tua carga de corrida';
 const STORAGE_PREFIX = 'ironcoach:carga-tratada:';
 const MAX_HANDLED = 30;
@@ -24,20 +26,27 @@ export function loadTopicApplies(state) {
   return state.state === 'perfil' && !!state.loadAlert;
 }
 
-/** A assinatura deste estado (o que já foi falado não volta enquanto não mudar). */
+/** A assinatura deste estado (o que já foi falado não volta enquanto não mudar): a MESMA função
+ *  do servidor (@formulas/loadProfile.ts, dev-back 9a27e75a), só nos estados que pedem conversa. */
 export function loadTopicSignature(state) {
   if (!loadTopicApplies(state)) return null;
-  const race = state.acuteFromRace?.name ? `:${state.acuteFromRace.name}` : '';
-  return `load:${state.race.id}:${state.state}${race}`;
+  return sharedLoadTopicSignature(state);
+}
+
+const DIAS = ['domingo', 'segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado'];
+/* A prova concluída que subiu a carga (acuteFromRace, dev-back ec9fd50c), sem género: «A prova de
+   domingo» (é desta semana — a carga conta 7 dias) ou, sem a data, «A prova «Nome»». */
+function provaQueSubiu(race) {
+  const d = typeof race?.date === 'string' ? new Date(`${race.date.slice(0, 10)}T12:00:00Z`) : null;
+  if (d && !Number.isNaN(d.getTime())) return `A prova de ${DIAS[d.getUTCDay()]}`;
+  return race?.name ? `A prova «${race.name}»` : 'Uma prova';
 }
 
 /** A frase do alerta, na voz dela: o que se passa e porquê agora (sem números — esses vão no chat). */
 export function loadTopicMessage(state) {
   if (!loadTopicApplies(state)) return null;
   const prova = state.race?.name || 'a prova';
-  const subiu = state.acuteFromRace?.name
-    ? `A ${state.acuteFromRace.name} subiu a tua carga desta semana.`
-    : 'Nestes 7 dias correste bem mais do que o teu habitual.';
+  const subiu = state.acuteFromRace ? `${provaQueSubiu(state.acuteFromRace)} subiu a tua carga desta semana.` : 'Nestes 7 dias correste bem mais do que o teu habitual.';
   switch (state.state) {
     case 'carga': return `${subiu} Quero falar contigo sobre os próximos dias.`;
     case 'volume': return `Para ${prova} ainda corres menos do que ela pede. Quero ver contigo como chegar lá.`;
