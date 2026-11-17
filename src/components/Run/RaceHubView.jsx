@@ -968,7 +968,7 @@ export default function RaceHubView({
             {volumeNote && <p className="text-[12px] mt-1 text-[var(--text-2)]" data-testid="volume-outlook-note">{volumeNote}</p>}
           </div>
         )}
-        {race?.id && <LoadProfileCard variant="hub" raceId={race.id} />}
+        {race?.id && <LoadProfileCard raceId={race.id} />}
 
         {/* Os alertas de viabilidade eram âmbar dentro do ecrã da prova, onde
             tudo o resto também é âmbar — não se distinguiam do cenário. Coral

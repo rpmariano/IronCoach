@@ -88,6 +88,8 @@ export const COACH_ASYNC_FALLBACK_TEXT = 'Não consegui responder. Tenta outra v
 // uma) e sem "ligação ao servidor" (revisão de 2026-09-26).
 export const COACH_IMMEDIATE_FAILURE_TEXT = 'A rede falhou e não te consegui dizer nada. Tenta outra vez daqui a bocado.';
 export const COACH_EMPTY_REPLY_TEXT = 'Não consegui responder agora. Tenta outra vez.';
+// O assunto da carga que o servidor já não vê (#123): sem «tenta outra vez», que prendia o aviso.
+export const LOAD_TOPIC_UNAVAILABLE_TEXT = 'A tua carga está tranquila agora. Se quiseres mudar o perfil, está no hub da prova.';
 
 // A conversa que ela pediu a partir de um aviso do Início (assunto por
 // resolver, conflito de provas, ajuste do plano, balanço, fim de bloco): o
@@ -346,7 +348,11 @@ export default function Coach() {
       // conversa que o atleta tem à frente (os do «Aceitei o plano.»). Salta-se
       // sem tocar em nada.
       if (silent && data?.skipped) return data;
-      if (data?.model_message?.content) {
+      /* Um assunto já dito que o servidor repete (replayed, o already_sent do load_topic): a bolha
+         dela já está na conversa se o id já cá estiver — não se repete; os botões aparecem por baixo. */
+      const replayedHere = data?.replayed && data?.model_message?.id
+        && (useAppStore.getState().coachMessages || []).some((m) => m.id === data.model_message.id);
+      if (data?.model_message?.content && !replayedHere) {
         addCoachMessage({
           id: data.model_message.id || (Date.now() + 1).toString(),
           role: 'assistant',
@@ -589,7 +595,10 @@ export default function Coach() {
       markLoadTopicHandled(profile?.id, signature);
       useAppStore.getState().logImpression?.({ kind: 'moment', key: signature, title: null });
     } else if (data?.skipped && data.reason === 'load_topic_unavailable') {
-      addCoachMessage({ id: (Date.now() + 1).toString(), role: 'assistant', content: COACH_EMPTY_REPLY_TEXT });
+      /* O servidor já não vê o assunto (a carga acalmou, ou já não há prova que mande): «Tenta outra
+         vez» deixava o aviso preso no Início. A assinatura fica tratada e a frase diz onde está o perfil. */
+      if (signature) markLoadTopicHandled(profile?.id, signature);
+      addCoachMessage({ id: (Date.now() + 1).toString(), role: 'assistant', content: LOAD_TOPIC_UNAVAILABLE_TEXT });
     }
     const choice = data?.load_profile_choice;
     if (choice && typeof choice.race_id === 'string') setLoadChoice({ raceId: choice.race_id });
@@ -1439,6 +1448,8 @@ export default function Coach() {
     // Um "Reenviar" de só fotos volta com as imagens nos extras (retryExtras).
     const retriedImages = Array.isArray(extras?.images) && extras.images.length > 0;
     if ((!typed && !sendPhotos.length && !retriedImages) || coachLoading) return;
+    // Mudou de assunto (ou disse a escolha por escrito): os botões do perfil de carga saem (#123).
+    setLoadChoice(null);
     // Só fotos: o servidor responde a "olha para estas fotos"; aqui a bolha mostra só a linha das fotos.
     const text = typed;
     if (sendPhotos.length) {
@@ -1855,15 +1866,17 @@ export default function Coach() {
           tapa o layout viewport. 0px no Chrome Android (resizes-content) e
           sem teclado — por isso nada muda aí. */}
       <div className="shrink-0 border-t border-[var(--border-glass)] pt-3 mt-1 relative" style={{ paddingBottom: 'var(--keyboard-inset, 0px)' }} data-testid="coach-composer">
+        {/* A escolha do perfil de carga (#123): só depois de ela acabar de escrever (os botões
+            respondem ao que ela perguntou), escondida com o teclado aberto, e sai com «Agora não»
+            ou quando ele escreve outra coisa (handleSend). */}
+        {loadChoice && !typingActive && (
+          <div className="hide-when-keyboard mb-2 px-1" data-testid="coach-load-choice">
+            <LoadProfileChoice raceId={loadChoice.raceId} disabled={coachLoading} onDone={handleLoadChoiceDone} onLater={() => setLoadChoice(null)} />
+          </div>
+        )}
         {/* Sugestões pendentes (Planos / Objetivos) — botão único: as duas
             propostas podem coexistir e abrem sempre a MESMA persiana, para
             o atleta decidir ambas sem trocar de ecrã. */}
-        {/* Só depois de ela acabar de escrever: os botões respondem ao que ela perguntou. */}
-        {loadChoice && !typingActive && (
-          <div className="mb-2 px-1" data-testid="coach-load-choice">
-            <LoadProfileChoice raceId={loadChoice.raceId} disabled={coachLoading} onDone={handleLoadChoiceDone} />
-          </div>
-        )}
         {(pendingPlans.length > 0 || pendingGoalProposals.length > 0) && (
           <div className="hide-when-keyboard fixed right-4 z-50 flex flex-col gap-2 items-end" style={{ bottom: 'calc(140px + env(safe-area-inset-bottom, 0px))' }}>
             <button

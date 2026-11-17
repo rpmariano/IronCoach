@@ -11,7 +11,7 @@
    load_topic_shown) ou quando ele escolhe o perfil (o estado muda), ou com «Dispensar». A marca
    fica neste dispositivo (localStorage) e, pela impressão 'moment', nos outros. */
 
-import { loadTopicSignature as sharedLoadTopicSignature } from '@formulas/loadProfile.ts';
+import { loadTopicApplies, loadTopicSignature } from '@formulas/loadProfile.ts';
 
 export const LOAD_TOPIC_TITLE = 'A tua carga de corrida';
 const STORAGE_PREFIX = 'ironcoach:carga-tratada:';
@@ -19,19 +19,10 @@ const MAX_HANDLED = 30;
 
 const storageKey = (userId) => `${STORAGE_PREFIX}${userId || 'anon'}`;
 
-/** O estado pede conversa? carga, volume e conflito; com o perfil escolhido, só se passou o limite. */
-export function loadTopicApplies(state) {
-  if (!state?.race?.id) return false;
-  if (state.state === 'carga' || state.state === 'volume' || state.state === 'conflito') return true;
-  return state.state === 'perfil' && !!state.loadAlert;
-}
-
-/** A assinatura deste estado (o que já foi falado não volta enquanto não mudar): a MESMA função
- *  do servidor (@formulas/loadProfile.ts, dev-back 9a27e75a), só nos estados que pedem conversa. */
-export function loadTopicSignature(state) {
-  if (!loadTopicApplies(state)) return null;
-  return sharedLoadTopicSignature(state);
-}
+/* Quando há assunto, e a assinatura de cada estado: as MESMAS funções do servidor
+   (@formulas/loadProfile.ts, dev-back 057e3a67) — carga, volume e conflito; com o perfil escolhido,
+   só se passou o limite. A assinatura só leva a prova concluída quando é ela a puxar a carga. */
+export { loadTopicApplies, loadTopicSignature };
 
 const DIAS = ['domingo', 'segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado'];
 /* A prova concluída que subiu a carga (acuteFromRace, dev-back ec9fd50c), sem género: «A prova de
@@ -45,7 +36,8 @@ function provaQueSubiu(race) {
 /** A frase do alerta, na voz dela: o que se passa e porquê agora (sem números — esses vão no chat). */
 export function loadTopicMessage(state) {
   if (!loadTopicApplies(state)) return null;
-  const prova = state.race?.name || 'a prova';
+  // «para a prova X», sem o género do nome (o mesmo padrão do volumeSentence).
+  const prova = state.race?.name ? `a prova ${state.race.name}` : 'a prova';
   const subiu = state.acuteFromRace ? `${provaQueSubiu(state.acuteFromRace)} subiu a tua carga desta semana.` : 'Nestes 7 dias correste bem mais do que o teu habitual.';
   switch (state.state) {
     case 'carga': return `${subiu} Quero falar contigo sobre os próximos dias.`;

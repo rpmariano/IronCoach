@@ -5,7 +5,7 @@ import { useAppStore } from '../../store';
 import { invokeEdgeFunctionWithTimeout, supabase } from '../../lib/supabase';
 import { ToastProvider } from '../shared/ToastProvider';
 import { readRaceBalanceCache } from '../../utils/coachProactive';
-import Coach, { COACH_ASYNC_FALLBACK_TEXT, COACH_EMPTY_REPLY_TEXT, COACH_IMMEDIATE_FAILURE_TEXT, COACH_INITIATED_FALLBACK_TEXT, COACH_INITIATED_NETWORK_TEXT, COACH_INITIATED_LATER_TEXT } from './Coach';
+import Coach, { LOAD_TOPIC_UNAVAILABLE_TEXT, COACH_ASYNC_FALLBACK_TEXT, COACH_EMPTY_REPLY_TEXT, COACH_IMMEDIATE_FAILURE_TEXT, COACH_INITIATED_FALLBACK_TEXT, COACH_INITIATED_NETWORK_TEXT, COACH_INITIATED_LATER_TEXT } from './Coach';
 // Dia LOCAL (yyyy-mm-dd), como o todayISO() da app: em UTC, entre as 00:00 e
 // a 01:00 de verão o "há 5 dias" passava a 6 e o teste falhava só a essa hora.
 const localISO = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -2870,11 +2870,66 @@ describe('Coach — a carga pedida a partir do Início (coachIntent load_topic)'
     expect(screen.queryByTestId('coach-load-choice')).toBeNull();
   });
 
-  it('sem o assunto no servidor: uma frase curta, e nada fica tratado', async () => {
+  it('already_sent com replayed: a bolha que já está na conversa não se repete, e os botões aparecem', async () => {
+    const { TRAIL, MEIA, PATTY_RUNS, PATTY_PLANS, PATTY_PLAN_ITEMS } = await import('../../test/pattyLoad');
+    useAppStore.setState({
+      raceEvents: [TRAIL, MEIA], runs: PATTY_RUNS, coachPlans: PATTY_PLANS, coachPlanItems: PATTY_PLAN_ITEMS,
+      coachMessages: [{ id: 'm-antiga', role: 'assistant', content: 'Já falámos da tua carga. Qual preferes?' }],
+    });
+    invokeEdgeFunctionWithTimeout.mockResolvedValue({
+      data: {
+        skipped: 'already_sent', replayed: true, load_topic_shown: true, suggestions: [],
+        load_profile_choice: { race_id: 'meia', current: 'prudente', chosen: false },
+        model_message: { id: 'm-antiga', role: 'model', content: 'Já falámos da tua carga. Qual preferes?', created_at: '2026-11-17T10:00:00Z' },
+      },
+      error: null,
+    });
+    useAppStore.setState({ coachIntent: { kind: 'load_topic', raceId: 'meia', state: 'conflito', signature: SIGNATURE } });
+    renderCoach();
+    await screen.findByTestId('coach-load-choice');
+    expect(useAppStore.getState().coachMessages.filter((m) => m.id === 'm-antiga')).toHaveLength(1);
+    expect(JSON.parse(window.localStorage.getItem('ironcoach:carga-tratada:user-1'))).toEqual([SIGNATURE]);
+  });
+
+  it('o servidor já não vê o assunto: uma frase própria, e o aviso não fica preso (a assinatura fica tratada)', async () => {
     invokeEdgeFunctionWithTimeout.mockResolvedValue({ data: { skipped: true, reason: 'load_topic_unavailable', suggestions: [] }, error: null });
     useAppStore.setState({ coachIntent: { kind: 'load_topic', raceId: 'meia', state: 'carga', signature: 'load:meia:carga' } });
     renderCoach();
-    await waitFor(() => expect(useAppStore.getState().coachMessages.map((m) => m.content)).toContain(COACH_EMPTY_REPLY_TEXT));
-    expect(window.localStorage.getItem('ironcoach:carga-tratada:user-1')).toBeNull();
+    await waitFor(() => expect(useAppStore.getState().coachMessages.map((m) => m.content)).toContain(LOAD_TOPIC_UNAVAILABLE_TEXT));
+    expect(useAppStore.getState().coachMessages.map((m) => m.content)).not.toContain(COACH_EMPTY_REPLY_TEXT);
+    expect(JSON.parse(window.localStorage.getItem('ironcoach:carga-tratada:user-1'))).toEqual(['load:meia:carga']);
+  });
+
+  it('os botões são um grupo com nome e anúncio; «Agora não» tira-os; escrever outra coisa também', async () => {
+    const { TRAIL, MEIA, PATTY_RUNS, PATTY_PLANS, PATTY_PLAN_ITEMS } = await import('../../test/pattyLoad');
+    useAppStore.setState({ raceEvents: [TRAIL, MEIA], runs: PATTY_RUNS, coachPlans: PATTY_PLANS, coachPlanItems: PATTY_PLAN_ITEMS });
+    invokeEdgeFunctionWithTimeout.mockResolvedValue({
+      data: { model_message: { id: 'm1', content: 'Qual preferes?' }, suggestions: [], load_topic_shown: true, load_profile_choice: { race_id: 'meia', current: 'prudente', chosen: false } },
+      error: null,
+    });
+    useAppStore.setState({ coachIntent: { kind: 'load_topic', raceId: 'meia', state: 'conflito', signature: SIGNATURE } });
+    renderCoach();
+    const box = await screen.findByTestId('coach-load-choice');
+    expect(box).toHaveClass('hide-when-keyboard');
+    const group = screen.getByRole('group', { name: /O perfil de carga para a prova Meia dos Descobrimentos/ });
+    expect(group).toHaveAttribute('aria-live', 'polite');
+    fireEvent.click(screen.getByTestId('load-choice-later'));
+    expect(screen.queryByTestId('coach-load-choice')).toBeNull();
+  });
+
+  it('com os botões à vista, escrever outra mensagem tira-os', async () => {
+    const { TRAIL, MEIA, PATTY_RUNS, PATTY_PLANS, PATTY_PLAN_ITEMS } = await import('../../test/pattyLoad');
+    useAppStore.setState({ raceEvents: [TRAIL, MEIA], runs: PATTY_RUNS, coachPlans: PATTY_PLANS, coachPlanItems: PATTY_PLAN_ITEMS });
+    invokeEdgeFunctionWithTimeout.mockResolvedValue({
+      data: { model_message: { id: 'm1', content: 'Qual preferes?' }, suggestions: [], load_topic_shown: true, load_profile_choice: { race_id: 'meia', current: 'prudente', chosen: false } },
+      error: null,
+    });
+    useAppStore.setState({ coachIntent: { kind: 'load_topic', raceId: 'meia', state: 'conflito', signature: SIGNATURE } });
+    renderCoach();
+    await screen.findByTestId('coach-load-choice');
+    invokeEdgeFunctionWithTimeout.mockResolvedValue({ data: { model_message: { id: 'm2', content: 'Claro.' }, suggestions: [] }, error: null });
+    fireEvent.change(screen.getByLabelText('Mensagem para a Carol'), { target: { value: 'E as sapatilhas?' } });
+    fireEvent.click(screen.getByLabelText('Enviar pergunta à Carol'));
+    await waitFor(() => expect(screen.queryByTestId('coach-load-choice')).toBeNull());
   });
 });

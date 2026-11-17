@@ -74,7 +74,8 @@ const km = (v) => (v == null ? '—' : String(Math.round(Number(v) * 10) / 10).r
 export function conflictOptionTexts(state) {
   return {
     prudente: `A semana fica até ${km(state?.limits?.prudente)} km; a prova é para completar.`,
-    mais_volume: `Até ${km(state?.limits?.mais_volume)} km, mais perto do que a prova pede, com mais risco. Volta sozinho a Prudente se aparecer dor, RPE 9+ em duas corridas fáceis seguidas ou recuperação crítica.`,
+    // Linguagem simples (revisão do #123): o mesmo texto do servidor, palavra a palavra.
+    mais_volume: `Até ${km(state?.limits?.mais_volume)} km, mais perto do que a prova pede, com mais risco. Volta sozinho a Prudente se aparecer dor, corridas fáceis muito duras duas vezes seguidas ou recuperação muito baixa.`,
   };
 }
 

@@ -1721,6 +1721,22 @@ export function raceAfterDecision(o: RaceOutcome, log: { payload: unknown } | nu
   return force ? "replay" : "skip";
 }
 
+/** A mensagem com que o assunto da carga foi dito (payload.message_id do
+ *  registo load_topic), como a resposta a dá; null sem ela (apagada, ou um
+ *  registo sem id) — a app mostra então o histórico do chat como está. */
+// deno-lint-ignore no-explicit-any
+export async function loadTopicLastMessage(sb: any, userId: string, payload: unknown) {
+  const id = payload && typeof payload === "object" ? (payload as { message_id?: unknown }).message_id : null;
+  if (typeof id !== "string" || !id) return null;
+  try {
+    const { data, error } = await sb.from("coach_messages").select("id, role, content, created_at")
+      .eq("id", id).eq("user_id", userId).maybeSingle();
+    return !error && data?.content ? data : null;
+  } catch {
+    return null;
+  }
+}
+
 /** A linha da chave no coach_proactive_log (com o payload), ou null. Uma
  *  falha a ler conta como "não há" — como wasProactiveDelivered. */
 // deno-lint-ignore no-explicit-any
@@ -4779,7 +4795,8 @@ export async function runProposeTrainingPlan(
       const planItems = [...(keptRes?.data || []), ...rows.map((r) => ({ ...r, status: "pendente" }))];
       const profileLevel = profileRes?.data?.experience_level ?? null;
       // Bug #123: as provas a 14 dias ou menos estão em afinação — sem nota de volume.
-      volumeNote = raceVolumeNote(racesInPeriod.filter((race) => daysBetweenISO(todayPlansISO, race.date) > TAPER_WINDOW_DAYS).map((race) => ({
+      const taperRaceId = governingRace(racesInPeriodOrAfter, todayPlansISO)?.id ?? null;
+      volumeNote = raceVolumeNote(racesInPeriod.filter((race) => !(race.id === taperRaceId && daysBetweenISO(todayPlansISO, race.date) <= TAPER_WINDOW_DAYS)).map((race) => ({
         race,
         outlook: raceVolumeOutlook({
           race: { ...race, experience_level: race.experience_level || profileLevel },
@@ -6045,6 +6062,9 @@ export function buildRaceEventsContext(
   // O perfil do GPX entra no máximo em COURSE_PROFILE_MAX_EVENTS provas (as
   // primeiras da lista, por data): o prompt já é grande.
   let courseProfilesShown = 0;
+  // A afinação (bug #123) é só da prova que manda (loadProfile.ts governingRace).
+  // deno-lint-ignore no-explicit-any
+  const governingRaceId = governingRace(events as any[], todayISO)?.id ?? null;
   const lines = events.map((e) => {
     const eventDate = new Date(e.date + "T00:00:00Z");
     const daysUntil = Math.round((eventDate.getTime() - today.getTime()) / 86400000);
@@ -6105,7 +6125,7 @@ export function buildRaceEventsContext(
       : [])
       // Bug #123: nas duas semanas antes da prova é afinação — o volume já
       // não se sobe, e a Carol não o pede.
-      .filter((f) => !(f === "volume_insuficiente" && daysUntil <= TAPER_WINDOW_DAYS));
+      .filter((f) => !(f === "volume_insuficiente" && e.id && e.id === governingRaceId && daysUntil <= TAPER_WINDOW_DAYS));
     const viabLines = viabFlags.map((f) => {
       if (f === "ultra_para_iniciante") return "⚠ OBJETIVO_INVIAVEL: ultra desaconselhado para iniciante";
       if (f === "tempo_insuficiente")   return `⚠ OBJETIVO_INVIAVEL: tempo insuficiente (${weeksUntil} sem. disponíveis)`;
@@ -9393,11 +9413,14 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
     const loadProfileChoice = loadTopicShown && loadStateNow.race?.id
       ? { race_id: loadStateNow.race.id, current: loadStateNow.profile, chosen: loadStateNow.chosen }
       : null;
-    if (loadTopicLogKey && await wasProactiveDelivered(sb, userId, loadTopicLogKey)) {
+    // Já dito: nenhum turno novo, mas a app recebe a última mensagem do
+    // assunto (o id guardado no registo) para a mostrar com os botões.
+    const loadTopicLog = loadTopicLogKey ? await readProactiveLog(sb, userId, loadTopicLogKey) : null;
+    if (loadTopicLogKey && loadTopicLog) {
       return jsonResponse({
-        skipped: "already_sent", load_topic_shown: true, load_profile_choice: loadProfileChoice,
-        user_message: null, model_message: null, suggestions: [], usage: null,
-        plan_proposed: false, goals_updated: false, goal_proposed: false,
+        skipped: "already_sent", replayed: true, load_topic_shown: true, load_profile_choice: loadProfileChoice,
+        user_message: null, model_message: await loadTopicLastMessage(sb, userId, loadTopicLog.payload),
+        suggestions: [], usage: null, plan_proposed: false, goals_updated: false, goal_proposed: false,
       });
     }
 
@@ -10094,7 +10117,7 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
     // O mapa fica entregue quando a mensagem fica gravada — chegue a resposta
     // ao cliente ou não (sondagem depois dos 45 s).
     if (cupMapLogKey && !modelMsgErr) await recordCupMapDelivered(sb, userId, cupMapLogKey);
-    if (loadTopicLogKey && !modelMsgErr) await recordProactiveDelivered(sb, userId, "load_topic", loadTopicLogKey);
+    if (loadTopicLogKey && !modelMsgErr) await recordProactiveDelivered(sb, userId, "load_topic", loadTopicLogKey, modelMsg?.id ? { message_id: modelMsg.id } : null);
 
     if (modelMsgErr) {
       console.error("Falha a guardar resposta:", modelMsgErr);

@@ -25,7 +25,7 @@ describe('loadTopic — a frase, a assinatura e a marca', () => {
     expect(loadTopicMessage({ state: 'carga', race: RACE, acuteFromRace: { name: 'Trail da Serra' } }))
       .toBe('A prova «Trail da Serra» subiu a tua carga desta semana. Quero falar contigo sobre os próximos dias.');
     expect(loadTopicMessage({ state: 'carga', race: RACE })).toBe('Nestes 7 dias correste bem mais do que o teu habitual. Quero falar contigo sobre os próximos dias.');
-    expect(loadTopicMessage({ state: 'volume', race: RACE })).toBe('Para Meia dos Descobrimentos ainda corres menos do que ela pede. Quero ver contigo como chegar lá.');
+    expect(loadTopicMessage({ state: 'volume', race: RACE })).toBe('Para a prova Meia dos Descobrimentos ainda corres menos do que ela pede. Quero ver contigo como chegar lá.');
     expect(loadTopicMessage({ state: 'conflito', race: RACE })).toMatch(/^Nestes 7 dias .* Quero decidir contigo o que pesa mais\.$/);
     expect(loadTopicMessage({ state: 'perfil', race: RACE, loadAlert: true })).toMatch(/Passaste o limite/);
     // Perfil escolhido dentro do limite, ou tudo bem: não há assunto.
@@ -41,7 +41,9 @@ describe('loadTopic — a frase, a assinatura e a marca', () => {
     markLoadTopicHandled('u1', sig);
     expect(loadTopicCandidate(carga, { userId: 'u1' })).toBeNull();
     expect(loadTopicCandidate({ ...carga, state: 'conflito' }, { userId: 'u1' })).not.toBeNull();
-    expect(loadTopicSignature({ ...carga, acuteFromRace: { name: 'Corrida do Tejo' } })).toBe('load:meia:carga:Corrida do Tejo');
+    // A prova concluída só entra quando é ela a puxar a carga (loadAlert, dev-back 057e3a67).
+    expect(loadTopicSignature({ ...carga, loadAlert: true, acuteFromRace: { name: 'Corrida do Tejo' } })).toBe('load:meia:carga:Corrida do Tejo');
+    expect(loadTopicSignature({ ...carga, state: 'volume', acuteFromRace: { name: 'Corrida do Tejo' } })).toBe('load:meia:volume');
   });
 
   it('falado ou dispensado noutro dispositivo (as impressões) também conta', () => {

@@ -33,7 +33,7 @@ describe('loadStateFor — a Patty a 9 nov', () => {
     expect(conflictNumbersText(s)).toBe('Últimos 7 dias: 23,1 km (1,31× o habitual) · corres 19,1 km/semana; a prova pede 35.');
     expect(conflictOptionTexts(s)).toEqual({
       prudente: 'A semana fica até 28,4 km; a prova é para completar.',
-      mais_volume: 'Até 30,8 km, mais perto do que a prova pede, com mais risco. Volta sozinho a Prudente se aparecer dor, RPE 9+ em duas corridas fáceis seguidas ou recuperação crítica.',
+      mais_volume: 'Até 30,8 km, mais perto do que a prova pede, com mais risco. Volta sozinho a Prudente se aparecer dor, corridas fáceis muito duras duas vezes seguidas ou recuperação muito baixa.',
     });
   });
 

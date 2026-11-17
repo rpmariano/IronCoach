@@ -1,5 +1,5 @@
 import { assert, assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
-import { runSaveCoachNote, buildCoachNotesContext, classifyTurn, allowedToolsFor, buildTools, aggregateMealsByDate, runGetNutritionHistory, summariseSessions, formatSessionLine, bestLoadsLine, runGetGymHistory, runProposeTrainingPlan, runUpdateGoals, runSaveMealSuggestions, buildSystemInstruction, buildPlanContext, resolveCoachingMode, buildCoachingModeContext, computeACWR, computeGymMetrics, buildNutritionTargets, computeBodyMetrics, summariseRuns, firstNameOf, buildRaceEventsContext, computeMealHabits, buildSuggestionAdherencePanel, buildMealMacros, extractReplyText, buildProactiveInstruction, buildProactiveUserTurn, shouldSkipProactive, parseProactiveKey, wasProactiveDelivered, recordProactiveDelivered, PROACTIVE_TRIGGERS, PROACTIVE_QUIET_HOURS, parseRaceOutcome, buildRaceOutcomeContext, raceAfterInstruction, raceOutcomeNote, buildRacePlanContext, buildSplitsComparisonContext, buildRaceEveContext, hhmm, detectRaceFollowup, buildRaceFollowupContext, runUpdateRaceEvent, matchRaceByName, normalizeRaceName, buildRaceCaptionPrompt, computeMealTypicalTimes, buildGoalsInterventionInstruction, buildInterventionStartTurn, runResolveIntervention, closeInterventionOnTalk, readTalkedIntervention, buildTalkedInterventionInstruction, buildAdaptationInterventionInstruction, findAnsweredDuplicate, flatPaceLine, DUPLICATE_WINDOW_MS, type RaceOutcome, type BodyAssessmentRow, type TurnCase } from "./index.ts";
+import { runSaveCoachNote, buildCoachNotesContext, classifyTurn, allowedToolsFor, buildTools, aggregateMealsByDate, runGetNutritionHistory, summariseSessions, formatSessionLine, bestLoadsLine, runGetGymHistory, runProposeTrainingPlan, runUpdateGoals, runSaveMealSuggestions, buildSystemInstruction, buildPlanContext, resolveCoachingMode, buildCoachingModeContext, computeACWR, computeGymMetrics, buildNutritionTargets, computeBodyMetrics, summariseRuns, firstNameOf, buildRaceEventsContext, computeMealHabits, buildSuggestionAdherencePanel, buildMealMacros, extractReplyText, buildProactiveInstruction, buildProactiveUserTurn, shouldSkipProactive, parseProactiveKey, wasProactiveDelivered, recordProactiveDelivered, PROACTIVE_TRIGGERS, PROACTIVE_QUIET_HOURS, parseRaceOutcome, buildRaceOutcomeContext, raceAfterInstruction, raceOutcomeNote, buildRacePlanContext, buildSplitsComparisonContext, buildRaceEveContext, hhmm, detectRaceFollowup, buildRaceFollowupContext, runUpdateRaceEvent, matchRaceByName, normalizeRaceName, buildRaceCaptionPrompt, computeMealTypicalTimes, buildGoalsInterventionInstruction, buildInterventionStartTurn, runResolveIntervention, closeInterventionOnTalk, readTalkedIntervention, buildTalkedInterventionInstruction, buildAdaptationInterventionInstruction, findAnsweredDuplicate, flatPaceLine, loadTopicLastMessage, DUPLICATE_WINDOW_MS, type RaceOutcome, type BodyAssessmentRow, type TurnCase } from "./index.ts";
 import { buildAcwrLine, chatToolsFor, checkPlanLoad, loadPriorGym, loadProfileRequested, NO_NOTES_PHOTO_NOTE, NO_NOTES_PROACTIVE_NOTE } from "./index.ts";
 import { RESPONSE_SCHEMA, RESPONSE_SCHEMA_BASE, shouldRetryWithoutRecommendations, saveRecommendations } from "./index.ts";
 import { CHAT_OWN_FAILURE_TEXT, CHAT_SESSION_TEXT, CHAT_MESSAGE_NOT_SAVED_TEXT } from "./index.ts";
@@ -7045,7 +7045,26 @@ Deno.test("load_topic (bug #123): o assunto da carga pelo canal do check-in — 
   assertStringIncludes(src, "cupMapPrompt ? cupMapPrompt : loadTopicPrompt ? loadTopicPrompt :");
   // Uma vez por assinatura; o já dito devolve o mesmo sinal (e os botões), sem turno novo.
   assertStringIncludes(src, "const loadTopicLogKey = loadTopicShown && loadTopicSig ? `load_topic:${loadTopicSig}` : null;");
-  assertStringIncludes(src, 'skipped: "already_sent", load_topic_shown: true, load_profile_choice: loadProfileChoice,');
-  assertStringIncludes(src, 'if (loadTopicLogKey && !modelMsgErr) await recordProactiveDelivered(sb, userId, "load_topic", loadTopicLogKey);');
+  assertStringIncludes(src, 'skipped: "already_sent", replayed: true, load_topic_shown: true, load_profile_choice: loadProfileChoice,');
+  // Revisão do #123: o já dito traz a última mensagem do assunto (o id fica no registo).
+  assertStringIncludes(src, "user_message: null, model_message: await loadTopicLastMessage(sb, userId, loadTopicLog.payload),");
+  assertStringIncludes(src, 'await recordProactiveDelivered(sb, userId, "load_topic", loadTopicLogKey, modelMsg?.id ? { message_id: modelMsg.id } : null);');
+  // A afinação só para a prova que manda.
+  assertStringIncludes(src, '.filter((f) => !(f === "volume_insuficiente" && e.id && e.id === governingRaceId && daysUntil <= TAPER_WINDOW_DAYS));');
+  assertStringIncludes(src, "!(race.id === taperRaceId && daysBetweenISO(todayPlansISO, race.date) <= TAPER_WINDOW_DAYS)");
   assertEquals(src.split("...(loadTopicShown ? { load_topic_shown: true, load_profile_choice: loadProfileChoice } : {}),").length - 1, 2);
+});
+
+Deno.test("loadTopicLastMessage (revisão do #123): a mensagem do registo, se ainda existir", async () => {
+  const sb = (row: unknown) => ({
+    from: () => {
+      // deno-lint-ignore no-explicit-any
+      const c: any = { select: () => c, eq: () => c, maybeSingle: () => Promise.resolve({ data: row, error: null }) };
+      return c;
+    },
+  });
+  const msg = { id: "m1", role: "model", content: "A carga destes dias…", created_at: "2026-11-17T10:00:00Z" };
+  assertEquals(await loadTopicLastMessage(sb(msg), "u", { message_id: "m1" }), msg);
+  assertEquals(await loadTopicLastMessage(sb(null), "u", { message_id: "m1" }), null);
+  assertEquals(await loadTopicLastMessage(sb(msg), "u", null), null);
 });
