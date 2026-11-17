@@ -1,5 +1,5 @@
 import { assert, assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
-import { runSaveCoachNote, buildCoachNotesContext, classifyTurn, allowedToolsFor, buildTools, aggregateMealsByDate, runGetNutritionHistory, summariseSessions, formatSessionLine, bestLoadsLine, runGetGymHistory, runProposeTrainingPlan, runUpdateGoals, runSaveMealSuggestions, buildSystemInstruction, buildPlanContext, resolveCoachingMode, buildCoachingModeContext, computeACWR, computeGymMetrics, buildNutritionTargets, computeBodyMetrics, summariseRuns, firstNameOf, buildRaceEventsContext, computeMealHabits, buildSuggestionAdherencePanel, buildMealMacros, extractReplyText, buildProactiveInstruction, buildProactiveUserTurn, shouldSkipProactive, parseProactiveKey, wasProactiveDelivered, recordProactiveDelivered, PROACTIVE_TRIGGERS, PROACTIVE_QUIET_HOURS, parseRaceOutcome, buildRaceOutcomeContext, raceAfterInstruction, raceOutcomeNote, buildRacePlanContext, buildSplitsComparisonContext, buildRaceEveContext, hhmm, detectRaceFollowup, buildRaceFollowupContext, runUpdateRaceEvent, matchRaceByName, normalizeRaceName, buildRaceCaptionPrompt, computeMealTypicalTimes, buildGoalsInterventionInstruction, buildInterventionStartTurn, runResolveIntervention, closeInterventionOnTalk, readTalkedIntervention, buildTalkedInterventionInstruction, buildAdaptationInterventionInstruction, findAnsweredDuplicate, DUPLICATE_WINDOW_MS, type RaceOutcome, type BodyAssessmentRow, type TurnCase } from "./index.ts";
+import { runSaveCoachNote, buildCoachNotesContext, classifyTurn, allowedToolsFor, buildTools, aggregateMealsByDate, runGetNutritionHistory, summariseSessions, formatSessionLine, bestLoadsLine, runGetGymHistory, runProposeTrainingPlan, runUpdateGoals, runSaveMealSuggestions, buildSystemInstruction, buildPlanContext, resolveCoachingMode, buildCoachingModeContext, computeACWR, computeGymMetrics, buildNutritionTargets, computeBodyMetrics, summariseRuns, firstNameOf, buildRaceEventsContext, computeMealHabits, buildSuggestionAdherencePanel, buildMealMacros, extractReplyText, buildProactiveInstruction, buildProactiveUserTurn, shouldSkipProactive, parseProactiveKey, wasProactiveDelivered, recordProactiveDelivered, PROACTIVE_TRIGGERS, PROACTIVE_QUIET_HOURS, parseRaceOutcome, buildRaceOutcomeContext, raceAfterInstruction, raceOutcomeNote, buildRacePlanContext, buildSplitsComparisonContext, buildRaceEveContext, hhmm, detectRaceFollowup, buildRaceFollowupContext, runUpdateRaceEvent, matchRaceByName, normalizeRaceName, buildRaceCaptionPrompt, computeMealTypicalTimes, buildGoalsInterventionInstruction, buildInterventionStartTurn, runResolveIntervention, closeInterventionOnTalk, readTalkedIntervention, buildTalkedInterventionInstruction, buildAdaptationInterventionInstruction, findAnsweredDuplicate, flatPaceLine, DUPLICATE_WINDOW_MS, type RaceOutcome, type BodyAssessmentRow, type TurnCase } from "./index.ts";
 import { buildAcwrLine, chatToolsFor, checkPlanLoad, loadPriorGym, loadProfileRequested, NO_NOTES_PHOTO_NOTE, NO_NOTES_PROACTIVE_NOTE } from "./index.ts";
 import { RESPONSE_SCHEMA, RESPONSE_SCHEMA_BASE, shouldRetryWithoutRecommendations, saveRecommendations } from "./index.ts";
 import { CHAT_OWN_FAILURE_TEXT, CHAT_SESSION_TEXT, CHAT_MESSAGE_NOT_SAVED_TEXT } from "./index.ts";
@@ -3819,8 +3819,21 @@ Deno.test("buildRacePlanContext (revisão do #122): com troços, distingue a mé
   const ctx = buildRacePlanContext(plan, "Meia de trail", 3)!;
   assertStringIncludes(ctx, "Base: o objetivo, 2:45:57 (7.52/km).");
   assertStringIncludes(ctx, `Ritmo nos km planos (o «ritmo» da tabela): ${sharedFormatPaceMinKmForTest(plan.flatPaceSecPerKm)}/km — o 7.52/km de cima é a MÉDIA, com as subidas, as descidas, o arranque e o final lá dentro.`);
-  // Sem diferença (estrada plana), sem a linha.
-  assertEquals(buildRacePlanContext(buildRacePacingPlan({ distanceKm: 10, targetSeconds: 3000 }), "X", 3)!.includes("Ritmo nos km planos"), false);
+  // Sem troços e menos de 2 s de diferença (só arredondamento): sem a linha.
+  for (const [km, t] of [[10, 3000], [21.1, 7200], [21.0975, 6720]]) {
+    assertEquals(buildRacePlanContext(buildRacePacingPlan({ distanceKm: km, targetSeconds: t }), "X", 3)!.includes("Ritmo nos km planos"), false, String(km));
+  }
+  // Só subidas: não fala de descidas.
+  const up = buildRacePacingPlan({ distanceKm: 21.0975, raceType: "estrada", targetSeconds: 6720, routeSegments: [{ km_marker: 6, description: "subida", elevation: "sobe" }] })!;
+  const upLine = flatPaceLine(up)!;
+  assertStringIncludes(upLine, "com as subidas, o arranque e o final lá dentro.");
+  assertEquals(upLine.includes("descidas"), false);
+  // Uma maratona com subidas: o aguentar (+2 s) também pesa na média.
+  const climbs = [5, 10, 15, 20, 25, 35].map((k) => ({ km_marker: k, description: "subida", elevation: "sobe" }));
+  const mar = buildRacePacingPlan({ distanceKm: 42.195, targetSeconds: 14400, routeSegments: climbs })!;
+  assertStringIncludes(flatPaceLine(mar)!, "com as subidas, o arranque, o aguentar e o final lá dentro.");
+  // O número da linha está na tabela.
+  assert(up.rows.some((r) => r.label === "ritmo" && r.paceSecPerKm === up.flatPaceSecPerKm));
 });
 
 function sharedFormatPaceMinKmForTest(s: number): string {

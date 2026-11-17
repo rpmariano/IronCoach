@@ -35,7 +35,11 @@ descrição, sobe/desce/plano — o que o `enrich-race-event` extrai do site).
    o «ritmo» da tabela difere da «Base» (no trail as subidas e as descidas
    abrandam, e o tempo sai dos planos); sem troços coincidem, ±1 s. O
    arredondamento por km que sobra espalha-se, ±1 s/km, pelos km planos
-   (ritmo, aguentar, controlar, acelerar), nunca numa linha só.
+   (ritmo, aguentar, controlar, acelerar e, só se faltarem, o da decisão),
+   no máximo ±2 s em cada um e nunca numa linha só. O km 1 (o arranque)
+   nunca recebe acerto. O `flatPaceSecPerKm` é tirado DEPOIS do acerto: o
+   ritmo dos km de «ritmo» sem troço que cobre mais km — o valor que está na
+   tabela.
 2. **Distribuição** (negative split, por categoria de distância):
    - primeiro km: controlar, mais lento que a base (5/10 km +6 s, meia +8 s,
      maratona +10 s);

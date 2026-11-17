@@ -84,6 +84,8 @@ const START_DELTA: Record<RaceDistanceCategory, number> = { "5k": 6, "10k": 6, m
 const FINAL_DELTA: Record<RaceDistanceCategory, number> = { "5k": -8, "10k": -8, meia: -5, maratona: -3, ultra: 0 };
 const HOLD_DELTA: Record<RaceDistanceCategory, number> = { "5k": 0, "10k": 0, meia: 0, maratona: 2, ultra: 3 };
 const PUSH_DELTA = -3;
+/** O acerto do arredondamento (bug #122): no máximo ±2 s em cada km plano. */
+const MAX_RESIDUAL_PER_KM = 2;
 const CONTROL_DELTA = 3;
 
 const HILL_UP = { estrada: 0.08, trail: 0.15 };
@@ -242,12 +244,15 @@ export function buildRacePacingPlan(input: RacePacingInput): RacePacingPlan | nu
   if (residual !== 0) {
     rows = rows.map((r) => ({ ...r }));
     const sign = Math.sign(residual);
-    const order: PacingLabel[] = ["ritmo", "aguentar", "controlar", "acelerar"];
+    // O km 1 (o arranque) nunca recebe acerto; o da decisão só se os outros
+    // não chegarem. Cada km, no máximo ±MAX_RESIDUAL_PER_KM — o que não
+    // couber fica (numa prova com quase nenhum km plano).
+    const order: PacingLabel[] = ["ritmo", "aguentar", "controlar", "acelerar", "decidir"];
     const neutral = rows
       .map((r, i) => ({ r, i }))
       .filter(({ r, i }) => i > 0 && !r.route && r.toKm - r.fromKm === 1 && order.includes(r.label))
       .sort((a, b) => order.indexOf(a.r.label) - order.indexOf(b.r.label) || a.i - b.i);
-    for (let pass = 0; residual !== 0 && neutral.length && pass < 10; pass++) {
+    for (let pass = 0; residual !== 0 && neutral.length && pass < MAX_RESIDUAL_PER_KM; pass++) {
       for (const { i } of neutral) {
         if (residual === 0) break;
         rows[i].paceSecPerKm += sign;
@@ -310,7 +315,7 @@ export function buildRacePacingPlan(input: RacePacingInput): RacePacingPlan | nu
     basis,
     ambitious,
     basePaceSecPerKm: Math.round(basePace),
-    flatPaceSecPerKm: Math.round(best.paceBase),
+    flatPaceSecPerKm: flatPaceOf(rows, best.paceBase),
     baseSeconds: Math.round(baseSeconds),
     targetSeconds: target,
     predictedSeconds: predicted,
@@ -324,6 +329,19 @@ export function buildRacePacingPlan(input: RacePacingInput): RacePacingPlan | nu
     fuel,
     notes,
   };
+}
+
+/** O «ritmo» da tabela, DEPOIS do acerto: o ritmo dos km de "ritmo" sem
+ *  troço, o que cobre mais km (a moda pesada pela distância; empate, o mais
+ *  lento). Sem km assim (uma prova curta), o ritmo de base escalado. */
+function flatPaceOf(rows: PacingRow[], paceBase: number): number {
+  const km = new Map<number, number>();
+  for (const r of rows) {
+    if (r.label !== "ritmo" || r.route) continue;
+    km.set(r.paceSecPerKm, (km.get(r.paceSecPerKm) ?? 0) + (r.toKm - r.fromKm));
+  }
+  if (!km.size) return Math.round(paceBase);
+  return [...km.entries()].sort((a, b) => b[1] - a[1] || b[0] - a[0])[0][0];
 }
 
 function fmt(totalSeconds: number): string {
