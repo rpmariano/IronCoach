@@ -24,6 +24,8 @@ import { splitIntoBubbles, typingDelayFor, prefersReducedMotion, BUBBLE_GAP_MS }
 import { listProactiveTriggers, wasProactiveSent, markProactiveSent, writeRaceBalanceCache } from '../../utils/coachProactive';
 import { markDivergenceHandled, MAX_DIVERGENCE_TEXTS } from '../../utils/planDivergence';
 import { markCupMapHandled } from '../../utils/cupMap';
+import { markLoadTopicHandled } from '../../utils/loadTopic';
+import { LoadProfileChoice } from '../Run/LoadProfileCard';
 import { nextPlanContinuation, rebuildPlanChain, findPromisedContinuation, PLAN_PART_DAYS } from '../../utils/planContinuation';
 import { usePersistedFormDraft, restorePersistedFormDraft, clearPersistedFormDraft } from '../../utils/formDraftPersistence';
 import { hasAnyRecord } from '../../utils/homeModels';
@@ -496,6 +498,8 @@ export default function Coach() {
     if (data?.race_updated) {
       const { data: freshRaces } = await supabase.from('race_events').select('*').eq('user_id', profile.id).order('date', { ascending: true });
       if (freshRaces) useAppStore.getState().setRaceEvents(freshRaces);
+      // Ela gravou a escolha do perfil de carga (escrita por ele): os botões já não fazem falta.
+      setLoadChoice(null);
     }
     // A Carol gravou numa jornada ou no objetivo da época (set_cup_*, só a
     // um inscrito — specs/trofeu.md §5): relê a competição, as provas (a
@@ -566,6 +570,37 @@ export default function Coach() {
     markCupMapHandled(profile?.id, signature);
     useAppStore.getState().logImpression?.({ kind: 'moment', key: signature, title: null });
   };
+  /* Vindo do Início, o aviso da carga (bug #123, utils/loadTopic.js): ela explica a carga e o
+     volume com os números e oferece a escolha. Pelo canal do check-in do plano, com o pedido
+     load_topic (o servidor recalcula o estado — a mesma fórmula, @formulas/loadProfile.ts). A
+     assinatura só fica tratada quando o servidor diz que o turno foi este (load_topic_shown) ou que
+     já o tinha mostrado; com load_profile_choice, os dois botões aparecem por baixo da conversa e o
+     toque grava pelo caminho de sempre (setRaceLoadProfile). Sem o assunto no servidor
+     (load_topic_unavailable), uma frase curta e nada fica tratado. */
+  const [loadChoice, setLoadChoice] = useState(null);
+  const handleLoadTopicCheckin = ({ raceId = null, state = null, signature = null } = {}) => sendCoachInitiatedPayload({
+    message: '',
+    is_plan_checkin: true,
+    load_topic: { race_id: raceId, state, signature },
+    userData: profile || {},
+    activeInsights: activeInsightsPayload(),
+  }, { failure: HOME_ALERT_FAILURE }).then((data) => {
+    if ((data?.load_topic_shown === true || data?.skipped === 'already_sent') && signature) {
+      markLoadTopicHandled(profile?.id, signature);
+      useAppStore.getState().logImpression?.({ kind: 'moment', key: signature, title: null });
+    } else if (data?.skipped && data.reason === 'load_topic_unavailable') {
+      addCoachMessage({ id: (Date.now() + 1).toString(), role: 'assistant', content: COACH_EMPTY_REPLY_TEXT });
+    }
+    const choice = data?.load_profile_choice;
+    if (choice && typeof choice.race_id === 'string') setLoadChoice({ raceId: choice.race_id });
+    return data;
+  });
+  // Escolhido no chat: a escolha fica dita na conversa, por ele, e a Carol responde.
+  const handleLoadChoiceDone = (profileName) => {
+    setLoadChoice(null);
+    handleSend(profileName === 'mais_volume' ? 'Fico com Mais volume.' : 'Fico com Prudente.');
+  };
+
   const handleCupMapCheckin = ({ signature = null, first = false } = {}) => {
     // Se o turno passar dos 45 s a resposta chega por sondagem, sem os sinais
     // do servidor: a assinatura fica pendente para o handleAsyncFallback.
@@ -678,6 +713,12 @@ export default function Coach() {
       const { key } = coachIntent;
       setCoachIntent(null);
       if (typeof key === 'string' && key.startsWith('cup_results:')) handleCupResultsCheckin({ key });
+      return;
+    }
+    if (coachIntent && coachIntent.kind === 'load_topic') {
+      const { raceId, state, signature } = coachIntent;
+      setCoachIntent(null);
+      handleLoadTopicCheckin({ raceId, state, signature });
       return;
     }
     if (coachIntent && coachIntent.kind === 'cup_map') {
@@ -1817,6 +1858,12 @@ export default function Coach() {
         {/* Sugestões pendentes (Planos / Objetivos) — botão único: as duas
             propostas podem coexistir e abrem sempre a MESMA persiana, para
             o atleta decidir ambas sem trocar de ecrã. */}
+        {/* Só depois de ela acabar de escrever: os botões respondem ao que ela perguntou. */}
+        {loadChoice && !typingActive && (
+          <div className="mb-2 px-1" data-testid="coach-load-choice">
+            <LoadProfileChoice raceId={loadChoice.raceId} disabled={coachLoading} onDone={handleLoadChoiceDone} />
+          </div>
+        )}
         {(pendingPlans.length > 0 || pendingGoalProposals.length > 0) && (
           <div className="hide-when-keyboard fixed right-4 z-50 flex flex-col gap-2 items-end" style={{ bottom: 'calc(140px + env(safe-area-inset-bottom, 0px))' }}>
             <button

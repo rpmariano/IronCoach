@@ -4,11 +4,12 @@ import { useAppStore } from '../../store';
 import { todayISO } from '../../lib/utils';
 import {
   LOAD_PROFILE_LABELS,
-  conflictNumbersText,
+  PROFILE_WHY,
   conflictOptionTexts,
   loadStateFor,
   profileLimitText,
   revertNoteText,
+  whatSentences,
 } from '../../utils/loadProfileState';
 
 /* Perfil de carga por prova (2026-11-09, aprovado pelo Rui). Um só cartão em vez dos dois avisos
@@ -16,7 +17,38 @@ import {
    - conflito: os números e as duas opções, Prudente e Mais volume — a escolha é do atleta;
    - perfil: o perfil escolhido e o limite destes 7 dias, com «mudar»;
    - voltou sozinho a Prudente (até 7 dias depois): a razão e «escolher de novo».
-   No Hub da prova, uma linha «Perfil de carga: X · mudar» (variant 'hub'). */
+   No Hub da prova, uma linha «Perfil de carga: X · mudar» (variant 'hub').
+
+   Bug #123 (2026-11-17): o Rui perguntou «O que é esta informação?». Em todos os estados, a
+   primeira frase diz o que se mede e porquê agora (whatSentences, utils/loadProfileState.js) — a
+   carga compara os últimos 7 dias com o habitual, o volume compara com o que a prova pede — e um
+   «Porquê?» explica Prudente e Mais volume sem jargão. */
+
+/* O «Porquê?»: os dois perfis e a regra, numa linha cada. */
+function ProfileWhy() {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="mt-1">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        data-testid="load-profile-why-toggle"
+        className="text-[12px] font-bold underline"
+        style={{ color: 'var(--text-2)', minHeight: 44 }}
+      >
+        {open ? 'Fechar' : 'Porquê?'}
+      </button>
+      {open && (
+        <div className="flex flex-col gap-1.5 text-[12px] leading-[1.5] text-[var(--text-2)]" data-testid="load-profile-why">
+          <p>{PROFILE_WHY.regra}</p>
+          <p>{PROFILE_WHY.prudente}</p>
+          <p>{PROFILE_WHY.mais_volume}</p>
+        </div>
+      )}
+    </div>
+  );
+}
 
 export function useLoadState() {
   const raceEvents = useAppStore((s) => s.raceEvents);
@@ -61,6 +93,33 @@ function ProfileOptions({ state, busy, onChoose }) {
           </button>
         );
       })}
+    </div>
+  );
+}
+
+/* A escolha no chat (bug #123): o servidor manda load_profile_choice com a conversa da carga e o
+   chat põe por baixo as duas opções, com os mesmos textos do hub. O toque grava pelo caminho de
+   sempre (setRaceLoadProfile, RLS do próprio) e `onDone` diz ao chat o que foi escolhido. */
+export function LoadProfileChoice({ raceId, disabled = false, onDone }) {
+  const state = useLoadState();
+  const setRaceLoadProfile = useAppStore((s) => s.setRaceLoadProfile);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+  if (!state?.race?.id || (raceId && raceId !== state.race.id)) return null;
+  const choose = async (profile) => {
+    if (busy || disabled) return;
+    setBusy(true);
+    setError(null);
+    const res = await setRaceLoadProfile?.(state.race.id, profile);
+    setBusy(false);
+    if (res?.ok) onDone?.(profile);
+    else setError(SAVE_ERROR);
+  };
+  return (
+    <div className="rounded-[18px]" style={{ padding: '12px 14px', background: 'rgba(255,255,255,.04)', border: '1px solid var(--border-glass)' }}>
+      <p className="text-[12px] font-bold text-[var(--text-2)]">O perfil de carga para {state.race.name || 'a prova'}</p>
+      <ProfileOptions state={state} busy={busy || disabled} onChoose={choose} />
+      {error && <p className="text-[12px] mt-2" style={{ color: 'var(--warn)' }} role="alert">{error}</p>}
     </div>
   );
 }
@@ -132,11 +191,12 @@ export default function LoadProfileCard({ variant = 'card', raceId = null }) {
         {conflict ? 'Carga ou volume — escolhe tu' : 'Perfil de carga'}
       </p>
       {state.race.name ? <p className="text-[12px] font-bold mt-0.5 truncate text-[var(--text-3)]" data-testid="load-profile-race">{state.race.name}</p> : null}
+      {/* O que é, e porquê agora — primeiro, em todos os estados (bug #123). */}
+      <div className="flex flex-col gap-1 mt-1.5" data-testid="load-profile-what">
+        {whatSentences(state).map((t) => <p key={t} className="text-[13px] leading-[1.5] text-[var(--text-1)]">{t}</p>)}
+      </div>
       {conflict ? (
-        <>
-          <p className="text-[13px] mt-1.5 text-[var(--text-1)]" data-testid="load-profile-numbers">{conflictNumbersText(state)}</p>
-          <p className="text-[12px] mt-1 text-[var(--text-2)]">A carga já pede cautela e o volume fica abaixo do que a prova pede. Não dá para as duas coisas — qual preferes?</p>
-        </>
+        <p className="text-[12px] mt-1 text-[var(--text-2)]">Não dá para as duas coisas — qual preferes?</p>
       ) : (
         <p className="text-[13px] mt-1.5 text-[var(--text-1)]" data-testid="load-profile-limit">
           {profileLimitText(state)}{' '}
@@ -147,6 +207,7 @@ export default function LoadProfileCard({ variant = 'card', raceId = null }) {
           )}
         </p>
       )}
+      <ProfileWhy />
       {revertLine}
       {showOptions && <ProfileOptions state={state} busy={busy} onChoose={choose} />}
       {errorLine}

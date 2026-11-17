@@ -478,7 +478,7 @@ export function buildDailySummaryContext(params: {
     // deno-lint-ignore no-explicit-any
     // As caminhadas vão à parte (2026-10-05, runKinds.ts): não são corridas
     // nem carga de corrida, e a Carol lê-as como recuperação.
-    corridas_ultimos_30_dias: runsOnly(recentRuns || []).map(({ created_at: _criado, ...r }: any) => r),
+    corridas_ultimos_30_dias: runsOnly(recentRuns || []).map(({ created_at: _criado, race_id: _prova, ...r }: any) => r),
     caminhadas_ultimos_30_dias: walksOnly(recentRuns || []).length
       // deno-lint-ignore no-explicit-any
       ? walksOnly(recentRuns || []).map(({ created_at: _criado, details: _d, ...r }: any) => r)
@@ -1103,7 +1103,7 @@ Deno.serve(withUsageRecording("coach-daily-summary", async (req) => {
       // 35 dias e não 30: o assunto da carga relê os 7 dias anteriores, cada
       // um com a sua janela de 28 (runLoadInterventionToOpen). O resto do
       // resumo só vê os 30 (recentRuns, abaixo).
-      sb.from("runs").select("date, start_time, training_type, distance_km, duration_seconds, effort_rpe, details, kind, created_at")
+      sb.from("runs").select("date, start_time, training_type, distance_km, duration_seconds, effort_rpe, details, kind, created_at, race_id")
         .eq("user_id", userId).gte("date", addDaysISO(today, -34)).lte("date", today).order("date", { ascending: false }),
       sb.from("workout_sessions").select("date, start_time, categories, duration_seconds, avg_hr, exertion")
         .eq("user_id", userId).gte("date", addDaysISO(today, -29)).lte("date", today).order("date", { ascending: false }),
@@ -1190,7 +1190,7 @@ Deno.serve(withUsageRecording("coach-daily-summary", async (req) => {
     // seguidas, recuperação em crítico) volta-o a Prudente sozinho, e a Carol
     // diz-lho uma vez (o assunto por resolver, como o da carga).
     const [profileRaces, { data: profileCheckins }] = await Promise.all([
-      fetchLoadProfileRaces(sb, userId, today),
+      fetchLoadProfileRaces(sb, userId, addDaysISO(today, -6)),
       sb.from("daily_checkins").select("date, sleep, energy, stress, pain, created_at, updated_at")
         .eq("user_id", userId).gte("date", addDaysISO(today, -14)).lte("date", today),
     ]);

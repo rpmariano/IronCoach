@@ -50,8 +50,8 @@ import { classifyCalorieCompliance } from "../_shared/formulas/nutritionComplian
 import { computeRunAcwr, RUN_ACWR_MIN_HISTORY_WEEKS } from "../_shared/formulas/runAcwr.ts";
 import { fetchGeminiWithTimeout, hasTimeFor } from "../_shared/geminiFetch.ts";
 import { planLoadViolations, runLoadReading, type LoadPlanItem, type LoadProfile, type RunLoadReading } from "../_shared/formulas/runLoadAlert.ts";
-import { governingRace, LOAD_PROFILE_LABELS, loadVolumeState, raceLoadProfile } from "../_shared/formulas/loadProfile.ts";
-import { fetchAcceptedPlanUntil, fetchLoadProfileRaces, loadProfileContextLine, lowBaseRampKm } from "../_shared/loadProfileContext.ts";
+import { governingRace, LOAD_PROFILE_LABELS, loadTopicSignature, loadVolumeState, raceLoadProfile, TAPER_WINDOW_DAYS, type LoadVolumeState } from "../_shared/formulas/loadProfile.ts";
+import { buildLoadTopicTurn, fetchAcceptedPlanUntil, fetchLoadProfileRaces, loadProfileContextLine, lowBaseRampKm } from "../_shared/loadProfileContext.ts";
 import { computeCrossMetrics } from "../_shared/formulas/crossMetrics.ts";
 import { computeReadinessIndex, READINESS_MIN_COMPLETE_DAYS_OCASIONAL, readinessMealsStartISO } from "../_shared/formulas/readinessIndex.ts";
 import { daysCompleteness, type MealLoggingProfile, mealLoggingProfile, mealsOfCompleteDays } from "../_shared/formulas/dayCompleteness.ts";
@@ -1351,7 +1351,7 @@ export async function wasProactiveDelivered(sb: any, userId: string, key: string
 // deno-lint-ignore no-explicit-any
 export async function recordProactiveDelivered(
   // deno-lint-ignore no-explicit-any
-  sb: any, userId: string, trigger: ProactiveTrigger | "targets_review", key: string,
+  sb: any, userId: string, trigger: ProactiveTrigger | "targets_review" | "load_topic", key: string,
   // O que acompanha a entrega (a proposta de uma revisão dos objetivos);
   // sem a coluna (migração 20261025204514 por aplicar), grava-se sem ele.
   payload: unknown = null,
@@ -4778,7 +4778,8 @@ export async function runProposeTrainingPlan(
       ]);
       const planItems = [...(keptRes?.data || []), ...rows.map((r) => ({ ...r, status: "pendente" }))];
       const profileLevel = profileRes?.data?.experience_level ?? null;
-      volumeNote = raceVolumeNote(racesInPeriod.map((race) => ({
+      // Bug #123: as provas a 14 dias ou menos estão em afinação — sem nota de volume.
+      volumeNote = raceVolumeNote(racesInPeriod.filter((race) => daysBetweenISO(todayPlansISO, race.date) > TAPER_WINDOW_DAYS).map((race) => ({
         race,
         outlook: raceVolumeOutlook({
           race: { ...race, experience_level: race.experience_level || profileLevel },
@@ -6099,9 +6100,12 @@ export function buildRaceEventsContext(
     ].filter(Boolean).join(", ");
     // Bloco 1 — Viabilidade do objetivo (objetivo_inviavel). Numa jornada não:
     // é uma prova curta dentro da época, não um objetivo a preparar.
-    const viabFlags = daysUntil > 0 && !seriesIntent
+    const viabFlags = (daysUntil > 0 && !seriesIntent
       ? assessViability(e.distance_km ?? null, effectiveLevel, weeksUntil, weeklyVolumeKm)
-      : [];
+      : [])
+      // Bug #123: nas duas semanas antes da prova é afinação — o volume já
+      // não se sobe, e a Carol não o pede.
+      .filter((f) => !(f === "volume_insuficiente" && daysUntil <= TAPER_WINDOW_DAYS));
     const viabLines = viabFlags.map((f) => {
       if (f === "ultra_para_iniciante") return "⚠ OBJETIVO_INVIAVEL: ultra desaconselhado para iniciante";
       if (f === "tempo_insuficiente")   return `⚠ OBJETIVO_INVIAVEL: tempo insuficiente (${weeksUntil} sem. disponíveis)`;
@@ -8405,7 +8409,7 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
     const runStartISO = runStartD.toISOString().slice(0, 10);
     const { data: recentRuns, error: err_recentRuns } = await sb
       .from("runs")
-      .select("date, start_time, kind, training_type, distance_km, duration_seconds, effort_rpe, details")
+      .select("date, start_time, kind, training_type, distance_km, duration_seconds, effort_rpe, details, race_id")
       .eq("user_id", userId)
       .gte("date", runStartISO)
       .lte("date", todayISO)
@@ -8449,7 +8453,7 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
         // deno-lint-ignore no-explicit-any
         .then((r: any) => { const list = r?.data || []; return list.find((x: any) => (x.race_priority || "a") === "a") ?? list[0] ?? null; }, () => null),
       // O perfil de carga por prova (2026-11-09): manda o da próxima principal.
-      fetchLoadProfileRaces(sb, userId, todayISO),
+      fetchLoadProfileRaces(sb, userId, addDaysISO(todayISO, -6)),
       // Até onde o plano aceite vai: depois disso, por planear (não zero).
       fetchAcceptedPlanUntil(sb, userId),
     ]);
@@ -8470,10 +8474,11 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
     // ambiguidade a desfazer.
     // O perfil de carga e o conflito carga/volume (loadProfile.ts): um só
     // estado, e a Carol nunca contradiz a escolha dele.
-    const loadProfileLine = loadProfileContextLine(loadVolumeState({
+    const loadStateNow: LoadVolumeState = loadVolumeState({
       races: profileRaces, runs: recentRuns || [], planItems: loadPlanItems, todayISO,
       profileLevel: (profile?.experience_level as string | null) ?? null, plannedUntilISO,
-    }), todayISO);
+    });
+    const loadProfileLine = loadProfileContextLine(loadStateNow, todayISO);
     const acwrLine = buildAcwrLine(acwr, loadReading, (recentRuns || []).length > 0, todayISO, levelReference) +
       (loadProfileLine ? `\n${loadProfileLine}` : "");
 
@@ -9322,7 +9327,22 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
       });
     }
 
-    const planCheckinPrompt = targetsReviewPrompt ? targetsReviewPrompt : planContinuationIn ? buildPlanContinuationTurn(planContinuationIn) : onboardingStartPrompt ? onboardingStartPrompt : raceConflictPrompt ? raceConflictPrompt : cupMapPrompt ? cupMapPrompt : planDivergence.length > 0
+    /* O assunto da carga (bug #123): o atleta abriu o chat pelo alerta da
+       Carol no Início (load_topic, pelo canal do check-in, como o mapa). O
+       estado é o do servidor (loadVolumeState, a mesma fórmula da app) — os
+       números da app não entram. Sem prova que mande, ou «ok», não há
+       assunto: skipped, e a app não marca nada. */
+    const loadTopicAsked = !!body.load_topic && typeof body.load_topic === "object";
+    const loadTopicSig = loadTopicAsked ? loadTopicSignature(loadStateNow) : null;
+    const loadTopicPrompt = loadTopicSig ? buildLoadTopicTurn(loadStateNow) : null;
+    if (loadTopicAsked && !loadTopicPrompt && !message) {
+      return jsonResponse({
+        skipped: true, reason: "load_topic_unavailable", user_message: null, model_message: null,
+        suggestions: [], usage: null, plan_proposed: false, goals_updated: false, goal_proposed: false,
+      });
+    }
+
+    const planCheckinPrompt = targetsReviewPrompt ? targetsReviewPrompt : planContinuationIn ? buildPlanContinuationTurn(planContinuationIn) : onboardingStartPrompt ? onboardingStartPrompt : raceConflictPrompt ? raceConflictPrompt : cupMapPrompt ? cupMapPrompt : loadTopicPrompt ? loadTopicPrompt : planDivergence.length > 0
       ? `A app detetou que o plano já não bate certo com a realidade e chamou-te — o atleta abriu o chat a partir desse aviso. ` +
         `Motivos: ${planDivergence.map((t) => `"${t}"`).join("; ")}. Começa por estes pontos, por ordem de gravidade. Se o plano tem de mudar, ` +
         `chama já propose_training_plan com o plano ajustado (replace_active_plan=true se houver plano aceite) — o dia da prova como prova, a véspera leve, ` +
@@ -9361,6 +9381,23 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
         plan_proposed: false,
         goals_updated: false,
         goal_proposed: false,
+      });
+    }
+
+    // O turno foi mesmo o da carga: uma vez por assinatura (load_topic:<sig>
+    // no coach_proactive_log) — a mesma situação não se repete; outra (o
+    // estado mudou) é conversa nova.
+    const loadTopicShown = loadTopicPrompt !== null && !message && !body.is_intervention_start && !!body.is_plan_checkin &&
+      planCheckinPrompt === loadTopicPrompt;
+    const loadTopicLogKey = loadTopicShown && loadTopicSig ? `load_topic:${loadTopicSig}` : null;
+    const loadProfileChoice = loadTopicShown && loadStateNow.race?.id
+      ? { race_id: loadStateNow.race.id, current: loadStateNow.profile, chosen: loadStateNow.chosen }
+      : null;
+    if (loadTopicLogKey && await wasProactiveDelivered(sb, userId, loadTopicLogKey)) {
+      return jsonResponse({
+        skipped: "already_sent", load_topic_shown: true, load_profile_choice: loadProfileChoice,
+        user_message: null, model_message: null, suggestions: [], usage: null,
+        plan_proposed: false, goals_updated: false, goal_proposed: false,
       });
     }
 
@@ -10057,6 +10094,7 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
     // O mapa fica entregue quando a mensagem fica gravada — chegue a resposta
     // ao cliente ou não (sondagem depois dos 45 s).
     if (cupMapLogKey && !modelMsgErr) await recordCupMapDelivered(sb, userId, cupMapLogKey);
+    if (loadTopicLogKey && !modelMsgErr) await recordProactiveDelivered(sb, userId, "load_topic", loadTopicLogKey);
 
     if (modelMsgErr) {
       console.error("Falha a guardar resposta:", modelMsgErr);
@@ -10073,6 +10111,7 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
         proactive: proactiveTrigger,
         ...(cupWasUpdated ? { cup_updated: true } : {}),
         ...(cupMapShown ? { cup_map_shown: true } : {}),
+        ...(loadTopicShown ? { load_topic_shown: true, load_profile_choice: loadProfileChoice } : {}),
         ...(planContinuationOut ? { plan_continuation: planContinuationOut } : {}),
       });
     }
@@ -10091,6 +10130,7 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
       proactive: proactiveTrigger,
       ...(cupWasUpdated ? { cup_updated: true } : {}),
       ...(cupMapShown ? { cup_map_shown: true } : {}),
+      ...(loadTopicShown ? { load_topic_shown: true, load_profile_choice: loadProfileChoice } : {}),
       ...(planContinuationOut ? { plan_continuation: planContinuationOut } : {}),
     });
 

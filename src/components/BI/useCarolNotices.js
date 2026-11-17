@@ -12,6 +12,8 @@ import { pendingTopicLines, interventionTopicLine } from '../../utils/carolTopic
 import { useCupForHome } from '../../utils/useCup';
 import { cupMapCandidate, markCupMapHandled, CUP_MAP_TITLE } from '../../utils/cupMap';
 import { planResumeNotice, PLAN_RESUME_TITLE } from '../../utils/carolPlanResume';
+import { loadStateFor } from '../../utils/loadProfileState';
+import { loadTopicCandidate, markLoadTopicHandled, LOAD_TOPIC_TITLE } from '../../utils/loadTopic';
 
 /* Os avisos da Carol, iguais em todos os ecrãs (pedido 2026-09-27).
 
@@ -146,6 +148,16 @@ export default function useCarolNotices() {
   const divergenceFirst = !!divergence
     && !(planResume && divergence.reasons.every((r) => r.key === 'prova_sem_item'));
 
+  /* A carga e o volume (bug #123, 2026-11-17): o que era o LoadProfileCard do Início passa a ser um
+     assunto dela (utils/loadTopic.js) — uma vez por mudança de estado; os avisos de carga (ACWR) e de
+     volume da prova que manda fundem-se nele (filterLoadInsights). Abaixo do plano a meio e do
+     ajuste do plano (o plano é o que mexe nos treinos), acima do mapa da época e das boas notícias. */
+  const loadTopic = useMemo(() => {
+    if (pendingTopics > 0 || raceConflict) return null;
+    const state = loadStateFor({ raceEvents, runs, coachPlans, coachPlanItems, profile, todayISO: today });
+    return loadTopicCandidate(state, { userId: profile?.id, impressionShown, impressionDismissed });
+  }, [pendingTopics, raceConflict, raceEvents, runs, coachPlans, coachPlanItems, profile, today, impressionShown, impressionDismissed, alertDismissals]);
+
   /* O mapa da época (specs/trofeu.md §5, Fase 2; utils/cupMap.js): ao
      inscrever, e quando sai o calendário com jornadas por decidir, a Carol
      quer ver com ele o papel de cada jornada ao lado das provas principais.
@@ -181,6 +193,8 @@ export default function useCarolNotices() {
       setCoachIntent({ kind: 'adapt_plan', divergence: divergence.reasons.map((r) => r.text), signature: divergence.signature });
     } else if (planResume) {
       setCoachIntent({ kind: 'proactive_moment', candidate: planResume.candidate });
+    } else if (loadTopic) {
+      setCoachIntent({ kind: 'load_topic', raceId: loadTopic.raceId, state: loadTopic.state, signature: loadTopic.signature });
     } else if (cupMap) {
       setCoachIntent({ kind: 'cup_map', signature: cupMap.signature, first: cupMap.first });
     }
@@ -265,6 +279,25 @@ export default function useCarolNotices() {
         dismissProactiveAlert(profile?.id, planResume.candidate);
         setAlertDismissals((n) => n + 1);
         logImpressionDismissed({ kind: 'alert', key: planResume.candidate.key, title: PLAN_RESUME_TITLE });
+      },
+    });
+  } else if (loadTopic) {
+    alerts.push({
+      id: 'carga',
+      key: loadTopic.signature,
+      severity: 'warning',
+      title: LOAD_TOPIC_TITLE,
+      message: loadTopic.message,
+      // O Coach pede o turno da carga (load_topic) e marca a assinatura como tratada quando o
+      // servidor confirma que foi esse o turno (load_topic_shown) — como o mapa da época.
+      onTalk: () => {
+        setCoachIntent({ kind: 'load_topic', raceId: loadTopic.raceId, state: loadTopic.state, signature: loadTopic.signature });
+        setActiveTab('coach');
+      },
+      onDismiss: () => {
+        markLoadTopicHandled(profile?.id, loadTopic.signature);
+        setAlertDismissals((n) => n + 1);
+        logImpressionDismissed({ kind: 'alert', key: loadTopic.signature, title: LOAD_TOPIC_TITLE });
       },
     });
   } else if (cupMap) {

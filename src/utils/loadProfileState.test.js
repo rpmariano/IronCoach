@@ -49,7 +49,8 @@ describe('loadStateFor — a Patty a 9 nov', () => {
     expect(s.volumeBelow).toBe(false);
     expect(s.state).not.toBe('conflito');
     expect(s.state).toBe('carga');
-    expect(filterLoadInsights([ACWR, VOLUME], s).map((i) => i.id)).toEqual(['acwr_caution']);
+    // Bug #123: a carga é um assunto da Carol (utils/loadTopic.js) — o aviso de ACWR funde-se nele.
+    expect(filterLoadInsights([ACWR, VOLUME], s).map((i) => i.id)).toEqual([]);
   });
 
   it('sem a migration (as provas chegam sem load_profile): tudo Prudente, por escolher', () => {
@@ -93,12 +94,19 @@ describe('filterLoadInsights — a carga e o volume nunca juntos', () => {
     const prud = stateWith([{ ...MEIA, load_profile_at: '2026-11-09T12:00:00Z' }]);
     expect(filterLoadInsights(all, prud).map((i) => i.id)).toEqual(['bf_low']);
     const acima = loadStateFor({ raceEvents: [{ ...MEIA, load_profile_at: '2026-11-09T12:00:00Z' }], runs: [...PATTY_RUNS, R_EXTRA], coachPlans: PATTY_PLANS, coachPlanItems: PATTY_PLAN_ITEMS, todayISO: TODAY });
-    expect(filterLoadInsights(all, acima).map((i) => i.id)).toEqual(['acwr_caution', 'bf_low']);
+    // Bug #123: acima do limite, a carga é o assunto da Carol — o ACWR não aparece solto.
+    expect(filterLoadInsights(all, acima).map((i) => i.id)).toEqual(['bf_low']);
   });
-  it('a 13 nov, sem carga a mais: só o volume', () => {
+  it('a 13 nov, sem carga a mais: o volume é o assunto da Carol — nenhum aviso solto (#123)', () => {
     const s = stateWith([TRAIL, MEIA], '2026-11-13');
     expect(s.state).toBe('volume');
-    expect(filterLoadInsights(all, s).map((i) => i.id)).toEqual(['race_volume', 'bf_low']);
+    expect(filterLoadInsights(all, s).map((i) => i.id)).toEqual(['bf_low']);
+  });
+  it('bug #123: nas duas semanas antes da prova (taper), o «volume insuficiente» não aparece', () => {
+    const s = stateWith([TRAIL, MEIA], '2026-11-17');
+    expect(s.taper).toBe(true);
+    expect(filterLoadInsights(all, s).map((i) => i.id).includes('race_volume')).toBe(false);
+    expect(filterLoadInsights([VOLUME, OTHER], { ...s, state: 'ok', loadAlert: false }).map((i) => i.id)).toEqual(['bf_low']);
   });
   it('sem prova que mande, nada muda; o volume de outra prova também não', () => {
     expect(filterLoadInsights(all, stateWith([]))).toEqual(all);
@@ -131,5 +139,34 @@ describe('detectCoachInsights com os dados da Patty a 9 nov', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+/* Bug #123 (2026-11-17): a frase do que é e porquê agora, em cada estado. */
+import { loadSentence, volumeSentence, whatSentences } from './loadProfileState';
+
+describe('whatSentences — o que é, sem jargão', () => {
+  const base = { acuteKm: 26.6, ratio: 26.6 / 17, race: { id: 'meia', name: 'Meia dos Descobrimentos' }, recommendedWeeklyKm: 35, currentWeeklyKm: 19.1 };
+
+  it('carga com a prova concluída a puxar (acuteFromRace)', () => {
+    const s = { ...base, state: 'carga', acuteFromRace: { name: 'Corrida do Tejo', km: 10 } };
+    expect(whatSentences(s)).toEqual(['Carga: comparo os teus últimos 7 dias (26,6 km) com o teu habitual (~17 km). A prova «Corrida do Tejo» (10 km) subiu a conta — esta semana, mais leve.']);
+  });
+
+  it('carga sem prova: subiu depressa; sem histórico, só os km', () => {
+    expect(loadSentence({ ...base, state: 'carga' })).toMatch(/Subiu depressa — esta semana, mais leve\.$/);
+    expect(loadSentence({ ...base, ratio: null })).toBe('Carga: nos últimos 7 dias correste 26,6 km. Subiu depressa — esta semana, mais leve.');
+  });
+
+  it('volume, conflito (começa pela carga) e perfil (a que pesa)', () => {
+    expect(volumeSentence(base)).toBe('Volume: para a Meia dos Descobrimentos, o ideal são ~35 km/semana; corres 19.');
+    expect(whatSentences({ ...base, state: 'volume' })).toEqual([volumeSentence(base)]);
+    const conflito = whatSentences({ ...base, state: 'conflito' });
+    expect(conflito).toHaveLength(2);
+    expect(conflito[0]).toMatch(/^Carga:/);
+    expect(whatSentences({ ...base, state: 'perfil', loadAlert: true })[0]).toMatch(/^Carga:/);
+    expect(whatSentences({ ...base, state: 'perfil', volumeBelow: true })[0]).toMatch(/^Volume:/);
+    expect(whatSentences({ ...base, state: 'perfil' })[0]).toBe('O perfil de carga diz quanto podes correr por semana até à Meia dos Descobrimentos, sem subir depressa demais.');
+    expect(whatSentences({ ...base, state: 'ok' })).toEqual([]);
   });
 });
