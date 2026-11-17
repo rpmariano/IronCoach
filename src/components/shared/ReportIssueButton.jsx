@@ -224,7 +224,8 @@ export default function ReportIssueButton() {
         }
       }
 
-      const { error } = await supabase.from('bug_reports').insert({
+      // O id volta (a política «user read own bug reports» deixa ler o próprio): é o que liga o rasto.
+      const { data: created, error } = await supabase.from('bug_reports').insert({
         user_id: userId,
         // O email e o nome preenche-os o servidor (guarda dos bug_reports, 2026-11-14): o que o
         // cliente mandava não era de confiança (e o full_name nem existia no perfil).
@@ -233,13 +234,14 @@ export default function ReportIssueButton() {
         page: currentPageLabel({ activeTab, openCreationMode, editingRaceId }),
         user_agent: navigator.userAgent,
         attachment_urls: attachmentPaths.length > 0 ? attachmentPaths : null,
-      });
+      }).select('id').maybeSingle();
       if (error) throw error;
       /* O rasto dos últimos arranques vai com o report (utils/bootTrace.js), para um «fica preso no
          logo» trazer a fase onde parou. Em app_logs (boot_trace), ao lado do report: bug_reports
-         não tem coluna para isto. Uma falha aqui não estraga o report. */
+         não tem coluna para isto. Liga-se pelo id do report — nunca pelo título, que é texto livre
+         do atleta. Uma falha aqui não estraga o report. */
       try {
-        logAppEvent('info', 'boot_trace', 'Rasto do arranque junto a um report', { title: trimmedTitle.slice(0, 80), traces: readBootTraces() });
+        logAppEvent('info', 'boot_trace', 'Rasto do arranque junto a um report', { bugReportId: created?.id || null, traces: readBootTraces() });
       } catch { /* sem log, o report vai na mesma */ }
 
       showToast(

@@ -2,23 +2,38 @@ import { createClient } from '@supabase/supabase-js';
 import { queuePendingLog, flushPendingLogs } from './pendingLogs';
 import { saveKindOf, describeBody, saveModeOf, technicalMessage } from './saveTelemetry';
 import { createAuthTimeoutFetch } from './authFetch';
+import { withDeadline } from '../utils/bootDeadline';
 
 const SUPABASE_URL = 'https://roxfzsiciizkevopgpnl.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJveGZ6c2ljaWl6a2V2b3BncG5sIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODMyNjg0NDksImV4cCI6MjA5ODg0NDQ0OX0.bS7FyzDIqj4Aov18OXw6SsJrx1hT1DxYQfzmeHHH7bw';
 
 // Os pedidos ao Auth com prazo: um refresh pendurado prendia o arranque no logo (lib/authFetch.js).
-export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { global: { fetch: createAuthTimeoutFetch() } });
+export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { global: { fetch: createAuthTimeoutFetch({ origin: SUPABASE_URL }) } });
 
 /**
  * Regista um evento em app_logs para auditoria (os custos de tokens vivem em
  * ai_usage, gravados pelo servidor)
  */
+/* O utilizador da sessão, sem ficar pendurado: com o arranque preso, o próprio getSession é o que
+   não responde (bug de 2026-11-17). null = sem sessão (ou sem resposta a tempo). */
+const LOG_SESSION_WAIT_MS = 3000;
+async function sessionUserIdForLogs() {
+  try {
+    const res = await withDeadline(supabase.auth.getSession(), LOG_SESSION_WAIT_MS, 'getSession');
+    return res?.data?.session?.user?.id || null;
+  } catch {
+    return null;
+  }
+}
+
 export async function logAppEvent(level, event, message = null, meta = {}) {
   let row = null;
   try {
-    const { data: { session } } = await supabase.auth.getSession();
-    const userId = session?.user?.id || null;
+    const userId = await sessionUserIdForLogs();
     row = { user_id: userId, level, event, message, meta };
+    // Sem sessão a RLS recusa a linha: fica no telemóvel e sai com o user_id de quem entrar
+    // (lib/pendingLogs.js) — é o caso do arranque que passou do prazo antes de a sessão chegar.
+    if (!userId) { queuePendingLog(row); return; }
     const { error } = await supabase.from('app_logs').insert(row);
     if (error) {
       console.warn('[logAppEvent] Falha ao registar log:', error);
@@ -26,7 +41,7 @@ export async function logAppEvent(level, event, message = null, meta = {}) {
       // falhas de rede (sem código); uma recusa da base de dados não passaria mais tarde.
       if (!error.code) queuePendingLog(row);
     } else {
-      sendPendingAppLogs();
+      sendPendingAppLogs(userId);
     }
   } catch (err) {
     console.warn('[logAppEvent] Falha ao registar log:', err);
@@ -36,8 +51,9 @@ export async function logAppEvent(level, event, message = null, meta = {}) {
 
 /** Envia os logs que ficaram no telemóvel por falta de rede (#116). Chamado no arranque, quando a
  *  rede volta e depois de cada log que sai bem. */
-export function sendPendingAppLogs() {
-  return flushPendingLogs((rows) => supabase.from('app_logs').insert(rows));
+export async function sendPendingAppLogs(userId) {
+  const uid = userId === undefined ? await sessionUserIdForLogs() : userId;
+  return flushPendingLogs((rows) => supabase.from('app_logs').insert(rows), { userId: uid || null });
 }
 
 /**

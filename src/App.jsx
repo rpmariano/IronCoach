@@ -2,7 +2,7 @@ import React, { lazy, Suspense, useCallback, useEffect, useRef, useState } from 
 import { supabase, logAppEvent, sendPendingAppLogs } from './lib/supabase';
 import { bootInfoOnce, bootMessage, trackHiddenAt } from './utils/bootTelemetry';
 import { bootPhase, bootExit, currentBootTrace, previousUnfinishedTrace, markTraceReported } from './utils/bootTrace';
-import { BOOT_SESSION_TIMEOUT_MS, BOOT_DEADLINE_MS, LAZY_IMPORT_TIMEOUT_MS, withDeadline } from './utils/bootDeadline';
+import { BOOT_SESSION_TIMEOUT_MS, BOOT_DEADLINE_MS, LAZY_IMPORT_TIMEOUT_MS, withVisibleDeadline } from './utils/bootDeadline';
 import { announceBuildToServiceWorker } from './lib/assetCache';
 import { registerServiceWorker, maybeSyncPushSubscription, pushWantedFor, forgetPushSubscriptionOnThisDevice } from './lib/push';
 import { cenasPreviewAtiva } from './utils/cenasPreview';
@@ -56,7 +56,7 @@ const CHUNK_RELOAD_KEY = 'ironcoach:chunk-reload';
 function retryOnce(load) {
   // Um import() que nunca responde (a rede pendurada) conta como falhado: senão o esqueleto do
   // ecrã ficava para sempre (bug de 2026-11-17).
-  return () => withDeadline(load(), LAZY_IMPORT_TIMEOUT_MS, 'import').then((mod) => {
+  return () => withVisibleDeadline(load(), LAZY_IMPORT_TIMEOUT_MS, 'import').then((mod) => {
     try { sessionStorage.removeItem(CHUNK_RELOAD_KEY); } catch { /* sem storage */ }
     return mod;
   }).catch((err) => {
@@ -710,9 +710,13 @@ export default function App() {
       bootPhase('deadline');
       const hasSession = !!useAppStore.getState().session;
       if (!hasSession && readStoredAuthSession()) setBootOffline((cur) => cur || 'slow');
-      setNavigationDecided(true);
+      /* A navegação só se dá por decidida com a sessão: o ecrã «lenta» é como o «sem ligação» —
+         a reposição do ecrã guardado ainda está por fazer, e guardar já punha por cima o estado de
+         partida (revisão pré-deploy de a78b80bb). Sem sessão guardada nenhuma, vai para o login. */
+      if (hasSession || !readStoredAuthSession()) setNavigationDecided(true);
       setIsInitializing(false);
       bootExit('deadline');
+      // Sem sessão, o log espera por ela no telemóvel e sai quando houver (lib/pendingLogs.js).
       logAppEvent('error', 'boot_deadline', 'O arranque passou do prazo do logo', { trace: currentBootTrace(), hasSession });
     }, BOOT_DEADLINE_MS);
     return () => clearTimeout(timer);
@@ -835,7 +839,7 @@ export default function App() {
      arranque vão atrás do app_boot. */
   useEffect(() => {
     if (!sessionUserId || sessionUserId === 'demo-user') return undefined;
-    const online = () => { sendPendingAppLogs(); };
+    const online = () => { sendPendingAppLogs(sessionUserId); };
     window.addEventListener('online', online);
     return () => window.removeEventListener('online', online);
   }, [sessionUserId]);
@@ -1154,10 +1158,12 @@ export default function App() {
         if (answered || isDemo) return;
         bootPhase('session-timeout');
         if (readStoredAuthSession()) {
+          // Sem setNavigationDecided: como no «sem ligação», a reposição espera pela sessão.
           setBootOffline((cur) => cur || 'slow');
-          setNavigationDecided(true);
           setIsInitializing(false);
           bootExit('session-timeout');
+          // Fica em app_logs, não só nos reports: sem sessão espera por ela (lib/pendingLogs.js).
+          logAppEvent('error', 'boot_session_timeout', 'A sessão não respondeu dentro do prazo do arranque', { trace: currentBootTrace() });
         }
       }, BOOT_SESSION_TIMEOUT_MS);
       // Por uma promessa: um getSession que rebenta de forma síncrona não deixa o prazo pendurado.

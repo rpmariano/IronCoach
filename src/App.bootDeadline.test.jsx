@@ -67,6 +67,8 @@ describe('App — o arranque sai sempre do logo', () => {
 
   it('o getSession pendurado (refresh do token sem resposta): sai para «a ligação está lenta», e a resposta tardia ainda entra', async () => {
     storeSession();
+    const saved = JSON.stringify({ activeTab: 'coach', screen: null, savedAt: Date.now() });
+    localStorage.setItem('ironcoach:ecra-aberto', saved);
     let answer;
     // As tentativas seguintes (o ecrã «lenta» volta a tentar) respondem já com a sessão.
     mocks.getSession.mockResolvedValue({ data: { session: { user: { id: 'u1' }, access_token: 'novo' } }, error: null });
@@ -81,6 +83,15 @@ describe('App — o arranque sai sempre do logo', () => {
     const trace = readBootTraces().at(-1);
     expect(trace.exit).toBe('session-timeout');
     expect(trace.p).toEqual(expect.objectContaining({ 'session-start': expect.any(Number), 'session-timeout': expect.any(Number) }));
+    // Também em app_logs, não só nos reports (sem sessão, espera por ela na fila).
+    expect(logAppEvent).toHaveBeenCalledWith('error', 'boot_session_timeout', expect.any(String), { trace: expect.objectContaining({ exit: 'session-timeout' }) });
+    // A reposição do ecrã guardado espera pela sessão: sair da app no ecrã «lenta» não grava o
+    // estado de partida por cima do ecrã guardado (navigationDecided ainda falso).
+    Object.defineProperty(document, 'visibilityState', { value: 'hidden', configurable: true });
+    document.dispatchEvent(new Event('visibilitychange'));
+    window.dispatchEvent(new Event('pagehide'));
+    Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true });
+    expect(localStorage.getItem('ironcoach:ecra-aberto')).toBe(saved);
 
     // O refresh acaba por responder: a app entra sem o atleta fazer nada.
     await act(async () => { answer({ data: { session: { user: { id: 'u1' }, access_token: 'novo' } }, error: null }); });

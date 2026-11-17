@@ -10,7 +10,9 @@ vi.mock('../../store', () => ({
   useAppStore: vi.fn(),
 }));
 
-const insertMock = vi.fn(() => Promise.resolve({ error: null }));
+// O insert devolve o id do report (.select('id').maybeSingle()): é o que liga o rasto do arranque.
+const inserted = (res) => ({ select: () => ({ maybeSingle: () => Promise.resolve(res.error ? { data: null, error: res.error } : { data: { id: 'rep-1' }, error: null }) }) });
+const insertMock = vi.fn(() => inserted({ error: null }));
 const uploadMock = vi.fn(() => Promise.resolve({ error: null }));
 
 vi.mock('../../lib/supabase', () => ({
@@ -45,7 +47,7 @@ function fillTitle(value) {
 describe('ReportIssueButton', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    insertMock.mockResolvedValue({ error: null });
+    insertMock.mockImplementation(() => inserted({ error: null }));
 
     useAppStore.mockReturnValue({
       session: { user: { id: 'user-1', email: 'atleta@ironcoach.app' } },
@@ -129,7 +131,7 @@ describe('ReportIssueButton', () => {
   });
 
   it('mostra o motivo real do erro e não fecha o modal quando o Supabase falha', async () => {
-    insertMock.mockResolvedValueOnce({ error: { message: 'new row violates row-level security policy' } });
+    insertMock.mockImplementationOnce(() => inserted({ error: { message: 'new row violates row-level security policy' } }));
     renderButton();
     fireEvent.click(screen.getByLabelText('Reportar um problema'));
 
