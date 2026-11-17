@@ -348,7 +348,11 @@ export default function Coach() {
       // conversa que o atleta tem à frente (os do «Aceitei o plano.»). Salta-se
       // sem tocar em nada.
       if (silent && data?.skipped) return data;
-      if (data?.model_message?.content) {
+      /* Um assunto já dito que o servidor repete (replayed, o already_sent do load_topic): a bolha
+         dela já está na conversa se o id já cá estiver — não se repete; os botões aparecem por baixo. */
+      const replayedHere = data?.replayed && data?.model_message?.id
+        && (useAppStore.getState().coachMessages || []).some((m) => m.id === data.model_message.id);
+      if (data?.model_message?.content && !replayedHere) {
         addCoachMessage({
           id: data.model_message.id || (Date.now() + 1).toString(),
           role: 'assistant',

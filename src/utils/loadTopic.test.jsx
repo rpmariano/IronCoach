@@ -41,7 +41,9 @@ describe('loadTopic — a frase, a assinatura e a marca', () => {
     markLoadTopicHandled('u1', sig);
     expect(loadTopicCandidate(carga, { userId: 'u1' })).toBeNull();
     expect(loadTopicCandidate({ ...carga, state: 'conflito' }, { userId: 'u1' })).not.toBeNull();
-    expect(loadTopicSignature({ ...carga, acuteFromRace: { name: 'Corrida do Tejo' } })).toBe('load:meia:carga:Corrida do Tejo');
+    // A prova concluída só entra quando é ela a puxar a carga (loadAlert, dev-back 057e3a67).
+    expect(loadTopicSignature({ ...carga, loadAlert: true, acuteFromRace: { name: 'Corrida do Tejo' } })).toBe('load:meia:carga:Corrida do Tejo');
+    expect(loadTopicSignature({ ...carga, state: 'volume', acuteFromRace: { name: 'Corrida do Tejo' } })).toBe('load:meia:volume');
   });
 
   it('falado ou dispensado noutro dispositivo (as impressões) também conta', () => {

@@ -2870,6 +2870,27 @@ describe('Coach — a carga pedida a partir do Início (coachIntent load_topic)'
     expect(screen.queryByTestId('coach-load-choice')).toBeNull();
   });
 
+  it('already_sent com replayed: a bolha que já está na conversa não se repete, e os botões aparecem', async () => {
+    const { TRAIL, MEIA, PATTY_RUNS, PATTY_PLANS, PATTY_PLAN_ITEMS } = await import('../../test/pattyLoad');
+    useAppStore.setState({
+      raceEvents: [TRAIL, MEIA], runs: PATTY_RUNS, coachPlans: PATTY_PLANS, coachPlanItems: PATTY_PLAN_ITEMS,
+      coachMessages: [{ id: 'm-antiga', role: 'assistant', content: 'Já falámos da tua carga. Qual preferes?' }],
+    });
+    invokeEdgeFunctionWithTimeout.mockResolvedValue({
+      data: {
+        skipped: 'already_sent', replayed: true, load_topic_shown: true, suggestions: [],
+        load_profile_choice: { race_id: 'meia', current: 'prudente', chosen: false },
+        model_message: { id: 'm-antiga', role: 'model', content: 'Já falámos da tua carga. Qual preferes?', created_at: '2026-11-17T10:00:00Z' },
+      },
+      error: null,
+    });
+    useAppStore.setState({ coachIntent: { kind: 'load_topic', raceId: 'meia', state: 'conflito', signature: SIGNATURE } });
+    renderCoach();
+    await screen.findByTestId('coach-load-choice');
+    expect(useAppStore.getState().coachMessages.filter((m) => m.id === 'm-antiga')).toHaveLength(1);
+    expect(JSON.parse(window.localStorage.getItem('ironcoach:carga-tratada:user-1'))).toEqual([SIGNATURE]);
+  });
+
   it('o servidor já não vê o assunto: uma frase própria, e o aviso não fica preso (a assinatura fica tratada)', async () => {
     invokeEdgeFunctionWithTimeout.mockResolvedValue({ data: { skipped: true, reason: 'load_topic_unavailable', suggestions: [] }, error: null });
     useAppStore.setState({ coachIntent: { kind: 'load_topic', raceId: 'meia', state: 'carga', signature: 'load:meia:carga' } });

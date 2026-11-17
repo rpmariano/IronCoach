@@ -77,7 +77,7 @@ describe('LoadProfileCard — hub da prova, em conflito', () => {
     expect(what).toHaveTextContent('Volume: para a Meia dos Descobrimentos, o ideal são ~35 km/semana; corres 19.');
     expect(screen.getByTestId('load-profile-conflict')).not.toHaveTextContent(/ACWR|RPE/);
     expect(screen.getByTestId('load-profile-choose-prudente')).toHaveTextContent('A semana fica até 28,4 km; a prova é para completar.');
-    expect(screen.getByTestId('load-profile-choose-mais_volume')).toHaveTextContent('Até 30,8 km, mais perto do que a prova pede, com mais risco. Volta sozinho a Prudente se aparecer uma dor, se duas corridas fáceis seguidas te custarem muito, ou se andares a recuperar mal.');
+    expect(screen.getByTestId('load-profile-choose-mais_volume')).toHaveTextContent('Até 30,8 km, mais perto do que a prova pede, com mais risco. Volta sozinho a Prudente se aparecer dor, corridas fáceis muito duras duas vezes seguidas ou recuperação muito baixa.');
   });
 
   it('escolher Mais volume grava o update da secção 3 e o hub passa à linha do perfil', async () => {
