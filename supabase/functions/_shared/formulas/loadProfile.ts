@@ -64,6 +64,57 @@ export const LOAD_PROFILE_LABELS: Record<LoadProfile, string> = { prudente: "Pru
 
 export type LoadVolumeStateName = "ok" | "carga" | "volume" | "conflito" | "perfil";
 
+/** Bug #123 (2026-11-17): nos últimos 14 dias antes da prova que manda é
+ *  afinação, não é altura de subir volume — o «volume insuficiente» deixa de
+ *  contar (sem ele não há conflito; fica só a carga, se a houver). */
+export const TAPER_WINDOW_DAYS = 14;
+/** Uma prova concluída explica a carga dos últimos 7 dias quando os km dela
+ *  são pelo menos esta parte deles (bug #123: a meia de 21,76 em 26,6 km). */
+export const ACUTE_FROM_RACE_SHARE = 0.5;
+
+/** A prova que subiu a carga dos últimos 7 dias — só para o texto («A prova
+ *  de domingo subiu a carga dos últimos 7 dias»); a carga conta na mesma. */
+export interface AcuteFromRace {
+  raceId: string | null;
+  name: string | null;
+  /** O dia da prova (AAAA-MM-DD). */
+  date: string;
+  /** Os km da corrida dessa prova (a ligada a ela; sem ela, a distância da prova). */
+  km: number;
+}
+
+const DAY_MS = 86400000;
+const isoDaysBetween = (fromISO: string, toISO: string) =>
+  Math.round((Date.parse(`${toISO.slice(0, 10)}T00:00:00Z`) - Date.parse(`${fromISO.slice(0, 10)}T00:00:00Z`)) / DAY_MS);
+
+/** A prova concluída nos últimos 7 dias (hoje incluído) que explica a carga
+ *  deles: a de mais km, se forem ≥ ACUTE_FROM_RACE_SHARE do total. Os km são
+ *  os da corrida ligada (race_id), senão os de uma corrida de competição
+ *  nesse dia, senão a distância da prova. */
+export function acuteFromRaceOf(
+  races: ProfileRace[] | null | undefined,
+  runs: { date: string; distance_km?: number | string | null; kind?: string | null; race_id?: string | null }[] | null | undefined,
+  todayISO: string,
+  acuteKm: number,
+): AcuteFromRace | null {
+  if (!(acuteKm > 0)) return null;
+  const list = runs || [];
+  let best: AcuteFromRace | null = null;
+  for (const r of races || []) {
+    if (!r || typeof r.date !== "string") continue;
+    const ago = isoDaysBetween(r.date, todayISO);
+    if (ago < 0 || ago > 6) continue;
+    const linked = list.filter((x) => r.id && x.race_id === r.id);
+    const sameDay = linked.length ? linked : list.filter((x) => x.kind === "competicao" && String(x.date).slice(0, 10) === r.date.slice(0, 10));
+    if (!linked.length && (r.status ?? "agendada") !== "concluida" && !sameDay.length) continue;
+    const runKm = sameDay.reduce((t, x) => t + (Number(x.distance_km) || 0), 0);
+    const kmOf = runKm > 0 ? runKm : Number(r.distance_km) || 0;
+    if (kmOf <= 0) continue;
+    if (!best || kmOf > best.km) best = { raceId: r.id ?? null, name: r.name ?? null, date: r.date.slice(0, 10), km: Math.round(kmOf * 100) / 100 };
+  }
+  return best && best.km >= acuteKm * ACUTE_FROM_RACE_SHARE ? best : null;
+}
+
 export interface LoadVolumeState {
   /** «conflito»: os dois alertas coexistiriam e o perfil está por escolher —
    *  um só cartão, com as duas opções. «perfil»: já escolhido — só o limite
@@ -97,6 +148,14 @@ export interface LoadVolumeState {
   volumeBelow: boolean;
   /** Um sinal vermelho voltou o Mais volume a Prudente (loadProfileRedFlag). */
   reverted: { at: string; reason: string | null } | null;
+  /** Dias até à prova que manda (0 = hoje), ou null sem prova. */
+  daysToRace: number | null;
+  /** Nos últimos TAPER_WINDOW_DAYS dias antes dela: é afinação — o volume
+   *  «abaixo» não conta (volumeBelow fica false; bug #123). */
+  taper: boolean;
+  /** A prova concluída que subiu a carga dos últimos 7 dias, ou null (só para
+   *  o texto; a carga conta na mesma — bug #123). */
+  acuteFromRace: AcuteFromRace | null;
 }
 
 /**
@@ -109,7 +168,7 @@ export interface LoadVolumeState {
 export function loadVolumeState(
   { races, runs, planItems, todayISO, profileLevel = null, plannedUntilISO = null }: {
     races: ProfileRace[] | null | undefined;
-    runs: (LoadRun & OutlookRun)[] | null | undefined;
+    runs: (LoadRun & OutlookRun & { race_id?: string | null })[] | null | undefined;
     planItems?: (LoadPlanItem & OutlookPlanItem)[] | null;
     todayISO: string;
     profileLevel?: string | null;
@@ -132,8 +191,11 @@ export function loadVolumeState(
   const loadAlert = chosen || profile === "mais_volume"
     ? reading.enoughHistory && reading.acuteKm > reading.limitKm + 0.05
     : reading.enoughHistory && reading.ratio !== null && reading.ratio > ACWR_SAFE_MAX;
-  // «por_planear» não é «abaixo»: as semanas sem plano ainda podem somar.
-  const volumeBelow = outlook?.status === "abaixo";
+  // «por_planear» não é «abaixo»: as semanas sem plano ainda podem somar. E
+  // nas duas semanas antes da prova é afinação: o volume já não se sobe.
+  const daysToRace = race ? isoDaysBetween(todayISO, race.date) : null;
+  const taper = daysToRace != null && daysToRace >= 0 && daysToRace <= TAPER_WINDOW_DAYS;
+  const volumeBelow = outlook?.status === "abaixo" && !taper;
   const state: LoadVolumeStateName = chosen
     ? "perfil"
     : loadAlert && volumeBelow ? "conflito" : loadAlert ? "carga" : volumeBelow ? "volume" : "ok";
@@ -155,6 +217,9 @@ export function loadVolumeState(
     loadAlert,
     volumeBelow,
     reverted: race?.load_profile_reverted_at ? { at: race.load_profile_reverted_at, reason: race.load_profile_revert_reason ?? null } : null,
+    daysToRace,
+    taper,
+    acuteFromRace: acuteFromRaceOf(races, list, todayISO, reading.acuteKm),
   };
 }
 

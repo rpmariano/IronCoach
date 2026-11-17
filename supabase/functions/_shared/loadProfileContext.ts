@@ -75,6 +75,16 @@ export function loadProfileContextLine(state: LoadVolumeState, todayISO: string)
     s += ` Voltou de Mais volume a Prudente sozinho em ${dayMonth(rev.at.slice(0, 10))} (${why}). Se ainda não lho disseste, diz-lho ` +
       `uma vez, sem alarme: foi por segurança, e ele pode voltar a escolher Mais volume quando o sinal passar.`;
   }
+  // Bug #123: nas duas semanas antes da prova é afinação — nada de pedir volume.
+  if (state.taper && state.daysToRace != null) {
+    s += ` Faltam ${state.daysToRace} dia(s) para a prova: é afinação — não lhe peças mais volume nem lhe digas que faz poucos km para ela.`;
+  }
+  // E quando a carga destes 7 dias vem sobretudo de uma prova, di-lo assim.
+  const fromRace = state.acuteFromRace;
+  if (fromRace && state.loadAlert) {
+    s += ` A carga destes 7 dias subiu sobretudo pela prova «${fromRace.name ?? "a prova"}» (${km(fromRace.km)} km, ${dayMonth(fromRace.date)}) — ` +
+      `di-lo assim («a prova de ${dayMonth(fromRace.date)} subiu a carga dos últimos 7 dias»); os cuidados com a carga continuam a valer.`;
+  }
   if (state.state === "conflito") {
     const acwr = state.ratio != null ? `, ACWR ${String(state.ratio).replace(".", ",")}` : "";
     s += ` CONFLITO: a carga destes 7 dias (${km(state.acuteKm)} km${acwr}) já pede cautela e o volume para a prova fica abaixo do que ` +

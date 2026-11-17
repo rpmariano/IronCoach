@@ -6,7 +6,25 @@ const BASE: LoadVolumeState = {
   state: "conflito", race: { id: "meia", name: "Meia dos Descobrimentos", date: "2026-11-29" }, profile: "prudente", chosen: false,
   acuteKm: 23.1, ratio: 1.31, safeLimitKm: 28.4, limits: { prudente: 28.4, mais_volume: 30.8 },
   currentWeeklyKm: 19.1, recommendedWeeklyKm: 35, projectedWeeklyKm: 21.2, volumeStatus: "abaixo", loadAlert: true, volumeBelow: true, reverted: null,
+  daysToRace: 20, taper: false, acuteFromRace: null,
 };
+
+// Bug #123: a 12 dias da meia, com a carga subida pela prova de domingo.
+const RUI_17NOV: LoadVolumeState = {
+  ...BASE, state: "carga", acuteKm: 26.6, ratio: 1.43, volumeBelow: false, daysToRace: 12, taper: true,
+  acuteFromRace: { raceId: "trail", name: "Atlantic Cliff Adventure", date: "2026-11-15", km: 21.76 },
+};
+
+Deno.test("loadProfileContextLine (bug #123): na afinação não pede volume, e diz que foi a prova que subiu a carga", () => {
+  const s = loadProfileContextLine(RUI_17NOV, "2026-11-17");
+  assertStringIncludes(s, "Faltam 12 dia(s) para a prova: é afinação — não lhe peças mais volume nem lhe digas que faz poucos km para ela.");
+  assertStringIncludes(s, "A carga destes 7 dias subiu sobretudo pela prova «Atlantic Cliff Adventure» (21,8 km, 15 nov)");
+  assertStringIncludes(s, "«a prova de 15 nov subiu a carga dos últimos 7 dias»");
+  assertEquals(s.includes("CONFLITO"), false);
+  // Sem aviso de carga, a prova não se menciona; fora da afinação, a frase da afinação não aparece.
+  assertEquals(loadProfileContextLine({ ...RUI_17NOV, loadAlert: false }, "2026-11-17").includes("subiu sobretudo"), false);
+  assertEquals(loadProfileContextLine(BASE, "2026-11-09").includes("afinação"), false);
+});
 
 Deno.test("loadProfileContextLine: conflito por escolher — as duas opções, a pergunta, e só grava quando ele disser", () => {
   const s = loadProfileContextLine(BASE, "2026-11-09");

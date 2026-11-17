@@ -50,7 +50,7 @@ import { classifyCalorieCompliance } from "../_shared/formulas/nutritionComplian
 import { computeRunAcwr, RUN_ACWR_MIN_HISTORY_WEEKS } from "../_shared/formulas/runAcwr.ts";
 import { fetchGeminiWithTimeout, hasTimeFor } from "../_shared/geminiFetch.ts";
 import { planLoadViolations, runLoadReading, type LoadPlanItem, type LoadProfile, type RunLoadReading } from "../_shared/formulas/runLoadAlert.ts";
-import { governingRace, LOAD_PROFILE_LABELS, loadVolumeState, raceLoadProfile } from "../_shared/formulas/loadProfile.ts";
+import { governingRace, LOAD_PROFILE_LABELS, loadVolumeState, raceLoadProfile, TAPER_WINDOW_DAYS } from "../_shared/formulas/loadProfile.ts";
 import { fetchAcceptedPlanUntil, fetchLoadProfileRaces, loadProfileContextLine, lowBaseRampKm } from "../_shared/loadProfileContext.ts";
 import { computeCrossMetrics } from "../_shared/formulas/crossMetrics.ts";
 import { computeReadinessIndex, READINESS_MIN_COMPLETE_DAYS_OCASIONAL, readinessMealsStartISO } from "../_shared/formulas/readinessIndex.ts";
@@ -4753,7 +4753,8 @@ export async function runProposeTrainingPlan(
       ]);
       const planItems = [...(keptRes?.data || []), ...rows.map((r) => ({ ...r, status: "pendente" }))];
       const profileLevel = profileRes?.data?.experience_level ?? null;
-      volumeNote = raceVolumeNote(racesInPeriod.map((race) => ({
+      // Bug #123: as provas a 14 dias ou menos estão em afinação — sem nota de volume.
+      volumeNote = raceVolumeNote(racesInPeriod.filter((race) => daysBetweenISO(todayPlansISO, race.date) > TAPER_WINDOW_DAYS).map((race) => ({
         race,
         outlook: raceVolumeOutlook({
           race: { ...race, experience_level: race.experience_level || profileLevel },
@@ -6074,9 +6075,12 @@ export function buildRaceEventsContext(
     ].filter(Boolean).join(", ");
     // Bloco 1 — Viabilidade do objetivo (objetivo_inviavel). Numa jornada não:
     // é uma prova curta dentro da época, não um objetivo a preparar.
-    const viabFlags = daysUntil > 0 && !seriesIntent
+    const viabFlags = (daysUntil > 0 && !seriesIntent
       ? assessViability(e.distance_km ?? null, effectiveLevel, weeksUntil, weeklyVolumeKm)
-      : [];
+      : [])
+      // Bug #123: nas duas semanas antes da prova é afinação — o volume já
+      // não se sobe, e a Carol não o pede.
+      .filter((f) => !(f === "volume_insuficiente" && daysUntil <= TAPER_WINDOW_DAYS));
     const viabLines = viabFlags.map((f) => {
       if (f === "ultra_para_iniciante") return "⚠ OBJETIVO_INVIAVEL: ultra desaconselhado para iniciante";
       if (f === "tempo_insuficiente")   return `⚠ OBJETIVO_INVIAVEL: tempo insuficiente (${weeksUntil} sem. disponíveis)`;
@@ -8379,7 +8383,7 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
     const runStartISO = runStartD.toISOString().slice(0, 10);
     const { data: recentRuns, error: err_recentRuns } = await sb
       .from("runs")
-      .select("date, start_time, kind, training_type, distance_km, duration_seconds, effort_rpe, details")
+      .select("date, start_time, kind, training_type, distance_km, duration_seconds, effort_rpe, details, race_id")
       .eq("user_id", userId)
       .gte("date", runStartISO)
       .lte("date", todayISO)
@@ -8423,7 +8427,7 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
         // deno-lint-ignore no-explicit-any
         .then((r: any) => { const list = r?.data || []; return list.find((x: any) => (x.race_priority || "a") === "a") ?? list[0] ?? null; }, () => null),
       // O perfil de carga por prova (2026-11-09): manda o da próxima principal.
-      fetchLoadProfileRaces(sb, userId, todayISO),
+      fetchLoadProfileRaces(sb, userId, addDaysISO(todayISO, -6)),
       // Até onde o plano aceite vai: depois disso, por planear (não zero).
       fetchAcceptedPlanUntil(sb, userId),
     ]);
