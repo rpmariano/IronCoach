@@ -1,6 +1,8 @@
 import React, { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { supabase, logAppEvent, sendPendingAppLogs } from './lib/supabase';
 import { bootInfoOnce, bootMessage, trackHiddenAt } from './utils/bootTelemetry';
+import { bootPhase, bootExit, currentBootTrace, previousUnfinishedTrace, markTraceReported } from './utils/bootTrace';
+import { BOOT_SESSION_TIMEOUT_MS, BOOT_DEADLINE_MS, LAZY_IMPORT_TIMEOUT_MS, withDeadline } from './utils/bootDeadline';
 import { announceBuildToServiceWorker } from './lib/assetCache';
 import { registerServiceWorker, maybeSyncPushSubscription, pushWantedFor, forgetPushSubscriptionOnThisDevice } from './lib/push';
 import { cenasPreviewAtiva } from './utils/cenasPreview';
@@ -52,7 +54,9 @@ import { DASHBOARD_TABS } from './utils/scrollToTop';
    sessionStorage evita um ciclo se a recarga não resolver. */
 const CHUNK_RELOAD_KEY = 'ironcoach:chunk-reload';
 function retryOnce(load) {
-  return () => load().then((mod) => {
+  // Um import() que nunca responde (a rede pendurada) conta como falhado: senão o esqueleto do
+  // ecrã ficava para sempre (bug de 2026-11-17).
+  return () => withDeadline(load(), LAZY_IMPORT_TIMEOUT_MS, 'import').then((mod) => {
     try { sessionStorage.removeItem(CHUNK_RELOAD_KEY); } catch { /* sem storage */ }
     return mod;
   }).catch((err) => {
@@ -314,17 +318,21 @@ function FullScreenLoader({ still = false, decorative = false }) {
    ou já, no botão. utils/authNetwork.js explica a causa. */
 function OfflineBootScreen({ onRetry, retrying = false, reason = 'network' }) {
   const server = reason === 'server';
+  // «slow»: o arranque passou do prazo à espera da sessão (a rede respondia, mas não a tempo).
+  const slow = reason === 'slow';
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-transparent px-6 text-center" data-testid="boot-offline" data-reason={reason} style={{ gap: 20 }}>
       <LogoLoader size={112} label={null} still />
       <div className="flex flex-col items-center" style={{ gap: 8 }}>
         <p role="status" aria-live="polite" className="text-[15px] font-bold" style={{ color: 'var(--text-1)' }}>
-          {retrying ? 'A ligar…' : server ? 'O servidor não está a responder' : 'Sem ligação à internet'}
+          {retrying ? 'A ligar…' : server ? 'O servidor não está a responder' : slow ? 'A ligação está lenta' : 'Sem ligação à internet'}
         </p>
         <p className="text-[13px] leading-relaxed max-w-[280px]" style={{ color: 'var(--text-2)' }}>
           {server
             ? 'A tua sessão está guardada. Tenta daqui a pouco — eu também volto a tentar.'
-            : 'A tua sessão está guardada. Entro assim que a rede voltar.'}
+            : slow
+              ? 'A tua sessão está guardada. Continuo a tentar e entro assim que a rede responder.'
+              : 'A tua sessão está guardada. Entro assim que a rede voltar.'}
         </p>
       </div>
       <button
@@ -645,6 +653,7 @@ export default function App() {
   const [fullIntroMs] = useState(logoIntroMs);
   const [firstBootDone, setFirstBootDone] = useState(!htmlSplash);
   const showBootSplash = useHeldWhile(isInitializing, firstBootDone ? fullIntroMs : htmlSplash.remainingMs);
+  useState(() => { bootPhase(htmlSplash ? 'adopted' : 'react'); return null; });
   /* O utilizador cujos dados já estão carregados. Ao voltar à app depois de
      ter estado noutra, o Supabase recupera a sessão e emite SIGNED_IN com o
      MESMO utilizador (auth-js, _onVisibilityChanged → _recoverAndRefresh).
@@ -689,6 +698,25 @@ export default function App() {
     return () => { window.removeEventListener('online', retry); clearInterval(timer); };
   }, [bootOffline]);
   useEffect(() => (navigationDecided ? startNavigationPersistence(useAppStore) : undefined), [navigationDecided]);
+
+  /* O prazo duro do logo (bug de 2026-11-17): aconteça o que acontecer, o arranque sai dele ao fim
+     de BOOT_DEADLINE_MS — com a app, se já há sessão (os dados que faltarem chegam por baixo), ou
+     com o ecrã «a ligação está lenta» (que volta a tentar sozinho), se a sessão está guardada mas
+     ainda não chegou. A rede de segurança do index.html desliga-se quando a app adota o logo: a
+     partir daí só isto garante que ele sai. */
+  useEffect(() => {
+    if (!isInitializing) return undefined;
+    const timer = setTimeout(() => {
+      bootPhase('deadline');
+      const hasSession = !!useAppStore.getState().session;
+      if (!hasSession && readStoredAuthSession()) setBootOffline((cur) => cur || 'slow');
+      setNavigationDecided(true);
+      setIsInitializing(false);
+      bootExit('deadline');
+      logAppEvent('error', 'boot_deadline', 'O arranque passou do prazo do logo', { trace: currentBootTrace(), hasSession });
+    }, BOOT_DEADLINE_MS);
+    return () => clearTimeout(timer);
+  }, [isInitializing]);
 
   /* Onboarding (ponto 8 do redesenho 2026-09). Duas entradas distintas:
      - PRIMEIRO ACESSO: decidido pela regra de utils/onboarding.js — perfil
@@ -795,7 +823,13 @@ export default function App() {
     if (!sessionUserId || sessionUserId === 'demo-user' || bootLoggedRef.current) return;
     bootLoggedRef.current = true;
     const info = bootInfoOnce();
-    logAppEvent('info', 'app_boot', bootMessage(info), info);
+    logAppEvent('info', 'app_boot', bootMessage(info), { ...info, trace: currentBootTrace() });
+    // O arranque anterior nunca acabou (o atleta deitou a app abaixo no logo): diz-se onde parou.
+    const stuck = previousUnfinishedTrace();
+    if (stuck) {
+      markTraceReported(stuck.at);
+      logAppEvent('error', 'boot_stuck', 'O arranque anterior não saiu do logo', { trace: stuck });
+    }
   }, [sessionUserId]);
   /* #116: os logs que falharam por falta de rede (lib/pendingLogs.js) vão quando a rede volta; no
      arranque vão atrás do app_boot. */
@@ -1109,15 +1143,39 @@ export default function App() {
     /* Só o erro que vem do getSession (resolvido com error, ou rejeitado) decide «sem ligação» —
        nunca uma exceção do código que corre depois (revisão do 0c1a88af: um TypeError de código
        ligava o ecrã sem ligação e o temporizador repetia o arranque em ciclo). */
-    const startBoot = () => supabase.auth.getSession().then(
+    /* O getSession com prazo (bug de 2026-11-17): ao voltar com o token expirado ele espera pelo
+       refresh, e com a rede a acordar isso podia não acabar. Passado BOOT_SESSION_TIMEOUT_MS, com a
+       sessão guardada, sai-se do logo para o ecrã «a ligação está lenta», que volta a tentar
+       sozinho; a resposta que chegar depois continua a valer (o arranque segue por ela). */
+    const startBoot = () => {
+      bootPhase('session-start');
+      let answered = false;
+      const timer = setTimeout(() => {
+        if (answered || isDemo) return;
+        bootPhase('session-timeout');
+        if (readStoredAuthSession()) {
+          setBootOffline((cur) => cur || 'slow');
+          setNavigationDecided(true);
+          setIsInitializing(false);
+          bootExit('session-timeout');
+        }
+      }, BOOT_SESSION_TIMEOUT_MS);
+      // Por uma promessa: um getSession que rebenta de forma síncrona não deixa o prazo pendurado.
+      return Promise.resolve().then(() => supabase.auth.getSession()).then(
       (res) => ({ session: res?.data?.session ?? null, error: res?.error ?? null }),
       (err) => ({ session: null, error: err, rejected: true }),
-    ).then(({ session: existingSession, error: sessionError, rejected }) => {
+    ).then((answer) => {
+      answered = true;
+      clearTimeout(timer);
+      bootPhase('session-end');
+      return answer;
+    }).then(({ session: existingSession, error: sessionError, rejected }) => {
       /* Sem rede, com o access token expirado, o getSession devolve session null e um erro de
          rede — com a sessão ainda guardada. Isso não é «sem sessão» (utils/authNetwork.js). */
       if (!isDemo && bootSessionState({ session: existingSession, error: sessionError, storedSession: readStoredAuthSession() }) === 'offline') {
         setBootOffline(isServerDownAuthError(sessionError) ? 'server' : 'network');
         setIsInitializing(false);
+        bootExit('offline');
         return;
       }
       setBootOffline(null);
@@ -1125,6 +1183,7 @@ export default function App() {
         setSession(null);
         setNavigationDecided(true);
         setIsInitializing(false);
+        bootExit('login');
         return;
       }
       if (isDemo) {
@@ -1166,6 +1225,7 @@ export default function App() {
         }
         setNavigationDecided(true);
         setIsInitializing(false);
+        bootExit('demo');
       } else if (existingSession?.user) {
         // Também ao voltar a rede depois do ecrã «sem ligação»: o logo enquanto os dados chegam.
         setIsInitializing(true);
@@ -1182,9 +1242,10 @@ export default function App() {
           applyNavigation(useAppStore, savedNavigation);
         }
         setNavigationDecided(true);
+        bootPhase('data-start');
         const loading = loadInitialData(existingSession.user.id, { join: true });
         // O logo sai quando o carregamento devolve (no máximo 10 s)…
-        loading.finally(() => setIsInitializing(false));
+        loading.finally(() => { bootPhase('data-end'); setIsInitializing(false); bootExit('app'); });
         // …mas fechar o ecrã reposto e abrir a notificação esperam pelos dados
         // todos: com a rede lenta, as corridas ou as provas podem chegar
         // depois, e o ecrã de edição reposto fechava-se por "não existir"
@@ -1208,6 +1269,7 @@ export default function App() {
         setSession(null);
         setNavigationDecided(true);
         setIsInitializing(false);
+        bootExit('login');
       }
     }).catch((err) => {
       /* Uma exceção do arranque (não da rede): não liga o ecrã sem ligação, mas também não deixa a
@@ -1216,8 +1278,10 @@ export default function App() {
       console.error('[arranque]', err);
       setNavigationDecided(true);
       setIsInitializing(false);
+      bootExit('exception');
       logAppEvent('error', 'boot_exception', String(err?.message || err || 'Exceção no arranque').slice(0, 200), { errorName: err?.name || null });
     });
+    };
     retryBootRef.current = startBoot;
     startBoot();
 
@@ -1282,6 +1346,7 @@ export default function App() {
   useEffect(() => {
     if (firstBootDone) return;
     if (!showBootSplash || benchTab) {
+      bootPhase('released');
       releaseBootSplash();
       setFirstBootDone(true);
     }

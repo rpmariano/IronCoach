@@ -1,11 +1,13 @@
 import { createClient } from '@supabase/supabase-js';
 import { queuePendingLog, flushPendingLogs } from './pendingLogs';
 import { saveKindOf, describeBody, saveModeOf, technicalMessage } from './saveTelemetry';
+import { createAuthTimeoutFetch } from './authFetch';
 
 const SUPABASE_URL = 'https://roxfzsiciizkevopgpnl.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJveGZ6c2ljaWl6a2V2b3BncG5sIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODMyNjg0NDksImV4cCI6MjA5ODg0NDQ0OX0.bS7FyzDIqj4Aov18OXw6SsJrx1hT1DxYQfzmeHHH7bw';
 
-export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+// Os pedidos ao Auth com prazo: um refresh pendurado prendia o arranque no logo (lib/authFetch.js).
+export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { global: { fetch: createAuthTimeoutFetch() } });
 
 /**
  * Regista um evento em app_logs para auditoria (os custos de tokens vivem em
