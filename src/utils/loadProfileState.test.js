@@ -49,7 +49,8 @@ describe('loadStateFor — a Patty a 9 nov', () => {
     expect(s.volumeBelow).toBe(false);
     expect(s.state).not.toBe('conflito');
     expect(s.state).toBe('carga');
-    expect(filterLoadInsights([ACWR, VOLUME], s).map((i) => i.id)).toEqual(['acwr_caution']);
+    // Bug #123: a carga é um assunto da Carol (utils/loadTopic.js) — o aviso de ACWR funde-se nele.
+    expect(filterLoadInsights([ACWR, VOLUME], s).map((i) => i.id)).toEqual([]);
   });
 
   it('sem a migration (as provas chegam sem load_profile): tudo Prudente, por escolher', () => {
@@ -93,12 +94,13 @@ describe('filterLoadInsights — a carga e o volume nunca juntos', () => {
     const prud = stateWith([{ ...MEIA, load_profile_at: '2026-11-09T12:00:00Z' }]);
     expect(filterLoadInsights(all, prud).map((i) => i.id)).toEqual(['bf_low']);
     const acima = loadStateFor({ raceEvents: [{ ...MEIA, load_profile_at: '2026-11-09T12:00:00Z' }], runs: [...PATTY_RUNS, R_EXTRA], coachPlans: PATTY_PLANS, coachPlanItems: PATTY_PLAN_ITEMS, todayISO: TODAY });
-    expect(filterLoadInsights(all, acima).map((i) => i.id)).toEqual(['acwr_caution', 'bf_low']);
+    // Bug #123: acima do limite, a carga é o assunto da Carol — o ACWR não aparece solto.
+    expect(filterLoadInsights(all, acima).map((i) => i.id)).toEqual(['bf_low']);
   });
-  it('a 13 nov, sem carga a mais: só o volume', () => {
+  it('a 13 nov, sem carga a mais: o volume é o assunto da Carol — nenhum aviso solto (#123)', () => {
     const s = stateWith([TRAIL, MEIA], '2026-11-13');
     expect(s.state).toBe('volume');
-    expect(filterLoadInsights(all, s).map((i) => i.id)).toEqual(['race_volume', 'bf_low']);
+    expect(filterLoadInsights(all, s).map((i) => i.id)).toEqual(['bf_low']);
   });
   it('sem prova que mande, nada muda; o volume de outra prova também não', () => {
     expect(filterLoadInsights(all, stateWith([]))).toEqual(all);

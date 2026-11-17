@@ -97,6 +97,33 @@ function ProfileOptions({ state, busy, onChoose }) {
   );
 }
 
+/* A escolha no chat (bug #123): o servidor manda load_profile_choice com a conversa da carga e o
+   chat põe por baixo as duas opções, com os mesmos textos do hub. O toque grava pelo caminho de
+   sempre (setRaceLoadProfile, RLS do próprio) e `onDone` diz ao chat o que foi escolhido. */
+export function LoadProfileChoice({ raceId, disabled = false, onDone }) {
+  const state = useLoadState();
+  const setRaceLoadProfile = useAppStore((s) => s.setRaceLoadProfile);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+  if (!state?.race?.id || (raceId && raceId !== state.race.id)) return null;
+  const choose = async (profile) => {
+    if (busy || disabled) return;
+    setBusy(true);
+    setError(null);
+    const res = await setRaceLoadProfile?.(state.race.id, profile);
+    setBusy(false);
+    if (res?.ok) onDone?.(profile);
+    else setError(SAVE_ERROR);
+  };
+  return (
+    <div className="rounded-[18px]" style={{ padding: '12px 14px', background: 'rgba(255,255,255,.04)', border: '1px solid var(--border-glass)' }}>
+      <p className="text-[12px] font-bold text-[var(--text-2)]">O perfil de carga para {state.race.name || 'a prova'}</p>
+      <ProfileOptions state={state} busy={busy || disabled} onChoose={choose} />
+      {error && <p className="text-[12px] mt-2" style={{ color: 'var(--warn)' }} role="alert">{error}</p>}
+    </div>
+  );
+}
+
 export default function LoadProfileCard({ variant = 'card', raceId = null }) {
   const state = useLoadState();
   const setRaceLoadProfile = useAppStore((s) => s.setRaceLoadProfile);

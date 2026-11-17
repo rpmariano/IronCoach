@@ -50,10 +50,14 @@ export function loadStateFor({ raceEvents, runs, coachPlans, coachPlanItems, pro
      viabilidade do biEngine continua a ser quem fala). */
 const ACWR_IDS = new Set(['acwr_caution', 'acwr_danger']);
 
+/* Bug #123 (2026-11-17): a carga e o volume da prova que manda são agora UM assunto da Carol
+   (utils/loadTopic.js), com a conversa no chat. Os avisos de ACWR e o «volume insuficiente» dessa
+   prova fundem-se nele e já não aparecem soltos — nem depois de ele falar com ela: dizer o mesmo
+   pelos dois lados era o que o Rui não percebia. Com tudo bem (ok), o volume fica como estava. */
 export function filterLoadInsights(insights, state) {
   if (!state?.race) return insights;
-  const allowAcwr = state.loadAlert && state.state !== 'conflito';
-  const allowVolume = state.state === 'volume' || state.state === 'ok';
+  const allowAcwr = false;
+  const allowVolume = state.state === 'ok';
   return insights.filter((i) => {
     if (ACWR_IDS.has(i.id)) return allowAcwr;
     // O «volume insuficiente» de outra prova (a próxima não é a principal) fica como estava.

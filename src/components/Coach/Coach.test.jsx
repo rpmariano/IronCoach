@@ -2821,3 +2821,60 @@ describe('Coach — um pedido (coachIntent) trata-se uma vez', () => {
     expect(useAppStore.getState().coachIntent).toBeNull();
   });
 });
+
+/* Bug #123 (2026-11-17): a carga e o volume como assunto da Carol. O aviso do Início manda o
+   coachIntent 'load_topic'; isto pede o turno pelo canal do check-in do plano (load_topic), e com
+   load_topic_shown a assinatura fica tratada aqui e nos outros dispositivos. Com
+   load_profile_choice, as duas opções aparecem por baixo da conversa. */
+describe('Coach — a carga pedida a partir do Início (coachIntent load_topic)', () => {
+  const SIGNATURE = 'load:meia:conflito';
+  let logImpression;
+  beforeEach(() => {
+    invokeEdgeFunctionWithTimeout.mockReset();
+    supabase.from.mockReset();
+    window.localStorage.clear();
+    logImpression = vi.fn();
+    useAppStore.setState({ ...baseCarolState(), logImpression });
+  });
+
+  it('pede o turno com load_topic e, confirmado, marca a assinatura', async () => {
+    invokeEdgeFunctionWithTimeout.mockResolvedValue({
+      data: { model_message: { id: 'm1', content: 'Vamos ver a tua carga.' }, suggestions: [], load_topic_shown: true },
+      error: null,
+    });
+    useAppStore.setState({ coachIntent: { kind: 'load_topic', raceId: 'meia', state: 'conflito', signature: SIGNATURE } });
+    renderCoach();
+    await waitFor(() => expect(invokeEdgeFunctionWithTimeout).toHaveBeenCalledTimes(1));
+    const body = JSON.parse(invokeEdgeFunctionWithTimeout.mock.calls[0][1].body);
+    expect(body).toMatchObject({ message: '', is_plan_checkin: true, load_topic: { race_id: 'meia', state: 'conflito', signature: SIGNATURE } });
+    expect(useAppStore.getState().coachIntent).toBeNull();
+    await waitFor(() => expect(JSON.parse(window.localStorage.getItem('ironcoach:carga-tratada:user-1'))).toEqual([SIGNATURE]));
+    expect(logImpression).toHaveBeenCalledWith({ kind: 'moment', key: SIGNATURE, title: null });
+  });
+
+  it('com load_profile_choice, as duas opções aparecem por baixo; escolher grava e diz-se no chat', async () => {
+    const { TRAIL, MEIA, PATTY_RUNS, PATTY_PLANS, PATTY_PLAN_ITEMS } = await import('../../test/pattyLoad');
+    const setRaceLoadProfile = vi.fn().mockResolvedValue({ ok: true });
+    useAppStore.setState({ raceEvents: [TRAIL, MEIA], runs: PATTY_RUNS, coachPlans: PATTY_PLANS, coachPlanItems: PATTY_PLAN_ITEMS, setRaceLoadProfile });
+    invokeEdgeFunctionWithTimeout.mockResolvedValue({
+      data: { model_message: { id: 'm1', content: 'Prudente ou Mais volume?' }, suggestions: [], load_topic_shown: true, load_profile_choice: { race_id: 'meia', current: 'prudente', chosen: false } },
+      error: null,
+    });
+    useAppStore.setState({ coachIntent: { kind: 'load_topic', raceId: 'meia', state: 'conflito', signature: SIGNATURE } });
+    renderCoach();
+    const choice = await screen.findByTestId('coach-load-choice');
+    fireEvent.click(choice.querySelector('[data-testid="load-profile-choose-prudente"]'));
+    await waitFor(() => expect(setRaceLoadProfile).toHaveBeenCalledWith('meia', 'prudente'));
+    await waitFor(() => expect(invokeEdgeFunctionWithTimeout).toHaveBeenCalledTimes(2));
+    expect(JSON.parse(invokeEdgeFunctionWithTimeout.mock.calls[1][1].body).message).toBe('Fico com Prudente.');
+    expect(screen.queryByTestId('coach-load-choice')).toBeNull();
+  });
+
+  it('sem o assunto no servidor: uma frase curta, e nada fica tratado', async () => {
+    invokeEdgeFunctionWithTimeout.mockResolvedValue({ data: { skipped: true, reason: 'load_topic_unavailable', suggestions: [] }, error: null });
+    useAppStore.setState({ coachIntent: { kind: 'load_topic', raceId: 'meia', state: 'carga', signature: 'load:meia:carga' } });
+    renderCoach();
+    await waitFor(() => expect(useAppStore.getState().coachMessages.map((m) => m.content)).toContain(COACH_EMPTY_REPLY_TEXT));
+    expect(window.localStorage.getItem('ironcoach:carga-tratada:user-1')).toBeNull();
+  });
+});
