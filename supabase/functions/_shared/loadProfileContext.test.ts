@@ -1,6 +1,6 @@
-import { assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
+import { assert, assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
 import { buildLoadTopicTurn, fetchAcceptedPlanUntil, fetchLoadProfileRaces, loadProfileContextLine, loadProfileRevertReason } from "./loadProfileContext.ts";
-import { loadTopicSignature, type LoadVolumeState } from "./formulas/loadProfile.ts";
+import { loadTopicApplies, loadTopicSignature, type LoadVolumeState } from "./formulas/loadProfile.ts";
 
 const BASE: LoadVolumeState = {
   state: "conflito", race: { id: "meia", name: "Meia dos Descobrimentos", date: "2026-11-29" }, profile: "prudente", chosen: false,
@@ -29,7 +29,9 @@ Deno.test("loadProfileContextLine (bug #123): na afinação não pede volume, e 
 Deno.test("loadProfileContextLine: conflito por escolher — as duas opções, a pergunta, e só grava quando ele disser", () => {
   const s = loadProfileContextLine(BASE, "2026-11-09");
   assertStringIncludes(s, "PERFIL DE CARGA para «Meia dos Descobrimentos» (29 nov): Prudente (por escolher — vale Prudente)");
-  assertStringIncludes(s, "CONFLITO: a carga destes 7 dias (23,1 km, ACWR 1,31) já pede cautela");
+  assertStringIncludes(s, "CONFLITO: a carga destes 7 dias (23,1 km, 1,31 vezes o habitual) já pede cautela");
+  // Sem siglas na voz dela (revisão do #123).
+  assertEquals(s.includes("ACWR") || s.includes("RPE"), false);
   assertStringIncludes(s, "(19,1 km/semana; pede 35)");
   assertStringIncludes(s, "Prudente: a semana fica até 28,4 km e a prova é para completar; Mais volume: até 30,8 km");
   assertStringIncludes(s, "e pergunta qual prefere");
@@ -75,7 +77,8 @@ Deno.test("buildLoadTopicTurn: a carga com os números e a prova que a subiu; na
   assertStringIncludes(t, "A subida vem sobretudo da prova «Atlantic Cliff Adventure» (21,8 km, 15 nov)");
   assertStringIncludes(t, "Faltam 12 dia(s) para «Meia dos Descobrimentos» (29 nov): é afinação — o volume já não se sobe, não lho peças.");
   assertStringIncludes(t, "Prudente: A semana fica até 28,4 km; a prova é para completar.");
-  assertStringIncludes(t, "Mais volume: Até 30,8 km, mais perto do que a prova pede, com mais risco.");
+  assertStringIncludes(t, "Mais volume: Até 30,8 km, mais perto do que a prova pede, com mais risco. Volta sozinho a Prudente se aparecer dor, corridas fáceis muito duras duas vezes seguidas ou recuperação muito baixa.");
+  assertEquals(/RPE \d|RPE 9|recuperação crítica|ACWR \d/.test(t), false);
   assertStringIncludes(t, "Os botões Prudente e Mais volume aparecem por baixo da tua mensagem");
   assertStringIncludes(t, "update_race_event (load_profile)");
   assertEquals(t.includes("ACWR ") || t.includes("O volume para a prova"), false);
@@ -83,10 +86,25 @@ Deno.test("buildLoadTopicTurn: a carga com os números e a prova que a subiu; na
   assertStringIncludes(buildLoadTopicTurn(BASE), "O volume para a prova: corre 19,1 km por semana e a prova pede 35.");
 });
 
+Deno.test("buildLoadTopicTurn (revisão do #123): no estado «volume» começa pelo volume, e a carga só como margem", () => {
+  const vol: LoadVolumeState = { ...BASE, state: "volume", loadAlert: false, acuteKm: 15.2, ratio: 0.9 };
+  const t = buildLoadTopicTurn(vol);
+  const v = t.indexOf("o volume para «Meia dos Descobrimentos» (29 nov) — corre 19,1 km por semana e a prova pede 35.");
+  assert(v > 0, t);
+  assertStringIncludes(t, "A carga destes 7 dias está dentro do limite (15,2 de 28,4 km): diz-lho, para ele saber que há margem.");
+  assertEquals(t.includes("o que é a carga (os últimos 7 dias contra o habitual)"), false);
+});
+
 Deno.test("loadTopicSignature: uma por prova, estado e prova que subiu a carga; nada sem prova ou com «ok»", () => {
   assertEquals(loadTopicSignature(RUI_17NOV), "load:meia:carga:Atlantic Cliff Adventure");
   assertEquals(loadTopicSignature(BASE), "load:meia:conflito");
   assertEquals(loadTopicSignature({ ...BASE, state: "ok" }), null);
+  // Revisão do #123: a regra é loadTopicApplies — «perfil» só com a carga acima do limite dele…
+  assertEquals(loadTopicSignature({ ...BASE, state: "perfil", chosen: true, loadAlert: false }), null);
+  assertEquals(loadTopicSignature({ ...BASE, state: "perfil", chosen: true, loadAlert: true }), "load:meia:perfil");
+  assertEquals([loadTopicApplies({ ...BASE, state: "volume" }), loadTopicApplies({ ...BASE, state: "ok" }), loadTopicApplies(null)], [true, false, false]);
+  // …e o nome da prova que subiu a carga só entra com aviso de carga.
+  assertEquals(loadTopicSignature({ ...RUI_17NOV, state: "volume", loadAlert: false }), "load:meia:volume");
   assertEquals(loadTopicSignature({ ...BASE, race: null }), null);
   assertEquals(loadTopicSignature(null), null);
 });

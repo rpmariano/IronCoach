@@ -66,8 +66,8 @@ export function loadProfileContextLine(state: LoadVolumeState, todayISO: string)
   }
   if (state.profile === "mais_volume") {
     s += ` Com Mais volume, com base baixa a semana pode subir até +${LOW_BASE_RAMP_KM_MORE_VOLUME} km sobre a média das 3 anteriores ` +
-      `(com base normal, até ~20% por semana, nunca acima do ACWR 1,5); volta sozinho a Prudente com uma dor, RPE 9+ em duas ` +
-      `corridas fáceis seguidas ou a recuperação em crítico.`;
+      `(com base normal, até ~20% por semana, nunca acima de 1,5 vezes o habitual); volta sozinho a Prudente com uma dor, ` +
+      `corridas fáceis muito duras duas vezes seguidas ou a recuperação muito baixa.`;
   }
   const rev = state.reverted;
   if (rev && rev.at.slice(0, 10) >= new Date(Date.parse(`${todayISO}T00:00:00Z`) - REVERT_NOTICE_DAYS * 86400000).toISOString().slice(0, 10)) {
@@ -86,12 +86,12 @@ export function loadProfileContextLine(state: LoadVolumeState, todayISO: string)
       `di-lo assim («a prova de ${dayMonth(fromRace.date)} subiu a carga dos últimos 7 dias»); os cuidados com a carga continuam a valer.`;
   }
   if (state.state === "conflito") {
-    const acwr = state.ratio != null ? `, ACWR ${String(state.ratio).replace(".", ",")}` : "";
+    const acwr = state.ratio != null ? `, ${String(state.ratio).replace(".", ",")} vezes o habitual` : "";
     s += ` CONFLITO: a carga destes 7 dias (${km(state.acuteKm)} km${acwr}) já pede cautela e o volume para a prova fica abaixo do que ` +
       `o nível pede (${km(state.currentWeeklyKm)} km/semana; pede ${km(state.recommendedWeeklyKm)}). ` +
       `Não lhe dês os dois avisos. Explica-lhe as duas opções numa frase cada — Prudente: a semana fica até ${km(state.limits.prudente)} km ` +
       `e a prova é para completar; Mais volume: até ${km(state.limits.mais_volume)} km, mais perto do volume que a prova pede, com mais ` +
-      `risco (volta a Prudente sozinho se aparecer dor, RPE 9+ em duas corridas fáceis seguidas ou a recuperação em crítico) — e ` +
+      `risco (volta a Prudente sozinho se aparecer dor, corridas fáceis muito duras duas vezes seguidas ou a recuperação muito baixa) — e ` +
       `pergunta qual prefere. A escolha é dele: só a gravas (update_race_event com load_profile) quando ele a disser.`;
   }
   return s;
@@ -102,7 +102,7 @@ export function loadProfileContextLine(state: LoadVolumeState, todayISO: string)
 export function loadProfileOptionTexts(state: LoadVolumeState): Record<"prudente" | "mais_volume", string> {
   return {
     prudente: `A semana fica até ${km(state.limits.prudente)} km; a prova é para completar.`,
-    mais_volume: `Até ${km(state.limits.mais_volume)} km, mais perto do que a prova pede, com mais risco. Volta sozinho a Prudente se aparecer dor, RPE 9+ em duas corridas fáceis seguidas ou recuperação crítica.`,
+    mais_volume: `Até ${km(state.limits.mais_volume)} km, mais perto do que a prova pede, com mais risco. Volta sozinho a Prudente se aparecer dor, corridas fáceis muito duras duas vezes seguidas ou recuperação muito baixa.`,
   };
 }
 
@@ -128,9 +128,14 @@ export function buildLoadTopicTurn(state: LoadVolumeState): string {
     : "";
   const opts = loadProfileOptionTexts(state);
   const now = state.chosen ? `Escolheu ${LOAD_PROFILE_LABELS[state.profile]}` : "Ainda não escolheu (vale Prudente)";
-  return `O atleta abriu o chat a partir do teu alerta da carga no Início — veio falar disso contigo. Explica-lhe numa ` +
-    `conversa curta, na tua voz, sem siglas (nada de «ACWR»): o que é a carga (os últimos 7 dias contra o habitual) — ${carga}.` +
-    fromRace + volume +
+  const intro = `O atleta abriu o chat a partir do teu alerta no Início — veio falar disso contigo. Explica-lhe numa ` +
+    `conversa curta, na tua voz, sem siglas (nada de «ACWR» nem «RPE»): `;
+  // No «volume» o assunto é o volume (a carga está dentro do limite): começa por ele.
+  const body = state.state === "volume"
+    ? `o volume para ${race} —${volume.replace(/^ O volume para a prova:/, "")} A carga destes 7 dias está dentro do limite ` +
+      `(${km(state.acuteKm)} de ${km(state.safeLimitKm)} km): diz-lho, para ele saber que há margem.`
+    : `o que é a carga (os últimos 7 dias contra o habitual) — ${carga}.` + fromRace + volume;
+  return intro + body +
     ` Depois oferece-lhe a escolha para ${race}, uma frase cada — Prudente: ${opts.prudente} Mais volume: ${opts.mais_volume} ` +
     `${now}. Os botões Prudente e Mais volume aparecem por baixo da tua mensagem: diz-lhe que é só tocar no que preferir. ` +
     `Se ele te disser a escolha por palavras, grava-a com update_race_event (load_profile) — só quando ele a disser. ` +

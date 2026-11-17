@@ -230,8 +230,20 @@ export function loadVolumeState(
  *  A app usa-a para não repetir o alerta; o servidor, como chave no
  *  coach_proactive_log (load_topic:<assinatura>). */
 export function loadTopicSignature(s: LoadVolumeState | null | undefined): string | null {
-  if (!s?.race?.id || s.state === "ok") return null;
-  return `load:${s.race.id}:${s.state}${s.acuteFromRace?.name ? `:${s.acuteFromRace.name}` : ""}`.slice(0, 180);
+  if (!s || !loadTopicApplies(s)) return null;
+  // A prova que subiu a carga só conta com aviso de carga: no «volume» ela não
+  // muda nada, e sair da janela de 7 dias não pode abrir conversa nova.
+  const fromRace = s.loadAlert && s.acuteFromRace?.name ? `:${s.acuteFromRace.name}` : "";
+  return `load:${s.race!.id}:${s.state}${fromRace}`.slice(0, 180);
+}
+
+/** Há assunto para a Carol? A mesma regra na app (o alerta do Início) e no
+ *  servidor (o turno e a assinatura): carga, volume e conflito; com o perfil
+ *  escolhido, só se a carga passou o limite dele. Sem prova que mande, não. */
+export function loadTopicApplies(s: LoadVolumeState | null | undefined): boolean {
+  if (!s?.race?.id) return false;
+  if (s.state === "carga" || s.state === "volume" || s.state === "conflito") return true;
+  return s.state === "perfil" && s.loadAlert;
 }
 
 // ── Os sinais vermelhos com Mais volume ──────────────────────────────────────
