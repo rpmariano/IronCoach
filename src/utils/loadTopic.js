@@ -45,7 +45,8 @@ function provaQueSubiu(race) {
 /** A frase do alerta, na voz dela: o que se passa e porquê agora (sem números — esses vão no chat). */
 export function loadTopicMessage(state) {
   if (!loadTopicApplies(state)) return null;
-  const prova = state.race?.name || 'a prova';
+  // «para a prova X», sem o género do nome (o mesmo padrão do volumeSentence).
+  const prova = state.race?.name ? `a prova ${state.race.name}` : 'a prova';
   const subiu = state.acuteFromRace ? `${provaQueSubiu(state.acuteFromRace)} subiu a tua carga desta semana.` : 'Nestes 7 dias correste bem mais do que o teu habitual.';
   switch (state.state) {
     case 'carga': return `${subiu} Quero falar contigo sobre os próximos dias.`;
