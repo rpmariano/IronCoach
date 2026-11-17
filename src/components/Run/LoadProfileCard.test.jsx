@@ -53,11 +53,27 @@ beforeEach(() => {
 afterEach(() => vi.useRealTimers());
 
 describe('LoadProfileCard — Início', () => {
+  it('«Porquê?» abre a explicação dos dois perfis, sem jargão', () => {
+    seed([TRAIL, MEIA]);
+    render(<LoadProfileCard />);
+    expect(screen.queryByTestId('load-profile-why')).toBeNull();
+    fireEvent.click(screen.getByTestId('load-profile-why-toggle'));
+    const why = screen.getByTestId('load-profile-why');
+    expect(why).toHaveTextContent('Prudente: a semana fica perto do teu habitual.');
+    expect(why).toHaveTextContent('Mais volume: deixa subir mais depressa');
+    expect(why).not.toHaveTextContent(/ACWR/);
+    expect(screen.getByTestId('load-profile-why-toggle')).toHaveAttribute('aria-expanded', 'true');
+  });
+
   it('conflito (a Patty): um só cartão, com os números e as duas opções', () => {
     seed([TRAIL, MEIA]);
     render(<LoadProfileCard />);
     expect(screen.getByTestId('load-profile-conflict')).toBeInTheDocument();
-    expect(screen.getByTestId('load-profile-numbers')).toHaveTextContent('Últimos 7 dias: 23,1 km (1,31× o habitual) · corres 19,1 km/semana; a prova pede 35.');
+    // Bug #123: primeiro o que é e porquê agora — a carga e o volume, sem «ACWR».
+    const what = screen.getByTestId('load-profile-what');
+    expect(what).toHaveTextContent('Carga: comparo os teus últimos 7 dias (23,1 km) com o teu habitual (~18 km). Subiu depressa — esta semana, mais leve.');
+    expect(what).toHaveTextContent('Volume: para a Meia dos Descobrimentos, o ideal são ~35 km/semana; corres 19.');
+    expect(screen.getByTestId('load-profile-conflict')).not.toHaveTextContent(/ACWR/);
     expect(screen.getByTestId('load-profile-choose-prudente')).toHaveTextContent('A semana fica até 28,4 km; a prova é para completar.');
     expect(screen.getByTestId('load-profile-choose-mais_volume')).toHaveTextContent(/Até 30,8 km, mais perto do que a prova pede, com mais risco\. Volta sozinho a Prudente se aparecer dor, RPE 9\+ em duas corridas fáceis seguidas ou recuperação crítica\./);
   });

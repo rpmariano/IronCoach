@@ -133,3 +133,32 @@ describe('detectCoachInsights com os dados da Patty a 9 nov', () => {
     }
   });
 });
+
+/* Bug #123 (2026-11-17): a frase do que é e porquê agora, em cada estado. */
+import { loadSentence, volumeSentence, whatSentences } from './loadProfileState';
+
+describe('whatSentences — o que é, sem jargão', () => {
+  const base = { acuteKm: 26.6, ratio: 26.6 / 17, race: { id: 'meia', name: 'Meia dos Descobrimentos' }, recommendedWeeklyKm: 35, currentWeeklyKm: 19.1 };
+
+  it('carga com a prova concluída a puxar (acuteFromRace)', () => {
+    const s = { ...base, state: 'carga', acuteFromRace: { name: 'Corrida do Tejo', km: 10 } };
+    expect(whatSentences(s)).toEqual(['Carga: comparo os teus últimos 7 dias (26,6 km) com o teu habitual (~17 km). A prova «Corrida do Tejo» (10 km) subiu a conta — esta semana, mais leve.']);
+  });
+
+  it('carga sem prova: subiu depressa; sem histórico, só os km', () => {
+    expect(loadSentence({ ...base, state: 'carga' })).toMatch(/Subiu depressa — esta semana, mais leve\.$/);
+    expect(loadSentence({ ...base, ratio: null })).toBe('Carga: nos últimos 7 dias correste 26,6 km. Subiu depressa — esta semana, mais leve.');
+  });
+
+  it('volume, conflito (começa pela carga) e perfil (a que pesa)', () => {
+    expect(volumeSentence(base)).toBe('Volume: para a Meia dos Descobrimentos, o ideal são ~35 km/semana; corres 19.');
+    expect(whatSentences({ ...base, state: 'volume' })).toEqual([volumeSentence(base)]);
+    const conflito = whatSentences({ ...base, state: 'conflito' });
+    expect(conflito).toHaveLength(2);
+    expect(conflito[0]).toMatch(/^Carga:/);
+    expect(whatSentences({ ...base, state: 'perfil', loadAlert: true })[0]).toMatch(/^Carga:/);
+    expect(whatSentences({ ...base, state: 'perfil', volumeBelow: true })[0]).toMatch(/^Volume:/);
+    expect(whatSentences({ ...base, state: 'perfil' })[0]).toBe('O perfil de carga diz quanto podes correr por semana até à Meia dos Descobrimentos, sem subir depressa demais.');
+    expect(whatSentences({ ...base, state: 'ok' })).toEqual([]);
+  });
+});

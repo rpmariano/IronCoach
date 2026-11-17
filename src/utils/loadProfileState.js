@@ -89,6 +89,65 @@ export function profileLimitText(state) {
   return `${LOAD_PROFILE_LABELS[state.profile]} · até ${km(state.safeLimitKm)} km nestes 7 dias (corridos: ${km(state.acuteKm)}).`;
 }
 
+/* ── O que é, em palavras (bug #123, 2026-11-17: o Rui perguntou «O que é esta informação?») ────
+   Em todos os estados, a primeira frase diz o que se está a medir e porquê agora — sem «ACWR». */
+
+const round = (v) => (v == null ? null : Math.round(Number(v)));
+
+/** O habitual da semana (o crónico): os 7 dias divididos pela razão. null sem histórico. */
+export function habitualWeeklyKm(state) {
+  if (!state || !(state.ratio > 0) || !(state.acuteKm > 0)) return null;
+  return state.acuteKm / state.ratio;
+}
+
+/** «Carga: comparo os teus últimos 7 dias (26,6 km) com o teu habitual (~17 km). A prova «X» (10 km)
+ *  subiu a conta — esta semana, mais leve.» A prova vem de acuteFromRace (Backend), quando existir. */
+export function loadSentence(state) {
+  if (!state) return null;
+  const habitual = habitualWeeklyKm(state);
+  const head = habitual != null
+    ? `Carga: comparo os teus últimos 7 dias (${km(state.acuteKm)} km) com o teu habitual (~${round(habitual)} km).`
+    : `Carga: nos últimos 7 dias correste ${km(state.acuteKm)} km.`;
+  const race = state.acuteFromRace;
+  const why = race?.name
+    ? ` A prova «${race.name}»${race.km != null ? ` (${km(race.km)} km)` : ''} subiu a conta — esta semana, mais leve.`
+    : ' Subiu depressa — esta semana, mais leve.';
+  return head + why;
+}
+
+/** «Volume: para a Meia dos Descobrimentos, o ideal são ~35 km/semana; corres 19.» */
+export function volumeSentence(state) {
+  if (!state || state.recommendedWeeklyKm == null) return null;
+  const name = state.race?.name ? `para a ${state.race.name}` : 'para a prova';
+  const cur = state.currentWeeklyKm != null ? `; corres ${round(state.currentWeeklyKm)}` : '';
+  return `Volume: ${name}, o ideal são ~${round(state.recommendedWeeklyKm)} km/semana${cur}.`;
+}
+
+/** A frase do que é, conforme o estado: carga, volume, as duas (conflito) ou a do perfil escolhido
+ *  (a que pesa agora: a carga, se passou o limite; senão o volume, se está abaixo). */
+export function whatSentences(state) {
+  if (!state) return [];
+  const load = loadSentence(state);
+  const volume = volumeSentence(state);
+  switch (state.state) {
+    case 'carga': return [load];
+    case 'volume': return volume ? [volume] : [];
+    case 'conflito': return [load, volume].filter(Boolean);
+    case 'perfil':
+      if (state.loadAlert) return [load];
+      if (state.volumeBelow && volume) return [volume];
+      return [`O perfil de carga diz quanto podes correr por semana até à ${state.race?.name || 'prova'}, sem subir depressa demais.`];
+    default: return [];
+  }
+}
+
+/** O «Porquê?»: os dois perfis, sem jargão. */
+export const PROFILE_WHY = {
+  prudente: 'Prudente: a semana fica perto do teu habitual. Menos risco de lesão; a prova é para completar.',
+  mais_volume: 'Mais volume: deixa subir mais depressa, para chegares mais perto do que a prova pede. Tem mais risco — e volta sozinho a Prudente se aparecer um sinal (dor, corridas fáceis muito duras, recuperação má).',
+  regra: 'Subir os km de repente é das causas mais comuns de lesão na corrida. Por isso comparo cada semana com o que tens feito, e não só com o que a prova pede.',
+};
+
 /** Dias em que a nota da volta a Prudente se vê (os mesmos da Carol). */
 export const REVERT_NOTE_DAYS = 7;
 
