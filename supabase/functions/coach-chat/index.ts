@@ -1796,6 +1796,28 @@ function pace(secPerKm: number): string {
   return `${sharedFormatPaceMinKm(Math.round(secPerKm))}/km`;
 }
 
+/** «Ritmo nos km planos» (revisão do #122), ou null quando não vale a pena:
+ *  sem troços e com menos de 2 s de diferença para a média (só
+ *  arredondamento). O que pesa na média diz-se conforme o plano tem: as
+ *  subidas, as descidas, o arranque, o aguentar (mais lento do que o ritmo
+ *  na maratona e no ultra) e o final. */
+export function flatPaceLine(plan: RacePacingPlan): string | null {
+  const diff = Math.abs(plan.flatPaceSecPerKm - plan.basePaceSecPerKm);
+  if (!plan.knowsRoute && diff < 2) return null;
+  if (diff < 1) return null;
+  const has = (l: string) => plan.rows.some((r) => r.label === l);
+  const parts = [
+    has("subida") ? "as subidas" : null,
+    has("descida") ? "as descidas" : null,
+    "o arranque",
+    // O aguentar só tem delta na maratona (+2 s) e no ultra (+3 s) — racePacing HOLD_DELTA.
+    (plan.category === "maratona" || plan.category === "ultra") && has("aguentar") ? "o aguentar" : null,
+    "o final",
+  ].filter((x): x is string => !!x);
+  const list = parts.length > 1 ? `${parts.slice(0, -1).join(", ")} e ${parts[parts.length - 1]}` : parts[0];
+  return `Ritmo nos km planos (o «ritmo» da tabela): ${pace(plan.flatPaceSecPerKm)} — o ${pace(plan.basePaceSecPerKm)} de cima é a MÉDIA, com ${list} lá dentro. Quando falares do ritmo a correr, é este.`;
+}
+
 export function buildRacePlanContext(plan: RacePacingPlan | null, raceName: string | null, daysUntil: number | null): string | null {
   if (!plan) return null;
   const when = daysUntil == null ? "" : daysUntil === 0 ? " — é hoje" : daysUntil === 1 ? " — é amanhã" : ` — daqui a ${daysUntil} dias`;
@@ -1807,12 +1829,11 @@ export function buildRacePlanContext(plan: RacePacingPlan | null, raceName: stri
       ? `Base: a previsão do treino, ${formatHms(plan.predictedSeconds!)} (${pace(plan.basePaceSecPerKm)}) — o objetivo ${formatHms(plan.targetSeconds)} é AMBICIOSO (mais de 3% abaixo) e decide-se ao km ${plan.decisionKm}.`
       : `Base: a previsão do treino, ${formatHms(plan.predictedSeconds!)} (${pace(plan.basePaceSecPerKm)}) — sem objetivo marcado.`;
   lines.push(base);
-  // A média da base não é o ritmo nos planos (revisão do #122): com subidas,
-  // descidas, o arranque e o final, o «ritmo» da tabela é outro — ela cita
-  // este quando fala do ritmo a correr.
-  if (Math.abs(plan.flatPaceSecPerKm - plan.basePaceSecPerKm) >= 1) {
-    lines.push(`Ritmo nos km planos (o «ritmo» da tabela): ${pace(plan.flatPaceSecPerKm)} — o ${pace(plan.basePaceSecPerKm)} de cima é a MÉDIA, com ${plan.knowsRoute ? "as subidas, as descidas, " : ""}o arranque e o final lá dentro. Quando falares do ritmo a correr, é este.`);
-  }
+  // A média da base não é o ritmo nos planos (revisão do #122): com troços,
+  // ou 2 s ou mais de diferença, ela recebe os dois — e cita o dos planos
+  // quando fala do ritmo a correr.
+  const flatLine = flatPaceLine(plan);
+  if (flatLine) lines.push(flatLine);
   lines.push(`Chegada planeada: ${formatHms(plan.plannedFinishSeconds)}. Primeiro km: ${pace(plan.firstKmPaceSecPerKm)}. Ponto de decisão: km ${plan.decisionKm}.${plan.effortMode ? " Trail: por esforço — os ritmos são referência." : ""}`);
   // Os nomes dos troços vêm do site da prova (enrich-race-event,
   // web_info.route_segments): dados, não instruções — como o PERCURSO das

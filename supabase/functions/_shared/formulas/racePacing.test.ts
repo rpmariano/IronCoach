@@ -171,11 +171,45 @@ Deno.test("revisão do #122: o ritmo nos planos é exposto e difere da média da
   const plan = buildRacePacingPlan({ ...TRAIL_RUI, targetSeconds: 9957 })!;
   assertEquals(plan.basePaceSecPerKm, Math.round(9957 / 21.0975)); // 472 = 7:52, a média do objetivo
   const ritmo = plan.rows.filter((r) => r.label === "ritmo" && !r.route).map((r) => r.paceSecPerKm);
-  assert(ritmo.every((p) => Math.abs(p - plan.flatPaceSecPerKm) <= 1), `ritmo ${ritmo}, planos ${plan.flatPaceSecPerKm}`);
+  assert(ritmo.includes(plan.flatPaceSecPerKm), `ritmo ${ritmo}, planos ${plan.flatPaceSecPerKm}`);
   assert(plan.basePaceSecPerKm - plan.flatPaceSecPerKm >= 10, `base ${plan.basePaceSecPerKm}, planos ${plan.flatPaceSecPerKm}`);
   // Sem troços, coincidem (±1 s).
   const flat = buildRacePacingPlan({ distanceKm: 10, targetSeconds: 3000 })!;
   assert(Math.abs(flat.flatPaceSecPerKm - flat.basePaceSecPerKm) <= 1);
+});
+
+// Revisão do 8b656d91: o flatPace tirava-se ANTES do acerto e não estava na
+// tabela (342 vs 341, 499 vs 500, 318 vs 317, 319 vs 320).
+const ritmoMode = (plan: NonNullable<ReturnType<typeof buildRacePacingPlan>>) => {
+  const km = new Map<number, number>();
+  for (const r of plan.rows) if (r.label === "ritmo" && !r.route) km.set(r.paceSecPerKm, (km.get(r.paceSecPerKm) ?? 0) + (r.toKm - r.fromKm));
+  return [...km.entries()].sort((a, b) => b[1] - a[1] || b[0] - a[0])[0]?.[0];
+};
+Deno.test("flatPaceSecPerKm é o «ritmo» que está na tabela, depois do acerto — sem tolerância", () => {
+  const cases = [
+    { distanceKm: 21.1, targetSeconds: 7200 },
+    { distanceKm: 100, targetSeconds: 50000 },
+    { distanceKm: 21.0975, raceType: "estrada", targetSeconds: 6720, routeSegments: [{ km_marker: 6, description: "subida", elevation: "sobe" }] },
+    { ...TRAIL_RUI, targetSeconds: 7000 },
+    { ...TRAIL_RUI, targetSeconds: 9957 },
+    { distanceKm: 42.195, targetSeconds: 14400 },
+  ];
+  for (const c of cases) {
+    const plan = buildRacePacingPlan(c)!;
+    assertEquals(plan.flatPaceSecPerKm, ritmoMode(plan), JSON.stringify({ km: c.distanceKm, t: c.targetSeconds }));
+    assert(Math.abs(plan.plannedFinishSeconds - c.targetSeconds) <= 1, `chegada ${plan.plannedFinishSeconds}`);
+  }
+});
+
+Deno.test("o acerto: o km 1 nunca, e no máximo ±2 s num km plano", () => {
+  for (const [km, t] of [[3, 900], [5, 1500], [10, 3000], [21.0975, 6720], [42.195, 14400], [100, 50000]]) {
+    const plan = buildRacePacingPlan({ distanceKm: km, targetSeconds: t })!;
+    const ritmo = plan.rows.filter((r) => r.label === "ritmo").map((r) => r.paceSecPerKm);
+    if (ritmo.length) assert(Math.max(...ritmo) - Math.min(...ritmo) <= 2, `${km} km: ritmo ${ritmo}`);
+    // O arranque fica a +6/+8/+10/+12 s do ritmo nos planos (±1 s do arredondamento).
+    const start = { "5k": 6, "10k": 6, meia: 8, maratona: 10, ultra: 12 }[plan.category]!;
+    assert(Math.abs(plan.firstKmPaceSecPerKm - plan.flatPaceSecPerKm - start) <= 1, `${km} km: arranque ${plan.firstKmPaceSecPerKm}, planos ${plan.flatPaceSecPerKm}`);
+  }
 });
 
 Deno.test("revisão do #122: o acerto do arredondamento espalha-se — o km da decisão nunca fica mais lento do que o ritmo", () => {
