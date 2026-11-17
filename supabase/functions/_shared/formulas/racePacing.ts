@@ -79,6 +79,8 @@ const START_DELTA: Record<RaceDistanceCategory, number> = { "5k": 6, "10k": 6, m
 const FINAL_DELTA: Record<RaceDistanceCategory, number> = { "5k": -8, "10k": -8, meia: -5, maratona: -3, ultra: 0 };
 const HOLD_DELTA: Record<RaceDistanceCategory, number> = { "5k": 0, "10k": 0, meia: 0, maratona: 2, ultra: 3 };
 const PUSH_DELTA = -3;
+/** Quanto do acerto final (bug #122) cabe no km da decisão e no km 1, cada um. */
+const RESIDUAL_PER_ROW = 6;
 const CONTROL_DELTA = 3;
 
 const HILL_UP = { estrada: 0.08, trail: 0.15 };
@@ -126,67 +128,133 @@ export function buildRacePacingPlan(input: RacePacingInput): RacePacingPlan | nu
     if (!routeByKm.has(km)) routeByKm.set(km, seg);
   }
 
-  const rows: PacingRow[] = [];
-  let cumulative = 0;
   const hillUp = isTrail ? HILL_UP.trail : HILL_UP.estrada;
   const hillDown = isTrail ? HILL_DOWN.trail : HILL_DOWN.estrada;
 
-  for (let km = 1; km <= kmCount; km += 1) {
-    const fraction = km / distanceKm;
-    let label: PacingLabel;
-    let delta: number;
-    let instruction: string;
-    if (km === 1) {
-      label = "controlar"; delta = START_DELTA[category];
-      instruction = "Arranque controlado: mais lento do que o ritmo alvo, mesmo com a adrenalina a puxar.";
-    } else if (fraction <= 0.2) {
-      label = "controlar"; delta = CONTROL_DELTA;
-      instruction = "Ainda a controlar: encontra o ritmo sem forçar.";
-    } else if (fraction <= 0.55) {
-      label = "ritmo"; delta = 0;
-      instruction = "Ritmo alvo. Regular, sem picos.";
-    } else if (km < decisionKm) {
-      label = "aguentar"; delta = HOLD_DELTA[category];
-      instruction = "Aguentar: aqui custa, o ritmo é para manter.";
-    } else if (km === decisionKm) {
-      label = "decidir"; delta = 0;
-      instruction = ambitious
-        ? "Ponto de decisão: se te sentes bem, é aqui que vais ao objetivo; se não, mantém."
-        : "Ponto de decisão: se te sentes bem, acelera a partir daqui; se não, mantém o ritmo.";
-    } else if (km < finalFrom) {
-      label = "acelerar"; delta = PUSH_DELTA;
-      instruction = "Se decidiste acelerar, é este o ritmo; senão, o ritmo alvo.";
-    } else {
-      label = "acelerar"; delta = FINAL_DELTA[category];
-      instruction = "Final: tudo o que ficou.";
-    }
-
-    let pace = basePace + delta;
-    let route: string | null = null;
-    const seg = routeByKm.get(km);
-    // O nome do troço vai em `route` (o cartão mostra-o em itálico, o prompt
-    // da Carol na própria linha); a instrução não o repete.
-    if (seg) {
-      route = seg.description;
-      if (seg.elevation === "sobe") {
-        pace = pace * (1 + hillUp);
-        label = "subida";
-        instruction = isTrail
-          ? "Subida: esforço constante, a andar se a inclinação o pedir — o ritmo não conta aqui."
-          : "Subida: desacelera para manter o esforço, o tempo recupera-se depois.";
-      } else if (seg.elevation === "desce") {
-        pace = pace * (1 + hillDown);
-        label = "descida";
-        instruction = isTrail
-          ? "Descida: controlada, passada curta — não é para forçar."
-          : "Descida: deixa correr sem forçar, sem travar com os quadríceps.";
+  /* Bug #122 (2026-11-16): a chegada planeada é a soma dos troços, e os
+     troços não se compensam — no trail, as subidas E as descidas abrandam
+     (HILL_UP/HILL_DOWN), e mesmo sem percurso os deltas do arranque, do
+     controlo e do final não somam zero (−5 s num 10 km, mais numa maratona).
+     O plano do Rui (meia de trail, 618 D+, objetivo 2:45:57) dava 2:52:26
+     de chegada, por baixo do objetivo no cartão. Agora o ritmo de base
+     (o do terreno plano) ajusta-se até a soma dar a base do plano — o
+     objetivo, ou a previsão quando é ela a base — com ±1 s de
+     arredondamento. Os deltas e os fatores das subidas e descidas ficam
+     como estão: só a escala muda. */
+  const buildRows = (paceBase: number): PacingRow[] => {
+    const rows: PacingRow[] = [];
+    let cumulative = 0;
+    for (let km = 1; km <= kmCount; km += 1) {
+      const fraction = km / distanceKm;
+      let label: PacingLabel;
+      let delta: number;
+      let instruction: string;
+      if (km === 1) {
+        label = "controlar"; delta = START_DELTA[category];
+        instruction = "Arranque controlado: mais lento do que o ritmo alvo, mesmo com a adrenalina a puxar.";
+      } else if (fraction <= 0.2) {
+        label = "controlar"; delta = CONTROL_DELTA;
+        instruction = "Ainda a controlar: encontra o ritmo sem forçar.";
+      } else if (fraction <= 0.55) {
+        label = "ritmo"; delta = 0;
+        instruction = "Ritmo alvo. Regular, sem picos.";
+      } else if (km < decisionKm) {
+        label = "aguentar"; delta = HOLD_DELTA[category];
+        instruction = "Aguentar: aqui custa, o ritmo é para manter.";
+      } else if (km === decisionKm) {
+        label = "decidir"; delta = 0;
+        instruction = ambitious
+          ? "Ponto de decisão: se te sentes bem, é aqui que vais ao objetivo; se não, mantém."
+          : "Ponto de decisão: se te sentes bem, acelera a partir daqui; se não, mantém o ritmo.";
+      } else if (km < finalFrom) {
+        label = "acelerar"; delta = PUSH_DELTA;
+        instruction = "Se decidiste acelerar, é este o ritmo; senão, o ritmo alvo.";
+      } else {
+        label = "acelerar"; delta = FINAL_DELTA[category];
+        instruction = "Final: tudo o que ficou.";
       }
-    }
 
-    pace = Math.round(pace);
-    const length = km === kmCount ? lastKmLength : 1;
-    cumulative += pace * length;
-    rows.push({ fromKm: km - 1, toKm: km === kmCount ? distanceKm : km, paceSecPerKm: pace, cumulativeSeconds: Math.round(cumulative), label, instruction, route });
+      let pace = paceBase + delta;
+      let route: string | null = null;
+      const seg = routeByKm.get(km);
+      // O nome do troço vai em `route` (o cartão mostra-o em itálico, o prompt
+      // da Carol na própria linha); a instrução não o repete.
+      if (seg) {
+        route = seg.description;
+        if (seg.elevation === "sobe") {
+          pace = pace * (1 + hillUp);
+          label = "subida";
+          instruction = isTrail
+            ? "Subida: esforço constante, a andar se a inclinação o pedir — o ritmo não conta aqui."
+            : "Subida: desacelera para manter o esforço, o tempo recupera-se depois.";
+        } else if (seg.elevation === "desce") {
+          pace = pace * (1 + hillDown);
+          label = "descida";
+          instruction = isTrail
+            ? "Descida: controlada, passada curta — não é para forçar."
+            : "Descida: deixa correr sem forçar, sem travar com os quadríceps.";
+        }
+      }
+
+      pace = Math.round(pace);
+      const length = km === kmCount ? lastKmLength : 1;
+      cumulative += pace * length;
+      rows.push({ fromKm: km - 1, toKm: km === kmCount ? distanceKm : km, paceSecPerKm: pace, cumulativeSeconds: Math.round(cumulative), label, instruction, route });
+    }
+    return rows;
+  };
+
+  // A derivada da soma em ordem ao ritmo de base: Σ comprimento × fator do
+  // troço (1, 1 + subida, 1 + descida). Com ela, poucas voltas de Newton
+  // chegam — o arredondamento por km é o que impede o zero exato.
+  const slope = (() => {
+    let s = 0;
+    for (let km = 1; km <= kmCount; km += 1) {
+      const seg = routeByKm.get(km);
+      const factor = seg?.elevation === "sobe" ? 1 + hillUp : seg?.elevation === "desce" ? 1 + hillDown : 1;
+      s += factor * (km === kmCount ? lastKmLength : 1);
+    }
+    return s;
+  })();
+  let paceBase = basePace;
+  let rows = buildRows(paceBase);
+  let best = { rows, gap: Math.abs(rows[rows.length - 1].cumulativeSeconds - baseSeconds) };
+  for (let i = 0; i < 8 && best.gap > 1; i++) {
+    const gap = baseSeconds - rows[rows.length - 1].cumulativeSeconds;
+    paceBase += gap / slope;
+    rows = buildRows(paceBase);
+    const g = Math.abs(rows[rows.length - 1].cumulativeSeconds - baseSeconds);
+    if (g < best.gap) best = { rows, gap: g };
+  }
+  rows = best.rows;
+
+  // O que o arredondamento por km deixou (num 10 km plano, todos os km
+  // arredondam juntos e a soma salta de 10 em 10 s). Vai primeiro para o km
+  // da decisão e para o km 1 — linhas que já ficam sozinhas na tabela, por
+  // isso não a partem —, até ±RESIDUAL_PER_ROW cada; o resto, ±1 s/km pelos
+  // km de "ritmo" e "aguentar", um a um, até ficar a menos de 1 s.
+  const totalOf = (rs: PacingRow[]) => rs.reduce((t, r) => t + r.paceSecPerKm * (r.toKm - r.fromKm), 0);
+  let residual = Math.trunc(baseSeconds - totalOf(rows));
+  if (residual !== 0) {
+    rows = rows.map((r) => ({ ...r }));
+    const sign = Math.sign(residual);
+    const full = (i: number) => i >= 0 && i < rows.length && rows[i].toKm - rows[i].fromKm === 1;
+    for (const i of [decisionKm - 1, 0]) {
+      if (!residual || !full(i)) continue;
+      const take = sign * Math.min(Math.abs(residual), RESIDUAL_PER_ROW);
+      rows[i].paceSecPerKm += take;
+      residual -= take;
+    }
+    const rest = rows
+      .map((r, i) => ({ r, i }))
+      .filter(({ r, i }) => full(i) && !r.route && (r.label === "ritmo" || r.label === "aguentar"))
+      .slice(0, Math.abs(residual));
+    for (const { i } of rest) rows[i].paceSecPerKm += sign;
+    let cumulative = 0;
+    for (const r of rows) {
+      cumulative += r.paceSecPerKm * (r.toKm - r.fromKm);
+      r.cumulativeSeconds = Math.round(cumulative);
+    }
   }
 
   // Agrupar km consecutivos iguais (mesmo ritmo, mesmo rótulo, sem troço de
