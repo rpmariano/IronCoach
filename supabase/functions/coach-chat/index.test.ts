@@ -3804,13 +3804,28 @@ Deno.test("buildRacePlanContext: a tabela troço a troço, a base, o percurso e 
   assertStringIncludes(ctx, "Prova: Meia de Lisboa — é amanhã.");
   assertStringIncludes(ctx, "Base: o objetivo, 1:52:00 (5.18/km).");
   // A subida da Calçada abranda um km: o plano tira-o ao resto e a chegada dá o objetivo (bug #122).
-  assertStringIncludes(ctx, "Chegada planeada: 1:52:00. Primeiro km: 5.25/km. Ponto de decisão: km 15.");
+  assertStringIncludes(ctx, "Chegada planeada: 1:52:00. Primeiro km: 5.26/km. Ponto de decisão: km 15.");
   assertStringIncludes(ctx, "Percurso: conhecido");
-  assertStringIncludes(ctx, "- km 0–1 · 5.25/km · passagem 5:25 · controlar");
+  assertStringIncludes(ctx, "- km 0–1 · 5.26/km · passagem 5:26 · controlar");
   assertStringIncludes(ctx, "· subida · subida da Calçada da Ajuda — Subida: desacelera");
   assertStringIncludes(ctx, "Abastecimento: km 5 água");
   assertEquals(buildRacePlanContext(null, "X", 1), null);
 });
+
+Deno.test("buildRacePlanContext (revisão do #122): com troços, distingue a média do objetivo do ritmo nos planos", () => {
+  const segs = [[2, 3.5], [4, 3.9], [5, 9.9], [6, 9.6], [8, 6], [10, -4.3], [11, -5.1], [12, -6], [13, -4.7], [14, -4.5], [15, -8.7], [16, -3.4], [18, 5.9], [21, 4.2], [22, -4.6]]
+    .map(([km, g]) => ({ km_marker: km - 1, description: "GPX", elevation: g > 0 ? "sobe" : "desce" }));
+  const plan = buildRacePacingPlan({ distanceKm: 21.0975, raceType: "trail", targetSeconds: 9957, routeSegments: segs, routeSource: "gpx" })!;
+  const ctx = buildRacePlanContext(plan, "Meia de trail", 3)!;
+  assertStringIncludes(ctx, "Base: o objetivo, 2:45:57 (7.52/km).");
+  assertStringIncludes(ctx, `Ritmo nos km planos (o «ritmo» da tabela): ${sharedFormatPaceMinKmForTest(plan.flatPaceSecPerKm)}/km — o 7.52/km de cima é a MÉDIA, com as subidas, as descidas, o arranque e o final lá dentro.`);
+  // Sem diferença (estrada plana), sem a linha.
+  assertEquals(buildRacePlanContext(buildRacePacingPlan({ distanceKm: 10, targetSeconds: 3000 }), "X", 3)!.includes("Ritmo nos km planos"), false);
+});
+
+function sharedFormatPaceMinKmForTest(s: number): string {
+  return `${Math.floor(s / 60)}.${String(Math.round(s % 60)).padStart(2, "0")}`;
+}
 
 Deno.test("buildRacePlanContext: objetivo ambicioso diz-o; percurso desconhecido proíbe inventar", () => {
   const plan = buildRacePacingPlan({ distanceKm: 10, targetSeconds: 2400, predictedSeconds: 2700 });

@@ -135,7 +135,7 @@ const TRAIL_RUI = { distanceKm: 21.0975, raceType: "trail", elevationGainM: 618,
 Deno.test("bug #122: com os troços do GPX, a chegada planeada é o objetivo — e as subidas continuam mais lentas do que o plano", () => {
   for (const target of [9957, 8620]) {
     const plan = buildRacePacingPlan({ ...TRAIL_RUI, targetSeconds: target })!;
-    assert(Math.abs(plan.plannedFinishSeconds - target) <= 2, `objetivo ${target}: chegada ${plan.plannedFinishSeconds}`);
+    assert(Math.abs(plan.plannedFinishSeconds - target) <= 1, `objetivo ${target}: chegada ${plan.plannedFinishSeconds}`);
     const flat = plan.rows.filter((r) => !r.route && r.label === "ritmo").map((r) => r.paceSecPerKm);
     const ups = plan.rows.filter((r) => r.label === "subida").map((r) => r.paceSecPerKm);
     const downs = plan.rows.filter((r) => r.label === "descida").map((r) => r.paceSecPerKm);
@@ -152,7 +152,7 @@ Deno.test("bug #122: com os troços do GPX, a chegada planeada é o objetivo —
 Deno.test("bug #122: com a previsão como base (sem objetivo, ou objetivo ambicioso), a chegada é a previsão; a nota compara como antes", () => {
   const noTarget = buildRacePacingPlan({ ...TRAIL_RUI, predictedSeconds: 9957 })!;
   assertEquals(noTarget.basis, "previsao");
-  assert(Math.abs(noTarget.plannedFinishSeconds - 9957) <= 2, `chegada ${noTarget.plannedFinishSeconds}`);
+  assert(Math.abs(noTarget.plannedFinishSeconds - 9957) <= 1, `chegada ${noTarget.plannedFinishSeconds}`);
   const amb = buildRacePacingPlan({ distanceKm: 21.1, targetSeconds: 6000, predictedSeconds: 6800 })!;
   assertEquals([amb.basis, amb.ambitious], ["previsao", true]);
   assert(Math.abs(amb.plannedFinishSeconds - 6800) <= 1, `chegada ${amb.plannedFinishSeconds}`);
@@ -164,5 +164,27 @@ Deno.test("bug #122: sem troços a soma também não fechava (os deltas não som
     const plan = buildRacePacingPlan({ distanceKm: km, targetSeconds: t })!;
     assert(Math.abs(plan.plannedFinishSeconds - t) <= 1, `${km} km: chegada ${plan.plannedFinishSeconds} vs ${t}`);
     for (let i = 1; i < plan.rows.length; i += 1) assert(plan.rows[i].cumulativeSeconds > plan.rows[i - 1].cumulativeSeconds);
+  }
+});
+
+Deno.test("revisão do #122: o ritmo nos planos é exposto e difere da média da base com troços", () => {
+  const plan = buildRacePacingPlan({ ...TRAIL_RUI, targetSeconds: 9957 })!;
+  assertEquals(plan.basePaceSecPerKm, Math.round(9957 / 21.0975)); // 472 = 7:52, a média do objetivo
+  const ritmo = plan.rows.filter((r) => r.label === "ritmo" && !r.route).map((r) => r.paceSecPerKm);
+  assert(ritmo.every((p) => Math.abs(p - plan.flatPaceSecPerKm) <= 1), `ritmo ${ritmo}, planos ${plan.flatPaceSecPerKm}`);
+  assert(plan.basePaceSecPerKm - plan.flatPaceSecPerKm >= 10, `base ${plan.basePaceSecPerKm}, planos ${plan.flatPaceSecPerKm}`);
+  // Sem troços, coincidem (±1 s).
+  const flat = buildRacePacingPlan({ distanceKm: 10, targetSeconds: 3000 })!;
+  assert(Math.abs(flat.flatPaceSecPerKm - flat.basePaceSecPerKm) <= 1);
+});
+
+Deno.test("revisão do #122: o acerto do arredondamento espalha-se — o km da decisão nunca fica mais lento do que o ritmo", () => {
+  for (const [km, t] of [[3, 900], [5, 1500], [10, 3000], [21.0975, 6720], [42.195, 14400], [50, 21600], [100, 50000]]) {
+    const plan = buildRacePacingPlan({ distanceKm: km, targetSeconds: t })!;
+    const decide = plan.rows.find((r) => r.label === "decidir");
+    const ritmo = plan.rows.filter((r) => r.label === "ritmo").map((r) => r.paceSecPerKm);
+    if (decide && ritmo.length) assert(decide.paceSecPerKm <= Math.max(...ritmo) + 1, `${km} km: decisão ${decide.paceSecPerKm}, ritmo ${ritmo}`);
+    // Nenhum km plano se afasta mais de 1 s do que a sua fase pede.
+    assert(Math.abs(plan.plannedFinishSeconds - t) <= 1, `${km} km: chegada ${plan.plannedFinishSeconds}`);
   }
 });

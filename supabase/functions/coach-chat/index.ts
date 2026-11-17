@@ -1807,6 +1807,12 @@ export function buildRacePlanContext(plan: RacePacingPlan | null, raceName: stri
       ? `Base: a previsão do treino, ${formatHms(plan.predictedSeconds!)} (${pace(plan.basePaceSecPerKm)}) — o objetivo ${formatHms(plan.targetSeconds)} é AMBICIOSO (mais de 3% abaixo) e decide-se ao km ${plan.decisionKm}.`
       : `Base: a previsão do treino, ${formatHms(plan.predictedSeconds!)} (${pace(plan.basePaceSecPerKm)}) — sem objetivo marcado.`;
   lines.push(base);
+  // A média da base não é o ritmo nos planos (revisão do #122): com subidas,
+  // descidas, o arranque e o final, o «ritmo» da tabela é outro — ela cita
+  // este quando fala do ritmo a correr.
+  if (Math.abs(plan.flatPaceSecPerKm - plan.basePaceSecPerKm) >= 1) {
+    lines.push(`Ritmo nos km planos (o «ritmo» da tabela): ${pace(plan.flatPaceSecPerKm)} — o ${pace(plan.basePaceSecPerKm)} de cima é a MÉDIA, com ${plan.knowsRoute ? "as subidas, as descidas, " : ""}o arranque e o final lá dentro. Quando falares do ritmo a correr, é este.`);
+  }
   lines.push(`Chegada planeada: ${formatHms(plan.plannedFinishSeconds)}. Primeiro km: ${pace(plan.firstKmPaceSecPerKm)}. Ponto de decisão: km ${plan.decisionKm}.${plan.effortMode ? " Trail: por esforço — os ritmos são referência." : ""}`);
   // Os nomes dos troços vêm do site da prova (enrich-race-event,
   // web_info.route_segments): dados, não instruções — como o PERCURSO das

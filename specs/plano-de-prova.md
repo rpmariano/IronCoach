@@ -22,11 +22,20 @@ treino (`getRacePrediction`, só corridas anteriores à prova), nível, e
 `race_events.web_info.route_segments` quando existir (marco de km,
 descrição, sobe/desce/plano — o que o `enrich-race-event` extrai do site).
 
-1. **Ritmo base.** O objetivo, se for realista face à previsão do treino
+1. **Base.** O objetivo, se for realista face à previsão do treino
    (até 3% mais rápido do que ela). Se for mais ambicioso do que isso, o
    plano monta-se sobre a previsão e o objetivo fica como "dia bom":
    decide-se no ponto de decisão. Sem objetivo, a previsão; sem nenhum dos
-   dois, não há plano — pede-se o objetivo.
+   dois, não há plano — pede-se o objetivo. O ritmo médio da base
+   (`basePaceSecPerKm`) é a base ÷ distância.
+   **Ritmo nos planos** (bug #122, 2026-11-16): o ritmo de base é escalado
+   para a soma dos km dar a base — o objetivo, ou a previsão quando é ela a
+   base — com ±1 s (`flatPaceSecPerKm`). Os deltas abaixo e os fatores do
+   percurso mantêm as proporções; só a escala muda. Com troços de percurso
+   o «ritmo» da tabela difere da «Base» (no trail as subidas e as descidas
+   abrandam, e o tempo sai dos planos); sem troços coincidem, ±1 s. O
+   arredondamento por km que sobra espalha-se, ±1 s/km, pelos km planos
+   (ritmo, aguentar, controlar, acelerar), nunca numa linha só.
 2. **Distribuição** (negative split, por categoria de distância):
    - primeiro km: controlar, mais lento que a base (5/10 km +6 s, meia +8 s,
      maratona +10 s);
@@ -47,8 +56,10 @@ descrição, sobe/desce/plano — o que o `enrich-race-event` extrai do site).
    fala-se em esforço.
 5. **Abastecimento.** A partir da meia: água de 5 em 5 km; hidratos aos ~40
    min e depois a cada ~35 min, nunca nos últimos 10 min (doutrina 04).
-6. O tempo de chegada planeado é a soma dos km; a tabela mostra os tempos
-   de passagem acumulados.
+6. O tempo de chegada planeado é a soma dos km — e dá a base, ±1 s (ver
+   1); a tabela mostra os tempos de passagem acumulados. A Carol recebe as
+   duas coisas: a «Base» (o ritmo médio) e, quando difere, o «Ritmo nos km
+   planos», que é o que se cita quando se fala do ritmo a correr.
 
 ## Onde aparece
 
