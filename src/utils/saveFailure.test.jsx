@@ -98,12 +98,13 @@ describe('saveTelemetry', () => {
 
 describe('pendingLogs', () => {
   it('sem rede ficam; com rede vão; recusados pela base de dados saem (não prendem os outros)', async () => {
-    queuePendingLog({ event: 'save_failed', meta: { kind: 'meal' } });
+    // Com sessão (user_id): as linhas sem ela esperam por uma (lib/pendingLogs.test.js).
+    queuePendingLog({ user_id: 'u1', event: 'save_failed', meta: { kind: 'meal' } });
     expect(await flushPendingLogs(async () => ({ error: { message: 'Failed to fetch', code: '' } }))).toBe(0);
     expect(pendingLogs()).toHaveLength(1);
     expect(await flushPendingLogs(async () => ({ error: { message: 'rls', code: '42501' } }))).toBe(0);
     expect(pendingLogs()).toHaveLength(0);
-    queuePendingLog({ event: 'save_failed', meta: {} });
+    queuePendingLog({ user_id: 'u1', event: 'save_failed', meta: {} });
     const insert = vi.fn(async () => ({ error: null }));
     expect(await flushPendingLogs(insert)).toBe(1);
     expect(insert.mock.calls[0][0][0].meta.queuedAt).toBeTruthy();
