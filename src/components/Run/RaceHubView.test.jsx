@@ -535,6 +535,8 @@ describe('RaceHubView — plano para o dia', () => {
     render(<RaceHubView race={comGpx} runs={[]} profile={PROFILE} onFetchWebInfo={vi.fn()} />);
 
     const linhas = screen.getByTestId('race-pacing-rows');
+    // A subida é no km 7: fora dos primeiros troços à vista (o hub reorganizado, 2026-11-22).
+    fireEvent.click(screen.getByTestId('race-pacing-all-rows'));
     expect(linhas).toHaveTextContent('GPX: sobe');
     expect(screen.queryByText(/Não conheço o percurso/)).not.toBeInTheDocument();
   });
