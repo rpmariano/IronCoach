@@ -99,6 +99,11 @@ describe('buildCaptureCoverageContext — com padrão', () => {
     expect(texto).toContain('distribuição de intensidade');
     expect(texto).toContain('Mestre da Z2');
     expect(texto).toContain('não prometas uma análise da técnica');
+    // v1 lite (2026-11-22): com os badges desligados, o que se ganha fica — o badge não se menciona.
+    const semBadges = buildCaptureCoverageContext(corridas(umPrintSamsung(), umPrintSamsung(), umPrintSamsung(), umPrintSamsung(), umPrintSamsung()) as any[], { nivel: 'medio', badges: false })!;
+    expect(semBadges).toContain('distribuição de intensidade');
+    expect(semBadges).not.toContain('Mestre da Z2');
+    expect(semBadges).not.toContain('badge');
     expect(texto).toContain('Não recalibram as zonas');
     // Uma vez, e nunca como abertura.
     expect(texto).toContain('Se já lhe falaste disto');

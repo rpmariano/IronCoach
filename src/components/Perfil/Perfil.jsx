@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useFeature } from '../../utils/features';
 import { useAppStore } from '../../store';
 import Button from '../shared/Button';
 import { supabase } from '../../lib/supabase';
@@ -133,6 +134,15 @@ const CAROL_PUSH_TYPES = [
 const ALL_CAROL_PUSH_TYPES = CAROL_PUSH_TYPES.map((t) => t.key);
 
 export default function Perfil() {
+  // Interruptores (v1 lite): o tutorial e a água podem estar desligados.
+  const tutorialOn = useFeature('tutorial');
+  const waterOn = useFeature('water');
+  /* As conquistas têm interruptor (v1 lite): desligadas, a Vitrina sai do carrossel — os separadores
+     que ficam são os de TAB_KEYS sem ela, e as páginas contam-se por chave (pageIdx). */
+  const badgesOn = useFeature('badges');
+  const tabKeys = badgesOn ? TAB_KEYS : TAB_KEYS.filter((k) => k !== 'vitrina');
+  const tabs = TABS.filter((t) => tabKeys.includes(t.key));
+  const pageIdx = (k) => tabKeys.indexOf(k);
   const { profile, setProfile, session, setNavGuard, setOnboardingOpen, setTutorialOpen, bodyAssessments, raceEvents } = useAppStore();
   const [tab, setTab] = useState('perfil');
   // O ecrã do consentimento das tabelas (Fase 5) — ecrã inteiro por portal,
@@ -161,7 +171,7 @@ export default function Perfil() {
   // mesma verificação de "alterações por gravar" que já existia ao tocar no
   // separador: se estiver sujo, repõe a posição do carrossel e mostra o
   // mesmo aviso em vez de deixar o deslize completar-se.
-  const tabIndex = TAB_KEYS.indexOf(tab);
+  const tabIndex = Math.max(0, tabKeys.indexOf(tab));
   const scrollRef = useRef(null);
   const scrollToRef = useRef(() => {});
   // Espelha isDirty numa ref, atualizada de imediato no corpo do render (tal
@@ -176,17 +186,17 @@ export default function Perfil() {
   const isDirtyRef = useRef(isDirty);
   isDirtyRef.current = isDirty;
   const handleTabIndexChange = useCallback((idx) => {
-    const nextTab = TAB_KEYS[idx];
+    const nextTab = tabKeys[idx];
     if (!nextTab || nextTab === tab) return;
     if (isDirtyRef.current) {
-      scrollToRef.current(TAB_KEYS.indexOf(tab));
+      scrollToRef.current(tabKeys.indexOf(tab));
       setLeavePrompt({ kind: 'tab', target: nextTab });
       return;
     }
     setTab(nextTab);
-  }, [tab]);
+  }, [tab, tabKeys]);
   const { handleScroll, handleTouchMove, scrollTo } = useCarouselHaptics(
-    scrollRef, TAB_KEYS.length, tabIndex, handleTabIndexChange
+    scrollRef, tabKeys.length, tabIndex, handleTabIndexChange
   );
   scrollToRef.current = scrollTo;
 
@@ -461,7 +471,7 @@ export default function Perfil() {
       setLeavePrompt({ kind: 'tab', target: nextTab });
       return;
     }
-    scrollTo(TAB_KEYS.indexOf(nextTab));
+    scrollTo(tabKeys.indexOf(nextTab));
   };
 
   const goToPendingTarget = async ({ kind, target }) => {
@@ -469,7 +479,7 @@ export default function Perfil() {
       // isDirty já está a false a esta altura (discardAndLeave/saveAndLeave
       // repõem-no antes de chamar isto), por isso handleTabIndexChange segue
       // direto para setTab em vez de voltar a mostrar o aviso.
-      scrollTo(TAB_KEYS.indexOf(target));
+      scrollTo(tabKeys.indexOf(target));
       return;
     }
     // O guard vive no store e ainda está registado neste render — limpa-o
@@ -612,7 +622,7 @@ export default function Perfil() {
       {/* Subnav — SubNav.jsx (ponto 4 do handoff): minhoca a 320ms na cor do
           separador ativo, ícone + rótulo nos quatro. */}
       <SubNav
-        items={TABS}
+        items={tabs}
         activeIndex={tabIndex}
         onChange={(i, item) => requestTabChange(item.key)}
         className="mb-4"
@@ -979,6 +989,7 @@ export default function Perfil() {
                   onChange={e => updateCoachableGoal('fat_goal', 'fat_goal_set_by_coach', parseInt(e.target.value) || null)}
                   style={draft.fat_goal_set_by_coach ? coachFieldStyle : plainFieldStyle} />
               </div>
+              {waterOn && (
               <div className="col-span-2">
                 <label htmlFor="perfil-agua" className="text-[11px] text-[var(--text-3)] flex items-center gap-1.5 mb-1">
                   Meta água (ml/dia)
@@ -988,6 +999,7 @@ export default function Perfil() {
                   onChange={e => updateCoachableGoal('water_goal_ml', 'water_goal_set_by_coach', parseInt(e.target.value) || null)}
                   style={draft.water_goal_set_by_coach ? coachFieldStyle : plainFieldStyle} />
               </div>
+              )}
             </div>
 
             {/* O interruptor "O Coach pode ajustar as metas" saiu (2026-09-22,
@@ -1016,7 +1028,8 @@ export default function Perfil() {
 
           Igual ao Equipamento, não escreve no rascunho partilhado: o cartão
           lê tudo direto do store e abre as suas próprias persianas. */}
-      <div ref={(el) => { pageRefs.current[2] = el; setPageRef(2)(el); }} className="tab-swipe-page space-y-4">
+      {badgesOn && (
+      <div ref={(el) => { pageRefs.current[pageIdx('vitrina')] = el; setPageRef(pageIdx('vitrina'))(el); }} className="tab-swipe-page space-y-4">
           <h2 className="sr-only">Vitrina</h2>
           <BadgesCard />
 
@@ -1054,17 +1067,18 @@ export default function Perfil() {
             <ChevronRight size={18} className="shrink-0" style={{ color: 'var(--text-4)' }} />
           </button>
       </div>
+      )}
 
       {/* Armário — ao contrário dos outros separadores, este não escreve no
           rascunho partilhado: cada secção (Treino, Alimentação, Equipamento)
           faz o seu próprio CRUD e grava logo. "Guardar alterações" lá em baixo
           continua a ser só dos campos do perfil. */}
-      <div ref={(el) => { pageRefs.current[3] = el; setPageRef(3)(el); }} className="tab-swipe-page space-y-4">
+      <div ref={(el) => { pageRefs.current[pageIdx('equipamento')] = el; setPageRef(pageIdx('equipamento'))(el); }} className="tab-swipe-page space-y-4">
           <h2 className="sr-only">Armário</h2>
           <Armario />
       </div>
 
-      <div ref={(el) => { pageRefs.current[4] = el; setPageRef(4)(el); }} className="tab-swipe-page space-y-4">
+      <div ref={(el) => { pageRefs.current[pageIdx('coach')] = el; setPageRef(pageIdx('coach'))(el); }} className="tab-swipe-page space-y-4">
           <h2 className="sr-only">Carol</h2>
           {/* "Objetivos com o Coach" (botão "Pedir ao Coach para definir
               objetivos") foi removido — nunca chegou a chamar a Edge Function
@@ -1104,6 +1118,7 @@ export default function Perfil() {
           </button>
 
           {/* Tutorial da App — A Carol mostra-te a casa (specs/onboarding-tutorial.md) */}
+          {tutorialOn && (
           <button
             type="button"
             onClick={() => setTutorialOpen(true)}
@@ -1138,6 +1153,7 @@ export default function Perfil() {
             </span>
             <ChevronRight size={18} className="shrink-0" style={{ color: 'var(--text-4)' }} />
           </button>
+          )}
 
           {/* Bug #41 (2026-09-22): todos os pedidos de notificações vivem
               aqui, no separador da Carol — saíram de Metas, que ficou só com
@@ -1148,6 +1164,7 @@ export default function Perfil() {
               <Bell size={16} style={{ color: 'var(--coach)' }} />
               <h3 className="text-sm font-semibold">Notificações</h3>
             </div>
+            {waterOn && (<>
             <div className="flex items-center justify-between">
               <div className="pr-4">
                 <p className="text-xs font-semibold flex items-center gap-1.5"><Bell size={14} className="text-[var(--run)]" /> Lembretes de água</p>
@@ -1205,6 +1222,7 @@ export default function Perfil() {
               </div>
             )}
 
+            </>)}
             <div className="flex items-center justify-between mt-5 pt-4 border-t border-[var(--border-glass)] dark:border-[var(--border-glass)]" data-testid="perfil-carol-push">
               <div className="pr-4">
                 <p className="text-xs font-semibold flex items-center gap-1.5"><Bell size={14} className="text-[var(--coach)]" /> Notificações da Carol</p>

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { useFeature } from '../../utils/features';
 import { useAppStore } from '../../store';
 import { scopedDraftKey } from '../../utils/draftScope';
 import { useDraftUserId } from '../../utils/useDraftUserId';
@@ -202,6 +203,9 @@ export default function RunAgenda({ onClose }) {
      sempre null e nada disto muda o formulário (revisão da Fase 1,
      2026-09-26). */
   const isCupRound = !!editingEventId && !!draft.cup_round_id;
+  // A Taça tem interruptor (v1 lite): desligada, a jornada é uma prova normal — os campos do
+  // organizador continuam só de leitura (o servidor recusa mudá-los), sem falar do Troféu.
+  const cupOn = useFeature('cup');
 
   /* Aviso informativo: esta prova, como está a ser gravada, entra em conflito
      com o plano ativo. Só quando é PRINCIPAL e cai dentro de um plano aceite
@@ -1240,7 +1244,7 @@ export default function RunAgenda({ onClose }) {
 
               {isCupRound && (
                 <p id="ra-jornada-organizador" data-testid="ra-jornada-organizador" className="text-[11px] text-[var(--text-3)] -mt-2">
-                  Jornada do Troféu: a data, a distância e o local são dados do organizador — mudam no ecrã do Troféu quando ele os muda.
+                  {cupOn ? 'Jornada do Troféu: a data, a distância e o local são dados do organizador — mudam no ecrã do Troféu quando ele os muda.' : 'A data, a distância e o local são dados do organizador.'}
                 </p>
               )}
 

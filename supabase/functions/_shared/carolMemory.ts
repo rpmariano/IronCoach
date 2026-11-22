@@ -556,6 +556,9 @@ interface GrupoDeDados {
   dados: string;
   /** O que se ganha, só o que o código da app de facto usa (ver 6. acima). */
   ganho: string;
+  /** O que se diz a mais quando os badges estão ligados (v1 lite: com eles
+   *  desligados, a Carol não fala deles). */
+  ganhoBadge?: string;
   /** Só faz sentido pedir este dado a uma corrida em que o relógio mediu FC. */
   exigeFC: boolean;
   /** Níveis a quem este dado é tema contraindicado (doutrina 6 #4). Com o
@@ -571,8 +574,8 @@ const GRUPOS_DE_DADOS: GrupoDeDados[] = [
     campos: ["hr_zones"],
     dados: "as zonas de frequência cardíaca (os minutos em cada zona)",
     ganho: "a distribuição de intensidade (o 80/20 que tu lês no painel de indicadores e ele vê no painel de " +
-      "corrida só se calcula com elas) e os minutos por zona de cada corrida. E o Mestre da Z2: sem zonas esse " +
-      "badge não lhe pode cair, por bem feitos que sejam os treinos fáceis",
+      "corrida só se calcula com elas) e os minutos por zona de cada corrida",
+    ganhoBadge: "E o Mestre da Z2: sem zonas esse badge não lhe pode cair, por bem feitos que sejam os treinos fáceis",
     exigeFC: true,
   },
   {
@@ -619,9 +622,10 @@ function gruposDoEcra(ecra: SourceScreen, nivel: string | null): GrupoDeDados[] 
  */
 export function buildCaptureCoverageContext(
   rows: any[] | null | undefined,
-  opts: { nivel?: string | null; apps?: Record<string, SourceApp> } = {},
+  opts: { nivel?: string | null; apps?: Record<string, SourceApp>; badges?: boolean } = {},
 ): string | null {
   const apps = opts.apps ?? SOURCE_APPS;
+  const badges = opts.badges !== false;
   const nivel = typeof opts.nivel === "string" ? opts.nivel : null;
   const appsDeCorrida = Object.keys(apps).sort()
     .map((k) => ({ chave: k, app: apps[k] }))
@@ -681,7 +685,7 @@ export function buildCaptureCoverageContext(
         `está confirmado com prints reais: sugere-o ("deve estar no ecrã…"), não o afirmes como certo.`;
     }
     linhas.push(`- ${dados[0].toUpperCase()}${dados.slice(1)}: faltaram ${quantas}. ${onde}\n` +
-      grupos.map((g) => `    o que ganha com ${g.dados.split(" (")[0]}: ${g.ganho}.`).join("\n"));
+      grupos.map((g) => `    o que ganha com ${g.dados.split(" (")[0]}: ${g.ganho}${badges && g.ganhoBadge ? `. ${g.ganhoBadge}` : ""}.`).join("\n"));
   }
   if (!linhas.length) return null;
 
@@ -1364,7 +1368,7 @@ function chavesDaCaptura(): string[] {
  * As consultas novas do chat, em paralelo. Cada bloco falha sozinho: uma
  * tabela em baixo tira esse bloco do prompt, não a resposta.
  */
-export async function fetchChatMemoryBlocks(sb: any, userId: string, todayISO: string, profile?: any): Promise<ChatMemoryBlocks> {
+export async function fetchChatMemoryBlocks(sb: any, userId: string, todayISO: string, profile?: any, opts: { badges?: boolean } = {}): Promise<ChatMemoryBlocks> {
   const recordsFrom = addDaysISO(todayISO, -(RECORD_MEMORY_DAYS - 1));
   const hasText = "notes.not.is.null,coach_notes.not.is.null";
   try {
@@ -1472,7 +1476,7 @@ export async function fetchChatMemoryBlocks(sb: any, userId: string, todayISO: s
       captureCoverage: buildCaptureCoverageContext((captureR.data || []).map((r: any) => ({
         date: r?.date,
         details: Object.fromEntries(chavesCaptura.map((c) => [c, r?.[c]])),
-      })), { nivel: profile?.experience_level ?? null }),
+      })), { nivel: profile?.experience_level ?? null, badges: opts.badges !== false }),
     };
   } catch (e) {
     console.warn("carolMemory: fetchChatMemoryBlocks falhou:", e);

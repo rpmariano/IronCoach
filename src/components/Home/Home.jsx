@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { useFeature } from '../../utils/features';
 import { Footprints, ChevronRight } from 'lucide-react';
 import { useAppStore } from '../../store';
 import { buildNutritionGauges, hasAnyRecord, mealsForDay } from '../../utils/homeModels';
@@ -52,6 +53,8 @@ export default function Home() {
      pelas boas-vindas (ação P.11, a cancela `welcomeGate`). Sem a migração
      `user_badges` aplicada não há `pending` nenhum e isto não mostra nada. */
   const badgeMoment = useBadgeMoment();
+  // As conquistas têm interruptor (v1 lite).
+  const badgesOn = useFeature('badges');
   const badgeVisivel = badgeMoment.grande || badgeMoment.medio;
 
   const today = todayISO();
@@ -215,7 +218,7 @@ export default function Home() {
       {mealDay && <MealSheet day={mealDay} onClose={() => setMealDay(null)} />}
 
       <CarolNoticesDock notices={notices} />
-      {badgeVisivel && (badgeMoment.grande ? (
+      {badgesOn && badgeVisivel && (badgeMoment.grande ? (
         <BadgeMoment
           /* A fila: cada grande é um momento novo, por isso remonta (a
              coreografia só toca ao montar). */

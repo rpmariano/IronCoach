@@ -35,6 +35,7 @@ import { selectRaces } from "../_shared/formulas/mainRace.ts";
 import { recentExecutionLines } from "../_shared/formulas/planExecution.ts";
 import { fetchTrainingWeatherBlock } from "../_shared/trainingWeatherFetch.ts";
 import { fetchSeriesBlock, seriesPromptSection, seriesRacePhaseText } from "../_shared/seriesBlock.ts";
+import { getFeatureFlags } from "../_shared/featureFlags.ts";
 import { type GeminiUsage, usageFromGemini } from "../_shared/geminiUsage.ts";
 import { withUsageRecording } from "../_shared/usageRecorder.ts";
 import { attemptTimeoutMs, geminiHeaders, geminiUrl, geminiWithFallback, thinkingConfig } from "../_shared/geminiModel.ts";
@@ -392,7 +393,10 @@ export function buildDailySummaryContext(params: {
    *  da competição — só com inscrição ativa (Fase 2 do Troféu). null ou em
    *  falta = o contexto de sempre. */
   seriesIntents?: Record<string, SeriesIntent> | null;
+  /** v1 lite: com a água desligada, o resumo não a leva (nem a meta, nem o registo). */
+  water?: boolean;
 }) {
+  const showWater = params.water !== false;
   const { today, profile, todayMeals, todayWater, recentRuns, recentGym, planItems, nextRace, racesBefore, bodyAssessments, acwr, tdee, lastWeekPlan, vesperaDaProva, seriesIntents, execucaoRecente } = params;
   const tomorrow = addDaysISO(today, 1);
   const dayAfterTomorrow = addDaysISO(today, 2);
@@ -434,7 +438,7 @@ export function buildDailySummaryContext(params: {
       proteina_g: profile?.protein_goal ?? null,
       hidratos_g: profile?.carbs_goal ?? null,
       gordura_g: profile?.fat_goal ?? null,
-      agua_ml: profile?.water_goal_ml ?? null,
+      ...(showWater ? { agua_ml: profile?.water_goal_ml ?? null } : {}),
     },
     hoje_ate_agora: {
       // deno-lint-ignore no-explicit-any
@@ -447,7 +451,7 @@ export function buildDailySummaryContext(params: {
       proteina_g: Math.round(mealTotals.protein),
       hidratos_g: Math.round(mealTotals.carbs),
       gordura_g: Math.round(mealTotals.fat),
-      agua_ml: waterTotal,
+      ...(showWater ? { agua_ml: waterTotal } : {}),
     },
     restricoes_alimentares: dietaryContext,
     perfil: {
@@ -1070,10 +1074,12 @@ Deno.serve(withUsageRecording("coach-daily-summary", async (req) => {
     // A memória durável e a conversa recente do chat (Fase 1, ação 1.3): o
     // cartão não pode contradizer o que a Carol combinou ontem no chat. Com
     // o retrato da época (5.3): o cartão via só 30 dias de tendência.
-    const memoryPromise = fetchSharedMemoryBlock(sb, userId, { portrait: true, todayISO: today });
+    // v1 lite (2026-11-22): o que está desligado não entra no resumo.
+    const flags = await getFeatureFlags();
+    const memoryPromise = fetchSharedMemoryBlock(sb, userId, { portrait: true, todayISO: today, vitrina: flags.badges });
     // O bloco da competição por jornadas (specs/trofeu.md §5, Fase 2): uma
     // leitura e null para quem não está inscrito. Nunca rejeita.
-    const seriesPromise = fetchSeriesBlock(sb, userId, today, { channel: "daily" });
+    const seriesPromise = flags.cup ? fetchSeriesBlock(sb, userId, today, { channel: "daily" }) : Promise.resolve(null);
 
     // ── Contexto: perfil, refeições/água de hoje, atividade recente, plano ──
     // `status`: ver RACE_COLUMNS no coach-chat (2026-09-26, revisão da Fase 0).
@@ -1288,6 +1294,7 @@ Deno.serve(withUsageRecording("coach-daily-summary", async (req) => {
     ]);
     const series = await seriesPromise;
     const ctx = buildDailySummaryContext({
+      water: flags.water,
       today, profile, todayMeals: todayMeals || [], todayWater: todayWater || [],
       recentRuns: recentRuns || [], recentGym: recentGym || [], planItems, nextRace, racesBefore,
       bodyAssessments: bodyAssessments || [],
@@ -1354,7 +1361,7 @@ Deno.serve(withUsageRecording("coach-daily-summary", async (req) => {
     const warningsMsg = buildWarningsMessage(
       raceEveDays === 0 ? [] : todayPlanItems,
       waterTotal,
-      profile?.water_reminder_enabled ? (profile?.water_goal_ml ?? null) : null,
+      flags.water && profile?.water_reminder_enabled ? (profile?.water_goal_ml ?? null) : null,
       { ...bodyMetrics, gender: profile?.gender ?? null },
       checkinHoje ? { dorAlta: !!checkinHoje.dor_alta, diaEmBaixo: !!checkinHoje.dia_em_baixo } : null,
       weightLossEvidence,

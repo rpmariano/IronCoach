@@ -11,6 +11,7 @@ import { RACE_BALANCE_CACHE_PREFIX } from '../utils/coachProactive';
 import { isGoalsIntervention } from '@formulas/goalsIntervention.ts';
 import { INTERVENTION_OUTCOME, INTERVENTION_ORIGIN } from '@formulas/interventionOutcomes.ts';
 import { createCupSlice, CUP_EMPTY } from './cupSlice';
+import { createFeatureFlagsSlice } from './featureFlagsSlice';
 import { loadProfileUpdate } from '../utils/loadProfileState';
 
 const getInitialDashboardTab = () => {
@@ -403,6 +404,8 @@ export const useAppStore = create((set, get) => ({
   // ações que chamam as RPCs da M1. Vive à parte (cupSlice.js) e nunca é
   // lida no carregamento inicial — sem inscrição, nada muda no resto.
   ...createCupSlice(set, get),
+  // Os interruptores por funcionalidade («v1 lite», 2026-11-22) — ver featureFlagsSlice.js.
+  ...createFeatureFlagsSlice(set, get),
   
   // Actions
   setSession: (session) => {

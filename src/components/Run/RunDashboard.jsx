@@ -1,4 +1,5 @@
 import React, { useMemo } from 'react';
+import { useFeature } from '../../utils/features';
 import { useAppStore, sliceReady } from '../../store';
 import { useShallow } from 'zustand/react/shallow';
 import { Mountain, PersonStanding } from 'lucide-react';
@@ -152,6 +153,9 @@ function DeltaLine({ label, children }) {
 }
 
 export default function RunDashboard() {
+  // Os gráficos técnicos têm interruptor (v1 lite, advanced_charts): a carga ACWR, a intensidade por
+  // zonas e a eficiência aeróbica. Ficam a distância e a previsão de prova.
+  const advanced = useFeature('advanced_charts');
   /* Seletor com useShallow em vez de `useAppStore()` inteiro (2026-10-04): sem
      seletor, qualquer alteração ao store — um deslize entre separadores
      mexe em `lastDashboardTab` — redesenhava este separador mesmo escondido,
@@ -286,7 +290,7 @@ export default function RunDashboard() {
         : undefined),
     });
   }
-  rows.push({
+  if (advanced) rows.push({
     key: 'carga',
     label: 'Carga · 7 d vs 28 d',
     value: acwrHas ? fmtRatio(view.acwr.ratio) : null,
@@ -384,7 +388,7 @@ export default function RunDashboard() {
   const navigator = <PeriodNav cal={cal} module="corrida" closedDays={closedN} dataStartISO={view.dataStartISO} />;
   // A carga (KPI e barra da semana em curso) é a de hoje e inclui as corridas de hoje (R1,
   // número da Carol): a nota não pode dizer que hoje não entra em nada.
-  const today = <TodayExcludedNote period={period} text={`${TODAY_EXCLUDED.replace(/\.$/, '')} do período (a carga e os recordes já o incluem); aparece amanhã.`} />;
+  const today = <TodayExcludedNote period={period} text={`${TODAY_EXCLUDED.replace(/\.$/, '')} do período (${advanced ? 'a carga e os recordes já o incluem' : 'os recordes já o incluem'}); aparece amanhã.`} />;
 
   /* ── Os blocos de fora do período: ACWR (hoje, 12 semanas), VDOT e recordes (de sempre). ── */
   const vdotCompare = view.vdotCompare
@@ -429,9 +433,9 @@ export default function RunDashboard() {
   const independent = (
     <>
       <p data-testid="fora-do-periodo" style={{ margin: 0, padding: '0 12px', textAlign: 'center', fontSize: 'var(--text-xs)', lineHeight: 'var(--leading-normal)', color: 'var(--text-4)' }}>
-        A carga das últimas 12 semanas, o VDOT e os recordes de sempre não seguem o período escolhido — só a comparação do VDOT e a marca «neste período» dos recordes o usam.
+        {advanced ? 'A carga das últimas 12 semanas, a forma atual e os recordes de sempre' : 'A forma atual e os recordes de sempre'} não seguem o período escolhido — só a comparação da forma e a marca «neste período» dos recordes o usam.
       </p>
-      <ACWRChart weeklyData={view.weeklyAcwr} acwr={view.acwr} />
+      {advanced && <ACWRChart weeklyData={view.weeklyAcwr} acwr={view.acwr} />}
 
       {view.vdotTrend.length > 0 && (
         <RacePredictionChart
@@ -560,7 +564,7 @@ export default function RunDashboard() {
           {/* Intensidade: só com corridas com zonas que cheguem (R6). R2 (2026-10-05):
               "0 neste período" não é "0 de sempre" — quem já teve zonas lê a última e
               o botão para o período onde há as 3 que chegam. */}
-          {view.zoneRuns >= MIN_RUNS_FOR_ZONES ? (
+          {!advanced ? null : view.zoneRuns >= MIN_RUNS_FOR_ZONES ? (
             <IntensityDonut
               distribution={view.distribution}
               hint={`${view.zoneRuns} de ${cur.count} corridas com zonas ${scope}`}
@@ -582,7 +586,7 @@ export default function RunDashboard() {
             />
           )}
 
-          {view.scatter.length >= MIN_RUNS_FOR_EFFICIENCY ? (
+          {!advanced ? null : view.scatter.length >= MIN_RUNS_FOR_EFFICIENCY ? (
             <ScatterTrendChart data={view.scatter} scope={scope} />
           ) : (
             <MinDataNote

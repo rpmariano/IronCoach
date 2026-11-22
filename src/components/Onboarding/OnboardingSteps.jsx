@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { useFeature } from '../../utils/features';
 import {
   Eye, PenLine, Clock, Trophy, TrendingUp, Heart, RotateCcw,
   Check, House, Lightbulb, Bell, MessageSquare, Droplets,
@@ -850,6 +851,8 @@ export function StepAlertas({ draft, set }) {
   const pushAtivo = draft.carol_push_enabled !== false;
   const welcomeAtivo = draft.carol_welcome_enabled !== false;
   const aguaAtiva = !!draft.water_reminder_enabled;
+  // A água tem interruptor (v1 lite): desligada, o terceiro interruptor não aparece.
+  const waterOn = useFeature('water');
 
   return (
     <>
@@ -965,6 +968,7 @@ export function StepAlertas({ draft, set }) {
         </div>
 
         {/* Switch 3: Lembretes de água */}
+        {waterOn && (
         <div
           className="flex items-center justify-between gap-3"
           style={{
@@ -1016,6 +1020,7 @@ export function StepAlertas({ draft, set }) {
             />
           </button>
         </div>
+        )}
       </div>
 
       <CarolNote style={{ marginTop: 22 }}>

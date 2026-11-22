@@ -1,6 +1,6 @@
 import React from 'react';
 import { render, screen, fireEvent, act, waitFor, within } from '@testing-library/react';
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { useAppStore } from '../../store';
 import Perfil from './Perfil';
 import { CUP_EMPTY } from '../../store/cupSlice';
@@ -865,3 +865,35 @@ describe('Perfil — Tutorial da App', () => {
   });
 });
 
+
+/* Os interruptores («v1 lite», 2026-11-22): com as conquistas desligadas, a Vitrina sai do
+   carrossel; com o tutorial desligado, o «Ver tutorial da app» sai; com a água desligada, a meta e
+   os lembretes de água saem. Ligados, ficam (o resto deste ficheiro já os usa). */
+describe('Perfil — interruptores da v1 lite', () => {
+  let base;
+  beforeEach(async () => {
+    ({ FEATURE_BASE: base } = await import('../../store/featureFlagsSlice'));
+    useAppStore.setState({
+      profile: PROFILE, session: { user: { email: 'atleta@ironhealth.app' } }, navGuard: null, activeTab: 'perfil',
+      featureFlags: { ...base, badges: false, tutorial: false, water: false },
+    });
+  });
+  afterEach(() => useAppStore.setState({ featureFlags: { ...base } }));
+
+  it('sem conquistas, tutorial nem água: a Vitrina, o tutorial, a meta e os lembretes de água saem', () => {
+    render(<Perfil />);
+    expect(screen.queryByRole('button', { name: /Vitrina/ })).toBeNull();
+    expect(screen.getByRole('button', { name: /Armário/ })).toBeInTheDocument();
+    expect(screen.queryByText(/Ver tutorial da app/)).toBeNull();
+    expect(screen.queryByLabelText(/Meta água/)).toBeNull();
+    expect(screen.queryByText(/Lembretes de água/)).toBeNull();
+  });
+
+  it('ligados, voltam', () => {
+    useAppStore.setState({ featureFlags: { ...base } });
+    render(<Perfil />);
+    expect(screen.getByRole('button', { name: /Vitrina/ })).toBeInTheDocument();
+    expect(screen.getByText(/Ver tutorial da app/)).toBeInTheDocument();
+    expect(screen.getByText(/Lembretes de água/)).toBeInTheDocument();
+  });
+});

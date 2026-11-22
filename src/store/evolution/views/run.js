@@ -419,14 +419,14 @@ export function buildRunView([runsIn, profile, raceEvents, coachPlans, coachPlan
 
   const vdotNote = (() => {
     if (vdotCompare || vdotAll.length === 0 || beforeData) return null;
-    if (kind === 'semana') return 'A comparação do VDOT é por mês ou mais.';
+    if (kind === 'semana') return 'A comparação da forma é por mês ou mais.';
     if (closedDays.length === 0) return null;
-    if (prevCoverage === 'none') return 'Ainda não há período anterior para comparar o VDOT.';
-    if (prevCoverage === 'partial') return `${prevName.charAt(0).toUpperCase()}${prevName.slice(1)} começou antes do teu primeiro registo — o VDOT só se compara com o período anterior inteiro.`;
+    if (prevCoverage === 'none') return 'Ainda não há período anterior para comparar a forma.';
+    if (prevCoverage === 'partial') return `${prevName.charAt(0).toUpperCase()}${prevName.slice(1)} começou antes do teu primeiro registo — a forma só se compara com o período anterior inteiro.`;
     const unit = { mes: 'mês', trimestre: 'trimestre', ano: 'ano' }[kind] || 'período';
     const curName = shortName(periodLabel(period, todayISO).title, kind, todayISO);
     const prevTxt = cmp.full ? prevName : `${prevName} (${fmtRange(cmp.prevFrom, cmp.prevTo, todayISO)})`;
-    return `Para comparar o VDOT preciso de ${MIN_VDOT_POINTS} treinos de qualidade em cada ${unit} — ${curName} vai em ${vdotCur.n}, ${prevTxt} teve ${vdotPrev.n}.`;
+    return `Para comparar a forma preciso de ${MIN_VDOT_POINTS} treinos de qualidade em cada ${unit} — ${curName} vai em ${vdotCur.n}, ${prevTxt} teve ${vdotPrev.n}.`;
   })();
 
   const runsComTempo = runs.filter((r) => Number(r?.distance_km) > 0 && Number(r?.duration_seconds) > 0);

@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { Flag, Plus, ChevronRight } from 'lucide-react';
 import { useAppStore } from '../../store';
+import { isFeatureOn } from '../../utils/features';
 import { todayISO } from '../../lib/utils';
 import { groupRaces, countdownLabel } from '../../utils/raceList';
 import { raceDistanceLabel, formatDuration, formatTargetTimeLabel } from '../../utils/run';
@@ -159,7 +160,8 @@ export default function RaceListCard() {
         outcome?.officialSeconds ? formatDuration(outcome.officialSeconds) : 'sem registo',
         yearOf(race.date),
       ].filter(Boolean).join(' · ')}
-      trailing={withChip(jornada, achievements.length ? (
+      // As conquistas têm interruptor (v1 lite): desligadas, a linha fica sem os ícones.
+      trailing={withChip(jornada, isFeatureOn('badges') && achievements.length ? (
         <span className="flex items-center gap-1 shrink-0">
           {achievements.slice(0, 3).map((a) => <AchievementIcon key={a.key} achievement={a} size={24} />)}
         </span>

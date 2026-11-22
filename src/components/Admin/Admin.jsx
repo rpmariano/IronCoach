@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useAppStore } from '../../store';
-import { LayoutGrid, Users, BarChart3, CircleDollarSign, ScrollText, CheckCircle2, ShieldAlert, Utensils, Activity, FileQuestion, Eye, Check, Filter, Bug, RotateCcw, Send, User, Hourglass, XCircle, Trophy, Trash2 } from 'lucide-react';
+import { LayoutGrid, Users, BarChart3, CircleDollarSign, ScrollText, CheckCircle2, ShieldAlert, Utensils, Activity, FileQuestion, Eye, Check, Filter, Bug, RotateCcw, Send, User, Hourglass, XCircle, Trophy, Trash2, ToggleRight } from 'lucide-react';
 import CarolIcon from '../Coach/CarolIcon';
 import PremiumModal from '../shared/PremiumModal';
 import Button from '../shared/Button';
 import CompetitionsTab from './Competitions';
 import CostsTab from './CostsTab';
+import FeaturesTab from './FeaturesTab';
 import UnknownAppPhoto, { UNKNOWN_APP_BUCKET } from './UnknownAppPhoto';
 import { isVideoAttachment } from '../../utils/reportImages';
 
@@ -22,6 +23,8 @@ const ADMIN_TABS = [
   // (specs/trofeu.md §6, Fase 1b) — só is_admin; bug_reviewer nunca vê esta
   // lista (visibleTabs, abaixo, filtra tudo menos 'bug_reports' para ele).
   { key: 'competitions', label: 'Competições', icon: Trophy },
+  // Os interruptores por funcionalidade (v1 lite, 2026-11-22) — só is_admin, como o resto.
+  { key: 'features', label: 'Funcionalidades', icon: ToggleRight },
 ];
 
 // Identificador curto e legível do bug ("Bug-001"), a partir do número
@@ -999,6 +1002,8 @@ export default function Admin() {
       {displayedTab === 'costs' && <CostsTab users={users} />}
 
       {displayedTab === 'competitions' && <CompetitionsTab />}
+
+      {displayedTab === 'features' && <FeaturesTab users={users} />}
 
       {displayedTab === 'logs' && (
         <div className="space-y-2 fade-in">

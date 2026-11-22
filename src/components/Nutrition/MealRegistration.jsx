@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useFeature } from '../../utils/features';
 import { Camera, ImagePlus, X, Trash2, Plus } from 'lucide-react';
 import { format } from 'date-fns';
 import { useAppStore } from '../../store';
@@ -678,7 +679,9 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
   /* Uma refeição predefinida (bug #63, fase D, 2026-10-17): junta os
      alimentos dela que ainda não estão na lista, com as gramas dela — tudo
      continua editável. Os da despensa registam-se sem estimativa. */
-  const templates = templatesForMealType(mealTemplates, mealType).slice(0, 6);
+  // Os modelos de refeição têm interruptor (v1 lite, pantry_advanced); os frequentes ficam sempre.
+  const pantryAdvanced = useFeature('pantry_advanced');
+  const templates = pantryAdvanced ? templatesForMealType(mealTemplates, mealType).slice(0, 6) : [];
   const applyTemplate = (template) => {
     // Um item do grupo de um genérico (ele ou uma variante) conta como já junto.
     const groupKeys = (name) => {

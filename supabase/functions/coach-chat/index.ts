@@ -71,6 +71,7 @@ import { formatPaceMinKm as sharedFormatPaceMinKm, formatPaceFromDistance } from
 import { buildRacePacingPlan, compareSplitsToPlan, AMBITIOUS_RATIO, type RacePacingPlan, type SplitInput, type SplitComparison } from "../_shared/formulas/racePacing.ts";
 import { type CourseProfile, courseProfilePromptText, courseRouteSegments, sanitizeCourseProfile } from "../_shared/formulas/courseProfile.ts";
 import { checkRaceTime } from "../_shared/formulas/raceTimeSanity.ts";
+import { type FeatureFlags, getFeatureFlags, proactiveTriggerAllowed } from "../_shared/featureFlags.ts";
 import { raceBalanceFingerprint } from "../_shared/formulas/raceBalanceFingerprint.ts";
 import { computeRaceEve, hhmm as sharedHhmm } from "../_shared/formulas/raceEve.ts";
 import { buildCupMapTurn, dayMonth, DECISION_TEXT, fetchSeriesBlock, isCupSchemaMissing, SEASON_GOAL_TEXT, seriesRacePhaseText, type SeriesBlock } from "../_shared/seriesBlock.ts";
@@ -6021,6 +6022,24 @@ export function racePacingRoute(course: CourseProfile | null, webInfo: any) {
     : { routeSegments: webInfo?.route_segments ?? null, routeSummary: webInfo?.route_summary ?? null, routeSource: "site" as const };
 }
 
+/** Os proativos de um interruptor desligado não disparam (v1 lite;
+ *  formulas/featureFlags.ts proactiveTriggerFlag — a mesma regra do tick). */
+export function proactiveTriggerOff(trigger: ProactiveTrigger, flags: FeatureFlags): boolean {
+  return !proactiveTriggerAllowed(trigger, flags);
+}
+
+/** O balanço sem as conquistas quando os badges estão desligados. */
+export function withoutOffAchievements(o: RaceOutcome | null, flags: FeatureFlags): RaceOutcome | null {
+  return o && !flags.badges ? { ...o, achievements_new: [] } : o;
+}
+
+/** As metas sem a da água (com a água desligada, a Carol não a propõe). */
+// deno-lint-ignore no-explicit-any
+export function withoutWaterGoal(args: any): Record<string, unknown> {
+  const { water_goal_ml: _water, ...rest } = (args || {}) as Record<string, unknown>;
+  return rest;
+}
+
 export function buildRaceEventsContext(
   events: any[],
   todayISO: string,
@@ -7858,7 +7877,7 @@ export function buildSystemInstruction(
   sys += `\n\nData e hora atual (fuso horário de Lisboa): ${today}.\nATENÇÃO: Se for madrugada (ex: 00:00 às 05:00), o atleta provavelmente ainda não foi dormir e a conversa flui como se ainda fosse a noite do dia anterior. No entanto, o sistema já virou o dia (hoje). Lembra-te que ele AINDA NÃO FEZ o treino que está agendado para o dia que acabou de começar (hoje). Não ignores "hoje" saltando logo para o planeamento de "amanhã"!`;
 
   sys += `\n\n${nutritionSummary}`;
-  sys += `\n\n${waterSummary}`;
+  if (waterSummary) sys += `\n\n${waterSummary}`;
   if (nutritionTargetsLine) sys += `\n\n${nutritionTargetsLine}`;
   if (bodyMetricsLine) sys += `\n\n${bodyMetricsLine}`;
   if (gymSummary) sys += `\n\n${gymSummary}`;
@@ -8027,6 +8046,8 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
     // A quota do Gemini por atleta (auditoria de segurança, 2026-11-13;
     // _shared/geminiQuota.ts): passado o limite, 429 com a frase da Carol.
     const geminiQuota = await checkGeminiQuota(userId, { fn: "coach-chat" });
+    // v1 lite (2026-11-22): o que está desligado, a Carol não diz (featureFlags.ts).
+    const flags = await getFeatureFlags();
     if (!geminiQuota.ok) return jsonResponse(geminiQuotaBody(geminiQuota), 429);
 
     // ── Lock por utilizador ───────────────────────────────────────────────
@@ -8106,7 +8127,7 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
     // Vem validado campo a campo (parseRaceOutcome); o que não bater certo
     // cai para o race_after de sempre, sem números.
     const raceOutcome: RaceOutcome | null =
-      proactiveTrigger === "race_after" ? parseRaceOutcome(body.race_outcome) : null;
+      proactiveTrigger === "race_after" ? withoutOffAchievements(parseRaceOutcome(body.race_outcome), flags) : null;
     // O hub da prova pede o balanço assim que a corrida fica registada
     // (pedido 2026-09-13) — aí a regra "ela falou há pouco, cala-te" não se
     // aplica: o atleta está a olhar para o sítio onde o balanço vai aparecer.
@@ -8155,6 +8176,11 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
       }
       if (decision === "redo") raceAfterRedo = raceAfterStampOf(log?.payload);
       raceAfterSkip = decision === "skip";
+    } else if (proactiveTrigger && proactiveTriggerOff(proactiveTrigger, flags)) {
+      return jsonResponse({
+        skipped: true, reason: "feature_off", proactive: proactiveTrigger, user_message: null, model_message: null,
+        suggestions: [], usage: null, plan_proposed: false, goals_updated: false, goal_proposed: false,
+      });
     } else if (proactiveTrigger && proactiveKey && !raceAfterForce && await wasProactiveDelivered(sb, userId, proactiveKey)) {
       raceAfterSkip = true;
     }
@@ -8177,7 +8203,8 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
     // sem histórico, sem ferramentas e sem gravar mensagem nenhuma — a Carol
     // escreve a legenda que o atleta vai colar no Instagram.
     if (body.race_caption === true) {
-      const captionOutcome = parseRaceOutcome(body.race_outcome);
+      if (!flags.race_memories) return jsonResponse({ error: "O mural está desligado", reason: "feature_off" }, 403);
+      const captionOutcome = withoutOffAchievements(parseRaceOutcome(body.race_outcome), flags);
       if (!captionOutcome || !captionOutcome.official_seconds) return jsonResponse({ error: "Prova sem tempo para legendar" }, 400);
       const { data: captionProfile } = await sb.from("profiles").select("display_name").eq("id", userId).maybeSingle();
       // Dentro dos 45 s que a app espera pela legenda (requestRaceCaption),
@@ -8298,13 +8325,13 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
        Um turno proativo pode ainda ser saltado (shouldSkipProactive, mais
        abaixo): nesse caso só arranca depois, para não gastar as consultas. */
     let memoryBlocksPromise: ReturnType<typeof fetchChatMemoryBlocks> | null =
-      proactiveTrigger && !bypassQuietHours ? null : fetchChatMemoryBlocks(sb, userId, todayISO, profile);
+      proactiveTrigger && !bypassQuietHours ? null : fetchChatMemoryBlocks(sb, userId, todayISO, profile, { badges: flags.badges });
     /* O bloco da competição por jornadas (specs/trofeu.md §5, Fase 2), no
        mesmo molde: arranca já e só se espera por ele ao montar o prompt.
        Nunca rejeita. Quem não está inscrito gasta uma leitura e recebe null
        — o prompt e as ferramentas ficam iguais byte a byte. */
     let seriesPromise: Promise<SeriesBlock | null> | null =
-      proactiveTrigger && !bypassQuietHours ? null : fetchSeriesBlock(sb, userId, todayISO, { channel: "chat" });
+      !flags.cup || (proactiveTrigger && !bypassQuietHours) ? null : fetchSeriesBlock(sb, userId, todayISO, { channel: "chat" });
 
     // created_at (da refeição e de cada alimento, 2026-10-05): é por ele que
     // micronutrientAverages sabe se um 0 é mesmo 0 (gravado depois de os
@@ -8398,7 +8425,8 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
     const waterTotalMl = (waterLogs || []).reduce((sum: number, w: { amount_ml: number }) => sum + (w.amount_ml || 0), 0);
     const waterGoalMl = Number(g.water_goal_ml) || 2000;
     const waterPct = waterGoalMl > 0 ? Math.round((waterTotalMl / waterGoalMl) * 100) : 0;
-    const waterSummary = `Água hoje: ${waterTotalMl} ml de ${waterGoalMl} ml (${waterPct}% da meta).`;
+    // Com a água desligada (v1 lite), a Carol não a menciona.
+    const waterSummary = flags.water ? `Água hoje: ${waterTotalMl} ml de ${waterGoalMl} ml (${waterPct}% da meta).` : "";
 
     // ── Treinos de ginásio dos últimos 30 dias ───────────────────────────
     // Janela maior que a nutrição porque os treinos são menos frequentes.
@@ -8509,11 +8537,14 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
     // o fator de peso à mão mas SEM o limiar "atenção" (75% da vida útil,
     // a meio caminho) — só tinha a regra fixa de "trocar" a 90%, ver
     // specs/formulas-checklist.md Fase C.
-    const { data: shoeRows, error: err_shoeRows } = await sb
-      .from("shoes")
-      .select("id, brand, model, initial_km, lifespan_km, shoe_category, status")
-      .eq("user_id", userId)
-      .eq("status", "ativa");
+    // Com o armário desligado (v1 lite), nem se lê.
+    const { data: shoeRows, error: err_shoeRows } = flags.shoes
+      ? await sb
+        .from("shoes")
+        .select("id, brand, model, initial_km, lifespan_km, shoe_category, status")
+        .eq("user_id", userId)
+        .eq("status", "ativa")
+      : { data: [], error: null };
 
     let shoesContext: string | null = null;
     if (shoeRows && shoeRows.length > 0) {
@@ -8783,7 +8814,8 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
       gender:        (profile?.gender as string | null) ?? null,
       level:         (profile?.experience_level as string | null) ?? null,
       restingHrBpm:  (profile?.resting_hr_bpm as number | null) ?? null,
-      waterGoalMl:   (profile?.water_goal_ml as number | null) ?? null,
+      // Sem a meta de água com a água desligada (fica a hidratação de base, que é saúde).
+      waterGoalMl:   flags.water ? ((profile?.water_goal_ml as number | null) ?? null) : null,
       proteinGoal:   (profile?.protein_goal as number | null) ?? null,
       calorieGoal:   (profile?.calorie_goal as number | null) ?? null,
       weeklyVolumeKm: loggedWeeklyVolumeKm,
@@ -9084,7 +9116,7 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
 
     // O bloco da competição (null sem inscrição) e, com ele, o papel de cada
     // prova de jornada no contexto das provas — só com inscrição ativa.
-    const seriesBlock = await (seriesPromise ??= fetchSeriesBlock(sb, userId, todayISO, { channel: "chat" }));
+    const seriesBlock = flags.cup ? await (seriesPromise ??= fetchSeriesBlock(sb, userId, todayISO, { channel: "chat" })) : null;
     /* A classificação de uma jornada (specs/trofeu.md §8, Fase 5): o turno
        cup_results, e o balanço de uma jornada com a classificação já saída (a
        junção — só com o aviso ligado). Fora destes dois casos, e num balanço
@@ -9144,10 +9176,12 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
         dietary_restrictions: (profile?.dietary_restrictions as string[] | null) ?? null,
         dietary_notes: (profile?.dietary_notes as string | null) ?? null,
         carol_push_enabled: (profile?.carol_push_enabled as boolean | null) ?? null,
-        carol_push_types: (profile?.carol_push_types as string[] | null) ?? null,
+        // v1 lite: os momentos das áreas desligadas (as tabelas, o percentil, a Taça) não aparecem nas notas.
+        carol_push_types: ((profile?.carol_push_types as string[] | null) ?? null)?.filter((t) => proactiveTriggerAllowed(t, flags)) ?? null,
         carol_push_start_hour: (profile?.carol_push_start_hour as number | null) ?? null,
         carol_push_end_hour: (profile?.carol_push_end_hour as number | null) ?? null,
-        water_reminder_enabled: (profile?.water_reminder_enabled as boolean | null) ?? null,
+        // v1 lite: com a água desligada, nem a linha dos lembretes.
+        water_reminder_enabled: flags.water ? ((profile?.water_reminder_enabled as boolean | null) ?? null) : null,
         observedMaxHr,
       },
       nutritionTargetsLine,
@@ -9192,7 +9226,7 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
 
     // Do mais largo para o mais próximo: a época, o que já conquistou, as
     // metas, o que se disse em cada registo, e o cartão de hoje.
-    const memoryBlocks = await (memoryBlocksPromise ??= fetchChatMemoryBlocks(sb, userId, todayISO, profile));
+    const memoryBlocks = await (memoryBlocksPromise ??= fetchChatMemoryBlocks(sb, userId, todayISO, profile, { badges: flags.badges }));
     // Com nome por bloco, para o log dos tamanhos (promptSizeReport); a ordem é a do objeto.
     const memoryNamed: Record<string, string | null | undefined> = {
       // O check-in primeiro: é o estado de hoje, e pode trazer alarmes.
@@ -9208,10 +9242,11 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
       // A vitrina de badges, logo a seguir às provas concluídas: é a mesma
       // pergunta ("o que ele já fez/conquistou") noutra escala — e as
       // regras do 6 #6 viajam dentro do bloco, não num sítio à parte.
-      badges: memoryBlocks.badges,
+      // v1 lite: os badges e a vitrina (o percentil e as tabelas) vão com o interruptor «badges».
+      badges: flags.badges ? memoryBlocks.badges : null,
       // O resto da Vitrina (2026-09-25): badges por ver, "Onde estás" e as
       // tabelas com nomes — a mesma vitrina, as mesmas regras.
-      vitrina: memoryBlocks.vitrina,
+      vitrina: flags.badges ? memoryBlocks.vitrina : null,
       proposals: memoryBlocks.proposals,
       bodyGoals: buildBodyGoalsContext(profile, (bodyAssessments || [])[0] ?? null, lisbonTodayISO()),
       records: memoryBlocks.records,
@@ -9250,7 +9285,7 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
        bloco geral da vitrina (buildBadgesContext) continua a não o ter, de
        propósito. O que abre esta porta é a pergunta ter sido dele; ver
        buildBadgeQuestionContext e a doutrina 6 #6. */
-    const badgeQuestionContext = buildBadgeQuestionContext(body.badgeContext);
+    const badgeQuestionContext = flags.badges ? buildBadgeQuestionContext(body.badgeContext) : null;
     if (badgeQuestionContext) {
       finalSystemInstruction += "\n\n--- PERGUNTA SOBRE UM BADGE (foi o atleta que a abriu) ---\n" + badgeQuestionContext;
     }
@@ -9899,7 +9934,7 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
           if (!toolNamesSent.includes("update_goals")) {
             result = unknownFunctionResult(name);
           } else {
-            result = await runUpdateGoals(sb, userId, args || {});
+            result = await runUpdateGoals(sb, userId, flags.water ? (args || {}) : withoutWaterGoal(args));
             goalsWereUpdated = goalsWereUpdated || result.startsWith("Metas atualizadas");
             goalWasProposed = goalWasProposed || result.startsWith("Proposta de altera");
           }

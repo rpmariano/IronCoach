@@ -23,6 +23,7 @@ import { decideWelcome, buildWelcome, readSeen, markSeen, readShownAt, markShown
 import { detectRaceConflict } from './utils/planDivergence';
 import { todayISO } from './lib/utils';
 import { cupPushRoute } from './utils/cupPushRoute';
+import { useFeature } from './utils/features';
 
 // O primeiro ecrã — estático de propósito. A PWA tem como princípio arrancar
 // instantânea (é por isso que usa fontes de sistema); o Início e a moldura
@@ -738,7 +739,9 @@ export default function App() {
   const silentlyDone = !isInitializing && !dataPending && shouldSilentlyMarkDone(dadosAtleta);
   const userId = session?.user?.id;
   const isFirstArrival = needsOnboarding && !isTutorialDoneLocally(userId);
-  const showTutorial = !!session && (tutorialOpen || (isFirstArrival && !onboardingOpen));
+  // O tutorial é uma funcionalidade com interruptor (v1 lite): desligado, o primeiro acesso vai direto ao arranque.
+  const tutorialOn = useFeature('tutorial');
+  const showTutorial = tutorialOn && !!session && (tutorialOpen || (isFirstArrival && !onboardingOpen));
   const showOnboarding = !!session && !showTutorial && (needsOnboarding || onboardingOpen);
 
   useEffect(() => {
@@ -766,7 +769,8 @@ export default function App() {
        store até lá chegar); a mudança de data e o prazo ficam no Início, onde
        a linha da jornada e o cartão do dia já os dizem; a classificação é
        uma conversa com ela. */
-    const cupRoute = cupPushRoute(key);
+    // A Taça desligada (v1 lite): uma notificação antiga dela abre só a app, no Início.
+    const cupRoute = useAppStore.getState().featureFlags?.cup === false && cupPushRoute(key) ? { kind: 'inicio' } : cupPushRoute(key);
     if (cupRoute?.kind === 'trofeu') {
       const s = useAppStore.getState();
       if (navigate && s.setActiveTab('provas') !== false) s.requestCupScreen({ roundId: null, mode: null });
@@ -834,6 +838,17 @@ export default function App() {
       markTraceReported(stuck.at);
       logAppEvent('error', 'boot_stuck', 'O arranque anterior não saiu do logo', { trace: stuck });
     }
+  }, [sessionUserId]);
+  /* Os interruptores por funcionalidade (store/featureFlagsSlice.js): lidos por baixo, com prazo,
+     quando há sessão e ao voltar à app — o arranque nunca espera por eles (começa com a cache ou os
+     valores do código). Em demo ficam os do lançamento. */
+  useEffect(() => {
+    if (!sessionUserId || sessionUserId === 'demo-user') return undefined;
+    const load = () => { Promise.resolve(useAppStore.getState().loadFeatureFlags?.()).catch(() => {}); };
+    load();
+    const onVisible = () => { if (document.visibilityState === 'visible') load(); };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
   }, [sessionUserId]);
   /* #116: os logs que falharam por falta de rede (lib/pendingLogs.js) vão quando a rede volta; no
      arranque vão atrás do app_boot. */
@@ -1349,6 +1364,12 @@ export default function App() {
      bancadas de teste, que não passam pelo ecrã do logo. */
   const cenasPreview = cenasPreviewAtiva();
   const benchTab = activeTab === 'design-system' || activeTab === 'audit-sandbox' || cenasPreview;
+  /* Um separador que a app não conhece (um link antigo, uma funcionalidade desligada — v1 lite)
+     dava um ecrã vazio: vai para o Início. */
+  const knownTab = benchTab || ['home', 'calendario', 'provas', 'coach', 'perfil', 'admin'].includes(activeTab) || DASHBOARD_TABS.includes(activeTab);
+  useEffect(() => {
+    if (!knownTab && session) setActiveTab('home');
+  }, [knownTab, session, setActiveTab]);
   useEffect(() => {
     if (firstBootDone) return;
     if (!showBootSplash || benchTab) {
@@ -1490,7 +1511,7 @@ export default function App() {
         </Suspense>
       </Layout>
       {welcome && <CarolWelcome key={welcome.key} welcome={welcome} now={welcome.at} onClose={closeWelcome} />}
-      {tutorialOpen && !isFirstArrival && <AppTutorial onClose={() => setTutorialOpen(false)} />}
+      {tutorialOn && tutorialOpen && !isFirstArrival && <AppTutorial onClose={() => setTutorialOpen(false)} />}
     </ToastProvider>
   );
 }

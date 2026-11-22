@@ -8,6 +8,7 @@ import BrandMark from '../shared/BrandMark';
 import AppBackground from './AppBackground';
 import { scrollToTop as scrollMainToTop, isDashboardSwipe } from '../../utils/scrollToTop';
 import WaterSheet from '../Home/WaterSheet';
+import { useFeature } from '../../utils/features';
 import PaceCalculatorSheet from '../shared/PaceCalculatorSheet';
 import { useElasticPillIndicator } from '../../utils/useElasticPillIndicator';
 import { useTabEnter } from '../../utils/useTabEnter';
@@ -52,6 +53,8 @@ export default function Layout({ children }) {
   const setOpenCreationMode = useAppStore((s) => s.setOpenCreationMode);
   const lastDashboardTab = useAppStore((s) => s.lastDashboardTab);
   const setWaterSheetOpen = useAppStore((s) => s.setWaterSheetOpen);
+  // A água tem interruptor (v1 lite): desligada, sai do FAB e a persiana não monta.
+  const waterOn = useFeature('water');
   const editingRunId = useAppStore((s) => s.editingRunId);
   const editingRaceId = useAppStore((s) => s.editingRaceId);
   const [fabOpen, setFabOpen] = useState(false);
@@ -258,7 +261,7 @@ export default function Layout({ children }) {
       <ReportIssueButton />
 
       {/* Registar água — só se abre pelo FAB (ver WaterSheet.jsx). */}
-      <WaterSheet />
+      {waterOn && <WaterSheet />}
       {/* Quem monta controla a existência; a Sheet trata da saída animada e
           do Escape (pilha partilhada), por isso fecha-se por onClose. */}
       {calculadoraAberta && <PaceCalculatorSheet onClose={() => setCalculadoraAberta(false)} />}
@@ -343,7 +346,7 @@ export default function Layout({ children }) {
             />
             {/* Água: saiu do cartão do Início (a órbita é só leitura —
                 auditoria 2026-09-09, achado 7) e regista-se aqui. */}
-            <FabItem delayIndex={0}
+            {waterOn && <FabItem delayIndex={0}
               label="Registar água"
               tone="run"
               ink="var(--run-ink)"
@@ -353,7 +356,7 @@ export default function Layout({ children }) {
                 closeFab();
                 setWaterSheetOpen(true);
               }}
-            />
+            />}
           </div>
         </>
       )}

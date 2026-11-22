@@ -1,4 +1,5 @@
 import { useEffect, useMemo } from 'react';
+import { isFeatureOn } from './features';
 import { useAppStore } from '../store';
 import { lisbonTodayISO } from '../lib/utils';
 import { pickCupEdition, readCupEnrolledHint } from '../store/cupSlice';
@@ -339,7 +340,10 @@ function useCupInputs() {
   const profile = useAppStore((s) => s.profile);
   const raceEvents = useAppStore((s) => s.raceEvents);
   const runs = useAppStore((s) => s.runs);
-  return { userId, cup, profile, raceEvents, runs, today: lisbonTodayISO() };
+  /* A Taça tem interruptor (v1 lite): desligada, todos os hooks devolvem null e não leem nada — as
+     provas que vieram dela ficam na agenda e no hub como provas normais. */
+  const on = useAppStore((s) => isFeatureOn('cup', s));
+  return { userId, cup, profile, raceEvents, runs, today: lisbonTodayISO(), on };
 }
 
 /* As leituras que os hooks disparam: a leitura base (loadCup) quando
@@ -361,10 +365,10 @@ function useCupLoads({ enabled, userId, cup, editionId }) {
 }
 
 export function useCup() {
-  const { userId, cup, profile, raceEvents, runs, today } = useCupInputs();
-  const view = cup.userId === userId ? selectCupView(cup, profile, raceEvents, runs, today) : null;
+  const { userId, cup, profile, raceEvents, runs, today, on } = useCupInputs();
+  const view = on && cup.userId === userId ? selectCupView(cup, profile, raceEvents, runs, today) : null;
   // O catálogo da edição que a porta mostra, uma vez (um erro não repete).
-  useCupLoads({ enabled: true, userId, cup, editionId: view?.edition?.id || null });
+  useCupLoads({ enabled: on, userId, cup, editionId: view?.edition?.id || null });
   return view;
 }
 
@@ -383,11 +387,11 @@ export function useCup() {
    Limite assumido: inscrito noutro dispositivo e sem nenhuma jornada "Vou"
    com prova criada, só vê o mapa depois de abrir Provas uma vez. */
 export function useCupForHome() {
-  const { userId, cup, profile, raceEvents, runs, today } = useCupInputs();
+  const { userId, cup, profile, raceEvents, runs, today, on } = useCupInputs();
   // Lida em cada render (é só um getItem): a pista não é estado do React e a
   // leitura base reescreve-a.
-  const hinted = cupHomeHint(userId, raceEvents, today);
-  const view = userId && cup.userId === userId ? selectCupView(cup, profile, raceEvents, runs, today) : null;
+  const hinted = on && cupHomeHint(userId, raceEvents, today);
+  const view = on && userId && cup.userId === userId ? selectCupView(cup, profile, raceEvents, runs, today) : null;
   const enrolled = view?.enrollment ? view : null;
   // O catálogo da edição da inscrição, se ainda não estiver pedido (a leitura
   // base e a inscrição já o pedem; isto é a rede). Um erro não repete, como
@@ -413,8 +417,8 @@ function cupHomeHint(userId, raceEvents, today) {
    null (sem jornada, sem inscrição ativa, catálogo por ler, ou a jornada não
    é desta edição — uma prova de uma época anterior). */
 export function useCupForRace(race) {
-  const roundId = race?.cup_round_id || null;
-  const { userId, cup, profile, raceEvents, runs, today } = useCupInputs();
+  const { userId, cup, profile, raceEvents, runs, today, on } = useCupInputs();
+  const roundId = on ? race?.cup_round_id || null : null;
   const view = roundId && userId && cup.userId === userId ? selectCupView(cup, profile, raceEvents, runs, today) : null;
   const enrolled = view?.enrollment ? view : null;
   useCupLoads({ enabled: !!roundId, userId, cup, editionId: enrolled?.edition?.id || null });
@@ -439,7 +443,8 @@ export function useCupListing() {
   const raceEvents = useAppStore((s) => s.raceEvents);
   const today = lisbonTodayISO();
   const reading = cupUserId !== userId || cupStatus === 'idle' || cupStatus === 'loading';
-  const pending = !view && !!userId && reading && cupHomeHint(userId, raceEvents, today);
+  const cupOn = useAppStore((s) => isFeatureOn('cup', s));
+  const pending = cupOn && !view && !!userId && reading && cupHomeHint(userId, raceEvents, today);
   const listing = useMemo(() => cupListingOf(view, pending), [view, pending]);
   return { view, listing };
 }

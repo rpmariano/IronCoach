@@ -473,7 +473,7 @@ describe('limiares (2026-10-05): R2/R3, R4, R5, R10 e para onde ir', () => {
     const runs = [tempo('2026-09-21', 3000), tempo('2026-09-23', 3000), tempo('2026-09-25', 3000), tempo('2026-09-14', 3300), tempo('2026-09-16', 3300), tempo('2026-09-18', 3300)];
     const v = view(runs, 'semana', -1);
     expect(v.vdotCompare).toBeNull();
-    expect(v.vdotNote).toBe('A comparação do VDOT é por mês ou mais.');
+    expect(v.vdotNote).toBe('A comparação da forma é por mês ou mais.');
   });
 
   it('R5: o mês em curso compara com o anterior cortado aos mesmos dias, e diz o que falta', () => {
@@ -482,7 +482,7 @@ describe('limiares (2026-10-05): R2/R3, R4, R5, R10 e para onde ir', () => {
     const runs = [tempo('2026-09-01', 3300), tempo('2026-09-08', 3300), tempo('2026-09-15', 3300), tempo('2026-09-22', 3300), tempo('2026-10-03', 3000)];
     const v = view(runs, 'mes', 0, '2026-10-12');
     expect(v.vdotCompare).toBeNull();
-    expect(v.vdotNote).toBe('Para comparar o VDOT preciso de 3 treinos de qualidade em cada mês — outubro vai em 1, setembro (1 – 11 set) teve 2.');
+    expect(v.vdotNote).toBe('Para comparar a forma preciso de 3 treinos de qualidade em cada mês — outubro vai em 1, setembro (1 – 11 set) teve 2.');
   });
 
   it('R5: com ≥3 pontos nos mesmos dias dos dois lados compara, sem nota', () => {
