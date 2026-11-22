@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useFeature } from '../../utils/features';
 import { ChevronLeft, ChevronRight, Check, ArrowDown, ArrowUp, Minus } from 'lucide-react';
 import GlassCard from '../shared/GlassCard';
 import VerdictLine from '../BI/VerdictLine';
@@ -57,6 +58,8 @@ export default function DayNutritionCard({
   dayISO, todayISO, rows, estimated = false, plan = null, verdict = null, onPrev, onNext,
 }) {
   const bars = useBarsReveal();
+  // A água tem interruptor (v1 lite): desligada, a linha dela sai.
+  const waterOn = useFeature('water');
   const isToday = dayISO >= todayISO;
   const hits = rows.filter((r) => r.status === 'ok').length;
   const recorded = rows.some((r) => r.status !== 'sem_registo');
@@ -82,7 +85,7 @@ export default function DayNutritionCard({
       {verdict?.text && <VerdictLine text={verdict.text} tone={verdict.tone} style={{ marginTop: 12 }} />}
 
       <ul ref={bars.ref} className="mt-3 space-y-3" aria-label="Objetivos do dia">
-        {rows.map((r, i) => {
+        {rows.filter((r) => waterOn || r.key !== 'water').map((r, i) => {
           // Em hoje, só o que já vai ("Até agora · 52%"); sem registo continua a dizê-lo.
           const s = isToday && r.status !== 'sem_registo' ? IN_PROGRESS : STATUS[r.status];
           const pct = r.target > 0 ? Math.min(1, r.value / r.target) : 0;

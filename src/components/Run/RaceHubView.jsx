@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { useFeature } from '../../utils/features';
 import CoachAvatar from '../Coach/CoachAvatar';
 import {
   Sparkles,
@@ -365,12 +366,16 @@ export default function RaceHubView({
   // aqui uma vez, para as conquistas desta prova e o Palmarés não poderem
   // discordar sobre que dia é hoje.
   const hoje = todayISO();
+  // As conquistas e as memórias têm interruptor (v1 lite).
+  const badgesOn = useFeature('badges');
+  const memoriesOn = useFeature('race_memories');
+  const cupOn = useFeature('cup');
   const raceAchievements = useMemo(
-    () => (raceRun && race?.id ? achievementsForRace({ raceEvents: palmaresRaces, runs, profile, today: hoje }, race.id) : []),
+    () => (badgesOn && raceRun && race?.id ? achievementsForRace({ raceEvents: palmaresRaces, runs, profile, today: hoje }, race.id) : []),
     [raceRun, palmaresRaces, runs, profile, race?.id, hoje],
   );
   const raceMissed = useMemo(
-    () => (raceRun && race?.id ? missedInRace({ raceEvents: palmaresRaces, runs, profile, today: hoje }, race.id) : []),
+    () => (badgesOn && raceRun && race?.id ? missedInRace({ raceEvents: palmaresRaces, runs, profile, today: hoje }, race.id) : []),
     [raceRun, palmaresRaces, runs, profile, race?.id, hoje],
   );
 
@@ -556,12 +561,13 @@ export default function RaceHubView({
           </div>
         </div>
 
-        <CupRaceBlock race={race} />
+        {cupOn && <CupRaceBlock race={race} />}
 
         {/* 1b. As memórias do dia — medalha em destaque, diploma e as
             fotografias. Sem nada guardado fica o convite, discreto: é uma
             oferta, não uma tarefa por cumprir. */}
-        {hasMemories ? (
+        {/* As memórias têm interruptor (v1 lite): desligadas, nem a galeria, nem o convite, nem o mural. */}
+        {!memoriesOn ? null : hasMemories ? (
           <>
             <div className="flex items-center justify-between" style={{ margin: '16px 2px 0' }}>
               <SectionLabel tone="race">Memórias</SectionLabel>
@@ -637,7 +643,7 @@ export default function RaceHubView({
           </button>
         ) : null}
 
-        {raceRun && (
+        {memoriesOn && raceRun && (
           <button
             type="button"
             data-testid="race-mural-open"
@@ -649,10 +655,10 @@ export default function RaceHubView({
           </button>
         )}
 
-        {memoriesOpen && (
+        {memoriesOn && memoriesOpen && (
           <RaceMemoriesSheet race={race} run={raceRun} userId={memoriesUserId} onSaved={onMemoriesSaved} onClose={() => setMemoriesOpen(false)} />
         )}
-        {muralOpen && (
+        {memoriesOn && muralOpen && (
           <RaceMuralSheet race={race} run={raceRun} seconds={finalSeconds} classification={classification} achievements={raceAchievements} badges={raceBadges} memoryUrls={memoryUrls} onSaved={onMemoriesSaved} onClose={() => setMuralOpen(false)} />
         )}
 
@@ -718,7 +724,7 @@ export default function RaceHubView({
             )}
             {cycleSummary.vdot && (
               <div className="flex items-center justify-between" style={{ padding: '12px 0' }}>
-                <span className="text-[12.5px]" style={{ color: 'var(--text-3)' }}>VDOT no início / fim</span>
+                <span className="text-[12.5px]" style={{ color: 'var(--text-3)' }}>Forma no início / fim</span>
                 <span className="text-[13px] font-extrabold" style={{ color: 'var(--text-1)' }}>{cycleSummary.vdot}</span>
               </div>
             )}
@@ -906,7 +912,7 @@ export default function RaceHubView({
         <AddToCalendar race={race} raceEventId={calendarRaceId} />
       )}
 
-      <CupRaceBlock race={race} />
+      {cupOn && <CupRaceBlock race={race} />}
 
       {/* ─── 1b. Plano para o dia ───────────────────────────────────────────
           Abaixo do herói e da contagem, antes das fases: na última semana é

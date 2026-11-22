@@ -145,7 +145,7 @@ describe('R2 — Previsão de prova', () => {
       runs: [corrida({ date: '2026-09-12' })],
       raceEvents: [prova({ date: '2026-09-01', status: 'concluida' })],
     });
-    expect(frame('Evolução do VDOT')).toBeTruthy();
+    expect(frame('A tua forma, pelo treino')).toBeTruthy();
     expect(screen.queryByText('Previsão de prova')).not.toBeInTheDocument();
     expect(screen.queryByTestId('race-prediction-base')).not.toBeInTheDocument();
   });
@@ -548,7 +548,7 @@ describe('R6/R7/R8 — a começar, cedo e vazio', () => {
     expect(screen.getByText('Sem corridas nesta semana')).toBeInTheDocument();
     expect(screen.getByText('A última foi a 12 de setembro.')).toBeInTheDocument();
     expect(frame('Carga aguda : crónica')).toBeTruthy();
-    expect(frame('Evolução do VDOT')).toBeTruthy();
+    expect(frame('A tua forma, pelo treino')).toBeTruthy();
     expect(screen.getByTestId('recordes-intervalos')).toBeInTheDocument();
     expect(screen.queryByText('Registar corrida')).toBeInTheDocument();
     expect(screen.queryByText(/zero corridas/)).toBeNull();
@@ -640,15 +640,15 @@ describe('VDOT por período', () => {
 
   it('o ▲ do gráfico é a média do período contra a do anterior, e o veredicto diz-o', () => {
     monta({ runs: treze, kind: 'mes', offset: -1 });
-    const f = frame('Evolução do VDOT');
-    expect(within(f).getByTestId('chart-frame-delta')).toHaveTextContent(/VDOT médio em setembro ▲ \d,\d face a agosto/);
+    const f = frame('A tua forma, pelo treino');
+    expect(within(f).getByTestId('chart-frame-delta')).toHaveTextContent(/Forma média em setembro ▲ \d,\d face a agosto/);
     expect(f).toHaveTextContent('de sempre');
     expect(within(screen.getByTestId('period-summary')).getByTestId('verdict-line')).toHaveTextContent('A tua forma aeróbica está a subir');
   });
 
   it('com menos de 3 pontos no período não há seta no gráfico', () => {
     monta({ runs: treze.slice(0, 5), kind: 'mes', offset: -1 });
-    expect(within(frame('Evolução do VDOT')).queryByTestId('chart-frame-delta')).toBeNull();
+    expect(within(frame('A tua forma, pelo treino')).queryByTestId('chart-frame-delta')).toBeNull();
   });
 });
 
@@ -797,10 +797,10 @@ describe('limiares (2026-10-05) — onde estão os dados', () => {
     const tempo = (id, date, s) => corrida({ id, date, distance_km: 10, duration_seconds: s, training_type: 'tempo' });
     const runs = [tempo('x', '2026-08-01', 3300), tempo('y', '2026-08-15', 3300), tempo('a', '2026-09-01', 3300), tempo('b', '2026-09-15', 3300), tempo('c', '2026-10-01', 3000)];
     const { unmount } = monta({ runs, kind: 'semana', offset: 0 });
-    expect(within(frame('Evolução do VDOT')).getByTestId('vdot-compare-note')).toHaveTextContent('A comparação do VDOT é por mês ou mais.');
+    expect(within(frame('A tua forma, pelo treino')).getByTestId('vdot-compare-note')).toHaveTextContent('A comparação da forma é por mês ou mais.');
     unmount();
     monta({ runs, kind: 'mes', offset: -1 });
-    expect(within(frame('Evolução do VDOT')).getByTestId('vdot-compare-note')).toHaveTextContent('Para comparar o VDOT preciso de 3 treinos de qualidade em cada mês — setembro vai em 2, agosto (1 – 30 ago) teve 2.');
+    expect(within(frame('A tua forma, pelo treino')).getByTestId('vdot-compare-note')).toHaveTextContent('Para comparar a forma preciso de 3 treinos de qualidade em cada mês — setembro vai em 2, agosto (1 – 30 ago) teve 2.');
   });
 
   it('R8: sem tendência o cartão diz o critério real do VDOT, igual com ou sem prova', () => {
@@ -891,5 +891,37 @@ describe('caminhadas à parte', () => {
     monta({ runs: [caminhada({ id: 'w1', date: '2026-10-02' })], kind: 'mes' });
     expect(screen.getByText(/Ainda não há corridas/)).toBeTruthy();
     expect(screen.getByTestId('caminhadas-periodo').textContent).toContain('1 caminhada · 4,0 km');
+  });
+});
+
+/* Os gráficos avançados têm interruptor («v1 lite», 2026-11-22): desligados, saem a carga ACWR (o
+   gráfico e o KPI), a intensidade por zonas e a eficiência aeróbica; fica a distância. */
+describe('advanced_charts (v1 lite)', () => {
+  const regulares = () => [
+    corrida({ id: 'a', date: '2026-09-10', distance_km: 10 }),
+    corrida({ id: 'b', date: '2026-09-17', distance_km: 10 }),
+    corrida({ id: 'c', date: '2026-09-24', distance_km: 10 }),
+    corrida({ id: 'd', date: '2026-10-01', distance_km: 10 }),
+  ];
+  // O store deste ficheiro é o h.state: os interruptores vão nele.
+  const montaCom = (featureFlags) => {
+    h.state = { runs: regulares(), raceEvents: [], profile: {}, setOpenCreationMode: vi.fn(), coachPlans: [], coachPlanItems: [], featureFlags };
+    act(() => usePeriodStore.getState().setPeriod('corrida', 'mes', 0));
+    return render(<RunDashboard />);
+  };
+
+  it('desligados: sem a carga ACWR, a intensidade e a eficiência; a distância fica', () => {
+    montaCom({ advanced_charts: false });
+    expect(screen.queryByText('Carga aguda : crónica')).toBeNull();
+    expect(screen.queryByText('Carga · 7 d vs 28 d')).toBeNull();
+    expect(screen.queryByText(/Distribuição de intensidade/)).toBeNull();
+    expect(screen.queryByText(/Eficiência aeróbica/)).toBeNull();
+    expect(screen.getAllByText(/Distância por/).length).toBeGreaterThan(0);
+    expect(document.body.textContent).not.toMatch(/VDOT/);
+  });
+
+  it('ligados: a carga ACWR está lá', () => {
+    montaCom({ advanced_charts: true });
+    expect(screen.getAllByText('Carga aguda : crónica').length).toBeGreaterThan(0);
   });
 });

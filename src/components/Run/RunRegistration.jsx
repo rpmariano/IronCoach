@@ -24,6 +24,7 @@ import {
 import { shoeLabel } from '../../utils/shoes';
 import { formatDatePTShort } from '../../utils/racePlanEngine';
 import { achievementsForRace } from '../../utils/achievements';
+import { isFeatureOn, useFeature } from '../../utils/features';
 import { raceResultSeconds, gpsMatchesOfficialDistance, raceTargetSeconds, racePredictionSeconds } from '../../utils/raceOutcome';
 import { todayISO } from '../../lib/utils';
 import MissingMetricsBottomSheet from './MissingMetricsBottomSheet';
@@ -251,6 +252,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
   // O modo prova exige a prova: sem ela em memória, isto é uma competição
   // fora da agenda e o ecrã é o de sempre.
   const isRaceMode = !!raceEvent;
+  const memoriesOn = useFeature('race_memories');
 
   /* Tempo impossível não se aceita (bug de 2026-11-15: «1:23» lido como 1 min 23 s numa prova de
      10 km com objetivo 56:40). A regra é a partilhada com o servidor (@formulas/raceTimeSanity.ts):
@@ -1496,6 +1498,8 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
        lista, o indexOf devolvia -1 e punha-a à frente de "objetivo batido" e
        do recorde pessoal — o contrário da regra (revisão pré-deploy). */
     const prioridade = ['objetivo_batido', 'recorde_pessoal', 'primeira_trail', 'sequencia', 'acima_do_treino', 'prova_concluida'];
+    // As conquistas têm interruptor (v1 lite): desligadas, o fecho não mostra nenhuma.
+    if (!isFeatureOn('badges')) return null;
     const novas = achievementsForRace({ raceEvents: store.raceEvents, runs: store.runs, profile, today: todayISO() }, raceId)
       .filter((a) => a.isNew)
       .sort((a, b) => prioridade.indexOf(a.key) - prioridade.indexOf(b.key));
@@ -2818,6 +2822,8 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
             oferta, não uma condição: a prova conclui-se com a corrida, e o
             diploma, a medalha e as fotos juntam-se aqui ou, mais tarde, na
             persiana "Memórias" do hub (pedido 2026-09-13). ─────────────── */}
+        {/* As memórias têm interruptor (v1 lite): desligadas, a secção sai — o resultado fica. */}
+        {memoriesOn && (<>
         <SectionLabel tone="race">Memórias</SectionLabel>
         <section className="reg-section" data-testid="race-memories">
           <p className="text-[12px] leading-[1.5] mb-4" style={{ color: 'var(--text-3)' }}>
@@ -2860,6 +2866,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
             </Warning>
           )}
         </section>
+        </>)}
 
         {runIdToEdit && (
           <div className="pt-1 pb-2">

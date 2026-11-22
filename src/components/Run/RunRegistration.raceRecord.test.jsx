@@ -1,6 +1,6 @@
 import React from 'react';
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { useAppStore } from '../../store';
 import { ToastProvider } from '../shared/ToastProvider';
 import RunRegistration from './RunRegistration';
@@ -150,5 +150,33 @@ describe('Registo da prova — «Eliminar registo» dentro do editar', () => {
     useAppStore.setState({ raceEvents: [PROVA], runs: [], runRacePrefill: { raceId: 'race-1' } });
     renderReg();
     expect(screen.queryByTestId('race-record-remove-button')).not.toBeInTheDocument();
+  });
+});
+
+/* As memórias têm interruptor («v1 lite», 2026-11-22): desligadas, a secção «Memórias» sai do
+   registo da prova — os campos do resultado (dorsal, escalão, posição) ficam. */
+describe('Registo da prova — memórias desligadas (v1 lite)', () => {
+  let base;
+  beforeEach(async () => {
+    ({ FEATURE_BASE: base } = await import('../../store/featureFlagsSlice'));
+    localStorage.clear();
+    useAppStore.setState({
+      profile: PROFILE, session: { user: { id: 'user-1' } }, runs: [], shoes: [], coachPlans: [], coachPlanItems: [],
+      raceEvents: [PROVA], runRacePrefill: { raceId: 'race-1' },
+    });
+  });
+  afterEach(() => useAppStore.setState({ featureFlags: { ...base } }));
+
+  it('desligadas: sem a secção das memórias; o resultado do diploma fica', () => {
+    useAppStore.setState({ featureFlags: { ...base, race_memories: false } });
+    renderReg();
+    expect(screen.queryByTestId('race-memories')).toBeNull();
+    expect(screen.getByTestId('race-result-fields')).toBeInTheDocument();
+    expect(screen.getByLabelText('Dorsal')).toBeInTheDocument();
+  });
+
+  it('ligadas: a secção está lá', () => {
+    renderReg();
+    expect(screen.getByTestId('race-memories')).toBeInTheDocument();
   });
 });

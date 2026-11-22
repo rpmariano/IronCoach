@@ -4,6 +4,7 @@ import GlassCard from '../shared/GlassCard';
 import { Orbit } from '../shared/Orbit';
 import NeonRing, { NeonRingValue } from '../shared/NeonRing';
 import { useRevealAnimation } from '../../utils/useRevealAnimation';
+import { useFeature } from '../../utils/features';
 
 /* "Como estou" — a órbita de nutrição do dia, só leitura (mock "Início").
    O registo de água saiu daqui para o FAB. `empty` é o primeiro dia: anéis
@@ -24,6 +25,8 @@ export default function StatusCard({ gauges, empty = false, onRegisterMeal, meal
      aparece no ecrã, e outra vez sempre que se volta ao Início
      (useRevealAnimation, 2026-09-13). */
   const reveal = useRevealAnimation();
+  // A água tem interruptor (v1 lite).
+  const waterOn = useFeature('water');
 
   if (empty) {
     return (
@@ -55,6 +58,7 @@ export default function StatusCard({ gauges, empty = false, onRegisterMeal, meal
           ))}
         </div>
 
+        {waterOn && (
         <div className="mt-3.5" data-testid="status-card-water">
           <div className="flex items-baseline justify-between">
             <span className="text-[10.5px] font-extrabold uppercase" style={{ color: 'var(--text-3)', letterSpacing: 'var(--tracking-label)' }}>{gauges.water.label}</span>
@@ -66,6 +70,7 @@ export default function StatusCard({ gauges, empty = false, onRegisterMeal, meal
             <div className="h-full rounded-full" style={{ width: `${Math.min(100, gauges.water.target > 0 ? (gauges.water.value / gauges.water.target) * 100 : 0)}%`, background: gauges.water.color, boxShadow: `0 0 8px ${gauges.water.color}` }} />
           </div>
         </div>
+        )}
       </div>
       {onOpenHistory && (
         <button type="button" data-testid="status-card-history" onClick={onOpenHistory} className="flex items-center justify-between w-full min-h-[44px] mt-2 text-left text-[12px] font-bold" style={{ color: 'var(--text-3)', borderTop: '1px solid rgba(255,255,255,.09)' }}>

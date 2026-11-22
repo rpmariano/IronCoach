@@ -80,7 +80,7 @@ describe('Previsão de prova (VDOT)', () => {
     render(<RacePredictionChart vdotTrend={VDOT} prediction={PREV} />);
     const legend = screen.getByTestId('chart-frame-legend');
     expect(legend).not.toHaveTextContent('Previsão da prova');
-    expect(legend).toHaveTextContent('VDOT · último 28,0');
-    expect(screen.getByTestId('race-prediction-fonte')).toHaveTextContent('A previsão vem do teu melhor ritmo, não da linha do VDOT');
+    expect(legend).toHaveTextContent('Forma atual · último 28,0');
+    expect(screen.getByTestId('race-prediction-fonte')).toHaveTextContent('A previsão vem do teu melhor ritmo, não da linha da forma');
   });
 });

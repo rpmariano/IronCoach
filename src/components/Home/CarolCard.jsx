@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { isFeatureOn } from '../../utils/features';
 import { ChevronRight, ChevronDown, ChevronUp, RefreshCw, ExternalLink } from 'lucide-react';
 import { computeRaceEve } from '@formulas/raceEve.ts';
 import { buildRacePacingPlan } from '@formulas/racePacing.ts';
@@ -328,7 +329,8 @@ export function useCoachDailyMessages(agora = new Date()) {
     // dia da prova a água é a do horário da prova (água até às …), não a do
     // anel.
     const waterTotal = (waterLogs || []).filter((w) => w.date === today).reduce((s, w) => s + (Number(w.amount_ml) || 0), 0);
-    const agua = raceToday ? null : linhaDaAgua({ totalMl: waterTotal, profile, agora: instante });
+    // A água tem interruptor (v1 lite): desligada, a Carol não fala dela no Início.
+    const agua = raceToday || !isFeatureOn('water') ? null : linhaDaAgua({ totalMl: waterTotal, profile, agora: instante });
     const warning = [cabeca, doServidor, agua].filter(Boolean).join(' ');
 
     /* Na véspera, "Preparar amanhã" é a prova. O item do plano de amanhã não

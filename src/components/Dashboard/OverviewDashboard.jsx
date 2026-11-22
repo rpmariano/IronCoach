@@ -1,4 +1,5 @@
 import React, { useMemo } from 'react';
+import { useFeature } from '../../utils/features';
 import { Footprints, Dumbbell, Utensils, Scale, ChartNoAxesColumn, Check, ChevronRight } from 'lucide-react';
 import { useAppStore } from '../../store';
 import { useShallow } from 'zustand/react/shallow';
@@ -315,6 +316,8 @@ function pillarsOf(view) {
 }
 
 function OverviewDashboard({ scrollToTab }) {
+  // As análises cruzadas são gráficos avançados (v1 lite, advanced_charts).
+  const advancedCharts = useFeature('advanced_charts');
   /* Seletor com useShallow em vez de `useAppStore()` inteiro (2026-10-04): sem
      seletor, qualquer alteração ao store — um deslize entre separadores
      mexe em `lastDashboardTab` — redesenhava este separador (e recalculava os
@@ -578,7 +581,8 @@ function OverviewDashboard({ scrollToTab }) {
         </p>
       )}
 
-      {/* ─── Secção 3: Análise Cruzada (colapsada) ───── */}
+      {/* ─── Secção 3: Análise Cruzada (colapsada) — só com os gráficos avançados (v1 lite) ───── */}
+      {advancedCharts && (<>
       <div className="px-1 mt-2">
         <p className="text-[11px] font-bold text-[var(--text-3)] uppercase tracking-widest mb-2">Análise Cruzada</p>
       </div>
@@ -589,6 +593,7 @@ function OverviewDashboard({ scrollToTab }) {
         meals={meals}
         bodyAssessments={bodyAssessments}
       />
+      </>)}
     </div>
   );
 }

@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { useFeature } from '../../utils/features';
 import { Search, Plus, ChevronRight, Pencil, Refrigerator } from 'lucide-react';
 import { useAppStore } from '../../store';
 import CoachAvatar from '../Coach/CoachAvatar';
@@ -23,7 +24,11 @@ export default function PantrySection() {
   const pantryFoods = mine ? storedFoods : null;
   const foodRules = mine ? storedRules : null;
   const mealTemplates = mine ? (storedTemplates || []) : [];
-  const [tab, setTab] = useState('alimentos');
+  const [tabState, setTab] = useState('alimentos');
+  /* A despensa avançada tem interruptor (v1 lite): desligada, ficam só os alimentos (a despensa
+     básica e os frequentes) — sem as regras («Como cozinhas») nem os modelos de refeição. */
+  const advanced = useFeature('pantry_advanced');
+  const tab = advanced ? tabState : 'alimentos';
   const [query, setQuery] = useState('');
   const [foodSheet, setFoodSheet] = useState(null); // { food, parent? } | { food: null } (novo) | { food: null, parent } (variante nova)
   const [ruleSheet, setRuleSheet] = useState(null); // { rule } | { rule: null } (nova)
@@ -51,6 +56,7 @@ export default function PantrySection() {
         O que a Carol já conhece do que comes e de como cozinhas — não volta a analisar nem a perguntar.
       </p>
 
+      {advanced && (
       <div role="tablist" aria-label="Despensa" className="grid grid-cols-3 gap-1 p-1 rounded-[14px] mb-3" style={{ background: 'rgba(255,255,255,.05)' }}>
         {[['alimentos', `Alimentos · ${topLevelFoods(pantryFoods).length}`, 'rgba(199,125,255,.2)', '#f3e8ff'], ['cozinhar', `Como cozinhas · ${rules.length}`, 'rgba(34,211,238,.18)', '#cffafe'], ['refeicoes', `Refeições · ${mealTemplates.length}`, 'rgba(199,125,255,.2)', '#f3e8ff']].map(([key, label, bg, fg]) => (
           <button
@@ -66,6 +72,7 @@ export default function PantrySection() {
           </button>
         ))}
       </div>
+      )}
 
       {tab === 'alimentos' ? (
         <div role="tabpanel" className="space-y-2">

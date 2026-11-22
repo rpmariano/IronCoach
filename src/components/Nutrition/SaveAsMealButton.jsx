@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useFeature } from '../../utils/features';
 import { BookmarkPlus, BookmarkCheck } from 'lucide-react';
 import { useAppStore } from '../../store';
 import Button from '../shared/Button';
@@ -15,7 +16,13 @@ import { suggestedTemplateName, templateForMeal } from '../../utils/pantry';
    (os mesmos alimentos; as gramas não contam) o botão dá lugar a "Guardada
    como «X»" — guardar outra vez só dava o erro de nome repetido. Editada a
    refeição e mudados os alimentos, o botão volta. */
-export default function SaveAsMealButton({ meal }) {
+// Guardar como modelo de refeição é da despensa avançada (v1 lite): desligada, o botão não aparece.
+export default function SaveAsMealButton(props) {
+  const on = useFeature('pantry_advanced');
+  return on ? <SaveAsMealButtonInner {...props} /> : null;
+}
+
+function SaveAsMealButtonInner({ meal }) {
   const [open, setOpen] = useState(false);
   const { mealTemplates, pantryLoaded, loadPantry } = useAppStore();
   useEffect(() => { if (!pantryLoaded) loadPantry?.(); }, [pantryLoaded, loadPantry]);

@@ -565,3 +565,20 @@ describe('OverviewDashboard — sem registos: "O que falta para começar" (O7)',
     expect(setOpenCreationMode).toHaveBeenCalledWith('meal');
   });
 });
+
+/* As análises cruzadas são gráficos avançados («v1 lite», 2026-11-22). */
+describe('advanced_charts (v1 lite)', () => {
+  let base;
+  beforeEach(async () => { ({ FEATURE_BASE: base } = await import('../../store/featureFlagsSlice')); });
+  afterEach(() => useAppStore.setState({ featureFlags: { ...base } }));
+
+  it('desligados: sem a Análise Cruzada; ligados, está lá', () => {
+    useAppStore.setState({ featureFlags: { ...base, advanced_charts: false } });
+    const { unmount } = renderOverview({});
+    expect(screen.queryByText(/Análise Cruzada/)).toBeNull();
+    unmount();
+    useAppStore.setState({ featureFlags: { ...base } });
+    renderOverview({});
+    expect(screen.getAllByText(/Análise Cruzada/).length).toBeGreaterThan(0);
+  });
+});

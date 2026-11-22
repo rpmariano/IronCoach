@@ -82,7 +82,7 @@ export default function RacePredictionChart({ vdotTrend = [], prediction, compar
     labels: deduped.map((_, i) => i),
     datasets: [
       {
-        label: 'VDOT',
+        label: 'Forma atual',
         data: vdots,
         borderColor: RUN,
         backgroundColor: 'rgba(46, 224, 255, 0.15)',
@@ -108,7 +108,7 @@ export default function RacePredictionChart({ vdotTrend = [], prediction, compar
         padding: 10,
         callbacks: {
           title: (items) => deduped[items?.[0]?.dataIndex]?.date || '',
-          label: (ctx) => `VDOT: ${fmtNumber(ctx.raw, 1)}`
+          label: (ctx) => `Forma atual: ${fmtNumber(ctx.raw, 1)}`
         }
       }
     },
@@ -126,7 +126,7 @@ export default function RacePredictionChart({ vdotTrend = [], prediction, compar
   // O número grande: o tempo previsto quando há prova (âmbar, é da prova);
   // senão o VDOT atual (ciano, é da corrida).
   const value = prediction ? formatTime(prediction.predictedSeconds) : (lastVdot !== null ? fmtNumber(lastVdot, 1) : '—');
-  const unit = prediction ? (prediction.raceName || 'prova') : 'VDOT';
+  const unit = prediction ? (prediction.raceName || 'prova') : 'forma atual';
   const valueColor = prediction ? 'var(--race)' : 'var(--run)';
 
   const vdotDelta = compare && compare.previousLabel ? Number(compare.current) - Number(compare.previous) : null;
@@ -140,7 +140,8 @@ export default function RacePredictionChart({ vdotTrend = [], prediction, compar
      âmbar no gráfico — a previsão é o número grande, não uma linha. Sai da legenda; a linha é só o
      VDOT, e diz-se que o valor é o do último treino de qualidade. O eixo x passa a ter as datas do
      primeiro e do último ponto (antes os cantos eram o mínimo e o máximo do VDOT). */
-  const legend = [{ label: `VDOT${lastVdot !== null ? ` · último ${fmtNumber(lastVdot, 1)}` : ''}`, color: RUN, shape: 'line' }];
+  // Sem a sigla à vista (v1 lite, pedido do Rui): «forma atual», a previsão pelo treino.
+  const legend = [{ label: `Forma atual${lastVdot !== null ? ` · último ${fmtNumber(lastVdot, 1)}` : ''}`, color: RUN, shape: 'line' }];
   const dateAxis = hasTrend ? (() => {
     const first = deduped[0].date;
     const last = deduped[deduped.length - 1].date;
@@ -152,23 +153,23 @@ export default function RacePredictionChart({ vdotTrend = [], prediction, compar
     <ChartFrame
       ready={ready}
       className={className}
-      label={prediction ? 'Previsão de prova' : 'Evolução do VDOT'}
-      info={<MetricInfo text="O VDOT é uma aproximação do teu VO2max. Quanto mais alto o valor, maior a tua aptidão aeróbica e mais rápidos serão os teus tempos em provas." />}
+      label={prediction ? 'Previsão de prova' : 'A tua forma, pelo treino'}
+      info={<MetricInfo text="A forma atual é uma estimativa da tua capacidade aeróbica, calculada pelos teus treinos de qualidade. Quanto mais alta, mais rápidos os tempos que podes fazer em prova." />}
       value={value}
       unit={unit}
       valueColor={valueColor}
       delta={vdotDelta !== null && Math.abs(vdotDelta) >= 0.1
-        ? { text: `VDOT médio${compare.currentWhere ? ` ${compare.currentWhere}` : ''} ${vdotDelta > 0 ? '▲' : '▼'} ${fmtNumber(Math.abs(vdotDelta), 1)} face a ${compare.previousLabel}`, tone: vdotDelta >= 0 ? 'ok' : 'warn' }
+        ? { text: `Forma média${compare.currentWhere ? ` ${compare.currentWhere}` : ''} ${vdotDelta > 0 ? '▲' : '▼'} ${fmtNumber(Math.abs(vdotDelta), 1)} face a ${compare.previousLabel}`, tone: vdotDelta >= 0 ? 'ok' : 'warn' }
         : undefined}
       hint="de sempre"
       legend={hasTrend ? legend : []}
       axis={dateAxis}
       explain={hasTrend ? {
-        title: prediction ? 'Previsão de prova' : 'Evolução do VDOT',
+        title: prediction ? 'Previsão de prova' : 'A tua forma, pelo treino',
         period: dateAxis ? `de sempre, ${dateAxis.min} – ${dateAxis.max}` : 'de sempre',
         series: [{ label: 'VDOT', values: vdots, decimals: 1 }],
         note: prediction
-          ? `A previsão para ${prediction.raceName || 'a prova'} é ${formatTime(prediction.predictedSeconds)}${base ? ` (${base})` : ''} — vem do melhor ritmo, não da linha do VDOT.`
+          ? `A previsão para ${prediction.raceName || 'a prova'} é ${formatTime(prediction.predictedSeconds)}${base ? ` (${base})` : ''} — vem do melhor ritmo, não da linha da forma.`
           : null,
       } : undefined}
       height={hasTrend ? 200 : 0}
@@ -179,7 +180,7 @@ export default function RacePredictionChart({ vdotTrend = [], prediction, compar
               treinos de qualidade. Sem isto, «VDOT 28» ao lado de «1:49:48» parecia incoerente. */}
           {prediction && hasTrend && (
             <p data-testid="race-prediction-fonte" style={{ margin: base ? '4px 0 0' : 0 }}>
-              A previsão vem do teu melhor ritmo, não da linha do VDOT — essa mostra os treinos de qualidade.
+              A previsão vem do teu melhor ritmo, não da linha da forma — essa mostra os treinos de qualidade.
             </p>
           )}
           {lowConfidence && (
@@ -192,7 +193,7 @@ export default function RacePredictionChart({ vdotTrend = [], prediction, compar
               {/* R8 (2026-10-05): os dois textos estavam trocados (sem previsão falava da
                   "previsão desta prova", com previsão de "evolução"). Os dois dizem o critério
                   real do VDOT (vdotTrend.ts): treino de qualidade com 3 km ou mais. */}
-              Preciso de 2 treinos de qualidade (competição, tempo, intervalos ou esforço 7 ou mais, com 3 km ou mais) para desenhar {prediction ? 'a evolução do VDOT' : 'o VDOT'}.
+              Preciso de 2 treinos de qualidade (competição, tempo, intervalos ou esforço 7 ou mais, com 3 km ou mais) para desenhar {prediction ? 'a evolução da tua forma' : 'a tua forma'}.
             </p>
           )}
           {compareNote && (
