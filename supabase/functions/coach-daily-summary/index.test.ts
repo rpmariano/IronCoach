@@ -653,6 +653,6 @@ Deno.test("v1 lite: com a água desligada, o resumo não leva a meta nem o regis
 Deno.test("v1 lite: a Taça (o bloco) e a vitrina só com os interruptores; o aviso da água também", async () => {
   const src = await Deno.readTextFile(new URL("./index.ts", import.meta.url));
   assertStringIncludes(src, 'const seriesPromise = flags.cup ? fetchSeriesBlock(sb, userId, today, { channel: "daily" }) : Promise.resolve(null);');
-  assertStringIncludes(src, "fetchSharedMemoryBlock(sb, userId, { portrait: true, todayISO: today, vitrina: flags.badges })");
+  assertStringIncludes(src, "fetchSharedMemoryBlock(sb, userId, { portrait: true, todayISO: today, ...memoryFlagOpts(flags) })");
   assertStringIncludes(src, "flags.water && profile?.water_reminder_enabled ? (profile?.water_goal_ml ?? null) : null,");
 });

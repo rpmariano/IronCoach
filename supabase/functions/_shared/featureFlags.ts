@@ -13,10 +13,16 @@
 // o estado do lançamento —, nunca «tudo ligado».
 
 import { createClient } from "jsr:@supabase/supabase-js@2";
-import { FEATURE_FLAG_DEFAULTS, type FeatureFlags, mergeFeatureFlags } from "./formulas/featureFlags.ts";
+import { FEATURE_FLAG_DEFAULTS, type FeatureFlags, featureOffNote, mergeFeatureFlags } from "./formulas/featureFlags.ts";
 
-export { FEATURE_FLAG_DEFAULTS, FEATURE_FLAG_KEYS, mergeFeatureFlags, proactiveTriggerAllowed, proactiveTriggerFlag } from "./formulas/featureFlags.ts";
+export { FEATURE_FLAG_DEFAULTS, FEATURE_FLAG_KEYS, featureOffNote, mergeFeatureFlags, proactiveTriggerAllowed, proactiveTriggerFlag } from "./formulas/featureFlags.ts";
 export type { FeatureFlag, FeatureFlags } from "./formulas/featureFlags.ts";
+
+/** O que o bloco partilhado da memória (fetchSharedMemoryBlock) leva dos
+ *  interruptores: a vitrina só com os badges, e a nota das áreas desligadas. */
+export function memoryFlagOpts(flags: FeatureFlags): { vitrina: boolean; offNote: string | null } {
+  return { vitrina: flags.badges, offNote: featureOffNote(flags) };
+}
 
 /** Quanto tempo uma instância confia no que leu. */
 export const FEATURE_FLAGS_CACHE_MS = 60_000;

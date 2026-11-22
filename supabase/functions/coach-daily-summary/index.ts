@@ -35,7 +35,7 @@ import { selectRaces } from "../_shared/formulas/mainRace.ts";
 import { recentExecutionLines } from "../_shared/formulas/planExecution.ts";
 import { fetchTrainingWeatherBlock } from "../_shared/trainingWeatherFetch.ts";
 import { fetchSeriesBlock, seriesPromptSection, seriesRacePhaseText } from "../_shared/seriesBlock.ts";
-import { getFeatureFlags } from "../_shared/featureFlags.ts";
+import { getFeatureFlags, memoryFlagOpts } from "../_shared/featureFlags.ts";
 import { type GeminiUsage, usageFromGemini } from "../_shared/geminiUsage.ts";
 import { withUsageRecording } from "../_shared/usageRecorder.ts";
 import { attemptTimeoutMs, geminiHeaders, geminiUrl, geminiWithFallback, thinkingConfig } from "../_shared/geminiModel.ts";
@@ -1065,7 +1065,7 @@ Deno.serve(withUsageRecording("coach-daily-summary", async (req) => {
     // o retrato da época (5.3): o cartão via só 30 dias de tendência.
     // v1 lite (2026-11-22): o que está desligado não entra no resumo.
     const flags = await getFeatureFlags();
-    const memoryPromise = fetchSharedMemoryBlock(sb, userId, { portrait: true, todayISO: today, vitrina: flags.badges });
+    const memoryPromise = fetchSharedMemoryBlock(sb, userId, { portrait: true, todayISO: today, ...memoryFlagOpts(flags) });
     // O bloco da competição por jornadas (specs/trofeu.md §5, Fase 2): uma
     // leitura e null para quem não está inscrito. Nunca rejeita.
     const seriesPromise = flags.cup ? fetchSeriesBlock(sb, userId, today, { channel: "daily" }) : Promise.resolve(null);

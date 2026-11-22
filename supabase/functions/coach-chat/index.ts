@@ -71,7 +71,7 @@ import { formatPaceMinKm as sharedFormatPaceMinKm, formatPaceFromDistance } from
 import { buildRacePacingPlan, compareSplitsToPlan, AMBITIOUS_RATIO, type RacePacingPlan, type SplitInput, type SplitComparison } from "../_shared/formulas/racePacing.ts";
 import { type CourseProfile, courseProfilePromptText, courseRouteSegments, sanitizeCourseProfile } from "../_shared/formulas/courseProfile.ts";
 import { checkRaceTime } from "../_shared/formulas/raceTimeSanity.ts";
-import { type FeatureFlags, getFeatureFlags, proactiveTriggerAllowed } from "../_shared/featureFlags.ts";
+import { type FeatureFlags, featureOffNote, getFeatureFlags, proactiveTriggerAllowed } from "../_shared/featureFlags.ts";
 import { raceBalanceFingerprint } from "../_shared/formulas/raceBalanceFingerprint.ts";
 import { computeRaceEve, hhmm as sharedHhmm } from "../_shared/formulas/raceEve.ts";
 import { buildCupMapTurn, dayMonth, DECISION_TEXT, fetchSeriesBlock, isCupSchemaMissing, SEASON_GOAL_TEXT, seriesRacePhaseText, type SeriesBlock } from "../_shared/seriesBlock.ts";
@@ -1711,14 +1711,23 @@ export function raceAfterStampOf(payload: unknown): RaceAfterStamp | null {
   };
 }
 
+/** A impressão digital do balanço no servidor: a da prova (raceBalanceFingerprint,
+ *  a mesma da app) mais os interruptores que mudam o que ele diz — as conquistas
+ *  (badges) e a jornada (cup). Mudar um deles refaz o balanço uma vez (revisão
+ *  pré-deploy da v1 lite). Sem `flags`, só a da prova. */
+export function raceAfterFingerprint(o: RaceOutcome, flags?: FeatureFlags): string | null {
+  const fp = raceBalanceFingerprint(o);
+  return fp && flags ? `${fp}|b${flags.badges ? 1 : 0}c${flags.cup ? 1 : 0}` : fp;
+}
+
 /** O que fazer com um race_after com balanço: `log` é a linha da chave (ou
  *  null se ainda não houve). Sem impressão digital (linhas de antes desta
  *  regra) não se sabe com que dados foi feito: conta como a mesma — e o
  *  balanço guardado, se o houver, devolve-se e passa a ter carimbo. */
-export function raceAfterDecision(o: RaceOutcome, log: { payload: unknown } | null, force: boolean): RaceAfterDecision {
+export function raceAfterDecision(o: RaceOutcome, log: { payload: unknown } | null, force: boolean, flags?: FeatureFlags): RaceAfterDecision {
   if (!log) return "generate";
   const stamp = raceAfterStampOf(log.payload);
-  if (stamp?.fingerprint && stamp.fingerprint !== raceBalanceFingerprint(o)) return "redo";
+  if (stamp?.fingerprint && stamp.fingerprint !== raceAfterFingerprint(o, flags)) return "redo";
   return force ? "replay" : "skip";
 }
 
@@ -6008,6 +6017,38 @@ export function withoutOffAchievements(o: RaceOutcome | null, flags: FeatureFlag
   return o && !flags.badges ? { ...o, achievements_new: [] } : o;
 }
 
+/** A regra 1 das metas, com e sem a água (v1 lite). */
+export const GOALS_RULE_WITH_WATER = "calorias, proteína, hidratos, gordura, água ou peso-alvo";
+export const GOALS_RULE_WITHOUT_WATER = "calorias, proteína, hidratos, gordura ou peso-alvo";
+
+/** O que o update_goals devolve a um pedido só de água com a água desligada. */
+export const WATER_GOAL_OFF_RESULT =
+  "A meta de água não está disponível na app neste momento: não há nada a propor. Se ele a pediu, diz-lho numa frase, com naturalidade.";
+
+/** O pedido só mexia na água (nenhuma outra meta)? */
+// deno-lint-ignore no-explicit-any
+export function onlyWaterGoal(args: any): boolean {
+  if (!args || typeof args !== "object" || args.water_goal_ml == null) return false;
+  return !Object.keys(GOAL_LIMITS).some((k) => k !== "water_goal_ml" && args[k] != null);
+}
+
+/** As ferramentas com o update_goals sem a água (a descrição e o parâmetro). */
+// deno-lint-ignore no-explicit-any
+export function withoutWaterGoalTool<T extends { functionDeclarations: any[] }>(tools: T[]): T[] {
+  return tools.map((t) => ({
+    ...t,
+    functionDeclarations: t.functionDeclarations.map((d) => {
+      if (d?.name !== "update_goals") return d;
+      const { water_goal_ml: _w, ...props } = d.parameters?.properties ?? {};
+      return {
+        ...d,
+        description: String(d.description ?? "").replace("(macronutrientes, água, corpo)", "(macronutrientes, corpo)"),
+        parameters: { ...d.parameters, properties: props },
+      };
+    }),
+  }));
+}
+
 /** As metas sem a da água (com a água desligada, a Carol não a propõe). */
 // deno-lint-ignore no-explicit-any
 export function withoutWaterGoal(args: any): Record<string, unknown> {
@@ -8135,7 +8176,7 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
     let raceAfterSkip = false;
     if (proactiveTrigger === "race_after" && proactiveKey && raceOutcomeHasBalance(raceOutcome)) {
       const log = await readProactiveLog(sb, userId, proactiveKey);
-      const decision = raceAfterDecision(raceOutcome, log, raceAfterForce);
+      const decision = raceAfterDecision(raceOutcome, log, raceAfterForce, flags);
       if (decision === "replay") {
         const stamp = raceAfterStampOf(log?.payload);
         const replay = await replayRaceBalance(sb, userId, raceOutcome.race_id, stamp);
@@ -8143,7 +8184,7 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
           // Uma linha de antes da impressão digital fica com ela a partir daqui.
           if (!stamp?.fingerprint) {
             await recordProactiveDelivered(sb, userId, "race_after", proactiveKey,
-              { fingerprint: raceBalanceFingerprint(raceOutcome), message_id: stamp?.message_id ?? null, note: stamp?.note ?? null }, { replace: true });
+              { fingerprint: raceAfterFingerprint(raceOutcome, flags), message_id: stamp?.message_id ?? null, note: stamp?.note ?? null }, { replace: true });
           }
           return jsonResponse(replay);
         }
@@ -9521,12 +9562,14 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
     const seriesToolsOn = seriesBlock?.active === true;
     // O caso, só leitura, o Troféu (fora dos turnos de plano), a Despensa, o
     // propose_training_plan (só com a doutrina de plano) e o teto de 10.
-    const toolsBlock = chatToolsFor(allowedTools, {
+    const toolsBlockAll = chatToolsFor(allowedTools, {
       seriesOn: seriesToolsOn,
       photos: chatImages.length > 0,
       planDoctrine,
       proactive: !!proactiveTrigger,
     });
+    // v1 lite: com a água desligada, o update_goals não a oferece.
+    const toolsBlock = flags.water ? toolsBlockAll : withoutWaterGoalTool(toolsBlockAll);
     // Num turno de plano com inscrição, o Troféu ficou de fora: ela diz que grava a seguir.
     if (planDoctrine && seriesToolsOn) finalSystemInstruction += "\n\n" + SERIES_DEFERRED_NOTE;
     const toolNamesSent = toolsBlock[0].functionDeclarations.map((t: { name: string }) => t.name);
@@ -9535,6 +9578,12 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
       if (chatImages.length > 0) finalSystemInstruction += "\n\n" + NO_NOTES_PHOTO_NOTE;
       else if (proactiveTrigger) finalSystemInstruction += "\n\n" + NO_NOTES_PROACTIVE_NOTE;
     }
+    // v1 lite (revisão pré-deploy): o histórico vai ao modelo sem filtro e pode
+    // falar das áreas desligadas — ela não fala delas.
+    const offNote = featureOffNote(flags);
+    if (offNote) finalSystemInstruction += "\n\n" + offNote;
+    // E a regra das metas deixa de falar de água (revisão pré-deploy da v1 lite).
+    if (!flags.water) finalSystemInstruction = finalSystemInstruction.replace(GOALS_RULE_WITH_WATER, GOALS_RULE_WITHOUT_WATER);
     const toolsBytes = JSON.stringify(toolsBlock).length;
 
     // ── Loop de function calling ──────────────────────────────────────────
@@ -9908,7 +9957,10 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
           if (!toolNamesSent.includes("update_goals")) {
             result = unknownFunctionResult(name);
           } else {
-            result = await runUpdateGoals(sb, userId, flags.water ? (args || {}) : withoutWaterGoal(args));
+            // Um pedido só de água com a água desligada: uma resposta natural, não «nenhum campo».
+            result = !flags.water && onlyWaterGoal(args)
+              ? WATER_GOAL_OFF_RESULT
+              : await runUpdateGoals(sb, userId, flags.water ? (args || {}) : withoutWaterGoal(args));
             goalsWereUpdated = goalsWereUpdated || result.startsWith("Metas atualizadas");
             goalWasProposed = goalWasProposed || result.startsWith("Proposta de altera");
           }
@@ -10119,7 +10171,7 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
     // registada, para nenhum outro dispositivo a repetir.
     if (proactiveTrigger === "race_after" && proactiveKey && raceOutcomeHasBalance(raceOutcome)) {
       // O carimbo: com que dados, que mensagem e que nota (raceAfterDecision).
-      const stamp: RaceAfterStamp = { fingerprint: raceBalanceFingerprint(raceOutcome), message_id: modelMsg?.id ?? null, note: raceAfterNote };
+      const stamp: RaceAfterStamp = { fingerprint: raceAfterFingerprint(raceOutcome, flags), message_id: modelMsg?.id ?? null, note: raceAfterNote };
       await recordProactiveDelivered(sb, userId, proactiveTrigger, proactiveKey, stamp, { replace: true });
     } else if (proactiveTrigger && proactiveKey) await recordProactiveDelivered(sb, userId, proactiveTrigger, proactiveKey);
     if (targetsReviewLogKey && !modelMsgErr) await recordProactiveDelivered(sb, userId, "targets_review", targetsReviewLogKey, targetsReviewPayload);

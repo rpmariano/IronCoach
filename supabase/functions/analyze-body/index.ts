@@ -27,7 +27,7 @@ import {
   type GoalsReview,
 } from "./goalsReview.ts";
 import { fetchSharedMemoryBlock, memoryPromptSection } from "../_shared/carolMemory.ts";
-import { getFeatureFlags } from "../_shared/featureFlags.ts";
+import { getFeatureFlags, memoryFlagOpts } from "../_shared/featureFlags.ts";
 import { normalizarFonte, opcoesDeFonte } from "../_shared/sourceApps.ts";
 import {
   buildPreviewPrompt,
@@ -707,8 +707,8 @@ Deno.serve(withUsageRecording("analyze-body", async (req) => {
     // A memória durável e a conversa recente do chat (Fase 1, ação 1.3), em
     // paralelo com o resto: todos os caminhos abaixo acabam num resumo.
     // Nunca rejeita, por isso pode ficar por esperar num caminho de erro.
-    // v1 lite (2026-11-22): sem a vitrina (badges, percentil, tabelas) com os badges desligados.
-    const memoryPromise = fetchSharedMemoryBlock(sb, userId, { vitrina: (await getFeatureFlags()).badges });
+    // v1 lite (2026-11-22): sem a vitrina com os badges desligados, e a nota das áreas desligadas.
+    const memoryPromise = fetchSharedMemoryBlock(sb, userId, memoryFlagOpts(await getFeatureFlags()));
     const goalsCtxPromise = fetchGoalsContext(sb, userId);
 
     const body = await req.json();

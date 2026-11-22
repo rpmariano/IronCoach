@@ -34,7 +34,7 @@ import {
 } from "../_shared/carolTone.ts";
 import { fetchSharedMemoryBlock, lisbonTodayISO, memoryPromptSection } from "../_shared/carolMemory.ts";
 import { fetchSeriesBlock, seriesPromptSection } from "../_shared/seriesBlock.ts";
-import { getFeatureFlags } from "../_shared/featureFlags.ts";
+import { getFeatureFlags, memoryFlagOpts } from "../_shared/featureFlags.ts";
 import { addUsage, type GeminiUsage, usageFromGemini } from "../_shared/geminiUsage.ts";
 import { computeBestPace, type BestPaceBucket, withProjectedSplits } from "../_shared/formulas/bestPace.ts";
 import { runRecordMoment } from "../_shared/formulas/runRecord.ts";
@@ -979,8 +979,8 @@ async function attachCoachNotes(
     // o retrato da época (5.3), na data da PRÓPRIA corrida (ctx.date) — uma
     // corrida registada com atraso não pode ver meses que ainda não tinham
     // acontecido nessa altura.
-    // v1 lite (2026-11-22): sem a vitrina (badges, percentil, tabelas) com os badges desligados.
-    const memoryPromise = fetchSharedMemoryBlock(sb, userId, { portrait: true, todayISO: ctx.date, vitrina: (await getFeatureFlags()).badges });
+    // v1 lite (2026-11-22): sem a vitrina com os badges desligados, e a nota das áreas desligadas.
+    const memoryPromise = fetchSharedMemoryBlock(sb, userId, { portrait: true, todayISO: ctx.date, ...memoryFlagOpts(await getFeatureFlags()) });
     // O bloco da competição por jornadas (Fase 2 do Troféu): uma leitura e
     // null para quem não está inscrito. Nunca rejeita. A data da corrida
     // serve para reconhecer a jornada dela; a inscrição (ativa, ou saiu há
