@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Info } from 'lucide-react';
 import { describeDelta } from '../../utils/raceTimes';
+import { formatDelta } from '../../utils/raceOutcome';
 
 /* "Objetivo e previsão" — o bloco do hub antes da prova.
 
@@ -31,8 +32,56 @@ function Coluna({ label, line, cor }) {
   );
 }
 
-export default function RaceForecastCard({ forecast, raceType, elevationGainM }) {
+/* A versão de uma linha, para o hub reorganizado (2026-11-22): «Objetivo 1:45:00 · o treino aponta
+   1:52:40 (7:40 mais lento)». A frase da leitura (`showLine`) só onde o hub a quer — longe da prova;
+   na última semana é a do Plano para o dia. Sem objetivo, um link curto para o marcar
+   (`onSetTarget`, os Detalhes), em vez do parágrafo. */
+function ForecastLine({ forecast, showLine, onSetTarget }) {
+  const target = forecast?.target || null;
+  const predicted = forecast?.predicted || null;
+  if (!target && !predicted && !onSetTarget) return null;
+  /* A diferença em número curto («+6:48»: o treino aponta mais lento do que o objetivo): a leitura
+     por extenso é a frase de baixo (ou a do Plano) — dita uma vez só. */
+  const delta = target && predicted
+    ? (forecast.deltaSeconds === 0 ? '=' : `${forecast.deltaSeconds < 0 ? '+' : '−'}${formatDelta(Math.abs(forecast.deltaSeconds))}`)
+    : null;
+  return (
+    <div data-testid="race-forecast" data-stance={forecast?.stance || 'sem-objetivo'} className="mt-2">
+      <p className="text-[13px] leading-[1.5] text-[var(--text-2)] m-0">
+        {target && <>Objetivo <strong className="text-[var(--race)]">{target.timeLabel}</strong>{target.paceLabel && <span className="text-[var(--text-3)]"> ({target.paceLabel})</span>}</>}
+        {target && predicted && ' · '}
+        {predicted && <>o treino aponta <strong className="text-[var(--run)]">{predicted.timeLabel}</strong>{predicted.paceLabel && <span className="text-[var(--text-3)]"> ({predicted.paceLabel})</span>}</>}
+        {delta && (
+          <> <span data-testid="race-forecast-delta" className="font-extrabold" title={forecast.deltaSeconds === 0 ? 'Exatamente o mesmo tempo' : `${describeDelta(-forecast.deltaSeconds)} do que o objetivo`} style={{ color: STANCE_TOM[forecast.stance] || 'var(--text-2)' }}>({delta})</span></>
+        )}
+      </p>
+      {!target && onSetTarget && (
+        <button
+          type="button"
+          data-testid="race-forecast-set-target"
+          onClick={onSetTarget}
+          className="text-[12.5px] font-bold underline"
+          style={{ minHeight: 'var(--tap)', color: 'var(--race)', background: 'none', border: 'none', padding: 0 }}
+        >
+          Marcar o objetivo de tempo
+        </button>
+      )}
+      {/* A leitura: com os dois, onde o hub a quer; só com o objetivo, o que falta para a previsão. */}
+      {((showLine && target && predicted) || (target && !predicted)) && forecast.line && (
+        <p data-testid="race-forecast-line" className="text-[12px] leading-[1.45] mt-1 m-0" style={{ color: 'var(--text-3)' }}>{forecast.line}</p>
+      )}
+      {showLine && forecast?.lowConfidence && (
+        <p data-testid="race-forecast-confianca" className="text-[11px] leading-[1.4] mt-1 mb-0" style={{ color: 'var(--text-4)' }}>
+          A corrida que sustenta esta previsão é bem mais curta do que a prova, por isso é uma extrapolação. Regista uma mais longa e o número aperta.
+        </p>
+      )}
+    </div>
+  );
+}
+
+export default function RaceForecastCard({ forecast, raceType, elevationGainM, compact = false, showLine = true, onSetTarget = null }) {
   const [showHelp, setShowHelp] = useState(false);
+  if (compact) return <ForecastLine forecast={forecast} showLine={showLine} onSetTarget={onSetTarget} />;
   /* Basta haver UM dos dois. Exigir a previsão apagava o bloco inteiro a
      quem ainda não tem corridas registadas — uma conta acabada de criar,
      que é quem mais precisa de ver o alvo que marcou. */

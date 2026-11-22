@@ -1180,33 +1180,23 @@ export default function RunAgenda({ onClose }) {
                 }}
               />
 
-              <div className="flex items-center gap-2 pt-2 pb-6">
-                {editingEventId && (
-                  <Button
-                    variant="light-danger"
+              {/* O hub reorganizado (2026-11-22): sai o «Editar Detalhes» duplicado (os Detalhes ficam
+                  no separador) e o «Eliminar prova» passa a ação discreta — nos Detalhes, ou aqui numa
+                  prova concluída, que não tem essa página. */}
+              {editingEventId && detailsLocked && (
+                <div className="flex justify-center pt-2 pb-6">
+                  <button
+                    type="button"
+                    data-testid="race-remove-button"
                     onClick={() => setShowDeleteConfirm(true)}
                     disabled={isSubmitting}
-                    className="flex-1 text-xs"
-                    icon={<Trash2 size={14} />}
-                    data-testid="race-remove-button"
+                    className="inline-flex items-center gap-1.5 text-[12.5px] font-bold disabled:opacity-50"
+                    style={{ minHeight: 'var(--tap)', color: 'var(--danger)', background: 'none', border: 'none', padding: '0 4px' }}
                   >
-                    Eliminar prova
-                  </Button>
-                )}
-                {!detailsLocked && (
-                <Button
-                  variant="light"
-                  onClick={() => {
-                    setActivePage('details');
-                    scrollTo(1);
-                  }}
-                  className="flex-1 text-xs"
-                  icon={<Sliders size={14} />}
-                >
-                  Editar Detalhes
-                </Button>
-                )}
-              </div>
+                    <Trash2 size={13} /> Eliminar prova
+                  </button>
+                </div>
+              )}
             </div>
 
             {/* ─── PÁGINA 2: DETALHES DA PROVA (não existe com a prova concluída) ──
@@ -1510,27 +1500,29 @@ export default function RunAgenda({ onClose }) {
 
               {/* Menos uma coluna do que antes: "Guardar prova" subiu para a
                   ActionBar fixa, aqui só ficam as ações secundárias. */}
-              <div className={`grid gap-2 pt-1 pb-6 ${editingEventId ? 'grid-cols-2' : 'grid-cols-1'}`}>
-                {editingEventId && (
-                  <Button
-                    variant="light-danger"
-                    onClick={() => setShowDeleteConfirm(true)}
-                    disabled={isSubmitting}
-                    type="button"
-                    className="text-xs"
-                    icon={<Trash2 size={14} />}
-                  >
-                    Eliminar prova
-                  </Button>
-                )}
+              <div className="pt-1 pb-6 space-y-1">
                 <Button
                   variant="light"
                   onClick={attemptCloseForm}
                   type="button"
-                  className="text-xs"
+                  className="w-full text-xs"
                 >
                   Cancelar
                 </Button>
+                {editingEventId && (
+                  <div className="flex justify-center">
+                  <button
+                    type="button"
+                    data-testid="race-remove-button"
+                    onClick={() => setShowDeleteConfirm(true)}
+                    disabled={isSubmitting}
+                    className="inline-flex items-center gap-1.5 text-[12.5px] font-bold disabled:opacity-50"
+                    style={{ minHeight: 'var(--tap)', color: 'var(--danger)', background: 'none', border: 'none', padding: '0 4px' }}
+                  >
+                    <Trash2 size={13} /> Eliminar prova
+                  </button>
+                  </div>
+                )}
               </div>
             </DetailsFrame>
             </div>

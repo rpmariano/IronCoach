@@ -54,6 +54,15 @@ function renderAgenda() {
   );
 }
 
+/* O site oficial está recolhido no hub reorganizado (2026-11-22): abre-se antes de procurar o
+   «Obter informação». */
+function obterInfo() {
+  const site = screen.getByTestId('race-hub-site');
+  const toggle = site.querySelector(':scope > button');
+  if (toggle.getAttribute('aria-expanded') !== 'true') fireEvent.click(toggle);
+  return screen.getByRole('button', { name: /Obter informação/i });
+}
+
 describe('RunAgenda — "Obter informação do site" & Dual-Page', () => {
   beforeEach(() => {
     invokeEdgeFunctionWithTimeout.mockReset();
@@ -92,7 +101,7 @@ describe('RunAgenda — "Obter informação do site" & Dual-Page', () => {
     
     // Volta a Treino e Evolução
     fireEvent.click(screen.getByRole('button', { name: /^Treino e Evolução$/i }));
-    expect(screen.getByRole('button', { name: /Obter informação/i })).toBeInTheDocument();
+    expect(obterInfo()).toBeInTheDocument();
   });
 
   it('prova nova: pede em modo rascunho (sem race_event_id) e guarda só no rascunho, sem persistir', async () => {
@@ -119,7 +128,7 @@ describe('RunAgenda — "Obter informação do site" & Dual-Page', () => {
     fireEvent.change(screen.getByPlaceholderText('https://...'), { target: { value: 'https://novaprova.pt' } });
     
     fireEvent.click(screen.getByRole('button', { name: /^Treino e Evolução$/i }));
-    fireEvent.click(screen.getByRole('button', { name: /Obter informação/i }));
+    fireEvent.click(obterInfo());
 
     expect(invokeEdgeFunctionWithTimeout).toHaveBeenCalledWith(
       'enrich-race-event',
@@ -157,7 +166,7 @@ describe('RunAgenda — "Obter informação do site" & Dual-Page', () => {
     useAppStore.setState({ editingRaceId: 'race-1' });
     renderAgenda();
 
-    fireEvent.click(screen.getByRole('button', { name: /Obter informação/i }));
+    fireEvent.click(obterInfo());
 
     expect(invokeEdgeFunctionWithTimeout).toHaveBeenCalledWith(
       'enrich-race-event',
@@ -248,8 +257,8 @@ describe('RunAgenda — "Obter informação do site" & Dual-Page', () => {
       renderAgenda();
 
       // Aba inicial ao editar já é "Treino e Evolução" (o Hub embutido).
-      const baseCard = screen.getByText('Base Aeróbica').closest('.rh-phase-card');
-      expect(within(baseCard).getByText('Não Realizada')).toBeInTheDocument();
+      const baseCard = screen.getByTestId('race-hub-phase-base');
+      expect(within(baseCard).getByText('Não realizada')).toBeInTheDocument();
       expect(within(baseCard).queryByText('Concluída')).not.toBeInTheDocument();
       // Semana 5 (não 1): `currentWeek` conta pelo calendário ideal do
       // macrociclo (mesmo eixo das fases), não pelos dias decorridos desde
@@ -258,7 +267,7 @@ describe('RunAgenda — "Obter informação do site" & Dual-Page', () => {
       // semanas) hoje é o 1.º dia do Taper, que começa na semana 5 de 6; o
       // valor antigo ("Sem. 1 de 6") contradizia a própria fase ativa
       // (Polimento/Taper, mostrada ao lado) em vez de bater certo com ela.
-      expect(screen.getByText(/Sem\. 5 de 6/)).toBeInTheDocument();
+      expect(screen.getByTestId('race-hub-phase')).toHaveTextContent('semana 5 de 6');
     } finally {
       vi.useRealTimers();
     }
@@ -429,9 +438,9 @@ describe('RunAgenda — "Obter informação do site" & Dual-Page', () => {
     renderAgenda();
 
     // Começa em Treino e Evolução
-    expect(screen.getByText(/Contagem para a Prova/i)).toBeInTheDocument();
-    expect(screen.getByText(/Evolução & Prontidão/i)).toBeInTheDocument();
-    expect(screen.getByText(/Macrociclo de Treino/i)).toBeInTheDocument();
+    expect(screen.getByTestId('race-hub-countdown')).toBeInTheDocument();
+    expect(screen.getByText(/Evolução e prontidão/i)).toBeInTheDocument();
+    expect(screen.getByText(/Macrociclo/i)).toBeInTheDocument();
     // A fase aparece em mais do que um sítio no macrociclo (o rótulo da fase
     // atual e a linha dela na lista), por isso conta-se em vez de exigir uma
     // só — com a data da prova relativa a hoje, quantas vezes aparece depende
@@ -444,7 +453,7 @@ describe('RunAgenda — "Obter informação do site" & Dual-Page', () => {
 
     // Volta para Treino e Evolução
     fireEvent.click(screen.getByRole('button', { name: /^Treino e Evolução$/i }));
-    expect(screen.getByText(/Contagem para a Prova/i)).toBeInTheDocument();
+    expect(screen.getByTestId('race-hub-countdown')).toBeInTheDocument();
   });
 
   // Ver specs/nivel-por-prova.md, "Invalidação do nível declarado" — tipo,
@@ -847,7 +856,7 @@ describe('RunAgenda — escrita local no store não apaga o rascunho', () => {
     expect(botaoGuardar()).toBeEnabled();
 
     irPara(/^Treino e Evolução$/i);
-    fireEvent.click(screen.getByRole('button', { name: /Obter informação/i }));
+    fireEvent.click(obterInfo());
 
     await waitFor(() => {
       expect(screen.getByText('Cartão de cidadão.')).toBeInTheDocument();

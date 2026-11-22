@@ -621,3 +621,52 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* ── O hub por momento (2026-11-22) ────────────────────────────────────────────────────────────
+   Secções planas, com a hierarquia na tipografia e no espaço — sem caixas dentro de caixas. */
+.rh-hub-header {
+  padding: 4px 2px 12px;
+}
+.rh-hub-meta {
+  margin: 6px 0 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--text-3);
+}
+.rh-hub-summary {
+  padding: 4px 2px 14px;
+}
+.rh-hub-countdown {
+  font-size: 28px;
+  font-weight: 900;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  color: var(--race);
+  font-variant-numeric: tabular-nums;
+}
+.rh-hub-day-line {
+  margin: 0 2px 14px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-2);
+}
+.rh-collapsible {
+  border-top: 1px solid var(--border-glass);
+  padding: 4px 2px;
+}
+.rh-collapsible-nested {
+  border-top: none;
+  padding: 0;
+  margin-bottom: 4px;
+}
+.rh-collapsible-body {
+  padding: 4px 0 12px;
+}
+.rh-phase-row {
+  border-top: 1px solid var(--border-faint);
+  padding: 2px 0;
+}
+.rh-phase-row.active-phase .rh-phase-num-badge {
+  background: var(--race);
+  color: var(--race-ink);
+}
