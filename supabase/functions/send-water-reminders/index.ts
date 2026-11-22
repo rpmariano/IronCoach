@@ -13,6 +13,7 @@
 // evitando lembretes em cascata caso o envio falhe silenciosamente.
 
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import { getFeatureFlags } from "../_shared/featureFlags.ts";
 import webpush from "npm:web-push@3";
 import { raceDayWaterPhase, waterReminderMessage, type RaceForWater } from "./message.ts";
 import { carolQuietSince, usersQuietAfterCarol } from "./afterCarol.ts";
@@ -91,6 +92,12 @@ async function handler(req: Request): Promise<Response> {
     Deno.env.get("SUPABASE_URL")!,
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
   );
+
+  // v1 lite (2026-11-22): com a água desligada (app_feature_flags.water), não
+  // há lembretes. Numa falha a ler vale o defeito (desligada).
+  if (!(await getFeatureFlags({ db: sb })).water) {
+    return jsonResponse({ ok: true, skipped: "water_off", sent: 0 });
+  }
 
   try {
     const nowDate = new Date();

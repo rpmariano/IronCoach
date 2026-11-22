@@ -1,5 +1,5 @@
 import { assert, assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
-import { runSaveCoachNote, buildCoachNotesContext, classifyTurn, allowedToolsFor, buildTools, aggregateMealsByDate, runGetNutritionHistory, summariseSessions, formatSessionLine, bestLoadsLine, runGetGymHistory, runProposeTrainingPlan, runUpdateGoals, runSaveMealSuggestions, buildSystemInstruction, buildPlanContext, resolveCoachingMode, buildCoachingModeContext, computeACWR, computeGymMetrics, buildNutritionTargets, computeBodyMetrics, summariseRuns, firstNameOf, buildRaceEventsContext, computeMealHabits, buildSuggestionAdherencePanel, buildMealMacros, extractReplyText, buildProactiveInstruction, buildProactiveUserTurn, shouldSkipProactive, parseProactiveKey, wasProactiveDelivered, recordProactiveDelivered, PROACTIVE_TRIGGERS, PROACTIVE_QUIET_HOURS, parseRaceOutcome, buildRaceOutcomeContext, raceAfterInstruction, raceOutcomeNote, buildRacePlanContext, buildSplitsComparisonContext, buildRaceEveContext, hhmm, detectRaceFollowup, buildRaceFollowupContext, runUpdateRaceEvent, matchRaceByName, normalizeRaceName, buildRaceCaptionPrompt, computeMealTypicalTimes, buildGoalsInterventionInstruction, buildInterventionStartTurn, runResolveIntervention, closeInterventionOnTalk, readTalkedIntervention, buildTalkedInterventionInstruction, buildAdaptationInterventionInstruction, findAnsweredDuplicate, flatPaceLine, loadTopicLastMessage, DUPLICATE_WINDOW_MS, type RaceOutcome, type BodyAssessmentRow, type TurnCase } from "./index.ts";
+import { runSaveCoachNote, buildCoachNotesContext, classifyTurn, allowedToolsFor, buildTools, aggregateMealsByDate, runGetNutritionHistory, summariseSessions, formatSessionLine, bestLoadsLine, runGetGymHistory, runProposeTrainingPlan, runUpdateGoals, runSaveMealSuggestions, buildSystemInstruction, buildPlanContext, resolveCoachingMode, buildCoachingModeContext, computeACWR, computeGymMetrics, buildNutritionTargets, computeBodyMetrics, summariseRuns, firstNameOf, buildRaceEventsContext, computeMealHabits, buildSuggestionAdherencePanel, buildMealMacros, extractReplyText, buildProactiveInstruction, buildProactiveUserTurn, shouldSkipProactive, parseProactiveKey, wasProactiveDelivered, recordProactiveDelivered, PROACTIVE_TRIGGERS, PROACTIVE_QUIET_HOURS, parseRaceOutcome, buildRaceOutcomeContext, raceAfterInstruction, raceOutcomeNote, buildRacePlanContext, buildSplitsComparisonContext, buildRaceEveContext, hhmm, detectRaceFollowup, buildRaceFollowupContext, runUpdateRaceEvent, matchRaceByName, normalizeRaceName, buildRaceCaptionPrompt, computeMealTypicalTimes, buildGoalsInterventionInstruction, buildInterventionStartTurn, runResolveIntervention, closeInterventionOnTalk, readTalkedIntervention, buildTalkedInterventionInstruction, buildAdaptationInterventionInstruction, findAnsweredDuplicate, flatPaceLine, loadTopicLastMessage, proactiveTriggerOff, withoutOffAchievements, withoutWaterGoal, DUPLICATE_WINDOW_MS, type RaceOutcome, type BodyAssessmentRow, type TurnCase } from "./index.ts";
 import { buildAcwrLine, chatToolsFor, checkPlanLoad, loadPriorGym, loadProfileRequested, NO_NOTES_PHOTO_NOTE, NO_NOTES_PROACTIVE_NOTE } from "./index.ts";
 import { RESPONSE_SCHEMA, RESPONSE_SCHEMA_BASE, shouldRetryWithoutRecommendations, saveRecommendations } from "./index.ts";
 import { CHAT_OWN_FAILURE_TEXT, CHAT_SESSION_TEXT, CHAT_MESSAGE_NOT_SAVED_TEXT } from "./index.ts";
@@ -7039,4 +7039,33 @@ Deno.test("loadTopicLastMessage (revisão do #123): a mensagem do registo, se ai
   assertEquals(await loadTopicLastMessage(sb(msg), "u", { message_id: "m1" }), msg);
   assertEquals(await loadTopicLastMessage(sb(null), "u", { message_id: "m1" }), null);
   assertEquals(await loadTopicLastMessage(sb(msg), "u", null), null);
+});
+
+// ── v1 lite (2026-11-22): o que está desligado, a Carol não diz ──
+Deno.test("v1 lite: os proativos das áreas desligadas não disparam; a prova e a carga sempre", () => {
+  const launch = { cup: false, race_memories: false, badges: false, water: false, pantry_advanced: false, advanced_charts: false, tutorial: false, shoes: true, load_profile_choice: true };
+  const allOn = Object.fromEntries(Object.keys(launch).map((k) => [k, true])) as typeof launch;
+  assertEquals([proactiveTriggerOff("cup_results", launch), proactiveTriggerOff("leaderboard", launch), proactiveTriggerOff("percentile_ready", launch)], [true, true, true]);
+  assertEquals([proactiveTriggerOff("race_after", launch), proactiveTriggerOff("silence", launch), proactiveTriggerOff("week_review", launch)], [false, false, false]);
+  assertEquals([proactiveTriggerOff("cup_results", allOn), proactiveTriggerOff("leaderboard", allOn)], [false, false]);
+  // O balanço sem conquistas com os badges desligados; a meta da água fora das propostas.
+  const o = parseRaceOutcome({ verdict: "superado", official_seconds: 3000, achievements_new: ["objetivo_batido"] })!;
+  assertEquals(withoutOffAchievements(o, launch)!.achievements_new, []);
+  assertEquals(withoutOffAchievements(o, allOn)!.achievements_new, ["objetivo_batido"]);
+  assertEquals(withoutWaterGoal({ calorie_goal: 2200, water_goal_ml: 3000 }), { calorie_goal: 2200 });
+});
+
+Deno.test("v1 lite: as ligações no handler (Taça, vitrina, badges, sapatilhas, água, mural)", async () => {
+  const src = await Deno.readTextFile(new URL("./index.ts", import.meta.url));
+  assertStringIncludes(src, "const flags = await getFeatureFlags();");
+  assertStringIncludes(src, 'reason: "feature_off", proactive: proactiveTrigger');
+  assertStringIncludes(src, '!flags.cup || (proactiveTrigger && !bypassQuietHours) ? null : fetchSeriesBlock(sb, userId, todayISO, { channel: "chat" });');
+  assertStringIncludes(src, "const seriesBlock = flags.cup ? await (seriesPromise ??=");
+  assertStringIncludes(src, "badges: flags.badges ? memoryBlocks.badges : null,");
+  assertStringIncludes(src, "vitrina: flags.badges ? memoryBlocks.vitrina : null,");
+  assertStringIncludes(src, "const badgeQuestionContext = flags.badges ? buildBadgeQuestionContext(body.badgeContext) : null;");
+  assertStringIncludes(src, "const { data: shoeRows, error: err_shoeRows } = flags.shoes");
+  assertStringIncludes(src, "const waterSummary = flags.water ?");
+  assertStringIncludes(src, 'if (!flags.race_memories) return jsonResponse({ error: "O mural está desligado", reason: "feature_off" }, 403);');
+  assertStringIncludes(src, "flags.water ? (args || {}) : withoutWaterGoal(args)");
 });

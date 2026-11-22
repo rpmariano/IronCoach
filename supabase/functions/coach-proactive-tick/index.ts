@@ -31,6 +31,7 @@ import { choosePush, lisbonDateOf, tickLogRow, tickLogSignature } from "./decide
 import { recordUsage } from "../_shared/usageRecorder.ts";
 import { cupNoticeMessage, cupTickCandidates, tickTab, type TickCandidate } from "../_shared/formulas/cupNotices.ts";
 import { loadCupNoticeState } from "./cupNoticeState.ts";
+import { getFeatureFlags, proactiveTriggerAllowed } from "../_shared/featureFlags.ts";
 import { claimWithCupFallback } from "./claim.ts";
 import { currentPlanResume } from "../_shared/planResumeData.ts";
 import type { ChooseCtx } from "./decide.ts";
@@ -182,7 +183,10 @@ async function handler(req: Request): Promise<Response> {
   /* Os avisos do Troféu (specs/trofeu.md §8, Fase 5): em lote, só das edições
      com os avisos ligados e de quem ligou algum. Sem isso — hoje, toda a
      gente —, uma leitura (cup_editions) e tudo como era. Nunca rejeita. */
-  const cupState = await loadCupNoticeState(sb, [...byUser.keys()], now, today);
+  // v1 lite (2026-11-22): com a Taça desligada, nem os avisos dela se leem; os
+  // momentos das áreas desligadas não saem (proactiveTriggerAllowed).
+  const flags = await getFeatureFlags({ db: sb });
+  const cupState = flags.cup ? await loadCupNoticeState(sb, [...byUser.keys()], now, today) : null;
 
   for (const [userId, userSubs] of byUser) {
     try {
@@ -283,7 +287,8 @@ async function handler(req: Request): Promise<Response> {
         lastTrainingDate: lastTraining,
         lastCheckinDate: lastCheckin?.date ?? null,
         lastCheckinPain: lastCheckin?.pain ?? null,
-        lastWaterDate: lastWater?.date ?? null,
+        // v1 lite: com a água desligada, o silêncio não a menciona.
+        lastWaterDate: flags.water ? (lastWater?.date ?? null) : null,
         planItems,
         trainingDates: [
           ...(runs || []).map((r: { date?: string | null }) => r.date ?? null),
@@ -297,16 +302,20 @@ async function handler(req: Request): Promise<Response> {
         allowed: Array.isArray(prefsById.get(userId)?.types) ? prefsById.get(userId)!.types : null,
         weekRecordDates: weekDates,
         deliveredKeys: deliveredRaceAfter,
-        vitrina,
+        // v1 lite: a vitrina (tabelas, percentil) só com os badges ligados.
+        vitrina: flags.badges ? vitrina : null,
       }, today);
       // As regras do Troféu nunca calam os outros momentos (§8): um erro nelas
       // (ex.: uma linha anómala do catálogo) fica com a lista de sempre.
       let candidates: TickCandidate[] = baseCandidates;
-      try {
-        candidates = cupTickCandidates(baseCandidates, cupState.byUser.get(userId), now, today, { notices: !cupState.noticesOff });
-      } catch (e) {
-        console.warn("coach-proactive-tick: regras do Troféu falharam; fica a lista de sempre", e instanceof Error ? e.name : "erro");
+      if (cupState) {
+        try {
+          candidates = cupTickCandidates(baseCandidates, cupState.byUser.get(userId), now, today, { notices: !cupState.noticesOff });
+        } catch (e) {
+          console.warn("coach-proactive-tick: regras do Troféu falharam; fica a lista de sempre", e instanceof Error ? e.name : "erro");
+        }
       }
+      candidates = candidates.filter((c) => proactiveTriggerAllowed(c.trigger, flags));
 
       /* Um plano partido que ficou a meio (planResume.ts): o mesmo leitor que
          o coach-chat usa (_shared/planResumeData.ts), para os dois decidirem
@@ -382,7 +391,7 @@ async function handler(req: Request): Promise<Response> {
       // recusado pela BD (a M3 por aplicar) passa a vez ao momento seguinte.
       const claimed = await claimWithCupFallback(candidates, fullCtx!, candidate, (c) =>
         sb.from("coach_proactive_pushes").insert({ user_id: userId, key: c.key, trigger: c.trigger, sent_date: today }));
-      if (claimed.cupRefused) {
+      if (claimed.cupRefused && cupState) {
         if (!cupState.noticesOff) console.warn("coach-proactive-tick: avisos do Troféu recusados pela BD (M3?) — calados nesta execução");
         cupState.noticesOff = true;
         candidates = claimed.candidates;
