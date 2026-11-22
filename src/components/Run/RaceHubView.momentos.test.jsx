@@ -33,6 +33,7 @@ beforeEach(() => {
   useAppStore.setState({ session: { user: { id: 'u1' } }, profile: { id: 'u1' }, raceEvents: [], coachPlans: [], coachPlanItems: [], runs: [] });
 });
 
+const SIGLAS = /Z[1-5]\b|Z1\/Z2|polarizado|VDOT/;
 const ordem = (a, b) => !!(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
 
 describe('RaceHubView — um hub por momento', () => {
@@ -98,6 +99,67 @@ describe('RaceHubView — um hub por momento', () => {
     const feitas = screen.getByTestId('race-hub-phases-done');
     expect(within(feitas).getAllByRole('button')[0]).toHaveTextContent(/\d+ fases? concluídas?/);
     expect(document.body.textContent).not.toMatch(/Sem Registos · \d+%/);
-    expect(document.body.textContent).not.toMatch(/Z1\/Z2|polarizado|Z4\/Z5|Z3\/Z4/);
+    expect(document.body.textContent).not.toMatch(SIGLAS);
+  });
+
+  /* As fronteiras do momento: a 8 dias ainda é «longe»; a 7 já é a última semana; a 1, «Amanhã» e
+     ainda a semana (o «dia» é só a 0). */
+  it.each([
+    [8, 'longe', '8 dias'],
+    [7, 'semana', '7 dias'],
+    [1, 'semana', 'Amanhã'],
+  ])('a %i dias: o momento é «%s»', (dias, momento, contagem) => {
+    render(<RaceHubView race={race(dias)} runs={TREINO} profile={PROFILE} />);
+    expect(screen.getByTestId('race-hub-prerace')).toHaveAttribute('data-moment', momento);
+    expect(screen.getByTestId('race-hub-countdown')).toHaveTextContent(contagem);
+    if (momento === 'semana') expect(screen.getByTestId('race-pacing-card')).toBeInTheDocument();
+    else expect(screen.queryByTestId('race-pacing-card')).toBeNull();
+  });
+
+  // Na base (a prova a 20 semanas) e na construção (a 10): o macrociclo aberto, sem siglas nenhumas.
+  it.each([[16 * 7, 'Base'], [10 * 7, 'Construção']])('a %i dias (fase %s): o macrociclo sem siglas', (dias) => {
+    render(<RaceHubView race={race(dias, { created_at: `${inDays(-200)}T10:00:00Z` })} runs={TREINO} profile={PROFILE} />);
+    fireEvent.click(within(screen.getByTestId('race-hub-macro')).getAllByRole('button')[0]);
+    // Todas as fases abertas: o foco e a avaliação de cada uma.
+    within(screen.getByTestId('race-hub-macro')).getAllByRole('button', { expanded: false }).forEach((b) => fireEvent.click(b));
+    expect(screen.getByTestId('race-hub-macro').textContent).not.toMatch(SIGLAS);
+    expect(screen.getByTestId('race-hub-prerace').textContent).not.toMatch(SIGLAS);
+  });
+
+  it('as fases: o aria-controls aponta sempre para um painel que existe (escondido quando fechado)', () => {
+    render(<RaceHubView race={race(70)} runs={TREINO} profile={PROFILE} />);
+    const macro = screen.getByTestId('race-hub-macro');
+    within(macro).getAllByRole('button').forEach((b) => {
+      const id = b.getAttribute('aria-controls');
+      expect(id && document.getElementById(id)).toBeTruthy();
+      expect(document.getElementById(id).hidden).toBe(b.getAttribute('aria-expanded') !== 'true');
+    });
+  });
+
+  it('a diferença do objetivo dita por extenso a quem usa leitor de ecrã', () => {
+    render(<RaceHubView race={race(70)} runs={TREINO} profile={PROFILE} />);
+    expect(screen.getByTestId('race-forecast-delta')).toHaveAttribute('aria-hidden', 'true');
+    expect(screen.getByTestId('race-forecast-delta-sr').textContent).toMatch(/^\(\d+:\d\d mais (lento|rápido) do que o objetivo\)$/);
+  });
+
+  it('última semana sem objetivo: o pedido do objetivo uma vez só, o do Plano para o dia', () => {
+    render(<RaceHubView race={race(4, { target_time: null, target_time_seconds: null })} runs={TREINO} profile={PROFILE} onGoToEdit={vi.fn()} />);
+    expect(screen.queryByTestId('race-forecast-set-target')).toBeNull();
+    expect(screen.getByTestId('race-pacing-card')).toHaveTextContent(/Sem objetivo marcado/);
+  });
+
+  it('trail: o D+ em pt-PT e os km equivalentes no cabeçalho; a ajuda da previsão no ⓘ', () => {
+    render(<RaceHubView race={race(70, { race_type: 'trail', distance_km: 42, elevation_gain_m: 2350 })} runs={TREINO} profile={PROFILE} />);
+    const meta = screen.getByTestId('race-hub-meta').textContent;
+    expect(meta).toMatch(/42 km · \+2\s350 m D\+ \(≈ [\d\s]+(,\d)? km equivalentes\)/);
+    const ajuda = screen.getByTestId('race-forecast-help');
+    expect(ajuda).not.toBeVisible();
+    const i = screen.getByRole('button', { name: 'Como é calculada a previsão' });
+    expect(i).toHaveAttribute('aria-expanded', 'false');
+    fireEvent.click(i);
+    expect(i).toHaveAttribute('aria-expanded', 'true');
+    expect(ajuda).toBeVisible();
+    expect(ajuda.textContent).toMatch(/Riegel/);
+    expect(ajuda.textContent).toMatch(/km — a distância real mais o desnível/);
   });
 });
