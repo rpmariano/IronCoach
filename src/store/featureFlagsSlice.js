@@ -1,5 +1,6 @@
 import { supabase } from '../lib/supabase';
 import { withDeadline } from '../utils/bootDeadline';
+import { FEATURE_FLAG_DEFAULTS, FEATURE_FLAG_KEYS, mergeFeatureFlags } from '@formulas/featureFlags.ts';
 
 /* Interruptores por funcionalidade («v1 lite», aprovado pelo Rui, 2026-11-22). O código não se
    apaga, só se esconde: cada chave liga ou desliga uma parte da app, e só o admin as muda (Admin ·
@@ -11,26 +12,32 @@ import { withDeadline } from '../utils/bootDeadline';
    lançamento. A leitura do servidor vai por baixo, com prazo, depois de haver sessão e ao voltar
    à app; se falhar, fica o que havia. */
 
-/** As chaves, o estado no lançamento, e o nome e a descrição para o Admin. */
-export const FEATURES = [
-  { key: 'cup', default: false, label: 'Troféu (Taça)', description: 'Jornadas, classificações, equipas, inscrições e os avisos da competição. As provas que já vieram da Taça ficam como provas normais.' },
-  { key: 'race_memories', default: false, label: 'Memórias da prova', description: 'Diploma, medalha, mural e fotos da prova. Os campos do resultado (dorsal, escalão, posição) ficam sempre.' },
-  { key: 'badges', default: false, label: 'Conquistas', description: 'Conquistas e medalhas em todo o lado, incluindo depois da prova.' },
-  { key: 'water', default: false, label: 'Água', description: 'O registo de água no Início e na Nutrição e os lembretes de água no Perfil.' },
-  { key: 'pantry_advanced', default: false, label: 'Despensa avançada', description: 'As regras e os modelos de refeição. A despensa básica e os alimentos frequentes ficam sempre.' },
-  { key: 'advanced_charts', default: false, label: 'Gráficos avançados', description: 'As análises cruzadas, a carga (ACWR) e os gráficos técnicos da Evolução. Sem isto, ficam 2 ou 3 gráficos por área.' },
-  { key: 'tutorial', default: false, label: 'Tutorial', description: 'O tutorial da Carol no primeiro acesso e o «Rever o tutorial» no Perfil.' },
-  { key: 'shoes', default: true, label: 'Sapatilhas', description: 'O armário de sapatilhas e o desgaste de cada par.' },
-  { key: 'load_profile_choice', default: true, label: 'Perfil de carga', description: 'A escolha Prudente / Mais volume, no hub da prova e na conversa com a Carol.' },
+/** O nome e a descrição de cada chave, para o Admin. As chaves e o estado do lançamento vêm de
+ *  @formulas/featureFlags.ts (FEATURE_FLAG_DEFAULTS) — uma só fonte com o servidor. */
+const FEATURE_TEXTS = [
+  { key: 'cup', label: 'Troféu (Taça)', description: 'Jornadas, classificações, equipas, inscrições e os avisos da competição. As provas que já vieram da Taça ficam como provas normais.' },
+  { key: 'race_memories', label: 'Memórias da prova', description: 'Diploma, medalha, mural e fotos da prova. Os campos do resultado (dorsal, escalão, posição) ficam sempre.' },
+  { key: 'badges', label: 'Conquistas', description: 'Conquistas e medalhas em todo o lado, incluindo depois da prova.' },
+  { key: 'water', label: 'Água', description: 'O registo de água no Início e na Nutrição e os lembretes de água no Perfil.' },
+  { key: 'pantry_advanced', label: 'Despensa avançada', description: 'As regras e os modelos de refeição. A despensa básica e os alimentos frequentes ficam sempre.' },
+  { key: 'advanced_charts', label: 'Gráficos avançados', description: 'As análises cruzadas, a carga (ACWR) e os gráficos técnicos da Evolução. Sem isto, ficam 2 ou 3 gráficos por área.' },
+  { key: 'tutorial', label: 'Tutorial', description: 'O tutorial da Carol no primeiro acesso e o «Ver tutorial da app» no Perfil.' },
+  { key: 'shoes', label: 'Sapatilhas', description: 'O armário de sapatilhas e o desgaste de cada par.' },
+  { key: 'load_profile_choice', label: 'Perfil de carga', description: 'A escolha Prudente / Mais volume, no hub da prova e na conversa com a Carol.' },
 ];
 
-export const FEATURE_DEFAULTS = Object.freeze(Object.fromEntries(FEATURES.map((f) => [f.key, f.default])));
+export const FEATURE_DEFAULTS = FEATURE_FLAG_DEFAULTS;
+export const FEATURE_KEYS = FEATURE_FLAG_KEYS;
+/** Pela ordem das chaves partilhadas; uma chave sem texto aqui mostra-se pelo nome. */
+export const FEATURES = FEATURE_KEYS.map((key) => {
+  const t = FEATURE_TEXTS.find((f) => f.key === key);
+  return { key, default: FEATURE_DEFAULTS[key], label: t?.label || key, description: t?.description || '' };
+});
 
 /* Nos testes, tudo ligado por defeito: os testes de cada funcionalidade continuam a vê-la, e os dos
    interruptores desligam-na de propósito (featureFlags no store). Na app, os do lançamento. */
 const IS_TEST = (() => { try { return import.meta.env?.MODE === 'test'; } catch { return false; } })();
 export const FEATURE_BASE = IS_TEST ? Object.freeze(Object.fromEntries(FEATURES.map((f) => [f.key, true]))) : FEATURE_DEFAULTS;
-export const FEATURE_KEYS = FEATURES.map((f) => f.key);
 
 export const FEATURE_CACHE_KEY = 'ironcoach:feature-flags';
 export const FEATURE_READ_TIMEOUT_MS = 6000;
@@ -38,6 +45,8 @@ export const FEATURE_READ_TIMEOUT_MS = 6000;
 /** Os valores efetivos: o código por defeito, por cima o que o servidor (ou a cache) disse.
  *  Uma chave desconhecida do código ignora-se; uma que falta vale o defeito. */
 export function resolveFeatureFlags(rows, base = FEATURE_BASE) {
+  // Fora dos testes, a junção é a do servidor (mergeFeatureFlags), sobre os defeitos do lançamento.
+  if (base === FEATURE_FLAG_DEFAULTS) return mergeFeatureFlags(rows);
   const out = { ...base };
   for (const r of Array.isArray(rows) ? rows : []) {
     if (r && typeof r.key === 'string' && r.key in out && typeof r.enabled === 'boolean') out[r.key] = r.enabled;

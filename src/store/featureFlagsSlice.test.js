@@ -86,7 +86,13 @@ describe('featureFlags', () => {
     expect((await useAppStore.getState().setFeatureFlag('xpto', true)).ok).toBe(false);
   });
 
-  it('uma chave que o código não conhece conta como ligada (nada se esconde por engano)', () => {
+  it('uma chave fora de @formulas/featureFlags.ts conta como ligada; as conhecidas valem o defeito do lançamento sem cache nem rede', async () => {
+    const { FEATURE_FLAG_DEFAULTS, FEATURE_FLAG_KEYS } = await import('@formulas/featureFlags.ts');
     expect(isFeatureOn('qualquer_coisa')).toBe(true);
+    // Sem nada no store (nem cache, nem servidor): o lançamento, não «tudo ligado».
+    for (const key of FEATURE_FLAG_KEYS) expect(isFeatureOn(key, { featureFlags: resolveFeatureFlags(null, FEATURE_DEFAULTS) })).toBe(FEATURE_FLAG_DEFAULTS[key]);
+    // Uma só fonte: os defeitos e as chaves da app são os do módulo partilhado.
+    expect(FEATURE_DEFAULTS).toBe(FEATURE_FLAG_DEFAULTS);
+    expect(FEATURES.map((f) => f.key)).toEqual(FEATURE_FLAG_KEYS);
   });
 });

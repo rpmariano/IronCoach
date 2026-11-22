@@ -918,6 +918,8 @@ describe('advanced_charts (v1 lite)', () => {
     expect(screen.queryByText(/Eficiência aeróbica/)).toBeNull();
     expect(screen.getAllByText(/Distância por/).length).toBeGreaterThan(0);
     expect(document.body.textContent).not.toMatch(/VDOT/);
+    // Sem o gráfico da carga, o rodapé não fala dela.
+    expect(document.body.textContent).not.toMatch(/a carga e os recordes já o incluem/);
   });
 
   it('ligados: a carga ACWR está lá', () => {

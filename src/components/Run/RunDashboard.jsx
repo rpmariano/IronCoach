@@ -388,7 +388,7 @@ export default function RunDashboard() {
   const navigator = <PeriodNav cal={cal} module="corrida" closedDays={closedN} dataStartISO={view.dataStartISO} />;
   // A carga (KPI e barra da semana em curso) é a de hoje e inclui as corridas de hoje (R1,
   // número da Carol): a nota não pode dizer que hoje não entra em nada.
-  const today = <TodayExcludedNote period={period} text={`${TODAY_EXCLUDED.replace(/\.$/, '')} do período (a carga e os recordes já o incluem); aparece amanhã.`} />;
+  const today = <TodayExcludedNote period={period} text={`${TODAY_EXCLUDED.replace(/\.$/, '')} do período (${advanced ? 'a carga e os recordes já o incluem' : 'os recordes já o incluem'}); aparece amanhã.`} />;
 
   /* ── Os blocos de fora do período: ACWR (hoje, 12 semanas), VDOT e recordes (de sempre). ── */
   const vdotCompare = view.vdotCompare
