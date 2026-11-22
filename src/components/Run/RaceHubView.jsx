@@ -17,7 +17,6 @@ import {
   ChevronUp,
   AlertTriangle,
   Link as LinkIcon,
-  Globe,
   Award,
   Flame,
   Zap,
@@ -48,7 +47,7 @@ import CupRaceBlock from './CupRaceBlock';
 import { buildRacePacingPlan } from '@formulas/racePacing.ts';
 import { calculateRaceTrainingPlan, formatDatePTShort, formatDateDayMonth } from '../../utils/racePlanEngine';
 import { calculateReadinessIndex, getRacePrediction, getVDOTTrend } from '../../utils/biEngine';
-import { racePriorityLabel, raceDistanceLabel, raceTerrainLabel, RACE_TERRAIN_TYPES, formatPace, formatDuration, findRaceRun, parseDurationToSeconds, describeRaceClassification, describeRaceTimes } from '../../utils/run';
+import { racePriorityLabel, raceTerrainLabel, RACE_TERRAIN_TYPES, formatPace, formatDuration, findRaceRun, parseDurationToSeconds, describeRaceClassification, describeRaceTimes } from '../../utils/run';
 import { classifyRaceOutcome, describeRaceOutcome, raceResultSeconds } from '../../utils/raceOutcome';
 import { achievementsForRace, missedInRace, describeMissedInRace } from '../../utils/achievements';
 import { badgesForRace } from '../../utils/badges';
@@ -63,6 +62,11 @@ import { safeHttpUrl } from '../../utils/safeUrl';
 import CourseProfilePanel from './CourseProfilePanel';
 
 /* Os km em pt-PT, com uma casa decimal quando a tem: «21,1 km», «10 km». */
+// «1 250»: um inteiro em pt-PT (separador de milhares, sem casas decimais) — o D+.
+export function formatIntPt(n) {
+  return new Intl.NumberFormat('pt-PT', { maximumFractionDigits: 0, useGrouping: 'always' }).format(Math.round(Number(n) || 0));
+}
+
 export function formatKmPt(km) {
   const n = Number(km);
   if (!(n > 0)) return '—';
@@ -71,7 +75,8 @@ export function formatKmPt(km) {
 
 /* Uma secção recolhível do hub: o botão (44 px, aria-expanded/aria-controls) com o título e um
    resumo, e o conteúdo por baixo. Fechada, o conteúdo fica montado mas escondido (hidden): o que
-   está lá dentro (o GPX, por exemplo) não perde o estado ao fechar e abrir. */
+   está lá dentro (o GPX, por exemplo) não perde o estado ao fechar e abrir. Quem precisa de saber
+   se está aberta (o gráfico do GPX, que escondido se mediria a 0×0) passa uma função: children(open). */
 function HubCollapsible({ id, title, summary = null, defaultOpen = false, nested = false, testId, children }) {
   const [open, setOpen] = useState(defaultOpen);
   const panelId = `rh-collapsible-${id}`;
@@ -92,7 +97,7 @@ function HubCollapsible({ id, title, summary = null, defaultOpen = false, nested
         {open ? <ChevronUp size={18} className="shrink-0 text-[var(--text-3)]" /> : <ChevronDown size={18} className="shrink-0 text-[var(--text-3)]" />}
       </button>
       <div id={panelId} hidden={!open} className="rh-collapsible-body">
-        {children}
+        {typeof children === 'function' ? children(open) : children}
       </div>
     </section>
   );
@@ -175,7 +180,6 @@ export default function RaceHubView({
   const formattedRaceDate = formatDatePTShort(raceDate);
   const raceStartTime = normalizeStartTime(race?.start_time);
   const raceDateLine = raceStartTime ? `${formattedRaceDate} · ${raceStartTime}` : formattedRaceDate;
-  const distanceLabel = raceDistanceLabel(race?.distance_km || 10);
   const info = race?.web_info || null;
 
   const dailyCheckins = useAppStore((s) => s.dailyCheckins);
@@ -822,7 +826,9 @@ export default function RaceHubView({
   // A linha do cabeçalho: a data (com a hora), e depois o resto — a distância uma vez só.
   const metaRest = [
     race?.location || 'Local a definir',
-    trailDplus ? `${kmLabel} · +${race.elevation_gain_m} m D+` : kmLabel,
+    trailDplus
+      ? `${kmLabel} · +${formatIntPt(race.elevation_gain_m)} m D+${equivalentKm > 0 ? ` (≈ ${formatKmPt(equivalentKm)} equivalentes)` : ''}`
+      : kmLabel,
     // O piso só quando é um (estrada, trail): provas antigas guardam aqui a distância («21k»), e repeti-la não diz nada.
     RACE_TERRAIN_TYPES.some((t) => t.key === race?.race_type) ? raceTerrainLabel(race.race_type) : null,
     racePriorityLabel(race?.race_priority || 'a'),
@@ -889,12 +895,12 @@ export default function RaceHubView({
         <span className="text-[13px] font-bold text-[var(--text-2)]" data-testid="race-hub-phase">{phaseLine}</span>
       </div>
       <RaceForecastCard
-        compact
         showLine={moment === 'longe'}
         forecast={forecast}
         raceType={race?.race_type}
         elevationGainM={Number(race?.elevation_gain_m) || 0}
-        onSetTarget={onGoToEdit}
+        // O pedido do objetivo uma vez só: na última semana e no dia, é o do Plano para o dia.
+        onSetTarget={moment === 'longe' ? onGoToEdit : null}
       />
     </section>
   );
@@ -995,8 +1001,7 @@ export default function RaceHubView({
           </span>
         </button>
 
-        {isExpanded && (
-          <div id={panelId} className="rh-phase-eval fade-in">
+        <div id={panelId} hidden={!isExpanded} className="rh-phase-eval fade-in">
             <p className="text-[12.5px] leading-[1.5] text-[var(--text-2)]">
               <span className="font-bold text-[var(--text-1)]">O que conta nesta fase:</span> {phase.focus}
             </p>
@@ -1024,8 +1029,7 @@ export default function RaceHubView({
             )}
             {/* O estado da prova decide-se aqui, na fase da prova. */}
             {phase.id === 'race_recovery' && markCompletedButton && <div className="mt-2">{markCompletedButton}</div>}
-          </div>
-        )}
+        </div>
       </div>
     );
   };
@@ -1065,10 +1069,12 @@ export default function RaceHubView({
 
   const course_ = course && (
     // Percurso (GPX): quem monta (RunAgenda) lê o ficheiro e grava; sem `course`, não aparece.
-    <HubCollapsible id="course" title="Percurso (GPX)" summary={course.profile ? `${formatKmPt(course.profile.distance_km)} · +${Math.round(course.profile.gain_m)} m` : 'Carregar o percurso'} testId="race-hub-course-section">
-      <div data-testid="race-hub-course">
-        <CourseProfilePanel {...course} />
-      </div>
+    <HubCollapsible id="course" title="Percurso (GPX)" summary={course.profile ? `${formatKmPt(course.profile.distance_km)} · +${formatIntPt(course.profile.gain_m)} m D+` : 'Carregar o percurso'} testId="race-hub-course-section">
+      {(open) => (
+        <div data-testid="race-hub-course">
+          <CourseProfilePanel {...course} showChart={open} />
+        </div>
+      )}
     </HubCollapsible>
   );
 

@@ -158,10 +158,11 @@ describe('RaceHubView — hub depois da prova', () => {
   it('o que só faz sentido antes da prova sai do ecrã: contagem, previsão e macrociclo por cumprir', () => {
     render(<RaceHubView race={RACE} runs={[RACE_RUN]} profile={PROFILE} />);
 
-    expect(screen.queryByText('Contagem para a Prova')).not.toBeInTheDocument();
-    expect(screen.queryByText('Fase de Treino')).not.toBeInTheDocument();
-    expect(screen.queryByText(/Previsão \(VDOT\)/)).not.toBeInTheDocument();
-    expect(screen.queryByText(/Macrociclo de Treino/)).not.toBeInTheDocument();
+    // Pelos testids do hub de antes da prova (os textos antigos já não existiam: passavam sempre).
+    expect(screen.getByTestId('race-hub-completed')).toBeInTheDocument();
+    expect(screen.queryByTestId('race-hub-prerace')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('race-hub-countdown')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('race-forecast')).not.toBeInTheDocument();
   });
 
   it('uma prova ainda por correr continua no hub normal', () => {
@@ -203,14 +204,14 @@ describe('RaceHubView — o parecer antes do ciclo', () => {
     render(<RaceHubView race={longe} runs={[]} profile={PROFILE} />);
 
     expect(screen.getAllByText(/Até lá, segue o plano que acordámos\./).length).toBeGreaterThan(0);
-    expect(screen.queryByText(/Z1\/Z2\) com regularidade e força no ginásio/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/a conversar, com regularidade e força no ginásio/)).not.toBeInTheDocument();
   });
 
   it('sem plano aceite, o conselho de antes do ciclo', () => {
     useAppStore.setState({ coachPlans: [], coachPlanItems: [] });
     render(<RaceHubView race={longe} runs={[]} profile={PROFILE} />);
 
-    expect(screen.getAllByText(/Até lá, corrida fácil \(Z1\/Z2\)/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/Até lá, corrida fácil, a conversar/).length).toBeGreaterThan(0);
   });
 });
 

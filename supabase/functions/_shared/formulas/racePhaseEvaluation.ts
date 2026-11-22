@@ -151,8 +151,8 @@ function buildCommentary(c: CommentaryInput): string {
     && c.polarizedPct + (c.unknownCount / c.runsCount) * 100 >= POLARIZATION_TARGET_PCT;
   const semEsforco = count(c.unknownCount, "corrida", "corridas");
   const faceis = c.polarizedPct === 0
-    ? "nenhuma das tuas corridas desta fase conta como fácil (Z1/Z2)"
-    : `só ${c.polarizedPct}% das tuas corridas desta fase contam como fáceis (Z1/Z2)`;
+    ? "nenhuma das tuas corridas desta fase conta como fácil"
+    : `só ${c.polarizedPct}% das tuas corridas desta fase contam como fáceis`;
   switch (c.phaseId) {
     case "base":
       if (c.done) {
@@ -164,21 +164,21 @@ function buildCommentary(c: CommentaryInput): string {
         }
         if (poucoFacil) {
           return c.polarizedPct === 0
-            ? "Na base, nenhuma das tuas corridas contou como fácil (Z1/Z2), e ela pedia quase todas."
-            : `Na base, só ${c.polarizedPct}% das tuas corridas contaram como fáceis (Z1/Z2), e ela pedia quase todas.`;
+            ? "Na base, nenhuma das tuas corridas contou como fácil, e ela pedia quase todas."
+            : `Na base, só ${c.polarizedPct}% das tuas corridas contaram como fáceis, e ela pedia quase todas.`;
         }
         if (bom) return `A base foi bem feita: ${corridas}, ${km} de ${alvo} km, quase tudo em ritmo fácil.`;
         if (poucasSessoes) return `A base teve ${km} de ${alvo} km, mas poucas sessões: ${corridas}.`;
         return `A base teve ${corridas} e ${km} de ${alvo} km, quase tudo em ritmo fácil.`;
       }
-      if (curto) return `Vais em ${km} km nesta fase, e a esta altura queria ${alvo}. Acrescenta quilómetros fáceis, em Z1/Z2.`;
+      if (curto) return `Vais em ${km} km nesta fase, e a esta altura queria ${alvo}. Acrescenta quilómetros fáceis, a conversar.`;
       if (faltaEsforco) {
-        return `Não sei se as tuas corridas estão a ser fáceis: ${semEsforco} desta fase sem o esforço registado. Regista-o, que a base se faz quase toda em ritmo fácil (Z1/Z2).`;
+        return `Não sei se as tuas corridas estão a ser fáceis: ${semEsforco} desta fase sem o esforço registado. Regista-o, que a base se faz quase toda em ritmo fácil.`;
       }
       if (poucoFacil) {
         const esforco = c.unknownCount > 0 ? ", e regista o esforço das corridas que não o têm" : "";
         return c.polarizedPct === 0
-          ? `Nenhuma das tuas corridas desta fase conta como fácil (Z1/Z2), e a base pede quase todas. Faz a maior parte em ritmo fácil, a conversar${esforco}.`
+          ? `Nenhuma das tuas corridas desta fase conta como fácil, e a base pede quase todas. Faz a maior parte em ritmo fácil, a conversar${esforco}.`
           : `${faceis.charAt(0).toUpperCase()}${faceis.slice(1)}, e a base pede quase todas. Abranda os treinos fáceis${esforco}.`;
       }
       if (bom) return `A base está a ser bem feita: ${corridas}, ${km} km, quase tudo em ritmo fácil.`;

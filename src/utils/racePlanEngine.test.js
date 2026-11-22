@@ -396,7 +396,7 @@ describe('racePlanEngine — frases que olham para o contexto (revisão de 2026-
     it('com um plano de treino aceite em vigor: segue o plano, sem o conselho genérico', () => {
       const text = plano({}, { todayISO: hoje, coachPlans: [planoAceite], coachPlanItems: [intervalos] }).carolAnalysis.overviewText;
       expect(text).toMatch(/^Faltam \d+ dias para começarmos o ciclo de 6 semanas\. Até lá, segue o plano que acordámos\.$/);
-      expect(text).not.toMatch(/Z1\/Z2|ginásio/);
+      expect(text).not.toMatch(/Z1\/Z2|a conversar|ginásio/);
     });
 
     it('sem plano aceite, com um plano só proposto, já acabado ou só de refeições: o conselho genérico', () => {
@@ -408,7 +408,7 @@ describe('racePlanEngine — frases que olham para o contexto (revisão de 2026-
       ];
       for (const extra of casos) {
         const text = plano({}, { todayISO: hoje, ...extra }).carolAnalysis.overviewText;
-        expect(text).toMatch(/Até lá, corrida fácil \(Z1\/Z2\) com regularidade e força no ginásio/);
+        expect(text).toMatch(/Até lá, corrida fácil, a conversar, com regularidade e força no ginásio/);
       }
     });
   });

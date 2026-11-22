@@ -34,6 +34,7 @@ export default function CourseProfilePanel({
   busy = false,
   error = null,
   showMap = true,
+  showChart = true,
   suggest = { distance: true, elevation: true },
   suggestionHint = null,
   className = '',
@@ -127,9 +128,12 @@ export default function CourseProfilePanel({
         </div>
       )}
 
-      <Suspense fallback={<div className="h-[230px] rounded-2xl" style={{ background: 'var(--surface-soft)' }} aria-hidden="true" />}>
-        <CourseElevationChart profile={profile} raceName={race?.name || null} />
-      </Suspense>
+      {/* showChart: o hub só o monta com a secção aberta — escondido, o Chart.js media 0×0. */}
+      {showChart && (
+        <Suspense fallback={<div className="h-[230px] rounded-2xl" style={{ background: 'var(--surface-soft)' }} aria-hidden="true" />}>
+          <CourseElevationChart profile={profile} raceName={race?.name || null} />
+        </Suspense>
+      )}
       {showMap && <CourseMap track={profile.track} start={profile.start} finish={profile.finish} distanceKm={profile.distance_km} />}
 
       <div className="flex gap-2">

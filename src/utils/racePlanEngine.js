@@ -383,7 +383,7 @@ export function calculateRaceTrainingPlan({ race, profile = {}, runs = [], today
       endDate: taperDates.endDate,
       state: determinePhaseState(taperDates.startDate, taperDates.endDate),
       focus: racePriority === 'a'
-        ? `Descansar para chegar fresco: em ${taperWeeks} ${taperWeeks === 1 ? 'semana' : 'semanas'} corres menos (um terço a metade), mas manténs alguns troços ao ritmo da prova.`
+        ? `Descansar para chegar à prova com as pernas frescas: em ${taperWeeks} ${taperWeeks === 1 ? 'semana' : 'semanas'} corres menos (um terço a metade), mas manténs alguns troços ao ritmo da prova.`
         : 'Dois a quatro dias mais leves antes da prova, com um quarto menos de quilómetros.',
       evaluation: evaluatePhasePerformance('taper', taperDates.startDate, taperDates.endDate, determinePhaseState(taperDates.startDate, taperDates.endDate), taperDates.weeksCount),
     },
@@ -459,7 +459,7 @@ export function calculateRaceTrainingPlan({ race, profile = {}, runs = [], today
       && isTrainingPlan({ coach_plan_items: (coachPlanItems || []).filter((i) => i?.plan_id === p.id) }));
     carolOverviewText = planoAceite
       ? `${faltam(daysToStart)} para começarmos o ciclo de ${totalWeeks} semanas. Até lá, segue o plano que acordámos.`
-      : `${faltam(daysToStart)} para começarmos o ciclo de ${totalWeeks} semanas. Até lá, corrida fácil (Z1/Z2) com regularidade e força no ginásio: quero-te a entrar na base com as pernas preparadas.`;
+      : `${faltam(daysToStart)} para começarmos o ciclo de ${totalWeeks} semanas. Até lá, corrida fácil, a conversar, com regularidade e força no ginásio: quero-te a entrar na base com as pernas preparadas.`;
   } else if (daysToRace === 0) {
     // Sem adjetivos com género ("controlado"), e sem prometer um plano de
     // ritmos que só existe com objetivo ou previsão.

@@ -374,7 +374,7 @@ describe('RaceCard — o parecer com o plano e o registo da prova', () => {
     useAppStore.mockReturnValue({ profile: { experience_level: 'medio' }, runs: [] });
     abrir({ ...base, date: addDaysISO(todayISO(), 180) });
 
-    expect(screen.getByText(/Até lá, corrida fácil \(Z1\/Z2\)/)).toBeInTheDocument();
+    expect(screen.getByText(/Até lá, corrida fácil, a conversar/)).toBeInTheDocument();
   });
 
   it('prova de há 3 dias sem corrida registada: "Por registar", sem nota nem estrelas', () => {
