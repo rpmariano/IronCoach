@@ -16,14 +16,14 @@ import { FEATURE_FLAG_DEFAULTS, FEATURE_FLAG_KEYS, mergeFeatureFlags } from '@fo
  *  @formulas/featureFlags.ts (FEATURE_FLAG_DEFAULTS) — uma só fonte com o servidor. */
 const FEATURE_TEXTS = [
   { key: 'cup', label: 'Troféu (Taça)', description: 'Jornadas, classificações, equipas, inscrições e os avisos da competição. As provas que já vieram da Taça ficam como provas normais.' },
-  { key: 'race_memories', label: 'Memórias da prova', description: 'Diploma, medalha, mural e fotos da prova. Os campos do resultado (dorsal, escalão, posição) ficam sempre.' },
+  { key: 'race_memories', label: 'Memórias da prova', description: 'A medalha, as fotos e o mural da prova. O diploma e a leitura dele ficam sempre (são resultado), tal como o dorsal, o escalão e a posição.' },
   { key: 'badges', label: 'Conquistas', description: 'Conquistas e medalhas em todo o lado, incluindo depois da prova.' },
   { key: 'water', label: 'Água', description: 'O registo de água no Início e na Nutrição e os lembretes de água no Perfil.' },
   { key: 'pantry_advanced', label: 'Despensa avançada', description: 'As regras e os modelos de refeição. A despensa básica e os alimentos frequentes ficam sempre.' },
-  { key: 'advanced_charts', label: 'Gráficos avançados', description: 'As análises cruzadas, a carga (ACWR) e os gráficos técnicos da Evolução. Sem isto, ficam 2 ou 3 gráficos por área.' },
+  { key: 'advanced_charts', label: 'Gráficos avançados', description: 'As análises cruzadas (Evolução · Geral) e os gráficos técnicos da Corrida: a carga (ACWR), a intensidade por zonas e a eficiência aeróbica.' },
   { key: 'tutorial', label: 'Tutorial', description: 'O tutorial da Carol no primeiro acesso e o «Ver tutorial da app» no Perfil.' },
-  { key: 'shoes', label: 'Sapatilhas', description: 'O armário de sapatilhas e o desgaste de cada par.' },
-  { key: 'load_profile_choice', label: 'Perfil de carga', description: 'A escolha Prudente / Mais volume, no hub da prova e na conversa com a Carol.' },
+  { key: 'shoes', label: 'Sapatilhas', description: 'O armário de sapatilhas (Perfil · Armário · Equipamento), as sapatilhas no registo de corrida e o aviso do desgaste.' },
+  { key: 'load_profile_choice', label: 'Perfil de carga', description: 'Os botões Prudente / Mais volume, no hub da prova e por baixo da conversa com a Carol.' },
 ];
 
 export const FEATURE_DEFAULTS = FEATURE_FLAG_DEFAULTS;

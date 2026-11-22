@@ -3,6 +3,7 @@
  * Todas as funções de cálculo para os dashboards de BI do IronHealth.
  */
 import { subDays, subWeeks, subMonths, subYears, isAfter, startOfWeek, differenceInDays, differenceInCalendarDays, parseISO, isValid, format } from 'date-fns';
+import { isFeatureOn } from './features';
 import * as Constants from './biConstants';
 import { shoesNeedingAttention, shoeLabel } from './shoes';
 import { assessRaceViability, knownRecentWeeklyVolume } from './raceViability';
@@ -860,7 +861,8 @@ export function detectCoachInsights(dataIn, profile) {
     // par e já vem ajustado ao peso do atleta (ver utils/shoes.js); aqui só
     // se escolhe o par mais gasto — avisar sobre três pares ao mesmo tempo
     // enterrava os outros insights.
-    if (data.shoes?.length > 0) {
+    // As sapatilhas têm interruptor (v1 lite): desligadas, sem o aviso do desgaste.
+    if (isFeatureOn('shoes') && data.shoes?.length > 0) {
       const [worst] = shoesNeedingAttention(data.shoes, allRuns, profile?.weight_kg);
       // 'atencao' (75%) fica de fora de propósito: dá para o armário mostrar
       // a barra a amarelo, mas não chega para ocupar um insight do Coach.

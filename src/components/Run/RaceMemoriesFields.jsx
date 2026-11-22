@@ -34,6 +34,9 @@ export default function RaceMemoriesFields({
   // O que acompanha o diploma (a leitura da Carol): fica mesmo por baixo
   // dele, onde o atleta acabou de o pôr.
   afterDiploma = null,
+  // Só o diploma (v1 lite, race_memories OFF): o diploma é resultado — a Carol lê-o e preenche o
+  // tempo e a classificação —, por isso fica; a medalha e as fotos saem com as memórias.
+  diplomaOnly = false,
 }) {
   const takeOne = (handler) => (e) => {
     const file = (e.target.files || [])[0];
@@ -79,6 +82,7 @@ export default function RaceMemoriesFields({
         {afterDiploma}
       </div>
 
+      {!diplomaOnly && (<>
       <div className="mb-4">
         <p style={memoryLabel}>Medalha</p>
         {medal ? (
@@ -135,8 +139,10 @@ export default function RaceMemoriesFields({
         )}
       </div>
 
+      </>)}
+
       {error && (
-        <Warning title="Memória não aceite" className="mt-3">{error}</Warning>
+        <Warning title={diplomaOnly ? 'Diploma não aceite' : 'Memória não aceite'} className="mt-3">{error}</Warning>
       )}
     </>
   );
