@@ -23,7 +23,7 @@ Deno.test("proactiveTriggerAllowed: desligados no lançamento, ligados com os in
 Deno.test("featureOffNote: as áreas desligadas com os nomes do atleta; nada com tudo ligado", () => {
   const n = featureOffNote(FEATURE_FLAG_DEFAULTS)!;
   assertEquals(n.startsWith("ÁREAS FORA DA APP: estas áreas não estão disponíveis na app neste momento: "), true);
-  for (const nome of ["a Taça", "as memórias da prova", "as conquistas", "a água", "os modelos de refeição", "os gráficos avançados"]) {
+  for (const nome of ["a Taça", "as memórias da prova", "as conquistas", "o registo de água", "os modelos de refeição", "os gráficos avançados"]) {
     assertEquals(n.includes(nome), true, nome);
   }
   // O que está ligado não aparece; o tutorial nunca.
