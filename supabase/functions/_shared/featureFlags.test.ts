@@ -21,7 +21,7 @@ Deno.test("os defeitos são o estado do lançamento (v1 lite) — os mesmos da m
     cup: false, race_memories: false, badges: false, water: false, pantry_advanced: false, advanced_charts: false, tutorial: false,
     shoes: true, load_profile_choice: true,
   });
-  const sql = await Deno.readTextFile(new URL("../../migrations/20261122120000_app_feature_flags.sql", import.meta.url));
+  const sql = await Deno.readTextFile(new URL("../../migrations/20261122193722_app_feature_flags.sql", import.meta.url));
   for (const k of FEATURE_FLAG_KEYS) assertEquals(sql.includes(`('${k}', ${FEATURE_FLAG_DEFAULTS[k]})`), true, k);
 });
 

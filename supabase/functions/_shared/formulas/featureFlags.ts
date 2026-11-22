@@ -20,7 +20,7 @@ export type FeatureFlag =
 
 export type FeatureFlags = Record<FeatureFlag, boolean>;
 
-/** O estado do lançamento (a migration 20261122120000 grava o mesmo). */
+/** O estado do lançamento (a migration 20261122193722 grava o mesmo). */
 export const FEATURE_FLAG_DEFAULTS: Readonly<FeatureFlags> = Object.freeze({
   cup: false,
   race_memories: false,
