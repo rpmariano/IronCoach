@@ -8299,7 +8299,7 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
        Um turno proativo pode ainda ser saltado (shouldSkipProactive, mais
        abaixo): nesse caso só arranca depois, para não gastar as consultas. */
     let memoryBlocksPromise: ReturnType<typeof fetchChatMemoryBlocks> | null =
-      proactiveTrigger && !bypassQuietHours ? null : fetchChatMemoryBlocks(sb, userId, todayISO, profile);
+      proactiveTrigger && !bypassQuietHours ? null : fetchChatMemoryBlocks(sb, userId, todayISO, profile, { badges: flags.badges });
     /* O bloco da competição por jornadas (specs/trofeu.md §5, Fase 2), no
        mesmo molde: arranca já e só se espera por ele ao montar o prompt.
        Nunca rejeita. Quem não está inscrito gasta uma leitura e recebe null
@@ -9150,7 +9150,8 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
         dietary_restrictions: (profile?.dietary_restrictions as string[] | null) ?? null,
         dietary_notes: (profile?.dietary_notes as string | null) ?? null,
         carol_push_enabled: (profile?.carol_push_enabled as boolean | null) ?? null,
-        carol_push_types: (profile?.carol_push_types as string[] | null) ?? null,
+        // v1 lite: os momentos das áreas desligadas (as tabelas, o percentil, a Taça) não aparecem nas notas.
+        carol_push_types: ((profile?.carol_push_types as string[] | null) ?? null)?.filter((t) => proactiveTriggerAllowed(t, flags)) ?? null,
         carol_push_start_hour: (profile?.carol_push_start_hour as number | null) ?? null,
         carol_push_end_hour: (profile?.carol_push_end_hour as number | null) ?? null,
         // v1 lite: com a água desligada, nem a linha dos lembretes.
@@ -9199,7 +9200,7 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
 
     // Do mais largo para o mais próximo: a época, o que já conquistou, as
     // metas, o que se disse em cada registo, e o cartão de hoje.
-    const memoryBlocks = await (memoryBlocksPromise ??= fetchChatMemoryBlocks(sb, userId, todayISO, profile));
+    const memoryBlocks = await (memoryBlocksPromise ??= fetchChatMemoryBlocks(sb, userId, todayISO, profile, { badges: flags.badges }));
     // Com nome por bloco, para o log dos tamanhos (promptSizeReport); a ordem é a do objeto.
     const memoryNamed: Record<string, string | null | undefined> = {
       // O check-in primeiro: é o estado de hoje, e pode trazer alarmes.

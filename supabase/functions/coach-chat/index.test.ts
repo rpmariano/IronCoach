@@ -7068,4 +7068,7 @@ Deno.test("v1 lite: as ligações no handler (Taça, vitrina, badges, sapatilhas
   assertStringIncludes(src, "const waterSummary = flags.water ?");
   assertStringIncludes(src, 'if (!flags.race_memories) return jsonResponse({ error: "O mural está desligado", reason: "feature_off" }, 403);');
   assertStringIncludes(src, "flags.water ? (args || {}) : withoutWaterGoal(args)");
+  // Revisão do 8b3c67db: o Mestre da Z2 e as etiquetas dos momentos da vitrina só com os badges.
+  assertEquals(src.split("fetchChatMemoryBlocks(sb, userId, todayISO, profile, { badges: flags.badges })").length - 1, 2);
+  assertStringIncludes(src, "?.filter((t) => proactiveTriggerAllowed(t, flags)) ?? null,");
 });

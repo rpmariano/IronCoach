@@ -61,9 +61,10 @@ Deno.test("v1 lite: as analyze-* não levam a vitrina com os badges desligados; 
   }
   const run = await Deno.readTextFile(new URL("../analyze-run/index.ts", import.meta.url));
   assertEquals(run.includes("const seriesPromise = (await getFeatureFlags()).cup"), true);
+  // O diploma lê-se sempre, mesmo com as memórias desligadas: preenche o resultado da prova (tempo
+  // oficial, posição, dorsal, escalão) — é núcleo. A memória (guardar o diploma, a legenda) é da app.
   const diploma = await Deno.readTextFile(new URL("../analyze-diploma/index.ts", import.meta.url));
-  const gate = diploma.indexOf("if (!(await getFeatureFlags()).race_memories) return jsonResponse(");
-  assertEquals(gate > 0 && gate < diploma.indexOf("checkGeminiQuota(userData.user.id"), true);
+  assertEquals(diploma.includes("race_memories") || diploma.includes("getFeatureFlags"), false);
   const tick = await Deno.readTextFile(new URL("../coach-proactive-tick/index.ts", import.meta.url));
   assertEquals(tick.includes("lastWaterDate: flags.water ? (lastWater?.date ?? null) : null,"), true);
   assertEquals(tick.includes("vitrina: flags.badges ? vitrina : null,"), true);

@@ -23,7 +23,6 @@ import {
 import { geminiHeaders, geminiUrl, geminiWithFallback, thinkingConfig } from "../_shared/geminiModel.ts";
 import { withUsageRecording } from "../_shared/usageRecorder.ts";
 import { checkGeminiQuota, geminiQuotaBody } from "../_shared/geminiQuota.ts";
-import { getFeatureFlags } from "../_shared/featureFlags.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -240,8 +239,6 @@ Deno.serve(withUsageRecording("analyze-diploma", async (req) => {
     if (userError || !userData?.user) return jsonResponse({ error: "Sessão inválida" }, 401);
     // A quota do Gemini por atleta (auditoria de segurança, 2026-11-13;
     // _shared/geminiQuota.ts): passado o limite, 429 com a frase da Carol.
-    // v1 lite (2026-11-22): o diploma é das memórias da prova — desligadas, não se lê (nem gasta quota).
-    if (!(await getFeatureFlags()).race_memories) return jsonResponse({ error: "A leitura do diploma está desligada.", reason: "feature_off" }, 403);
     const geminiQuota = await checkGeminiQuota(userData.user.id, { fn: "analyze-diploma" });
     if (!geminiQuota.ok) return jsonResponse(geminiQuotaBody(geminiQuota), 429);
 
