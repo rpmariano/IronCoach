@@ -30,5 +30,5 @@ Deno.test("featureOffNote: as áreas desligadas com os nomes do atleta; nada com
   assertEquals(n.includes("sapatilhas") || n.includes("perfil de carga") || n.includes("tutorial"), false);
   assertEquals(n.includes("Não fales delas, mesmo que o histórico as mencione"), true);
   assertEquals(featureOffNote(ALL_ON), null);
-  assertEquals(featureOffNote({ ...ALL_ON, water: false }), "ÁREAS FORA DA APP: estas áreas não estão disponíveis na app neste momento: a água e os lembretes de água. Não fales delas, mesmo que o histórico as mencione; se ele perguntar, diz-lhe só que não estão disponíveis por agora.");
+  assertEquals(featureOffNote({ ...ALL_ON, water: false }), "ÁREAS FORA DA APP: estas áreas não estão disponíveis na app neste momento: o registo de água e os lembretes de água. Não fales delas, mesmo que o histórico as mencione; se ele perguntar, diz-lhe só que não estão disponíveis por agora.");
 });

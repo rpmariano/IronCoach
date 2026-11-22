@@ -56,7 +56,7 @@ export const FEATURE_FLAG_USER_NAMES: Readonly<Record<FeatureFlag, string | null
   cup: "a Taça (jornadas, classificações, equipas)",
   race_memories: "as memórias da prova (medalha, mural, fotos)",
   badges: "as conquistas e as tabelas",
-  water: "a água e os lembretes de água",
+  water: "o registo de água e os lembretes de água",
   pantry_advanced: "as regras e os modelos de refeição",
   advanced_charts: "os gráficos avançados",
   tutorial: null,
