@@ -222,7 +222,7 @@ Deno.test("jornadas: o bloco da competição entra no prompt do comentário só 
   // generateCoachNotes não é exportável sem refatorar: confirma-se a montagem no código.
   const src = await Deno.readTextFile(new URL("./index.ts", import.meta.url));
   assertStringIncludes(src, "memoryPromptSection(memoryBlock) + seriesPromptSection(seriesBlock) +\n    `REGRAS OBRIGATÓRIAS:");
-  assertStringIncludes(src, 'const seriesPromise = fetchSeriesBlock(sb, userId, ctx.date, { channel: "run", statusTodayISO: lisbonTodayISO() });');
+  assertStringIncludes(src, 'fetchSeriesBlock(sb, userId, ctx.date, { channel: "run", statusTodayISO: lisbonTodayISO() })');
   // O bloco é o último argumento, DEPOIS do prazo (passado por posição).
   assertStringIncludes(src, "      deadline,\n      (await seriesPromise)?.text ?? null,\n    );");
   assertStringIncludes(src, "  deadline = Number.POSITIVE_INFINITY,\n  // O bloco da competição por jornadas");

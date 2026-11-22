@@ -12,6 +12,7 @@ import { INTERVENTION_ORIGIN } from "../_shared/formulas/interventionOutcomes.ts
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { CAROL_TONE_RULES_SHORT, carolLanguageRule, carolRecordAnalysisRules, upstreamErrorText } from "../_shared/carolTone.ts";
 import { fetchSharedMemoryBlock, memoryPromptSection } from "../_shared/carolMemory.ts";
+import { getFeatureFlags } from "../_shared/featureFlags.ts";
 import { dayProgressSection, mealDayProgress, normalizeMealTime } from "../_shared/formulas/mealDayProgress.ts";
 import { fetchFrameRace, type FrameRace, frameRaceSentence } from "../_shared/frameRace.ts";
 import {
@@ -1341,7 +1342,8 @@ async function attachMealCoachNotes(
   try {
     // A memória durável e a conversa recente do chat (Fase 1, ação 1.3): a
     // Carol que comenta este registo é a mesma que falou com ele ontem.
-    const memoryPromise = fetchSharedMemoryBlock(sb, userId);
+    // v1 lite (2026-11-22): sem a vitrina (badges, percentil, tabelas) com os badges desligados.
+    const memoryPromise = fetchSharedMemoryBlock(sb, userId, { vitrina: (await getFeatureFlags()).badges });
     const { data: profile } = await sb
       .from("profiles")
       .select("calorie_goal, protein_goal, carbs_goal, fat_goal, dietary_restrictions, dietary_notes, experience_level")

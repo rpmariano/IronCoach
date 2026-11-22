@@ -34,6 +34,7 @@ import {
 } from "../_shared/carolTone.ts";
 import { fetchSharedMemoryBlock, lisbonTodayISO, memoryPromptSection } from "../_shared/carolMemory.ts";
 import { fetchSeriesBlock, seriesPromptSection } from "../_shared/seriesBlock.ts";
+import { getFeatureFlags } from "../_shared/featureFlags.ts";
 import { addUsage, type GeminiUsage, usageFromGemini } from "../_shared/geminiUsage.ts";
 import { computeBestPace, type BestPaceBucket, withProjectedSplits } from "../_shared/formulas/bestPace.ts";
 import { runRecordMoment } from "../_shared/formulas/runRecord.ts";
@@ -978,14 +979,18 @@ async function attachCoachNotes(
     // o retrato da época (5.3), na data da PRÓPRIA corrida (ctx.date) — uma
     // corrida registada com atraso não pode ver meses que ainda não tinham
     // acontecido nessa altura.
-    const memoryPromise = fetchSharedMemoryBlock(sb, userId, { portrait: true, todayISO: ctx.date });
+    // v1 lite (2026-11-22): sem a vitrina (badges, percentil, tabelas) com os badges desligados.
+    const memoryPromise = fetchSharedMemoryBlock(sb, userId, { portrait: true, todayISO: ctx.date, vitrina: (await getFeatureFlags()).badges });
     // O bloco da competição por jornadas (Fase 2 do Troféu): uma leitura e
     // null para quem não está inscrito. Nunca rejeita. A data da corrida
     // serve para reconhecer a jornada dela; a inscrição (ativa, ou saiu há
     // ≤ 30 dias) e as contas (papéis, a "seguinte") são as de HOJE — uma
     // corrida antiga não traz de volta a linha "saiu" nem uma jornada que já
     // passou como a seguinte (revisões da Fase 2).
-    const seriesPromise = fetchSeriesBlock(sb, userId, ctx.date, { channel: "run", statusTodayISO: lisbonTodayISO() });
+    // v1 lite (2026-11-22): com a Taça desligada, o comentário não fala dela.
+    const seriesPromise = (await getFeatureFlags()).cup
+      ? fetchSeriesBlock(sb, userId, ctx.date, { channel: "run", statusTodayISO: lisbonTodayISO() })
+      : Promise.resolve(null);
     // Segmentação do histórico usado na comparação:
     // - Competição: só compara com outras competições (não treinos) — e,
     //   dentro das competições, Trail só compara com Trail (terreno/esforço
