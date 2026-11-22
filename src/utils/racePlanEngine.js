@@ -339,7 +339,8 @@ export function calculateRaceTrainingPlan({ race, profile = {}, runs = [], today
       startDate: baseDates.startDate,
       endDate: baseDates.endDate,
       state: determinePhaseState(baseDates.startDate, baseDates.endDate),
-      focus: 'Volume predominante em Z1/Z2 (≥80% polarizado), reforço muscular e adaptação tendinosa.',
+      // Em texto simples, sem siglas (o hub da prova, 2026-11-22).
+      focus: 'Quase tudo em ritmo fácil, a conversar, para ganhar base. Junta reforço muscular para os tendões aguentarem o que vem.',
       evaluation: evaluatePhasePerformance('base', baseDates.startDate, baseDates.endDate, determinePhaseState(baseDates.startDate, baseDates.endDate), baseDates.weeksCount),
     },
     {
@@ -353,7 +354,7 @@ export function calculateRaceTrainingPlan({ race, profile = {}, runs = [], today
       startDate: buildDates.startDate,
       endDate: buildDates.endDate,
       state: determinePhaseState(buildDates.startDate, buildDates.endDate),
-      focus: 'Sessões de limiar (Z3/Z4), intervalos de ritmo de prova e treinos com desnível/subidas.',
+      focus: 'Entram os treinos mais rápidos: blocos a um ritmo puxado mas controlado, troços ao ritmo da prova e subidas.',
       evaluation: evaluatePhasePerformance('build', buildDates.startDate, buildDates.endDate, determinePhaseState(buildDates.startDate, buildDates.endDate), buildDates.weeksCount),
     },
     {
@@ -367,7 +368,7 @@ export function calculateRaceTrainingPlan({ race, profile = {}, runs = [], today
       startDate: peakDates.startDate,
       endDate: peakDates.endDate,
       state: determinePhaseState(peakDates.startDate, peakDates.endDate),
-      focus: 'Treino longo mais longo do ciclo, testes de nutrição/hidratação em prova e volume máximo.',
+      focus: 'As semanas com mais quilómetros e o treino longo mais longo. É também a altura de testar o que vais comer e beber na prova.',
       evaluation: evaluatePhasePerformance('peak', peakDates.startDate, peakDates.endDate, determinePhaseState(peakDates.startDate, peakDates.endDate), peakDates.weeksCount),
     },
     {
@@ -382,8 +383,8 @@ export function calculateRaceTrainingPlan({ race, profile = {}, runs = [], today
       endDate: taperDates.endDate,
       state: determinePhaseState(taperDates.startDate, taperDates.endDate),
       focus: racePriority === 'a'
-        ? `Taper progressivo de ${taperWeeks} semana(s) (-30% a -50% de volume mantendo a intensidade-alvo).`
-        : 'Taper curto de 2-4 dias com corte de 20-30% para prova secundária.',
+        ? `Descansar para chegar fresco: em ${taperWeeks} ${taperWeeks === 1 ? 'semana' : 'semanas'} corres menos (um terço a metade), mas manténs alguns troços ao ritmo da prova.`
+        : 'Dois a quatro dias mais leves antes da prova, com um quarto menos de quilómetros.',
       evaluation: evaluatePhasePerformance('taper', taperDates.startDate, taperDates.endDate, determinePhaseState(taperDates.startDate, taperDates.endDate), taperDates.weeksCount),
     },
     {
@@ -398,7 +399,7 @@ export function calculateRaceTrainingPlan({ race, profile = {}, runs = [], today
       endDate: planEndDate,
       // Depois dos dias de recuperação, a fase acabou.
       state: daysToRace < 0 && -daysToRace >= recoveryDays ? 'completed' : daysToRace <= 0 ? 'active' : 'upcoming',
-      focus: `Competição a 100% seguida de ${recoveryDays} dias sem treinos de alta intensidade (Z4/Z5).`,
+      focus: `A prova, a dar tudo, e depois ${recoveryDays} dias só com corridas leves, sem treinos rápidos.`,
       evaluation: {
         /* Na manhã da prova ainda não há nota: "Concluída · 95%" saía ao
            lado de "É dia de prova" (terceira revisão, 2026-09-25). Sem

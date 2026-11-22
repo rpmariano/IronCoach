@@ -173,7 +173,7 @@ describe('RaceHubView — hub depois da prova', () => {
     render(<RaceHubView race={futureRace} runs={[]} profile={PROFILE} />);
 
     expect(screen.queryByTestId('race-hub-completed')).not.toBeInTheDocument();
-    expect(screen.getByText('Contagem para a Prova')).toBeInTheDocument();
+    expect(screen.getByTestId('race-hub-countdown')).toBeInTheDocument();
     // Ainda falta correr — não há nada para registar.
     expect(screen.queryByTestId('race-hub-register')).not.toBeInTheDocument();
   });
@@ -220,10 +220,13 @@ describe('RaceHubView — o parecer antes do ciclo', () => {
    a data, no estado pós-prova. Some com corrida ligada. */
 describe('RaceHubView — marcar como concluída', () => {
   const hoje = todayISO();
-  // O nome da fase também aparece fora do cartão — clica-se no cartão.
-  const expandRecovery = () => fireEvent.click(
-    screen.getAllByText('Prova & Recuperação').find((el) => el.closest('.rh-phase-card')).closest('.rh-phase-card'),
-  );
+  // A fase da prova abre-se pelo botão dela, no macrociclo (recolhido: abre-se primeiro).
+  const expandRecovery = () => {
+    const macro = screen.getByTestId('race-hub-macro');
+    const toggle = macro.querySelector(':scope > button');
+    if (toggle.getAttribute('aria-expanded') !== 'true') fireEvent.click(toggle);
+    fireEvent.click(screen.getByTestId('race-hub-phase-race_recovery').querySelector('button'));
+  };
 
   it('antes do dia da prova o botão existe mas está desativado, com a pista de quando fica disponível', () => {
     const future = new Date();
@@ -446,8 +449,10 @@ describe('RaceHubView — plano para o dia', () => {
     expect(screen.getByTestId('race-pacing-finish')).toHaveTextContent('1:52:00');
     expect(cartao).toHaveTextContent('sobre o objetivo 1:52:00');
 
-    // Sete troços na meia, do km 0 ao 21,1, com ritmo e tempo de passagem.
+    // Sete troços na meia, do km 0 ao 21,1, com ritmo e tempo de passagem — os primeiros à vista,
+    // os outros em «Ver todos os km» (o hub reorganizado, 2026-11-22).
     const linhas = screen.getByTestId('race-pacing-rows');
+    fireEvent.click(screen.getByTestId('race-pacing-all-rows'));
     expect(linhas).toHaveTextContent('km 0 a 1');
     // Os km consecutivos com o mesmo ritmo agrupam-se — o último troço fecha
     // na distância real, com vírgula decimal.
@@ -498,6 +503,7 @@ describe('RaceHubView — plano para o dia', () => {
 
     render(<RaceHubView race={comPercurso} runs={[]} profile={PROFILE} />);
 
+    fireEvent.click(screen.getByTestId('race-pacing-all-rows'));
     const linhas = screen.getByTestId('race-pacing-rows');
     expect(linhas).toHaveTextContent('km 6 a 7');
     expect(linhas).toHaveTextContent('subida da Calçada da Ajuda');
@@ -548,6 +554,8 @@ describe('RaceHubView — plano para o dia', () => {
 
   it('o site da prova só é link se for http(s); um «javascript:» fica texto', () => {
     const { unmount } = render(<RaceHubView race={{ ...MEIA_PROXIMA, website: 'https://meiadelisboa.pt' }} runs={[]} profile={PROFILE} onFetchWebInfo={vi.fn()} />);
+    // O site está recolhido (o hub reorganizado): abre-se.
+    fireEvent.click(screen.getByTestId('race-hub-site').querySelector(':scope > button'));
     expect(screen.getByRole('link', { name: 'https://meiadelisboa.pt' })).toHaveAttribute('href', 'https://meiadelisboa.pt');
     unmount();
     render(<RaceHubView race={{ ...MEIA_PROXIMA, website: 'javascript:alert(1)' }} runs={[]} profile={PROFILE} onFetchWebInfo={vi.fn()} />);
@@ -651,8 +659,10 @@ describe('RaceHubView — objetivo, previsão e real', () => {
     // O objetivo (1:52:00) e o seu ritmo, que antes não existia em lado nenhum.
     expect(bloco.textContent).toContain('1:52:00');
     expect(bloco.textContent).toContain('/km');
-    // A diferença deixou de ser um exercício de cabeça do atleta.
-    expect(screen.getByTestId('race-forecast-delta').textContent).toMatch(/mais (rápido|lento) do que o objetivo/);
+    // A diferença deixou de ser um exercício de cabeça do atleta: em número curto («−6:05»), com a
+    // leitura por extenso no título (a frase de baixo diz o resto — uma vez só).
+    expect(screen.getByTestId('race-forecast-delta').textContent).toMatch(/^\([+−]\d+:\d\d\)$/);
+    expect(screen.getByTestId('race-forecast-delta').getAttribute('title')).toMatch(/mais (rápido|lento) do que o objetivo/);
   });
 
   it('o objetivo aparece mesmo quando só a coluna numérica está preenchida', () => {
@@ -801,14 +811,14 @@ describe('RaceHubView — o bloco Troféu', () => {
     expect(mocks.from).not.toHaveBeenCalled();
   });
 
-  it('numa jornada por correr, o bloco entra a seguir ao herói e antes do plano para o dia', () => {
+  it('numa jornada por correr, o bloco está no hub — na última semana, depois do plano para o dia (o hub reorganizado)', () => {
     const j = jornada(inDays(3));
     useAppStore.setState({ session: { user: { id: USER } }, profile: { id: USER }, raceEvents: [j], cup: inscrito(j.date) });
     render(<RaceHubView race={j} runs={[RACE_RUN]} profile={PROFILE} />);
     const bloco = screen.getByTestId('cup-race-block');
     expect(screen.getByTestId('cup-race-migalha')).toHaveTextContent('Troféu de Teste · J3 de 1');
     const plano = screen.getByTestId('race-pacing-card');
-    expect(bloco.compareDocumentPosition(plano) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(plano.compareDocumentPosition(bloco) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     // O dorsal nunca aparece no hub.
     expect(document.body.textContent).not.toContain('4321');
   });

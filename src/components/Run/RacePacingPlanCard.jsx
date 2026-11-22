@@ -47,7 +47,11 @@ export default function RacePacingPlanCard({
   onGoToEdit,
   onFetchWebInfo,
   fetchingWebInfo = false,
+  firstRows = null,
 }) {
+  /* O hub reorganizado (2026-11-22) mostra os primeiros km e «Ver todos os km»; sem `firstRows`,
+     a tabela inteira, como antes. */
+  const [allRows, setAllRows] = useState(false);
   /* O percurso só se pode ir buscar se houver site e ainda não houver
      extração feita — é o mesmo onFetchWebInfo do cartão "Informação do Site
      Oficial", aqui repetido junto ao plano porque é aqui que a falta se
@@ -194,8 +198,8 @@ export default function RacePacingPlanCard({
         {/* A tabela. Cada troço numa linha: km, ritmo e passagem em cima,
             rótulo e instrução por baixo. Em trail o ritmo é referência
             (texto-4), porque o que manda é o esforço. */}
-        <div data-testid="race-pacing-rows" style={{ marginTop: 14 }}>
-          {plan.rows.map((row) => (
+        <div data-testid="race-pacing-rows" id="race-pacing-rows" style={{ marginTop: 14 }}>
+          {(firstRows && !allRows ? plan.rows.slice(0, firstRows) : plan.rows).map((row) => (
             <div
               key={`${row.fromKm}-${row.toKm}`}
               style={{
@@ -239,6 +243,20 @@ export default function RacePacingPlanCard({
             </div>
           ))}
         </div>
+
+        {firstRows && plan.rows.length > firstRows && (
+          <button
+            type="button"
+            data-testid="race-pacing-all-rows"
+            onClick={() => setAllRows((v) => !v)}
+            aria-expanded={allRows}
+            aria-controls="race-pacing-rows"
+            className="w-full text-[12.5px] font-bold"
+            style={{ minHeight: 'var(--tap)', color: 'var(--race)', background: 'none', border: 'none', borderTop: '1px solid var(--border-faint)' }}
+          >
+            {allRows ? 'Ver menos' : `Ver todos os km (${plan.rows.length} troços)`}
+          </button>
+        )}
 
         {/* Abastecimento: uma linha de marcos, não um plano nutricional. */}
         {plan.fuel.length > 0 && (

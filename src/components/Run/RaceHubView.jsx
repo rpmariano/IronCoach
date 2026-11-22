@@ -49,7 +49,7 @@ import { buildRacePacingPlan } from '@formulas/racePacing.ts';
 import { pacingRouteInput } from '../../utils/coursePacing';
 import { calculateRaceTrainingPlan, formatDatePTShort, formatDateDayMonth } from '../../utils/racePlanEngine';
 import { calculateReadinessIndex, getRacePrediction, getVDOTTrend } from '../../utils/biEngine';
-import { racePriorityLabel, raceDistanceLabel, formatPace, formatDuration, findRaceRun, parseDurationToSeconds, describeRaceClassification, describeRaceTimes } from '../../utils/run';
+import { racePriorityLabel, raceDistanceLabel, raceTerrainLabel, RACE_TERRAIN_TYPES, formatPace, formatDuration, findRaceRun, parseDurationToSeconds, describeRaceClassification, describeRaceTimes } from '../../utils/run';
 import { classifyRaceOutcome, describeRaceOutcome, raceResultSeconds } from '../../utils/raceOutcome';
 import { achievementsForRace, missedInRace, describeMissedInRace } from '../../utils/achievements';
 import { badgesForRace } from '../../utils/badges';
@@ -62,6 +62,42 @@ import './RaceHubView.css';
 import { runsOnly } from '@formulas/runKinds.ts';
 import { safeHttpUrl } from '../../utils/safeUrl';
 import CourseProfilePanel from './CourseProfilePanel';
+
+/* Os km em pt-PT, com uma casa decimal quando a tem: «21,1 km», «10 km». */
+export function formatKmPt(km) {
+  const n = Number(km);
+  if (!(n > 0)) return '—';
+  return `${new Intl.NumberFormat('pt-PT', { maximumFractionDigits: 1 }).format(Math.round(n * 10) / 10)} km`;
+}
+
+/* Uma secção recolhível do hub: o botão (44 px, aria-expanded/aria-controls) com o título e um
+   resumo, e o conteúdo por baixo. Fechada, o conteúdo fica montado mas escondido (hidden): o que
+   está lá dentro (o GPX, por exemplo) não perde o estado ao fechar e abrir. */
+function HubCollapsible({ id, title, summary = null, defaultOpen = false, nested = false, testId, children }) {
+  const [open, setOpen] = useState(defaultOpen);
+  const panelId = `rh-collapsible-${id}`;
+  return (
+    <section className={nested ? 'rh-collapsible rh-collapsible-nested' : 'rh-collapsible'} data-testid={testId} data-open={open ? 'true' : 'false'}>
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        aria-controls={panelId}
+        className="w-full flex items-center justify-between gap-3 text-left"
+        style={{ minHeight: 'var(--tap)', background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}
+      >
+        <span className="min-w-0">
+          <span className="block text-[14px] font-extrabold text-[var(--text-1)]">{title}</span>
+          {summary && <span className="block text-[12px] text-[var(--text-3)] truncate">{summary}</span>}
+        </span>
+        {open ? <ChevronUp size={18} className="shrink-0 text-[var(--text-3)]" /> : <ChevronDown size={18} className="shrink-0 text-[var(--text-3)]" />}
+      </button>
+      <div id={panelId} hidden={!open} className="rh-collapsible-body">
+        {children}
+      </div>
+    </section>
+  );
+}
 
 export default function RaceHubView({
   race,
@@ -772,442 +808,348 @@ export default function RaceHubView({
     );
   }
 
-  return (
-    <div className="race-hub-container">
-      {/* ─── 1. Hero Card AAA com Glow & Countdowns Duplos ─────────────────── */}
-      <div className="rh-hero-card">
-        <div className="rh-glow" />
+  /* ── O hub antes da prova, por momento (pedido do Rui, 2026-11-22) ────────────────────────────
+     Era um só ecrã para todos os momentos, com ~3700 px no dia da prova: a contagem e um cartão só
+     para a distância no 1.º ecrã, o «Registar a prova» no 2.º, cinco cartões do macrociclo a
+     vermelho. Agora há um bloco principal no topo, conforme o momento, e o resto recolhido:
+     · longe (mais de 7 dias): a contagem, a fase em linguagem simples e o objetivo vs a previsão;
+     · a última semana (showPacingPlan): o Plano para o dia;
+     · o dia (e uma prova passada por registar): «Registar a prova», o Plano e a frase da Carol.
+     A distância diz-se uma vez, a frase do objetivo ambicioso uma vez, e sem caixas dentro de
+     caixas. Nada se perde: o que saiu do topo está nos recolhidos. */
+  const moment = daysToRace <= 0 ? 'dia' : showPacingPlan ? 'semana' : 'longe';
+  const kmLabel = formatKmPt(race?.distance_km || 10);
+  const trailDplus = race?.race_type === 'trail' && Number(race?.elevation_gain_m) > 0;
+  // A linha do cabeçalho: a data (com a hora), e depois o resto — a distância uma vez só.
+  const metaRest = [
+    race?.location || 'Local a definir',
+    trailDplus ? `${kmLabel} · +${race.elevation_gain_m} m D+` : kmLabel,
+    // O piso só quando é um (estrada, trail): provas antigas guardam aqui a distância («21k»), e repeti-la não diz nada.
+    RACE_TERRAIN_TYPES.some((t) => t.key === race?.race_type) ? raceTerrainLabel(race.race_type) : null,
+    racePriorityLabel(race?.race_priority || 'a'),
+    race?.experience_level ? experienceLevelLabel(race.experience_level) : null,
+  ].filter(Boolean).join(' · ');
+  const phaseLine = daysToStart > 0
+    ? `A preparação começa daqui a ${daysToStart} ${daysToStart === 1 ? 'dia' : 'dias'}`
+    : trainingStatus === 'completed'
+      ? 'Preparação cumprida'
+      : `${currentPhase.name} — semana ${currentWeek} de ${totalWeeks}`;
+  const countdown = daysToRace === 1 ? 'Amanhã' : `${daysToRace} dias`;
 
-        <div className="rh-hero-top">
-          <div className="flex-1 min-w-0">
-            <div className="rh-header-badges">
-              <span className="rh-tag">{race?.race_type || 'Estrada'}</span>
-              <span className={`rh-priority-pill rh-priority-${race?.race_priority || 'a'}`}>
-                {racePriorityLabel(race?.race_priority || 'a')}
-              </span>
-              <span className="rh-distance-badge">
-                {distanceLabel}
-              </span>
-            </div>
-            <h1 className="rh-title">{race?.name || 'Nova Prova'}</h1>
-            <div className="rh-sub-info">
-              <div className="rh-sub-item">
-                <Calendar size={13} className="text-[var(--race)]" />
-                <span data-testid="race-hub-date">{raceDateLine}</span>
-              </div>
-              <div className="rh-sub-item">
-                <MapPin size={13} className="text-[var(--race)]" />
-                <span>{race?.location || 'Local a definir'}</span>
-              </div>
-              {race?.experience_level && (
-                <div className="rh-sub-item text-[var(--text-3)]">
-                  <span>· {experienceLevelLabel(race.experience_level)}</span>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Semáforo de Prontidão Carol */}
-          <div className="rh-traffic-light" title={calibrating ? 'Prontidão Global: a calibrar' : `Prontidão Global: ${readinessTitle} (${readiness.score}%)`}>
-            <div className={`rh-light rh-light-red ${lightLevel === 'low' ? 'on' : ''}`} />
-            <div className={`rh-light rh-light-yellow ${lightLevel === 'medium' ? 'on' : ''}`} />
-            <div className={`rh-light rh-light-green ${lightLevel === 'high' ? 'on' : ''}`} />
-          </div>
+  const header = (
+    <div className="rh-hub-header" data-testid="race-hub-header">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <h1 className="rh-title">{race?.name || 'Nova Prova'}</h1>
+          <p className="rh-hub-meta" data-testid="race-hub-meta">
+            <Calendar size={13} className="text-[var(--race)] inline-block align-[-2px] mr-1" aria-hidden="true" />
+            <span data-testid="race-hub-date">{raceDateLine}</span>
+            {' · '}{metaRest}
+          </p>
         </div>
-
-        {/* Countdowns Duplos */}
-        <div className="rh-countdown-row">
-          {/* Card 1: Dias para a Prova */}
-          <div className="rh-countdown-box">
-            <span className="rh-cd-label">Contagem para a Prova</span>
-            <div className="rh-cd-num">
-              {daysToRace < 0 ? 'Concluída' : daysToRace === 0 ? 'Hoje!' : daysToRace}
-            </div>
-            <span className="rh-cd-desc">
-              {daysToRace < 0 ? 'Ciclo finalizado' : daysToRace === 0 ? 'Dia da competição' : 'Dias restantes'}
-            </span>
-          </div>
-
-          {/* Card 2: Fase de Treino em curso — nome da fase em destaque
-              (era o contador "Sem. 4"), com "Sem. 4 de 6" como descrição. */}
-          <div className="rh-countdown-box">
-            <span className="rh-cd-label">Fase de Treino</span>
-            <div className={`rh-cd-num ${daysToStart > 0 || trainingStatus === 'completed' ? '' : 'rh-cd-num-phase'}`}>
-              {daysToStart > 0 ? (
-                `${daysToStart}d`
-              ) : trainingStatus === 'completed' ? (
-                '100%'
-              ) : (
-                currentPhase.name
-              )}
-            </div>
-            <span className="rh-cd-desc">
-              {daysToStart > 0
-                ? 'Para início do treino'
-                : trainingStatus === 'completed'
-                ? 'Preparação cumprida'
-                : `Sem. ${currentWeek} de ${totalWeeks}`}
-            </span>
-          </div>
-        </div>
-
-        {/* Linha de Progresso & Corredor na Timeline */}
-        <div className="rh-track-container">
-          <div className="rh-track-bar">
-            <div className="rh-track-fill" style={{ '--rh-track-scale': Math.max(0, Math.min(100, progressPercentage)) / 100 }} />
-            <div className="rh-runner-dot" style={{ left: `${progressPercentage}%` }}>
-              <RunIcon size={14} color="var(--race-deep)" />
-            </div>
-          </div>
-          <div className="rh-track-labels">
-            <span>Início ({formatDateDayMonth(planStartDate)})</span>
-            <span className="text-[var(--race)] font-extrabold">
-              {trainingStatus === 'not_started'
-                ? `Início em ${daysToStart} dias`
-                : trainingStatus === 'completed'
-                ? 'Prova Concluída'
-                : `Fase: ${currentPhase.name}`}
-            </span>
-            <span>Meta ({formatDateDayMonth(raceDate)})</span>
-          </div>
-        </div>
-
-        {/* Specs Grid */}
-        <div className="rh-specs-grid">
-          <div className="rh-spec-card">
-            <span className="rh-spec-lbl">Distância</span>
-            <span className="rh-spec-val">{race?.distance_km || 10} km</span>
-          </div>
-          {race?.race_type === 'trail' && (
-            <div className="rh-spec-card">
-              <span className="rh-spec-lbl">D+ / ITRA Equiv.</span>
-              <span className="rh-spec-val">
-                +{race?.elevation_gain_m || 0}m ({equivalentKm} km)
-              </span>
-            </div>
-          )}
-          {/* Os dois números num bloco só, com a diferença e a leitura —
-              eram dois cartões separados que pediam ao atleta que
-              comparasse sozinho (pedido do utilizador). */}
-          <RaceForecastCard forecast={forecast} raceType={race?.race_type} elevationGainM={Number(race?.elevation_gain_m) || 0} />
+        {/* Semáforo de Prontidão Carol */}
+        <div className="rh-traffic-light" title={calibrating ? 'Prontidão Global: a calibrar' : `Prontidão Global: ${readinessTitle} (${readiness.score}%)`}>
+          <div className={`rh-light rh-light-red ${lightLevel === 'low' ? 'on' : ''}`} />
+          <div className={`rh-light rh-light-yellow ${lightLevel === 'medium' ? 'on' : ''}`} />
+          <div className={`rh-light rh-light-green ${lightLevel === 'high' ? 'on' : ''}`} />
         </div>
       </div>
+    </div>
+  );
 
-      {/* A partir do DIA da prova, a ação que interessa é registá-la — mesmo
-          que o hub continue a mostrar a preparação, porque "concluída" é
-          coisa que só o atleta decide (specs/prova-concluida.md §3). */}
-      {canRegisterRace && (
+  const registerCta = canRegisterRace && (
+    // A partir do DIA da prova, a ação que interessa é registá-la (specs/prova-concluida.md §3).
+    <button
+      type="button"
+      data-testid="race-hub-register"
+      onClick={openRaceRegistration}
+      className="w-full inline-flex items-center justify-center gap-2"
+      style={{ minHeight: 'var(--tap)', margin: '4px 0 12px', borderRadius: 14, border: 'none', background: 'var(--grad-race)', color: 'var(--race-ink)', fontSize: 13.5, fontWeight: 800, cursor: 'pointer' }}
+    >
+      <Trophy size={16} /> Registar a prova
+    </button>
+  );
+
+  const pacing = showPacingPlan && (
+    <RacePacingPlanCard
+      plan={pacingPlan}
+      race={race}
+      onGoToEdit={onGoToEdit}
+      onFetchWebInfo={onFetchWebInfo}
+      fetchingWebInfo={fetchingWebInfo}
+      firstRows={3}
+    />
+  );
+
+  // A contagem, a fase e o objetivo vs a previsão — o bloco principal de longe, e uma linha na
+  // última semana (aí a frase do objetivo ambicioso é a do Plano, não esta).
+  const summary = (
+    <section className="rh-hub-summary" data-testid="race-hub-summary">
+      <div className="flex items-baseline gap-2 flex-wrap">
+        <span className="rh-hub-countdown" data-testid="race-hub-countdown">{countdown}</span>
+        <span className="text-[13px] font-bold text-[var(--text-2)]" data-testid="race-hub-phase">{phaseLine}</span>
+      </div>
+      <RaceForecastCard
+        compact
+        showLine={moment === 'longe'}
+        forecast={forecast}
+        raceType={race?.race_type}
+        elevationGainM={Number(race?.elevation_gain_m) || 0}
+        onSetTarget={onGoToEdit}
+      />
+    </section>
+  );
+
+  const carol = (
+    <section className="rh-carol-box" data-testid="race-hub-carol">
+      <div className="rh-carol-header">
+        <div className="rh-carol-badge">
+          <CoachAvatar size={28} />
+          <span>Evolução e prontidão</span>
+        </div>
+        {/* Atenção é coral: o âmbar é da prova (ponto 3). */}
+        <span
+          className="rh-carol-readiness-pill text-[11px] font-extrabold px-2.5 py-1 rounded-full border"
+          style={{
+            background: calibrating ? 'var(--surface-dim)'
+              : lightLevel === 'high' ? 'color-mix(in srgb, var(--ok) 16%, var(--bg-app))'
+              : lightLevel === 'medium' ? 'color-mix(in srgb, var(--warn) 10%, var(--bg-app))'
+              : 'color-mix(in srgb, var(--danger) 12%, var(--bg-app))',
+            borderColor: calibrating ? 'var(--border-glass)'
+              : lightLevel === 'high' ? 'var(--tint-ok-bd)'
+              : lightLevel === 'medium' ? 'var(--tint-warn-bd)' : 'var(--tint-danger-bd)',
+            color: calibrating ? 'var(--text-2)'
+              : lightLevel === 'high' ? 'var(--ok)'
+              : lightLevel === 'medium' ? 'var(--warn)' : 'var(--danger)',
+          }}
+        >
+          {calibrating ? 'Prontidão a calibrar' : `Prontidão ${readinessTitle} (${readiness.score}%)`}
+        </span>
+      </div>
+
+      <p className="rh-carol-body">{carolAnalysis.overviewText}</p>
+
+      {volumeLine && (
+        <div data-testid="volume-outlook" className="mt-3">
+          <p className="text-[12px] font-bold text-[var(--text-3)]">Volume até à prova</p>
+          <p className="text-[13px] mt-0.5 text-[var(--text-1)]" data-testid="volume-outlook-line">{volumeLine}</p>
+          {volumeNote && <p className="text-[12px] mt-1 text-[var(--text-2)]" data-testid="volume-outlook-note">{volumeNote}</p>}
+        </div>
+      )}
+      {race?.id && <LoadProfileCard raceId={race.id} />}
+
+      {viabilityAlerts.length > 0 && (
+        <Warning title="Alertas de Viabilidade" icon={<AlertTriangle size={12} />} className="mt-4">
+          {viabilityAlerts.map((flag) => (
+            <span key={flag} className="block">
+              {flag === 'ultra_para_iniciante' && '• Prova de Ultra-Trail não recomendada para nível iniciante sem histórico de maratona.'}
+              {flag === 'tempo_insuficiente' && `• Faltam ${Math.floor(daysToRace / 7)} semanas — a preparação recomendada para esta distância é de ${totalWeeks} semanas.`}
+            </span>
+          ))}
+        </Warning>
+      )}
+    </section>
+  );
+
+  const extras = (
+    <>
+      {/* Só para uma prova gravada e por fazer — o .ics lê a prova da BD. */}
+      {calendarRaceId && daysToRace >= 0 && <AddToCalendar race={race} raceEventId={calendarRaceId} />}
+      {cupOn && <CupRaceBlock race={race} />}
+    </>
+  );
+
+  /* O macrociclo: a fase atual aberta; as concluídas numa linha que se abre; as que faltam,
+     fechadas. Sem a pílula «Sem registos · 40%» nas que passaram — julgava o passado sem dar
+     nada a fazer. */
+  const donePhases = phases.filter((p) => p.state === 'completed' || p.state === 'skipped');
+  const openPhases = phases.filter((p) => !(p.state === 'completed' || p.state === 'skipped'));
+  const renderPhase = (phase) => {
+    const isActive = phase.state === 'active';
+    const isDone = phase.state === 'completed';
+    const isSkipped = phase.state === 'skipped';
+    const isExpanded = expandedPhaseId === phase.id || (isActive && expandedPhaseId === null);
+    const evalData = phase.evaluation;
+    const panelId = `rh-phase-${phase.id}`;
+    return (
+      <div key={phase.id} className={`rh-phase-row ${isActive ? 'active-phase' : ''}`} data-testid={`race-hub-phase-${phase.id}`}>
         <button
           type="button"
-          data-testid="race-hub-register"
-          onClick={openRaceRegistration}
-          className="w-full inline-flex items-center justify-center gap-2"
-          style={{ minHeight: 'var(--tap)', marginBottom: 12, borderRadius: 14, border: 'none', background: 'var(--grad-race)', color: 'var(--race-ink)', fontSize: 13.5, fontWeight: 800, cursor: 'pointer' }}
+          onClick={() => togglePhase(phase.id)}
+          aria-expanded={isExpanded}
+          aria-controls={panelId}
+          className="w-full flex items-center justify-between gap-2 text-left"
+          style={{ minHeight: 'var(--tap)', background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}
         >
-          <Trophy size={16} /> Registar a prova
-        </button>
-      )}
-
-      {/* Só para uma prova gravada e por fazer — o .ics lê a prova da BD
-          (RunAgenda não passa o id enquanto há alterações por gravar). */}
-      {calendarRaceId && daysToRace >= 0 && (
-        <AddToCalendar race={race} raceEventId={calendarRaceId} />
-      )}
-
-      {cupOn && <CupRaceBlock race={race} />}
-
-      {/* ─── 1b. Plano para o dia ───────────────────────────────────────────
-          Abaixo do herói e da contagem, antes das fases: na última semana é
-          esta a pergunta ("a que ritmo vou sair?"), não o macrociclo. */}
-      {showPacingPlan && (
-        <RacePacingPlanCard
-          plan={pacingPlan}
-          race={race}
-          onGoToEdit={onGoToEdit}
-          onFetchWebInfo={onFetchWebInfo}
-          fetchingWebInfo={fetchingWebInfo}
-        />
-      )}
-
-      {/* ─── 2. Parecer & Análise da Carol sobre a Evolução do Treino ───────── */}
-      <div className="rh-carol-box">
-        <div className="rh-carol-header">
-          <div className="rh-carol-badge">
-            <CoachAvatar size={28} />
-            <span>Evolução & Prontidão</span>
-          </div>
-          {/* Ponto 3: a prontidão "média" era âmbar — o âmbar é da prova, e
-              esta pílula está dentro do ecrã da prova, onde a confusão era
-              maior. Atenção é coral. */}
-          <span
-            className="rh-carol-readiness-pill text-[11px] font-extrabold px-2.5 py-1 rounded-full border"
-            style={{
-              // A tinta aqui empilha-se sobre DUAS superfícies translúcidas
-              // (o cartão do módulo + a .rh-carol-box), e o fundo efetivo
-              // subia o suficiente para o coral do --danger ficar em 4,34:1.
-              // Mesma cor, mas misturada com o fundo da app em vez de
-              // somada ao que estiver por baixo: 5,90:1, e igual em
-              // qualquer sítio onde a pílula apareça.
-              background: calibrating ? 'var(--surface-dim)'
-                : lightLevel === 'high' ? 'color-mix(in srgb, var(--ok) 16%, var(--bg-app))'
-                : lightLevel === 'medium' ? 'color-mix(in srgb, var(--warn) 10%, var(--bg-app))'
-                : 'color-mix(in srgb, var(--danger) 12%, var(--bg-app))',
-              borderColor: calibrating ? 'var(--border-glass)'
-                : lightLevel === 'high' ? 'var(--tint-ok-bd)'
-                : lightLevel === 'medium' ? 'var(--tint-warn-bd)' : 'var(--tint-danger-bd)',
-              color: calibrating ? 'var(--text-2)'
-                : lightLevel === 'high' ? 'var(--ok)'
-                : lightLevel === 'medium' ? 'var(--warn)' : 'var(--danger)',
-            }}
-          >
-            {calibrating ? 'Prontidão a calibrar' : `Prontidão ${readinessTitle} (${readiness.score}%)`}
-          </span>
-        </div>
-
-        <p className="rh-carol-body">
-          {carolAnalysis.overviewText}
-        </p>
-
-        {volumeLine && (
-          <div data-testid="volume-outlook" className="mt-3 rounded-xl px-3 py-2.5" style={{ background: 'var(--surface-soft)', border: '1px solid var(--border-faint)' }}>
-            <p className="text-[11px] font-extrabold uppercase tracking-wider text-[var(--text-3)]">Volume até à prova</p>
-            <p className="text-[13px] mt-1 text-[var(--text-1)]" data-testid="volume-outlook-line">{volumeLine}</p>
-            {volumeNote && <p className="text-[12px] mt-1 text-[var(--text-2)]" data-testid="volume-outlook-note">{volumeNote}</p>}
-          </div>
-        )}
-        {race?.id && <LoadProfileCard raceId={race.id} />}
-
-        {/* Os alertas de viabilidade eram âmbar dentro do ecrã da prova, onde
-            tudo o resto também é âmbar — não se distinguiam do cenário. Coral
-            (Warning), o bloco de aviso do sistema. Texto inalterado. */}
-        {viabilityAlerts.length > 0 && (
-          <Warning
-            title="Alertas de Viabilidade"
-            icon={<AlertTriangle size={12} />}
-            className="mt-4"
-          >
-            {viabilityAlerts.map((flag) => (
-              <span key={flag} className="block">
-                {flag === 'ultra_para_iniciante' && '• Prova de Ultra-Trail não recomendada para nível iniciante sem histórico de maratona.'}
-                {flag === 'tempo_insuficiente' && `• Faltam ${Math.floor(daysToRace / 7)} semanas — a preparação recomendada para esta distância é de ${totalWeeks} semanas.`}
-              </span>
-            ))}
-          </Warning>
-        )}
-      </div>
-
-      {/* ─── 3. Fases do Treino & Classificação da Carol por Fase ──────────── */}
-      <div className="rh-phases-section">
-        <div className="flex items-center justify-between gap-2 pt-1 pb-1">
-          <span className="text-xs font-black uppercase tracking-wider text-[var(--text-3)] flex items-center gap-2">
-            <span className="w-1.5 h-3.5 rounded-full bg-[var(--race)] inline-block shrink-0" />
-            Macrociclo de Treino ({totalWeeks} Semanas)
-          </span>
-        </div>
-
-        <div className="space-y-2.5">
-          {phases.map((phase) => {
-            const isActive = phase.state === 'active';
-            const isCompleted = phase.state === 'completed';
-            const isSkipped = phase.state === 'skipped';
-            const isExpanded = expandedPhaseId === phase.id || (isActive && expandedPhaseId === null);
-            const evalData = phase.evaluation;
-
-            return (
-              <div
-                key={phase.id}
-                onClick={() => togglePhase(phase.id)}
-                className={`rh-phase-card cursor-pointer ${
-                  isActive ? 'active-phase' : isCompleted ? 'completed-phase' : isSkipped ? 'skipped-phase' : ''
-                }`}
-              >
-                <div className="flex flex-col gap-1.5">
-                  {/* Linha 1: [Ícone + Título] à esquerda | pílula de estado da
-                      fase + chevron à direita. Só esta pílula (curta: "Em
-                      Curso"/"Concluída"/"Não Realizada"/"Planeada") partilha a
-                      linha com o título — a de avaliação (texto mais longo,
-                      ex.: "Ajuste Recomendado · 50%") ia a esta coluna e
-                      espremia o nome da fase até truncar (ex.: "Base
-                      Aerób..."). */}
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-2.5 min-w-0 flex-1">
-                      <div className="rh-phase-num-badge shrink-0">
-                        {isCompleted ? <CheckCircle2 size={13} /> : phase.number}
-                      </div>
-                      <span className="rh-phase-name truncate font-bold text-[var(--text-1)] text-sm">
-                        {phase.name}
-                      </span>
-                    </div>
-
-                    <div className="flex items-center gap-2 shrink-0">
-                      <span className={`rh-phase-status-pill rh-pill-${phase.state} whitespace-nowrap`}>
-                        {phase.state === 'active' ? 'Em Curso' : phase.state === 'completed' ? 'Concluída' : phase.state === 'skipped' ? 'Não Realizada' : 'Planeada'}
-                      </span>
-                      <div className="text-[var(--text-3)] pl-0.5">
-                        {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Linha 2: Datas & Semanas, alinhadas sob o título (pl-8). */}
-                  <p className="rh-phase-dates text-[11px] font-medium text-[var(--text-3)] pl-8">
-                    {phase.weeksLabel} · {formatDateDayMonth(phase.startDate)} a {formatDateDayMonth(phase.endDate)}
-                  </p>
-
-                  {/* Linha 3: pílula de avaliação — à largura total do
-                      cartão (sem o recuo pl-8 da linha acima), tal como o
-                      pill "Prontidão" do cartão Evolução & Prontidão. Com
-                      recuo ficava mais estreita e deslocada para a direita,
-                      não lendo como a mesma peça visual. */}
-                  {/* Sem nota, só a prova que passou sem corrida registada
-                      mostra a pílula: "Por registar" (revisão de 2026-09-26). */}
-                  {(evalData?.score != null || evalData?.awaitingRecord) && (
-                    <span className={`rh-eval-badge rh-eval-${evalData.statusColor} whitespace-nowrap w-full`}>
-                      {evalData.score != null ? `${evalData.gradeLabel} · ${evalData.score}%` : evalData.gradeLabel}
-                    </span>
-                  )}
-                </div>
-
-                {/* Conteúdo Expandido da Fase */}
-                {isExpanded && (
-                  <div className="rh-phase-eval fade-in" onClick={(e) => e.stopPropagation()}>
-                    <p className="text-xs text-[var(--text-3)] font-medium">
-                      <span className="text-[var(--race)] font-bold">Foco da Fase:</span> {phase.focus}
-                    </p>
-
-                    {/* Classificação da Carol */}
-                    <div className="p-2.5 rounded-xl bg-black/20 border border-[var(--border-faint)] space-y-1.5 mt-1">
-                      <div className="rh-eval-header">
-                        <span className="rh-eval-carol-lbl">
-                          <Sparkles size={11} /> Avaliação da Carol
-                        </span>
-                        {evalData?.stars > 0 && (
-                          <span className="rh-eval-stars" title={`${evalData.stars} de 5 estrelas`}>
-                            {/* Eram os caracteres ★/☆ usados como ícone. */}
-                            {[1, 2, 3, 4, 5].map((n) => (
-                              <Star
-                                key={n}
-                                size={11}
-                                className="inline-block"
-                                fill={n <= evalData.stars ? 'currentColor' : 'none'}
-                                strokeWidth={n <= evalData.stars ? 0 : 2}
-                              />
-                            ))}
-                          </span>
-                        )}
-                      </div>
-
-                      <p className="rh-eval-summary">
-                        {evalData?.summary}
-                      </p>
-
-                      {evalData?.metrics?.runsCount > 0 && (
-                        <div className="flex items-center gap-x-3 gap-y-1 pt-1 text-[11px] text-[var(--text-3)] flex-wrap">
-                          <span>Corridas: <strong className="text-[var(--text-2)]">{evalData.metrics.runsCount}</strong></span>
-                          <span>Volume: <strong className="text-[var(--text-2)]">{evalData.metrics.totalKm} km</strong></span>
-                          {evalData.metrics.polarizedZ1Z2Pct !== null && (
-                            <span>Z1/Z2: <strong className="text-[var(--ok)]">{evalData.metrics.polarizedZ1Z2Pct}%</strong></span>
-                          )}
-                          {evalData.metrics.avgPace && (
-                            <span>Ritmo médio: <strong className="text-[var(--text-2)]">{evalData.metrics.avgPace} /km</strong></span>
-                          )}
-                        </div>
-                      )}
-                    </div>
-
-                    {/* O estado da prova decide-se aqui, na 5.ª "fase": ver
-                        markCompletedButton acima. */}
-                    {phase.id === 'race_recovery' && markCompletedButton && (
-                      <div className="mt-2">{markCompletedButton}</div>
-                    )}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      {confirmCompletedModal}
-
-      {/* ─── Percurso (GPX): o perfil de altitude e o traçado (CourseProfilePanel). Quem monta
-          (RunAgenda) lê o ficheiro e grava; sem `course`, não aparece. */}
-      {course && (
-        <div className="rh-web-info-card mb-4" data-testid="race-hub-course">
-          <CourseProfilePanel {...course} />
-        </div>
-      )}
-
-      {/* ─── 4. Informação Oficial do Site da Prova & Extração ─────────────── */}
-      <div className="rh-web-info-card mb-4">
-        <div className="rh-web-header">
-          <div className="flex items-center gap-2">
-            <div className="w-6 h-6 rounded-lg bg-[var(--tint-race-bg)] flex items-center justify-center text-[var(--race)]">
-              <Globe size={14} />
-            </div>
-            <span className="text-xs font-bold text-[var(--text-2)] uppercase tracking-wider">
-              Informação do Site Oficial
+          <span className="flex items-center gap-2.5 min-w-0 flex-1">
+            <span className="rh-phase-num-badge shrink-0">{isDone ? <CheckCircle2 size={13} /> : phase.number}</span>
+            <span className="min-w-0">
+              <span className="block truncate font-bold text-[var(--text-1)] text-sm">{phase.name}</span>
+              <span className="block text-[11px] text-[var(--text-3)]">{phase.weeksLabel} · {formatDateDayMonth(phase.startDate)} a {formatDateDayMonth(phase.endDate)}</span>
             </span>
-          </div>
+          </span>
+          <span className="flex items-center gap-2 shrink-0">
+            <span className={`rh-phase-status-pill rh-pill-${phase.state} whitespace-nowrap`}>
+              {isActive ? 'Em curso' : isDone ? 'Concluída' : isSkipped ? 'Não realizada' : 'Planeada'}
+            </span>
+            {isExpanded ? <ChevronUp size={16} className="text-[var(--text-3)]" /> : <ChevronDown size={16} className="text-[var(--text-3)]" />}
+          </span>
+        </button>
 
-          {race?.website?.trim() && onFetchWebInfo && (
-            <Button
-              variant="module"
-              moduleColor="var(--mod-prova)"
-              size="sm"
-              isLoading={fetchingWebInfo}
-              onClick={onFetchWebInfo}
-              icon={info ? <RefreshCw size={12} /> : <Sparkles size={12} />}
-            >
-              {info ? 'Atualizar informação' : 'Obter informação'}
-            </Button>
-          )}
-        </div>
-
-        {race?.website?.trim() ? (
-          <div className="space-y-3">
-            <div className="flex items-center justify-between p-2.5 rounded-xl bg-white/[0.04] border border-white/[0.08] gap-2">
-              <div className="flex items-center gap-2 min-w-0">
-                <LinkIcon size={13} className="text-[var(--race)] shrink-0" />
-                {/* Só é link o que é http(s) — um «javascript:…» fica texto (utils/safeUrl.js). */}
-                {safeHttpUrl(race.website) ? (
-                  <a
-                    href={safeHttpUrl(race.website)}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-xs font-semibold text-[var(--text-2)] underline hover:text-[var(--race)] transition truncate"
-                  >
-                    {race.website}
-                  </a>
-                ) : (
-                  <span className="text-xs font-semibold text-[var(--text-2)] truncate" data-testid="race-website-text">{race.website}</span>
-                )}
-              </div>
-            </div>
-
-            {info ? (
-              <RaceWebInfoSections info={info} variant="dark" />
-            ) : (
-              <div className="p-4 rounded-xl bg-white/[0.03] border border-white/[0.06] text-center space-y-2">
-                <p className="text-xs text-[var(--text-3)] font-medium">
-                  Clica em <span className="text-[var(--race)] font-bold">"Obter informação"</span> para extrair horários, dorsais, documentos, regulamento e altimetria do site oficial.
+        {isExpanded && (
+          <div id={panelId} className="rh-phase-eval fade-in">
+            <p className="text-[12.5px] leading-[1.5] text-[var(--text-2)]">
+              <span className="font-bold text-[var(--text-1)]">O que conta nesta fase:</span> {phase.focus}
+            </p>
+            {/* A avaliação da Carol só na fase em curso (e na da prova): as que passaram não se julgam. */}
+            {!isDone && !isSkipped && (evalData?.summary || evalData?.awaitingRecord) && (
+              <div className="mt-2 space-y-1">
+                <p className="text-[12px] font-bold text-[var(--text-3)] flex items-center gap-1.5">
+                  <Sparkles size={11} /> Avaliação da Carol
+                  {evalData?.score != null && <span className="text-[var(--text-2)]">· {evalData.gradeLabel} · {evalData.score}%</span>}
                 </p>
+                {evalData?.summary && <p className="rh-eval-summary">{evalData.summary}</p>}
               </div>
             )}
+            {evalData?.metrics?.runsCount > 0 && (
+              <div className="flex items-center gap-x-3 gap-y-1 pt-1 text-[11px] text-[var(--text-3)] flex-wrap">
+                <span>Corridas: <strong className="text-[var(--text-2)]">{evalData.metrics.runsCount}</strong></span>
+                <span>Volume: <strong className="text-[var(--text-2)]">{evalData.metrics.totalKm} km</strong></span>
+                {evalData.metrics.polarizedZ1Z2Pct !== null && (
+                  <span>Fácil: <strong className="text-[var(--text-2)]">{evalData.metrics.polarizedZ1Z2Pct}%</strong></span>
+                )}
+                {evalData.metrics.avgPace && (
+                  <span>Ritmo médio: <strong className="text-[var(--text-2)]">{evalData.metrics.avgPace} /km</strong></span>
+                )}
+              </div>
+            )}
+            {/* O estado da prova decide-se aqui, na fase da prova. */}
+            {phase.id === 'race_recovery' && markCompletedButton && <div className="mt-2">{markCompletedButton}</div>}
           </div>
-        ) : (
-          <div className="p-4 rounded-xl bg-white/[0.03] border border-white/[0.06] flex flex-col items-center justify-center text-center gap-2.5">
-            <p className="text-xs text-[var(--text-3)]">
-              Ainda não adicionaste o site oficial desta prova.
-            </p>
-            {onGoToEdit && (
-              <Button variant="light" size="sm" onClick={onGoToEdit}>
-                Adicionar Site da Prova
+        )}
+      </div>
+    );
+  };
+
+  const macro = (
+    <HubCollapsible
+      id="macro"
+      title={`Macrociclo · ${totalWeeks} semanas`}
+      summary={trainingStatus === 'not_started' ? `Começa a ${formatDateDayMonth(planStartDate)}` : `Fase: ${currentPhase.name}`}
+      testId="race-hub-macro"
+    >
+      <div className="rh-track-container" style={{ marginTop: 4 }}>
+        <div className="rh-track-bar">
+          <div className="rh-track-fill" style={{ '--rh-track-scale': Math.max(0, Math.min(100, progressPercentage)) / 100 }} />
+          <div className="rh-runner-dot" style={{ left: `${progressPercentage}%` }}>
+            <RunIcon size={14} color="var(--race-deep)" />
+          </div>
+        </div>
+        <div className="rh-track-labels">
+          <span>Início ({formatDateDayMonth(planStartDate)})</span>
+          <span>Meta ({formatDateDayMonth(raceDate)})</span>
+        </div>
+      </div>
+      {donePhases.length > 0 && (
+        <HubCollapsible
+          id="macro-done"
+          nested
+          title={`${donePhases.length} ${donePhases.length === 1 ? 'fase concluída' : 'fases concluídas'}`}
+          testId="race-hub-phases-done"
+        >
+          {donePhases.map(renderPhase)}
+        </HubCollapsible>
+      )}
+      {openPhases.map(renderPhase)}
+    </HubCollapsible>
+  );
+
+  const course_ = course && (
+    // Percurso (GPX): quem monta (RunAgenda) lê o ficheiro e grava; sem `course`, não aparece.
+    <HubCollapsible id="course" title="Percurso (GPX)" summary={course.profile ? `${formatKmPt(course.profile.distance_km)} · +${Math.round(course.profile.gain_m)} m` : 'Carregar o percurso'} testId="race-hub-course-section">
+      <div data-testid="race-hub-course">
+        <CourseProfilePanel {...course} />
+      </div>
+    </HubCollapsible>
+  );
+
+  const site = (
+    <HubCollapsible id="site" title="Site oficial" summary={race?.website?.trim() ? (info ? 'Informação obtida' : 'Por obter') : 'Por adicionar'} testId="race-hub-site">
+      {race?.website?.trim() ? (
+        <div className="space-y-3">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2 min-w-0">
+              <LinkIcon size={13} className="text-[var(--race)] shrink-0" />
+              {/* Só é link o que é http(s) — um «javascript:…» fica texto (utils/safeUrl.js). */}
+              {safeHttpUrl(race.website) ? (
+                <a href={safeHttpUrl(race.website)} target="_blank" rel="noopener noreferrer" className="text-xs font-semibold text-[var(--text-2)] underline hover:text-[var(--race)] transition truncate">
+                  {race.website}
+                </a>
+              ) : (
+                <span className="text-xs font-semibold text-[var(--text-2)] truncate" data-testid="race-website-text">{race.website}</span>
+              )}
+            </div>
+            {onFetchWebInfo && (
+              <Button variant="module" moduleColor="var(--mod-prova)" size="sm" isLoading={fetchingWebInfo} onClick={onFetchWebInfo} icon={info ? <RefreshCw size={12} /> : <Sparkles size={12} />}>
+                {info ? 'Atualizar informação' : 'Obter informação'}
               </Button>
             )}
           </div>
-        )}
-      </div>
+          {info ? (
+            <RaceWebInfoSections info={info} variant="dark" />
+          ) : (
+            <p className="text-xs text-[var(--text-3)]">
+              Toca em <span className="text-[var(--race)] font-bold">«Obter informação»</span> para extrair horários, dorsais, documentos, regulamento e altimetria do site oficial.
+            </p>
+          )}
+        </div>
+      ) : (
+        <div className="flex flex-col items-start gap-2.5">
+          <p className="text-xs text-[var(--text-3)]">Ainda não adicionaste o site oficial desta prova.</p>
+          {onGoToEdit && <Button variant="light" size="sm" onClick={onGoToEdit}>Adicionar Site da Prova</Button>}
+        </div>
+      )}
+    </HubCollapsible>
+  );
+
+  return (
+    <div className="race-hub-container" data-testid="race-hub-prerace" data-moment={moment}>
+      {header}
+
+      {moment === 'dia' && (
+        <>
+          {registerCta}
+          {pacing}
+          {/* A frase da Carol do dia («É dia de prova…») vale agora: logo a seguir ao plano. */}
+          <p className="rh-hub-day-line" data-testid="race-hub-day-line">{carolAnalysis.overviewText}</p>
+          {extras}
+          <HubCollapsible id="carol" title="Como chegaste aqui" summary={calibrating ? 'Prontidão a calibrar' : `Prontidão ${readinessTitle} (${readiness.score}%)`} testId="race-hub-carol-section">
+            {carol}
+          </HubCollapsible>
+        </>
+      )}
+
+      {moment === 'semana' && (
+        <>
+          {pacing}
+          {summary}
+          {carol}
+          {extras}
+        </>
+      )}
+
+      {moment === 'longe' && (
+        <>
+          {summary}
+          {carol}
+          {extras}
+        </>
+      )}
+
+      {macro}
+      {confirmCompletedModal}
+      {course_}
+      {site}
     </div>
   );
 }
