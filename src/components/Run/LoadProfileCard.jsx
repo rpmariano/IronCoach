@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react';
+import { useFeature } from '../../utils/features';
 import { Scale } from 'lucide-react';
 import { useAppStore } from '../../store';
 import { todayISO } from '../../lib/utils';
@@ -101,10 +102,12 @@ function ProfileOptions({ state, busy, onChoose }) {
    sempre (setRaceLoadProfile, RLS do próprio) e `onDone` diz ao chat o que foi escolhido. */
 export function LoadProfileChoice({ raceId, disabled = false, onDone, onLater }) {
   const state = useLoadState();
+  // A escolha tem interruptor (v1 lite, load_profile_choice): desligada, os botões não aparecem.
+  const choiceOn = useFeature('load_profile_choice');
   const setRaceLoadProfile = useAppStore((s) => s.setRaceLoadProfile);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
-  if (!state?.race?.id || (raceId && raceId !== state.race.id)) return null;
+  if (!choiceOn || !state?.race?.id || (raceId && raceId !== state.race.id)) return null;
   const choose = async (profile) => {
     if (busy || disabled) return;
     setBusy(true);
@@ -145,12 +148,14 @@ export function LoadProfileChoice({ raceId, disabled = false, onDone, onLater })
 /* Só no hub da prova (revisão do #123: no Início é um aviso da Carol, utils/loadTopic.js). */
 export default function LoadProfileCard({ raceId = null }) {
   const state = useLoadState();
+  // A escolha tem interruptor (v1 lite, load_profile_choice): desligada, o hub não a mostra.
+  const choiceOn = useFeature('load_profile_choice');
   const setRaceLoadProfile = useAppStore((s) => s.setRaceLoadProfile);
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
 
-  if (!state?.race?.id) return null;
+  if (!choiceOn || !state?.race?.id) return null;
   // Só na prova que manda (o perfil das outras não conta para a carga desta semana).
   if (raceId && raceId !== state.race.id) return null;
 

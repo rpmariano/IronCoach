@@ -32,7 +32,7 @@ import DiplomaReadingCard, { useDiplomaReading } from './DiplomaReadingCard';
    que a Carol o lê (DiplomaReadingCard) e "Aplicar à corrida" grava o tempo
    oficial de chip e a classificação em runs.details, na hora. O diploma em
    si continua a guardar-se com "Guardar as memórias". */
-export default function RaceMemoriesSheet({ race, run = null, userId, onClose, onSaved }) {
+export default function RaceMemoriesSheet({ race, run = null, userId, onClose, onSaved, diplomaOnly = false }) {
   const [diploma, setDiploma] = useState(null);
   const [medal, setMedal] = useState(null);
   const [photos, setPhotos] = useState([]);
@@ -149,18 +149,19 @@ export default function RaceMemoriesSheet({ race, run = null, userId, onClose, o
           <ChevronLeft size={22} />
         </button>
         <div className="min-w-0 flex-1">
-          <div className="text-[11px] font-extrabold uppercase" style={{ letterSpacing: 'var(--tracking-label)', color: 'var(--race)' }}>Memórias</div>
+          <div className="text-[11px] font-extrabold uppercase" style={{ letterSpacing: 'var(--tracking-label)', color: 'var(--race)' }}>{diplomaOnly ? 'Diploma' : 'Memórias'}</div>
           <div className="text-[14.5px] font-extrabold truncate" style={{ color: 'var(--text-1)' }}>{race?.name || 'A prova'}</div>
         </div>
       </div>
 
       <div className="flex-1 min-h-0 overflow-y-auto no-scrollbar" style={{ padding: '0 18px calc(26px + env(safe-area-inset-bottom, 0px))' }}>
         <p className="text-[12.5px] leading-[1.5] mt-3 mb-4" style={{ color: 'var(--text-3)' }}>
-          O diploma, a medalha e as fotografias do dia. Podes juntar agora ou voltar cá quando chegarem.
+          {diplomaOnly ? 'O diploma da prova: eu leio-o e o tempo e a classificação ficam na corrida. Podes juntar agora ou voltar cá quando chegar.' : 'O diploma, a medalha e as fotografias do dia. Podes juntar agora ou voltar cá quando chegarem.'}
         </p>
 
         {loaded ? (
           <RaceMemoriesFields
+            diplomaOnly={diplomaOnly}
             diploma={diploma}
             medal={medal}
             photos={photos}
@@ -186,7 +187,7 @@ export default function RaceMemoriesSheet({ race, run = null, userId, onClose, o
 
         {saveFailed && (
           <Warning
-            title="Memórias por guardar"
+            title={diplomaOnly ? 'Diploma por guardar' : 'Memórias por guardar'}
             className="mt-3"
             actions={saveFailed?.final ? null : <WarningAction onClick={save} disabled={saving}>{saving ? 'A guardar…' : 'Tentar de novo'}</WarningAction>}
           >
@@ -204,7 +205,7 @@ export default function RaceMemoriesSheet({ race, run = null, userId, onClose, o
           className="w-full inline-flex items-center justify-center gap-2 mt-5 rounded-[14px] text-[13.5px] font-extrabold disabled:opacity-45"
           style={{ minHeight: 'var(--tap)', background: 'var(--grad-race)', color: 'var(--race-ink)', border: 'none' }}
         >
-          <Award size={16} /> {saving ? 'A guardar…' : 'Guardar as memórias'}
+          <Award size={16} /> {saving ? 'A guardar…' : diplomaOnly ? 'Guardar o diploma' : 'Guardar as memórias'}
         </button>
       </div>
     </div>

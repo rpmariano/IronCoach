@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useFeature } from '../../utils/features';
 import ExerciseLockerSection from './ExerciseLockerSection';
 import PantrySection from '../Pantry/PantrySection';
 import ShoeCabinet from '../Perfil/ShoeCabinet';
@@ -22,28 +23,32 @@ const readSaved = () => {
 };
 
 export default function Armario({ initial = null }) {
-  const [active, setActive] = useState(() => (SECTIONS.some((s) => s.key === initial) ? initial : readSaved() || 'treino'));
+  // As sapatilhas têm interruptor (v1 lite): desligadas, a secção «Equipamento» sai.
+  const shoesOn = useFeature('shoes');
+  const sections = shoesOn ? SECTIONS : SECTIONS.filter((x) => x.key !== 'equipamento');
+  const [activeState, setActive] = useState(() => (SECTIONS.some((s) => s.key === initial) ? initial : readSaved() || 'treino'));
+  const active = sections.some((x) => x.key === activeState) ? activeState : 'treino';
   const choose = (key) => {
     setActive(key);
     try { localStorage.setItem(STORAGE_KEY, key); } catch { /* o separador lembra-se só enquanto está aberto */ }
   };
-  const { Panel } = SECTIONS.find((s) => s.key === active);
+  const { Panel } = sections.find((s) => s.key === active);
   // Setas, Home e End movem entre as secções (padrão WAI-ARIA dos separadores).
   const onTabKey = (e) => {
-    const i = SECTIONS.findIndex((s) => s.key === active);
-    const next = e.key === 'ArrowRight' ? (i + 1) % SECTIONS.length
-      : e.key === 'ArrowLeft' ? (i - 1 + SECTIONS.length) % SECTIONS.length
-        : e.key === 'Home' ? 0 : e.key === 'End' ? SECTIONS.length - 1 : -1;
+    const i = sections.findIndex((s) => s.key === active);
+    const next = e.key === 'ArrowRight' ? (i + 1) % sections.length
+      : e.key === 'ArrowLeft' ? (i - 1 + sections.length) % sections.length
+        : e.key === 'Home' ? 0 : e.key === 'End' ? sections.length - 1 : -1;
     if (next < 0) return;
     e.preventDefault();
-    choose(SECTIONS[next].key);
-    document.getElementById(`armario-tab-${SECTIONS[next].key}`)?.focus();
+    choose(sections[next].key);
+    document.getElementById(`armario-tab-${sections[next].key}`)?.focus();
   };
 
   return (
     <div className="space-y-3" data-testid="armario">
-      <div role="tablist" aria-label="Secções do Armário" className="grid grid-cols-3 gap-1 p-1 rounded-[14px]" style={{ background: 'rgba(255,255,255,.05)' }} onKeyDown={onTabKey}>
-        {SECTIONS.map((s) => (
+      <div role="tablist" aria-label="Secções do Armário" className={`grid ${sections.length === 3 ? 'grid-cols-3' : 'grid-cols-2'} gap-1 p-1 rounded-[14px]`} style={{ background: 'rgba(255,255,255,.05)' }} onKeyDown={onTabKey}>
+        {sections.map((s) => (
           <button
             key={s.key}
             type="button"

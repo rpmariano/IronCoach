@@ -372,11 +372,11 @@ export default function RaceHubView({
   const cupOn = useFeature('cup');
   const raceAchievements = useMemo(
     () => (badgesOn && raceRun && race?.id ? achievementsForRace({ raceEvents: palmaresRaces, runs, profile, today: hoje }, race.id) : []),
-    [raceRun, palmaresRaces, runs, profile, race?.id, hoje],
+    [badgesOn, raceRun, palmaresRaces, runs, profile, race?.id, hoje],
   );
   const raceMissed = useMemo(
     () => (badgesOn && raceRun && race?.id ? missedInRace({ raceEvents: palmaresRaces, runs, profile, today: hoje }, race.id) : []),
-    [raceRun, palmaresRaces, runs, profile, race?.id, hoje],
+    [badgesOn, raceRun, palmaresRaces, runs, profile, race?.id, hoje],
   );
 
   /* Os badges que ESTA prova deu (utils/badges.js) — hoje o `recorde_pessoal`,
@@ -566,11 +566,12 @@ export default function RaceHubView({
         {/* 1b. As memórias do dia — medalha em destaque, diploma e as
             fotografias. Sem nada guardado fica o convite, discreto: é uma
             oferta, não uma tarefa por cumprir. */}
-        {/* As memórias têm interruptor (v1 lite): desligadas, nem a galeria, nem o convite, nem o mural. */}
-        {!memoriesOn ? null : hasMemories ? (
+        {/* As memórias têm interruptor (v1 lite): desligadas, fica só o diploma (é resultado — a Carol
+            lê-o); a medalha, as fotos e o mural saem. */}
+        {(memoriesOn ? hasMemories : !!memoryPaths.diploma) ? (
           <>
             <div className="flex items-center justify-between" style={{ margin: '16px 2px 0' }}>
-              <SectionLabel tone="race">Memórias</SectionLabel>
+              <SectionLabel tone="race">{memoriesOn ? 'Memórias' : 'Diploma'}</SectionLabel>
               <button
                 type="button"
                 data-testid="race-memories-edit"
@@ -582,7 +583,7 @@ export default function RaceHubView({
               </button>
             </div>
             <div data-testid="race-memories-gallery" style={{ borderRadius: 22, background: 'var(--surface-glass)', border: '1px solid var(--border-glass)', padding: 14, marginTop: 8 }}>
-              {memoryUrls.medal && (
+              {memoriesOn && memoryUrls.medal && (
                 <img
                   src={memoryUrls.medal}
                   alt="A medalha da prova"
@@ -613,7 +614,7 @@ export default function RaceHubView({
                 )
               )}
 
-              {memoryUrls.photos.length > 0 && (
+              {memoriesOn && memoryUrls.photos.length > 0 && (
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginTop: (memoryUrls.medal || memoryPaths.diploma) ? 10 : 0 }}>
                   {memoryUrls.photos.map((url, i) => (
                     <button
@@ -639,7 +640,7 @@ export default function RaceHubView({
             className="w-full inline-flex items-center justify-center gap-2"
             style={{ minHeight: 'var(--tap)', marginTop: 12, borderRadius: 14, background: 'rgba(255,255,255,.05)', border: '1px solid var(--border-glass-strong)', color: 'var(--text-3)', fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}
           >
-            <Award size={15} /> Guardar as memórias da prova
+            <Award size={15} /> {memoriesOn ? 'Guardar as memórias da prova' : 'Juntar o diploma da prova'}
           </button>
         ) : null}
 
@@ -655,8 +656,8 @@ export default function RaceHubView({
           </button>
         )}
 
-        {memoriesOn && memoriesOpen && (
-          <RaceMemoriesSheet race={race} run={raceRun} userId={memoriesUserId} onSaved={onMemoriesSaved} onClose={() => setMemoriesOpen(false)} />
+        {memoriesOpen && (
+          <RaceMemoriesSheet race={race} run={raceRun} userId={memoriesUserId} diplomaOnly={!memoriesOn} onSaved={onMemoriesSaved} onClose={() => setMemoriesOpen(false)} />
         )}
         {memoriesOn && muralOpen && (
           <RaceMuralSheet race={race} run={raceRun} seconds={finalSeconds} classification={classification} achievements={raceAchievements} badges={raceBadges} memoryUrls={memoryUrls} onSaved={onMemoriesSaved} onClose={() => setMuralOpen(false)} />

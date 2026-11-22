@@ -741,7 +741,17 @@ export default function App() {
   const isFirstArrival = needsOnboarding && !isTutorialDoneLocally(userId);
   // O tutorial é uma funcionalidade com interruptor (v1 lite): desligado, o primeiro acesso vai direto ao arranque.
   const tutorialOn = useFeature('tutorial');
-  const showTutorial = tutorialOn && !!session && (tutorialOpen || (isFirstArrival && !onboardingOpen));
+  /* O primeiro acesso decide o tutorial UMA vez, com o valor do interruptor nesse instante (revisão
+     pré-deploy da v1 lite): sem cache, os interruptores chegam até 6 s depois, e um tutorial ligado
+     no servidor fazia saltar do arranque, já a meio, para o tutorial. Decidido, fica. */
+  const firstArrivalTutorialRef = useRef(null);
+  if (isFirstArrival && firstArrivalTutorialRef.current === null) firstArrivalTutorialRef.current = tutorialOn;
+  const firstArrivalTutorial = !!firstArrivalTutorialRef.current;
+  const showTutorial = !!session && ((tutorialOn && tutorialOpen) || (isFirstArrival && firstArrivalTutorial && !onboardingOpen));
+  // Desligado, o tutorial não fica pedido (um ?tutorial=1, ou o interruptor desligado com ele aberto).
+  useEffect(() => {
+    if (!tutorialOn && tutorialOpen) setTutorialOpen(false);
+  }, [tutorialOn, tutorialOpen, setTutorialOpen]);
   const showOnboarding = !!session && !showTutorial && (needsOnboarding || onboardingOpen);
 
   useEffect(() => {
@@ -1103,7 +1113,7 @@ export default function App() {
     stripResumeParam();
     const isDemo = params.get('demo') === 'true';
     const forcarTutorial = params.get('tutorial') === '1' || params.get('tutorial') === 'true';
-    if (forcarTutorial) {
+    if (forcarTutorial && useAppStore.getState().featureFlags?.tutorial) {
       useAppStore.getState().setTutorialOpen(true);
     }
     // A chave da notificação que abriu a app (ação P.9) — sem sessão ainda

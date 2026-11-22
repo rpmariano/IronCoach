@@ -95,3 +95,32 @@ describe('cup', () => {
     expect(loadCup).toHaveBeenCalled();
   });
 });
+
+describe('shoes', () => {
+  it('desligadas: o Armário sem «Equipamento»; ligadas, está lá', async () => {
+    const { default: Armario } = await import('../components/Armario/Armario');
+    setFlag('shoes', false);
+    const { unmount } = render(<Armario initial="equipamento" />);
+    expect(screen.queryByRole('tab', { name: 'Equipamento' })).toBeNull();
+    expect(screen.getByRole('tab', { name: 'Treino' })).toHaveAttribute('aria-selected', 'true');
+    unmount();
+    setFlag('shoes', true);
+    render(<Armario />);
+    expect(screen.getByRole('tab', { name: 'Equipamento' })).toBeInTheDocument();
+  });
+});
+
+describe('load_profile_choice', () => {
+  it('desligada: o hub e o chat sem os botões Prudente / Mais volume; ligada, estão lá', async () => {
+    const { TRAIL, MEIA, PATTY_RUNS, PATTY_PLANS, PATTY_PLAN_ITEMS } = await import('../test/pattyLoad');
+    const { default: LoadProfileCard, LoadProfileChoice } = await import('../components/Run/LoadProfileCard');
+    useAppStore.setState({ raceEvents: [TRAIL, MEIA], runs: PATTY_RUNS, coachPlans: PATTY_PLANS, coachPlanItems: PATTY_PLAN_ITEMS });
+    setFlag('load_profile_choice', false);
+    const off = render(<><LoadProfileCard raceId="meia" /><LoadProfileChoice raceId="meia" /></>);
+    expect(off.container).toBeEmptyDOMElement();
+    off.unmount();
+    setFlag('load_profile_choice', true);
+    render(<LoadProfileChoice raceId="meia" />);
+    expect(screen.getByTestId('load-profile-choose-prudente')).toBeInTheDocument();
+  });
+});

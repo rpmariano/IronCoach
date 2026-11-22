@@ -253,6 +253,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
   // fora da agenda e o ecrã é o de sempre.
   const isRaceMode = !!raceEvent;
   const memoriesOn = useFeature('race_memories');
+  const shoesOn = useFeature('shoes');
 
   /* Tempo impossível não se aceita (bug de 2026-11-15: «1:23» lido como 1 min 23 s numa prova de
      10 km com objetivo 56:40). A regra é a partilhada com o servidor (@formulas/raceTimeSanity.ts):
@@ -2552,7 +2553,8 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
   /* Sapatilhas usadas — alimenta o acumulado de km do armário
      (Perfil → Equipamento). Só aparece se houver pares ativos: sem
      armário montado seria um campo vazio a ocupar espaço. */
-  const renderShoesField = (spaced = true) => (activeShoes.length > 0 ? (
+  // As sapatilhas têm interruptor (v1 lite): desligadas, o campo não aparece.
+  const renderShoesField = (spaced = true) => (shoesOn && activeShoes.length > 0 ? (
     <div className={spaced ? 'mb-4' : undefined}>
       <label htmlFor="rr-sapatilhas-opcional" className="text-[11px] text-[var(--text-3)] mb-1.5 flex items-center gap-1.5">
         <Footprints size={14} /> Sapatilhas (opcional)
@@ -2773,7 +2775,9 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
             {/* O que o diploma traz (pedido 2026-09-13): dorsal, escalão e
                 posição nele, posição por género, participantes. Tudo
                 opcional; o ritmo médio calcula-se e o clube é do perfil. A
-                leitura da Carol preenche-os a partir das Memórias, em baixo. */}
+                leitura da Carol preenche-os a partir do diploma, em baixo —
+                nas Memórias ou, com elas desligadas (v1 lite), na secção
+                «Diploma». */}
             <div data-testid="race-result-fields" className="mb-4">
               <p className="text-[11px] font-extrabold uppercase mb-2" style={{ letterSpacing: 'var(--tracking-label)', color: 'var(--text-3)' }}>Do diploma (opcional)</p>
               <div className="grid grid-cols-2 gap-2.5">
@@ -2822,14 +2826,18 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
             oferta, não uma condição: a prova conclui-se com a corrida, e o
             diploma, a medalha e as fotos juntam-se aqui ou, mais tarde, na
             persiana "Memórias" do hub (pedido 2026-09-13). ─────────────── */}
-        {/* As memórias têm interruptor (v1 lite): desligadas, a secção sai — o resultado fica. */}
-        {memoriesOn && (<>
-        <SectionLabel tone="race">Memórias</SectionLabel>
-        <section className="reg-section" data-testid="race-memories">
+        {/* As memórias têm interruptor (v1 lite): desligadas, a secção passa a «Diploma» — só o
+            diploma e a leitura da Carol, que é resultado (preenche «O resultado», lá em cima); a
+            medalha e as fotos saem. */}
+        <SectionLabel tone="race">{memoriesOn ? 'Memórias' : 'Diploma'}</SectionLabel>
+        <section className="reg-section" data-testid={memoriesOn ? 'race-memories' : 'race-diploma'}>
           <p className="text-[12px] leading-[1.5] mb-4" style={{ color: 'var(--text-3)' }}>
-            Opcional. Se o diploma ou as fotografias ainda não chegaram, regista a prova na mesma — juntas tudo depois, no hub da prova.
+            {memoriesOn
+              ? 'Opcional. Se o diploma ou as fotografias ainda não chegaram, regista a prova na mesma — juntas tudo depois, no hub da prova.'
+              : 'Opcional. Junta o diploma e eu leio-o: o tempo e a classificação vão para «O resultado», lá em cima. Se ainda não chegou, juntas depois, no hub da prova.'}
           </p>
           <RaceMemoriesFields
+            diplomaOnly={!memoriesOn}
             diploma={diploma}
             medal={medal}
             photos={racePhotos}
@@ -2852,7 +2860,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
 
           {memoriesFailed && (
             <Warning
-              title="Memórias por guardar"
+              title={memoriesOn ? 'Memórias por guardar' : 'Diploma por guardar'}
               className="mt-3"
               actions={memoriesFailed?.final ? null : (
                 <WarningAction onClick={retryRaceMemories} disabled={savingMemories}>
@@ -2862,11 +2870,10 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
             >
               {memoriesFailed?.final
                 ? `A corrida ficou gravada. ${memoriesFailed.text} Troca a imagem e grava outra vez.`
-                : 'A corrida ficou gravada. O que não consegui foi guardar as memórias da prova — podes tentar outra vez sem perder nada.'}
+                : `A corrida ficou gravada. O que não consegui foi guardar ${memoriesOn ? 'as memórias da prova' : 'o diploma'} — podes tentar outra vez sem perder nada.`}
             </Warning>
           )}
         </section>
-        </>)}
 
         {runIdToEdit && (
           <div className="pt-1 pb-2">

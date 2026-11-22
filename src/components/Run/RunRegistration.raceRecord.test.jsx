@@ -167,10 +167,12 @@ describe('Registo da prova — memórias desligadas (v1 lite)', () => {
   });
   afterEach(() => useAppStore.setState({ featureFlags: { ...base } }));
 
-  it('desligadas: sem a secção das memórias; o resultado do diploma fica', () => {
+  it('desligadas: as memórias passam a «Diploma» (sem medalha nem fotos); o resultado do diploma fica', () => {
     useAppStore.setState({ featureFlags: { ...base, race_memories: false } });
     renderReg();
     expect(screen.queryByTestId('race-memories')).toBeNull();
+    expect(screen.getByTestId('race-diploma')).toHaveTextContent('Adicionar o diploma');
+    expect(screen.queryByText('Adicionar a medalha')).toBeNull();
     expect(screen.getByTestId('race-result-fields')).toBeInTheDocument();
     expect(screen.getByLabelText('Dorsal')).toBeInTheDocument();
   });

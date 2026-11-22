@@ -1714,6 +1714,35 @@ describe('RunRegistration — modo prova', () => {
   /* O diploma é o documento oficial da prova: entra sozinho nos campos do
      resultado, por cima do que lá estiver. Era preciso tocar em "Aplicar"
      (pedido do utilizador para o tirar do caminho). */
+  /* Revisão pré-deploy da v1 lite (bloqueador): com as memórias desligadas, o diploma continua a
+     carregar-se e a ler-se no registo da prova — é resultado. Saem só a medalha e as fotos. */
+  it('memórias desligadas (v1 lite): o diploma carrega-se e lê-se na secção «Diploma»; a medalha e as fotos saem', async () => {
+    const { FEATURE_BASE } = await import('../../store/featureFlagsSlice');
+    useAppStore.setState({ featureFlags: { ...FEATURE_BASE, race_memories: false } });
+    try {
+      entrarPeloPrefill({ distance_km: 10, target_time: '52:00', target_pace_seconds_per_km: 312 });
+      mocks.invoke.mockImplementation((fn) => fn === 'analyze-diploma'
+        ? Promise.resolve({ data: { reading: { athlete_name: 'RUI MARIANO', chip_time_seconds: 3087, gun_time_seconds: 3111, position: 1668, age_group: null, age_group_position: 226, gender_position: null, participants: null, bib_number: null, splits: [] } }, error: null })
+        : Promise.resolve({ data: { run: { id: 'run-race-1' } }, error: null }));
+      render(<RunRegistration onClose={onClose} />);
+      expect(screen.queryByTestId('race-memories')).toBeNull();
+      const seccao = screen.getByTestId('race-diploma');
+      expect(screen.queryByText('Adicionar a medalha')).toBeNull();
+      expect(screen.queryByText('Adicionar fotografias')).toBeNull();
+      await act(async () => {
+        fireEvent.change(inputDaEtiqueta('Adicionar o diploma'), { target: { files: [ficheiroImagem('diploma.jpg')] } });
+      });
+      const leitura = await screen.findByTestId('diploma-reading');
+      await waitFor(() => expect(leitura).toHaveAttribute('data-status', 'applied'));
+      expect(seccao).toContainElement(leitura);
+      expect(screen.getByLabelText(/Tempo oficial/).value).toBe('51:27');
+      expect(screen.getByLabelText('Posição geral (opcional)').value).toBe('1668');
+    } finally {
+      const { FEATURE_BASE } = await import('../../store/featureFlagsSlice');
+      useAppStore.setState({ featureFlags: { ...FEATURE_BASE } });
+    }
+  });
+
   it('ao juntar o diploma, a Carol lê-o e preenche sozinha o registo com o tempo de chip', async () => {
     // 51:27 numa meia seria um ritmo de elite mundial (raceTimeSanity): é um 10 km.
     entrarPeloPrefill({ distance_km: 10, target_time: '52:00', target_pace_seconds_per_km: 312 });
