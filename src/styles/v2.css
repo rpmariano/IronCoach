@@ -182,11 +182,17 @@ html.design-v2 [style*="letter-spacing"]:not(.v2-num) { letter-spacing: 0 !impor
 html.design-v2 .rounded-xl, html.design-v2 .rounded-2xl, html.design-v2 .rounded-3xl,
 html.design-v2 [class*="rounded-[1"], html.design-v2 [class*="rounded-[2"] { border-radius: var(--v2-radius) !important; }
 html.design-v2 [class*="backdrop-blur"] { backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
-html.design-v2 [class*="shadow-["], html.design-v2 .shadow-lg, html.design-v2 .shadow-md, html.design-v2 .shadow-sm { box-shadow: none !important; }
-/* Uma caixa com borda dentro de outra com borda: a de dentro perde a borda e o fundo (o filete do
-   painel de fora chega). */
+/* As sombras saem, menos com o foco: os anéis focus-visible:ring-* do Tailwind são box-shadow. */
+html.design-v2 [class*="shadow-["]:not(:focus-visible), html.design-v2 .shadow-lg:not(:focus-visible),
+html.design-v2 .shadow-md:not(:focus-visible), html.design-v2 .shadow-sm:not(:focus-visible) { box-shadow: none !important; }
+/* E um contorno de foco do v2 em tudo o que recebe foco pelo teclado (2 px ciano, 2 px de folga). */
+html.design-v2 :focus-visible { outline: 2px solid var(--v2-acc) !important; outline-offset: 2px; }
+/* Uma caixa neutra com borda dentro de outra com borda: a de dentro perde a borda e o fundo (o filete
+   do painel de fora chega). Só as caixas de borda neutra (--border-glass/-strong/-faint), e nunca um
+   controlo, uma etiqueta, uma ligação, um papel ARIA, um estado (aria-checked/selected/pressed) ou
+   uma caixa de estado tingida: aí a borda ou o fundo podem ser o único sinal. */
 html.design-v2 .module-card-contrast .module-card-contrast,
-html.design-v2 [class*="rounded-"][class*="border"] [class*="rounded-"][class*="border"]:not(button):not(input):not(select):not(textarea) { border-color: transparent !important; background: transparent !important; }
+html.design-v2 [class*="rounded-"][class*="border"] :is([class*="border-[var(--border-glass)]"], [class*="border-[var(--border-glass-strong)]"], [class*="border-[var(--border-faint)]"])[class*="rounded-"]:not(button, input, select, textarea, label, a, [role], [tabindex], [aria-checked], [aria-selected], [aria-pressed], [aria-current], [class*="tint-"], [class*="danger"], [class*="--ok"], [class*="warn"], [class*="--race"], [class*="--coach"], [class*="--mod-"]) { border-color: transparent !important; background: transparent !important; }
 
 /* Âmbar só na prova (decisão do Rui): na barra fixa das ações, o «Guardar …» que vinha a âmbar
    (--mod-prova) passa a neutro; o «Registar a prova» repõe o âmbar no próprio botão. */

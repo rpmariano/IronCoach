@@ -126,6 +126,18 @@ describe('Perfil — Design v2', () => {
     expect(guardar.getAttribute('style')).not.toContain('mod-prova');
   });
 
+  it('o «Guardar alterações» desativado diz porquê (v1 e v2)', () => {
+    for (const on of [false, true]) {
+      if (on) ligarV2();
+      const { unmount } = render(<Perfil />);
+      const guardar = screen.getByRole('button', { name: /Guardar alterações/ });
+      expect(guardar).toBeDisabled();
+      expect(screen.getByTestId('perfil-save-hint')).toHaveTextContent('Sem alterações para guardar');
+      expect(guardar).toHaveAttribute('aria-describedby', 'perfil-save-hint');
+      unmount();
+    }
+  });
+
   it('as entradas da Vitrina e da Carol são linhas planas; o tutorial sem caixa à volta do ícone', () => {
     ligarV2();
     render(<Perfil />);

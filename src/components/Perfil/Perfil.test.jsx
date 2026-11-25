@@ -594,7 +594,7 @@ describe('Perfil — notificações da Carol (P.6)', () => {
     try {
       render(<Perfil />);
       abrirMetas();
-      expect(screen.getByText('Sem nenhum momento escolhido, a Carol não te chama — só os avisos do Troféu que ligaste abaixo.')).toBeInTheDocument();
+      expect(screen.getByText('Sem nenhum momento escolhido, a Carol não te chama. Ficam só os avisos do Troféu que ligaste abaixo.')).toBeInTheDocument();
     } finally {
       useAppStore.setState({ cup: CUP_EMPTY });
     }
@@ -781,7 +781,7 @@ describe('Perfil — onde treinas (ação 5.6)', () => {
     procurar('lisboa');
     expect(lugar.search).toHaveBeenCalledWith('lisboa');
     const escolha = await campo().findByRole('button', { name: 'Lisboa, Portugal' });
-    expect(campo().getByText('Encontrei — é aqui?')).toBeInTheDocument();
+    expect(campo().getByText('Encontrei. É aqui?')).toBeInTheDocument();
     fireEvent.click(escolha);
     expect(screen.getByTestId('perfil-onde-treinas-cidade')).toHaveTextContent('Lisboa, Portugal');
     // O foco não se perde: fica no "Mudar", que diz a cidade escolhida.

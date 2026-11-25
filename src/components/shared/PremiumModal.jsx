@@ -21,7 +21,7 @@ import { X } from 'lucide-react';
 const deep = (c) => `color-mix(in srgb, ${c} 85%, var(--bg-app))`;
 
 // No v2, a cor do ícone de cada tema (o cabeçalho é o painel, sem gradiente).
-const V2_ICON = { danger: 'var(--danger)', warn: 'var(--warn)', race: 'var(--race)', coach: 'var(--coach)' };
+const V2_ICON = { danger: 'var(--danger)', warning: 'var(--warn)', race: 'var(--race)', coach: 'var(--coach)' };
 
 const THEMES = {
   coach: {

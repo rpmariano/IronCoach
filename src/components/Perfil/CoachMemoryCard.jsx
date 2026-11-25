@@ -31,7 +31,7 @@ export const NOTE_CATEGORIES = [
     key: 'limitacao_fisica',      label: 'Limitação',
     hint: 'Ex.: epicondilite no cotovelo direito',
     description: 'Lesões, dores ou condições físicas que o plano de treino tem de respeitar.',
-    examples: ['Epicondilite no cotovelo direito — evitar exercícios de tração e preensão forte', 'Joelho sensível em descidas prolongadas', 'Asma induzida por esforço, uso inalador antes de treinos intensos'],
+    examples: ['Epicondilite no cotovelo direito, evitar exercícios de tração e preensão forte', 'Joelho sensível em descidas prolongadas', 'Asma induzida por esforço, uso inalador antes de treinos intensos'],
   },
   {
     key: 'disponibilidade',       label: 'Disponibilidade',
@@ -43,19 +43,19 @@ export const NOTE_CATEGORIES = [
     key: 'objetivo_pessoal',      label: 'Objetivo',
     hint: 'Ex.: quero acabar a meia maratona a correr',
     description: 'Motivações pessoais que vão além do tempo-alvo de uma prova.',
-    examples: ['Quero acabar a meia maratona a correr, sem parar a andar', 'Esta é a minha primeira maratona — o objetivo é terminar, não o tempo', 'Quero perder peso mantendo a massa muscular'],
+    examples: ['Quero acabar a meia maratona a correr, sem parar a andar', 'Esta é a minha primeira maratona, o objetivo é terminar, não o tempo', 'Quero perder peso mantendo a massa muscular'],
   },
   {
     key: 'preferencia_treino',    label: 'Treino',
     hint: 'Ex.: prefiro correr ao ar livre',
-    description: 'Como preferes treinar — não são restrições, são gostos que tornam o plano mais fácil de cumprir.',
+    description: 'Como preferes treinar. Não são restrições, são gostos que tornam o plano mais fácil de cumprir.',
     examples: ['Prefiro correr ao ar livre a passadeira', 'Gosto de treinos em grupo aos sábados', 'Detesto séries de intervalados curtos, prefiro fartlek'],
   },
   {
     key: 'contexto_vida',         label: 'Contexto',
     hint: 'Ex.: trabalho por turnos',
     description: 'Circunstâncias de vida que afetam a tua disponibilidade, sono ou recuperação.',
-    examples: ['Trabalho por turnos, o sono é irregular', 'Bebé pequeno em casa — noites mal dormidas são frequentes', 'Escritório em pé o dia todo, chego cansado às pernas'],
+    examples: ['Trabalho por turnos, o sono é irregular', 'Bebé pequeno em casa, noites mal dormidas são frequentes', 'Escritório em pé o dia todo, chego cansado às pernas'],
   },
   {
     key: 'outro',                 label: 'Outro',
@@ -161,16 +161,16 @@ export default function CoachMemoryCard() {
           fica um degrau acima do piso tipográfico da app. */}
       <p className="text-xs text-[var(--text-3)] mb-4 leading-relaxed">
         Factos que a Carol tem sempre presentes, mesmo em conversas de daqui a semanas.
-        Ela regista o que percebe do que lhe contas — corrige ou apaga o que não estiver certo,
+        Ela regista o que percebe do que lhe contas. Corrige ou apaga o que não estiver certo,
         e acrescenta o que quiseres que ela nunca esqueça.{' '}
         <span style={{ color: 'var(--mod-coach-to)' }}>A azul o que a Carol escreveu</span>
-        — para mudares uma dessas, fala com ela; a cinzento o que escreveste tu, que editas aqui.
+        : para mudares uma dessas, fala com ela; a cinzento o que escreveste tu, que editas aqui.
       </p>
 
       {notes.length === 0 && !adding && (
         <p className="text-[11px] text-[var(--text-3)] italic mb-4">
           Ainda sem notas. À medida que falares com a Carol, ela vai registando aqui o que for
-          importante — ou podes começar tu.
+          importante. Ou podes começar tu.
         </p>
       )}
 
@@ -339,7 +339,7 @@ export default function CoachMemoryCard() {
           className={v2 ? 'v2-btn is-quiet disabled:opacity-40 disabled:cursor-not-allowed' : 'w-full min-h-[44px] border-2 border-dashed border-[var(--mod-coach-to)]/40 hover:border-[var(--mod-coach-to)]/70 hover:bg-[var(--mod-coach-to)]/10 text-[var(--mod-coach-to)] py-2.5 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition disabled:opacity-40 disabled:cursor-not-allowed'}
         >
           <Plus size={15} />
-          {notes.length >= 40 ? 'Memória cheia — remove uma nota primeiro' : 'Acrescentar um facto'}
+          {notes.length >= 40 ? 'Memória cheia. Remove uma nota primeiro' : 'Acrescentar um facto'}
         </button>
       )}
 
@@ -354,7 +354,7 @@ export default function CoachMemoryCard() {
       >
         <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4 bg-[var(--surface-soft)]">
           <p className="text-[11px] leading-relaxed text-[var(--text-3)]">
-            Cada facto fica só numa categoria — ajuda a Carol a saber onde procurar, e a ti a
+            Cada facto fica só numa categoria. Ajuda a Carol a saber onde procurar, e a ti a
             veres de relance o que já lhe contaste.
           </p>
           {NOTE_CATEGORIES.filter(c => c.key !== 'outro').map(c => (
@@ -372,7 +372,7 @@ export default function CoachMemoryCard() {
             </div>
           ))}
           <p className="text-[11px] leading-relaxed text-[var(--text-3)] text-center pb-2">
-            Não encaixa em nenhuma? Usa "Outro" — a Carol lê à mesma.
+            Não encaixa em nenhuma? Usa "Outro": a Carol lê à mesma.
           </p>
         </div>
       </PremiumModal>

@@ -105,3 +105,45 @@ describe('RunAgenda — Detalhes da prova no Design v2', () => {
     expect(screen.queryByTestId('race-details-carol-line')).toBeNull();
   });
 });
+
+function abrirDetalhes() {
+  const alvo = screen.getAllByText('Detalhes da prova').map((el) => el.closest('button,[role="tab"]')).find(Boolean);
+  fireEvent.click(alvo);
+}
+
+describe('RunAgenda — «Guardar prova» desativado diz porquê', () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+    useAppStore.setState({
+      raceEvents: [RACE], profile: { id: 'user-1' }, runs: [], editingRaceId: 'race-1',
+      activeTab: 'holistica', pendingCalendarDate: null,
+      setRaceEvents: (events) => useAppStore.setState({ raceEvents: events }),
+      setNavGuard: () => {},
+      setEditingRaceId: (id) => useAppStore.setState({ editingRaceId: id }),
+    });
+  });
+  afterEach(() => { act(() => { setDesignV2(false); }); });
+
+  for (const on of [false, true]) {
+    it(`${on ? 'v2' : 'v1'}: sem alterações, o motivo fica à vista e ligado ao botão`, () => {
+      if (on) act(() => { setDesignV2(true); });
+      renderAgenda();
+      abrirDetalhes();
+      const guardar = screen.getByRole('button', { name: /Guardar prova/ });
+      expect(guardar).toBeDisabled();
+      expect(screen.getByTestId('race-save-hint')).toHaveTextContent('Sem alterações para guardar');
+      expect(guardar).toHaveAttribute('aria-describedby', 'race-save-hint');
+    });
+  }
+
+  it('sem o nome, o motivo é o nome que falta; com uma alteração válida, o motivo sai', () => {
+    renderAgenda();
+    abrirDetalhes();
+    const nome = screen.getByDisplayValue('Corrida do Tejo');
+    fireEvent.change(nome, { target: { value: '' } });
+    expect(screen.getByTestId('race-save-hint')).toHaveTextContent('Falta o nome da prova');
+    fireEvent.change(nome, { target: { value: 'Corrida do Tejo 2' } });
+    expect(screen.queryByTestId('race-save-hint')).toBeNull();
+    expect(screen.getByRole('button', { name: /Guardar prova/ })).not.toHaveAttribute('aria-describedby');
+  });
+});

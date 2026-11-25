@@ -12,6 +12,7 @@ vi.mock('../../lib/supabase', () => ({
 
 const { default: ConfirmDeleteModal } = await import('./ConfirmDeleteModal');
 const { default: RaceRemoveDialog } = await import('../Run/RaceRemoveDialog');
+const { default: PremiumModal } = await import('./PremiumModal');
 const { useAppStore } = await import('../../store');
 const { setDesignV2 } = await import('../../utils/designV2');
 
@@ -56,5 +57,14 @@ describe('RaceRemoveDialog — Design v2', () => {
     expect(screen.getByTestId('race-remove-race')).toHaveTextContent('«Meia de Lisboa» sai do calendário');
     expect(within(dialog).getByRole('button', { name: 'Eliminar prova' })).toHaveClass('v2-btn-danger');
     expect(dialog.innerHTML).not.toMatch(/linear-gradient/);
+  });
+});
+
+describe('PremiumModal — o ícone do tema no v2', () => {
+  it('o tema «warning» tem o ícone na cor do aviso', () => {
+    act(() => setDesignV2(true));
+    render(<PremiumModal isOpen onClose={vi.fn()} title="Atenção" theme="warning" icon={(p) => <svg data-testid="ic" style={p.style} />}>x</PremiumModal>);
+    const dialog = screen.getByRole('dialog');
+    expect(dialog.innerHTML).toContain('var(--warn)');
   });
 });
