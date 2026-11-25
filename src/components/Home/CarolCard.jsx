@@ -3,6 +3,7 @@ import { isFeatureOn } from '../../utils/features';
 import { ChevronRight, ChevronDown, ChevronUp, RefreshCw, ExternalLink } from 'lucide-react';
 import { computeRaceEve } from '@formulas/raceEve.ts';
 import { buildRacePacingPlan } from '@formulas/racePacing.ts';
+import { pacingRouteInput } from '../../utils/coursePacing';
 import { useAppStore } from '../../store';
 import { addDaysISO } from '../../lib/utils';
 import { getRacePrediction } from '../../utils/biEngine';
@@ -226,8 +227,8 @@ export function useCoachDailyMessages(agora = new Date()) {
       targetSeconds: targetSeconds > 0 ? targetSeconds : null,
       predictedSeconds: Number(prediction?.predictedSeconds) > 0 ? Math.round(prediction.predictedSeconds) : null,
       experienceLevel: raceToday.experience_level,
-      routeSegments: raceToday.web_info?.route_segments || null,
-      routeSummary: raceToday.web_info?.route_summary || null,
+      // Os mesmos troços do Hub: GPX primeiro, site depois (bug 2026-11-14).
+      ...pacingRouteInput(raceToday),
     });
     return plan ? formatPace(plan.firstKmPaceSecPerKm) : null;
   }, [raceToday, profile, runs]);

@@ -2,6 +2,7 @@ import React from 'react';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import RaceHubView from './RaceHubView';
+import { buildCourseProfile } from '@formulas/courseProfile.ts';
 import { useAppStore } from '../../store';
 import { todayISO } from '../../lib/utils';
 
@@ -512,6 +513,46 @@ describe('RaceHubView — plano para o dia', () => {
     expect(linhas).toHaveTextContent('descida');
     // Conhecendo o percurso, a nota de "não conheço" desaparece.
     expect(screen.queryByText(/Não conheço o percurso/)).not.toBeInTheDocument();
+  });
+
+  /* Bug 2026-11-14: com o GPX carregado e sem troços no site, o plano do Hub ficava sem subidas,
+     enquanto a Carol já usava as do GPX. O Hub segue a mesma regra: GPX primeiro, site depois. */
+  it('com o GPX carregado, o plano cita as subidas do GPX mesmo sem troços no site', () => {
+    // 21,1 km para norte (≈ 50 m por ponto), plano a 50 m, com uma subida de 60 m no km 7.
+    const pts = [];
+    for (let i = 0; i <= 422; i += 1) {
+      const km = i * 0.05;
+      const ele = km <= 6 ? 50 : km <= 7 ? 50 + (km - 6) * 60 : 110;
+      pts.push({ lat: 38.7 + km / 111.195, lon: -9.14, ele });
+    }
+    const built = buildCourseProfile(pts);
+    expect(built.ok).toBe(true);
+    const comGpx = {
+      ...MEIA_PROXIMA,
+      web_info: { route_summary: null, route_segments: null },
+      course_profile: built.profile,
+    };
+
+    render(<RaceHubView race={comGpx} runs={[]} profile={PROFILE} onFetchWebInfo={vi.fn()} />);
+
+    const linhas = screen.getByTestId('race-pacing-rows');
+    // A subida é no km 7: fora dos primeiros troços à vista (o hub reorganizado, 2026-11-22).
+    fireEvent.click(screen.getByTestId('race-pacing-all-rows'));
+    expect(linhas).toHaveTextContent('GPX: sobe');
+    expect(screen.queryByText(/Não conheço o percurso/)).not.toBeInTheDocument();
+  });
+
+  it('com o GPX carregado e site por extrair, não oferece «Buscar o percurso»', () => {
+    const pts = [];
+    for (let i = 0; i <= 422; i += 1) pts.push({ lat: 38.7 + (i * 0.05) / 111.195, lon: -9.14, ele: 50 + (i % 40) });
+    const built = buildCourseProfile(pts);
+    expect(built.ok).toBe(true);
+    const base = { ...MEIA_PROXIMA, web_info: null, website: 'https://meiadelisboa.pt' };
+    const { unmount } = render(<RaceHubView race={base} runs={[]} profile={PROFILE} onFetchWebInfo={vi.fn()} />);
+    expect(screen.queryAllByTestId('race-pacing-fetch-route').length).toBeGreaterThan(0);
+    unmount();
+    render(<RaceHubView race={{ ...base, course_profile: built.profile }} runs={[]} profile={PROFILE} onFetchWebInfo={vi.fn()} />);
+    expect(screen.queryByTestId('race-pacing-fetch-route')).not.toBeInTheDocument();
   });
 
   it('o site da prova só é link se for http(s); um «javascript:» fica texto', () => {

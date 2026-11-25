@@ -71,7 +71,7 @@ import { formatPaceMinKm as sharedFormatPaceMinKm, formatPaceFromDistance } from
 import { buildRacePacingPlan, compareSplitsToPlan, AMBITIOUS_RATIO, type RacePacingPlan, type SplitInput, type SplitComparison } from "../_shared/formulas/racePacing.ts";
 import { type CourseProfile, courseProfilePromptText, courseRouteSegments, sanitizeCourseProfile } from "../_shared/formulas/courseProfile.ts";
 import { checkRaceTime } from "../_shared/formulas/raceTimeSanity.ts";
-import { type FeatureFlags, getFeatureFlags, proactiveTriggerAllowed } from "../_shared/featureFlags.ts";
+import { type FeatureFlags, featureOffNote, getFeatureFlags, proactiveTriggerAllowed } from "../_shared/featureFlags.ts";
 import { raceBalanceFingerprint } from "../_shared/formulas/raceBalanceFingerprint.ts";
 import { computeRaceEve, hhmm as sharedHhmm } from "../_shared/formulas/raceEve.ts";
 import { buildCupMapTurn, dayMonth, DECISION_TEXT, fetchSeriesBlock, isCupSchemaMissing, SEASON_GOAL_TEXT, seriesRacePhaseText, type SeriesBlock } from "../_shared/seriesBlock.ts";
@@ -1358,7 +1358,7 @@ export async function recordProactiveDelivered(
   payload: unknown = null,
   // replace: a linha que já houver fica com este payload (o balanço refeito
   // com outros dados); por omissão, a primeira entrega manda. Precisa da
-  // política de UPDATE (migração 20261115120000).
+  // política de UPDATE (migração 20261115205324).
   opts: { replace?: boolean } = {},
 ): Promise<boolean> {
   try {
@@ -1377,7 +1377,7 @@ export async function recordProactiveDelivered(
     if (error) {
       const denied = String(error.code ?? "") === "42501";
       console.error(
-        `coach_proactive_log: gravação FALHOU${denied ? " — sem permissão de UPDATE (política «own proactive log update», migração 20261115120000)" : ""}`,
+        `coach_proactive_log: gravação FALHOU${denied ? " — sem permissão de UPDATE (política «own proactive log update», migração 20261115205324)" : ""}`,
         JSON.stringify({ key, replace: !!opts.replace, code: error.code ?? null, message: error.message ?? String(error) }),
       );
       return false;
@@ -1711,14 +1711,23 @@ export function raceAfterStampOf(payload: unknown): RaceAfterStamp | null {
   };
 }
 
+/** A impressão digital do balanço no servidor: a da prova (raceBalanceFingerprint,
+ *  a mesma da app) mais os interruptores que mudam o que ele diz — as conquistas
+ *  (badges) e a jornada (cup). Mudar um deles refaz o balanço uma vez (revisão
+ *  pré-deploy da v1 lite). Sem `flags`, só a da prova. */
+export function raceAfterFingerprint(o: RaceOutcome, flags?: FeatureFlags): string | null {
+  const fp = raceBalanceFingerprint(o);
+  return fp && flags ? `${fp}|b${flags.badges ? 1 : 0}c${flags.cup ? 1 : 0}` : fp;
+}
+
 /** O que fazer com um race_after com balanço: `log` é a linha da chave (ou
  *  null se ainda não houve). Sem impressão digital (linhas de antes desta
  *  regra) não se sabe com que dados foi feito: conta como a mesma — e o
  *  balanço guardado, se o houver, devolve-se e passa a ter carimbo. */
-export function raceAfterDecision(o: RaceOutcome, log: { payload: unknown } | null, force: boolean): RaceAfterDecision {
+export function raceAfterDecision(o: RaceOutcome, log: { payload: unknown } | null, force: boolean, flags?: FeatureFlags): RaceAfterDecision {
   if (!log) return "generate";
   const stamp = raceAfterStampOf(log.payload);
-  if (stamp?.fingerprint && stamp.fingerprint !== raceBalanceFingerprint(o)) return "redo";
+  if (stamp?.fingerprint && stamp.fingerprint !== raceAfterFingerprint(o, flags)) return "redo";
   return force ? "replay" : "skip";
 }
 
@@ -3040,6 +3049,31 @@ export function buildGymAnalyticsPanel(sessions: any[], todayISO: string, window
 export function loggingProfileText(p: Pick<MealLoggingProfile, "kind">): string {
   return p.kind === "completo" ? "regista tudo" : "regista as refeições de vez em quando (ocasional)";
 }
+
+/** «Pedir à Carol que explique» um gráfico (2026-11-01, regra aprovada pelo
+ *  Rui): o botão de cada gráfico (BI/ExplainChartButton) manda «Explica-me a
+ *  leitura do gráfico «X» (período). Série: de… para…, mín…, máx… — a subir
+ *  (n pontos); …», às vezes com uma nota. Primeiro como se lê, depois o que os
+ *  números dele dizem, só com os números que vêm. Voz da Carol. */
+export const CHART_EXPLAIN_RULE =
+  `EXPLICAR UM GRÁFICO:\n` +
+  `Quando ele te pede «Explica-me a leitura do gráfico «…»», a mensagem traz o nome do gráfico, o período e, por ` +
+  `série, os números (início, fim, mínimo, máximo, a tendência e quantos pontos), às vezes com uma nota. Responde em ` +
+  `duas partes, em texto corrido:\n` +
+  `1. Como se lê: o que está em cada eixo (em regra o tempo em baixo e o valor de cada série ao lado, com a unidade), ` +
+  `se as séries têm escalas próprias, e para que lado é bom — o ritmo é melhor a descer, o VDOT a subir; o peso ` +
+  `depende do objetivo dele, que tens no contexto. Se o nome e as séries não deixarem claro o que está num eixo, não o ` +
+  `inventes.\n` +
+  `2. O que os números dele mostram: a leitura, com dois ou três valores do pedido, ligada ao que sabes dele (plano, ` +
+  `prova, objetivo).\n` +
+  `- Usa só os números do pedido ou do contexto: não inventes pontos, datas nem valores intermédios. Com um só ponto ` +
+  `não há tendência. Se precisares de mais, chama a função de histórico ou pergunta-lhe.\n` +
+  `- Curto: quatro a seis frases, sem títulos e sem repetir a lista de números.\n` +
+  `Exemplo — pedido: «Peso (kg): de 80,0 para 76,5 kg … a descer (4 pontos); VDOT: de 37,2 para 39,4 … a subir (3 ` +
+  `pontos). As duas curvas têm escalas independentes.» Resposta: «Em baixo está o tempo; o peso e o VDOT têm cada ` +
+  `um a sua escala, por isso compara as inclinações e não as alturas. O VDOT mede a tua forma aeróbica: quanto mais ` +
+  `alto, melhor. Neste período perdeste 3,5 kg e o VDOT subiu de 37,2 para 39,4. Estás mais leve e com mais motor ao ` +
+  `mesmo tempo, e as duas coisas puxam para o mesmo lado.»\n`;
 
 /** Dias com registo parcial e o atleta ocasional (2026-11-01, opção B do
  *  Rui): o botão «dia incompleto» saiu e o servidor infere-o
@@ -6008,6 +6042,38 @@ export function withoutOffAchievements(o: RaceOutcome | null, flags: FeatureFlag
   return o && !flags.badges ? { ...o, achievements_new: [] } : o;
 }
 
+/** A regra 1 das metas, com e sem a água (v1 lite). */
+export const GOALS_RULE_WITH_WATER = "calorias, proteína, hidratos, gordura, água ou peso-alvo";
+export const GOALS_RULE_WITHOUT_WATER = "calorias, proteína, hidratos, gordura ou peso-alvo";
+
+/** O que o update_goals devolve a um pedido só de água com a água desligada. */
+export const WATER_GOAL_OFF_RESULT =
+  "A meta de água não está disponível na app neste momento: não há nada a propor. Se ele a pediu, diz-lho numa frase, com naturalidade.";
+
+/** O pedido só mexia na água (nenhuma outra meta)? */
+// deno-lint-ignore no-explicit-any
+export function onlyWaterGoal(args: any): boolean {
+  if (!args || typeof args !== "object" || args.water_goal_ml == null) return false;
+  return !Object.keys(GOAL_LIMITS).some((k) => k !== "water_goal_ml" && args[k] != null);
+}
+
+/** As ferramentas com o update_goals sem a água (a descrição e o parâmetro). */
+// deno-lint-ignore no-explicit-any
+export function withoutWaterGoalTool<T extends { functionDeclarations: any[] }>(tools: T[]): T[] {
+  return tools.map((t) => ({
+    ...t,
+    functionDeclarations: t.functionDeclarations.map((d) => {
+      if (d?.name !== "update_goals") return d;
+      const { water_goal_ml: _w, ...props } = d.parameters?.properties ?? {};
+      return {
+        ...d,
+        description: String(d.description ?? "").replace("(macronutrientes, água, corpo)", "(macronutrientes, corpo)"),
+        parameters: { ...d.parameters, properties: props },
+      };
+    }),
+  }));
+}
+
 /** As metas sem a da água (com a água desligada, a Carol não a propõe). */
 // deno-lint-ignore no-explicit-any
 export function withoutWaterGoal(args: any): Record<string, unknown> {
@@ -7454,6 +7520,7 @@ export function buildSystemInstruction(
     `adivinhes, e não inventes uma justificação (ex.: dizer que o atleta apagou um registo) para ` +
     `explicar uma resposta errada.\n\n` +
     PARTIAL_LOGGING_RULE + `\n` +
+    CHART_EXPLAIN_RULE + `\n` +
     // ── Doutrina Bloco 4.1 — Nutrição base diária ───────────────────────────
     `NUTRIÇÃO — BASE DIÁRIA (Bloco 4.1 — ACSM/AND 2016, ISSN, Burke 2021):\n` +
     `PROTEÍNA (g/kg/dia) por nível e objetivo:\n` +
@@ -8135,7 +8202,7 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
     let raceAfterSkip = false;
     if (proactiveTrigger === "race_after" && proactiveKey && raceOutcomeHasBalance(raceOutcome)) {
       const log = await readProactiveLog(sb, userId, proactiveKey);
-      const decision = raceAfterDecision(raceOutcome, log, raceAfterForce);
+      const decision = raceAfterDecision(raceOutcome, log, raceAfterForce, flags);
       if (decision === "replay") {
         const stamp = raceAfterStampOf(log?.payload);
         const replay = await replayRaceBalance(sb, userId, raceOutcome.race_id, stamp);
@@ -8143,7 +8210,7 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
           // Uma linha de antes da impressão digital fica com ela a partir daqui.
           if (!stamp?.fingerprint) {
             await recordProactiveDelivered(sb, userId, "race_after", proactiveKey,
-              { fingerprint: raceBalanceFingerprint(raceOutcome), message_id: stamp?.message_id ?? null, note: stamp?.note ?? null }, { replace: true });
+              { fingerprint: raceAfterFingerprint(raceOutcome, flags), message_id: stamp?.message_id ?? null, note: stamp?.note ?? null }, { replace: true });
           }
           return jsonResponse(replay);
         }
@@ -9521,12 +9588,14 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
     const seriesToolsOn = seriesBlock?.active === true;
     // O caso, só leitura, o Troféu (fora dos turnos de plano), a Despensa, o
     // propose_training_plan (só com a doutrina de plano) e o teto de 10.
-    const toolsBlock = chatToolsFor(allowedTools, {
+    const toolsBlockAll = chatToolsFor(allowedTools, {
       seriesOn: seriesToolsOn,
       photos: chatImages.length > 0,
       planDoctrine,
       proactive: !!proactiveTrigger,
     });
+    // v1 lite: com a água desligada, o update_goals não a oferece.
+    const toolsBlock = flags.water ? toolsBlockAll : withoutWaterGoalTool(toolsBlockAll);
     // Num turno de plano com inscrição, o Troféu ficou de fora: ela diz que grava a seguir.
     if (planDoctrine && seriesToolsOn) finalSystemInstruction += "\n\n" + SERIES_DEFERRED_NOTE;
     const toolNamesSent = toolsBlock[0].functionDeclarations.map((t: { name: string }) => t.name);
@@ -9535,6 +9604,12 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
       if (chatImages.length > 0) finalSystemInstruction += "\n\n" + NO_NOTES_PHOTO_NOTE;
       else if (proactiveTrigger) finalSystemInstruction += "\n\n" + NO_NOTES_PROACTIVE_NOTE;
     }
+    // v1 lite (revisão pré-deploy): o histórico vai ao modelo sem filtro e pode
+    // falar das áreas desligadas — ela não fala delas.
+    const offNote = featureOffNote(flags);
+    if (offNote) finalSystemInstruction += "\n\n" + offNote;
+    // E a regra das metas deixa de falar de água (revisão pré-deploy da v1 lite).
+    if (!flags.water) finalSystemInstruction = finalSystemInstruction.replace(GOALS_RULE_WITH_WATER, GOALS_RULE_WITHOUT_WATER);
     const toolsBytes = JSON.stringify(toolsBlock).length;
 
     // ── Loop de function calling ──────────────────────────────────────────
@@ -9908,7 +9983,10 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
           if (!toolNamesSent.includes("update_goals")) {
             result = unknownFunctionResult(name);
           } else {
-            result = await runUpdateGoals(sb, userId, flags.water ? (args || {}) : withoutWaterGoal(args));
+            // Um pedido só de água com a água desligada: uma resposta natural, não «nenhum campo».
+            result = !flags.water && onlyWaterGoal(args)
+              ? WATER_GOAL_OFF_RESULT
+              : await runUpdateGoals(sb, userId, flags.water ? (args || {}) : withoutWaterGoal(args));
             goalsWereUpdated = goalsWereUpdated || result.startsWith("Metas atualizadas");
             goalWasProposed = goalWasProposed || result.startsWith("Proposta de altera");
           }
@@ -10119,7 +10197,7 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
     // registada, para nenhum outro dispositivo a repetir.
     if (proactiveTrigger === "race_after" && proactiveKey && raceOutcomeHasBalance(raceOutcome)) {
       // O carimbo: com que dados, que mensagem e que nota (raceAfterDecision).
-      const stamp: RaceAfterStamp = { fingerprint: raceBalanceFingerprint(raceOutcome), message_id: modelMsg?.id ?? null, note: raceAfterNote };
+      const stamp: RaceAfterStamp = { fingerprint: raceAfterFingerprint(raceOutcome, flags), message_id: modelMsg?.id ?? null, note: raceAfterNote };
       await recordProactiveDelivered(sb, userId, proactiveTrigger, proactiveKey, stamp, { replace: true });
     } else if (proactiveTrigger && proactiveKey) await recordProactiveDelivered(sb, userId, proactiveTrigger, proactiveKey);
     if (targetsReviewLogKey && !modelMsgErr) await recordProactiveDelivered(sb, userId, "targets_review", targetsReviewLogKey, targetsReviewPayload);

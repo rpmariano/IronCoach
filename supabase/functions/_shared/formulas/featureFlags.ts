@@ -50,6 +50,31 @@ export function proactiveTriggerAllowed(trigger: string, flags: FeatureFlags): b
   return !flag || flags[flag];
 }
 
+/** Como o atleta conhece cada área (para a Carol dizer que não está
+ *  disponível sem falar de «interruptores»). null: não se diz (o tutorial). */
+export const FEATURE_FLAG_USER_NAMES: Readonly<Record<FeatureFlag, string | null>> = Object.freeze({
+  cup: "a Taça (jornadas, classificações, equipas)",
+  race_memories: "as memórias da prova (medalha, mural, fotos)",
+  badges: "as conquistas e as tabelas",
+  water: "o registo de água e os lembretes de água",
+  pantry_advanced: "as regras e os modelos de refeição",
+  advanced_charts: "os gráficos avançados",
+  tutorial: null,
+  shoes: "o armário de sapatilhas",
+  load_profile_choice: "a escolha do perfil de carga (Prudente / Mais volume)",
+});
+
+/** A nota para a Carol com as áreas desligadas — o histórico das conversas
+ *  (coach_messages) vai ao modelo sem filtro e pode falar delas (revisão
+ *  pré-deploy da v1 lite). null com tudo ligado. */
+export function featureOffNote(flags: FeatureFlags): string | null {
+  const off = FEATURE_FLAG_KEYS.filter((k) => !flags[k] && FEATURE_FLAG_USER_NAMES[k]).map((k) => FEATURE_FLAG_USER_NAMES[k]!);
+  if (!off.length) return null;
+  const list = off.length > 1 ? `${off.slice(0, -1).join(", ")} e ${off[off.length - 1]}` : off[0];
+  return `ÁREAS FORA DA APP: estas áreas não estão disponíveis na app neste momento: ${list}. ` +
+    `Não fales delas, mesmo que o histórico as mencione; se ele perguntar, diz-lhe só que não estão disponíveis por agora.`;
+}
+
 /** As linhas da tabela sobre os defeitos: só chaves conhecidas e booleanos. */
 export function mergeFeatureFlags(rows: unknown): FeatureFlags {
   const out: FeatureFlags = { ...FEATURE_FLAG_DEFAULTS };

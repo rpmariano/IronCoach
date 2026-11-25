@@ -258,6 +258,6 @@ Deno.test("chatToolsFor: o caso do incidente — E com plano e inscrição ativa
 
 Deno.test("handler: as ferramentas vêm do chatToolsFor e o aviso do Troféu entra nos turnos de plano (ligações no código)", async () => {
   const src = await Deno.readTextFile(new URL("./index.ts", import.meta.url));
-  assert(src.includes("const toolsBlock = chatToolsFor(allowedTools, {"));
+  assert(src.includes("const toolsBlockAll = chatToolsFor(allowedTools, {"));
   assert(src.includes(String.raw`if (planDoctrine && seriesToolsOn) finalSystemInstruction += "\n\n" + SERIES_DEFERRED_NOTE;`));
 });

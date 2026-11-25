@@ -52,6 +52,7 @@ import RaceMuralSheet from './RaceMuralSheet';
 import AddToCalendar from './AddToCalendar';
 import CupRaceBlock from './CupRaceBlock';
 import { buildRacePacingPlan } from '@formulas/racePacing.ts';
+import { pacingRouteInput } from '../../utils/coursePacing';
 import { calculateRaceTrainingPlan, formatDatePTShort, formatDateDayMonth } from '../../utils/racePlanEngine';
 import { calculateReadinessIndex, getRacePrediction, getVDOTTrend } from '../../utils/biEngine';
 import { racePriorityLabel, raceTerrainLabel, RACE_TERRAIN_TYPES, formatPace, formatDuration, findRaceRun, parseDurationToSeconds, describeRaceClassification, describeRaceTimes } from '../../utils/run';
@@ -259,8 +260,8 @@ export default function RaceHubView({
       targetSeconds: targetSeconds > 0 ? targetSeconds : null,
       predictedSeconds,
       experienceLevel: race?.experience_level,
-      routeSegments: race?.web_info?.route_segments || null,
-      routeSummary: race?.web_info?.route_summary || null,
+      // GPX primeiro, site depois — a regra do racePacingRoute do coach-chat (bug 2026-11-14).
+      ...pacingRouteInput(race),
     });
   }, [showPacingPlan, race, prediction]);
 

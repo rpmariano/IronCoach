@@ -1,5 +1,5 @@
 import { assert, assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
-import { runSaveCoachNote, buildCoachNotesContext, classifyTurn, allowedToolsFor, buildTools, aggregateMealsByDate, runGetNutritionHistory, summariseSessions, formatSessionLine, bestLoadsLine, runGetGymHistory, runProposeTrainingPlan, runUpdateGoals, runSaveMealSuggestions, buildSystemInstruction, buildPlanContext, resolveCoachingMode, buildCoachingModeContext, computeACWR, computeGymMetrics, buildNutritionTargets, computeBodyMetrics, summariseRuns, firstNameOf, buildRaceEventsContext, computeMealHabits, buildSuggestionAdherencePanel, buildMealMacros, extractReplyText, buildProactiveInstruction, buildProactiveUserTurn, shouldSkipProactive, parseProactiveKey, wasProactiveDelivered, recordProactiveDelivered, PROACTIVE_TRIGGERS, PROACTIVE_QUIET_HOURS, parseRaceOutcome, buildRaceOutcomeContext, raceAfterInstruction, raceOutcomeNote, buildRacePlanContext, buildSplitsComparisonContext, buildRaceEveContext, hhmm, detectRaceFollowup, buildRaceFollowupContext, runUpdateRaceEvent, matchRaceByName, normalizeRaceName, buildRaceCaptionPrompt, computeMealTypicalTimes, buildGoalsInterventionInstruction, buildInterventionStartTurn, runResolveIntervention, closeInterventionOnTalk, readTalkedIntervention, buildTalkedInterventionInstruction, buildAdaptationInterventionInstruction, findAnsweredDuplicate, flatPaceLine, loadTopicLastMessage, proactiveTriggerOff, withoutOffAchievements, withoutWaterGoal, DUPLICATE_WINDOW_MS, type RaceOutcome, type BodyAssessmentRow, type TurnCase } from "./index.ts";
+import { runSaveCoachNote, buildCoachNotesContext, classifyTurn, allowedToolsFor, buildTools, aggregateMealsByDate, runGetNutritionHistory, summariseSessions, formatSessionLine, bestLoadsLine, runGetGymHistory, runProposeTrainingPlan, runUpdateGoals, runSaveMealSuggestions, buildSystemInstruction, buildPlanContext, resolveCoachingMode, buildCoachingModeContext, computeACWR, computeGymMetrics, buildNutritionTargets, computeBodyMetrics, summariseRuns, firstNameOf, buildRaceEventsContext, computeMealHabits, buildSuggestionAdherencePanel, buildMealMacros, extractReplyText, buildProactiveInstruction, buildProactiveUserTurn, shouldSkipProactive, parseProactiveKey, wasProactiveDelivered, recordProactiveDelivered, PROACTIVE_TRIGGERS, PROACTIVE_QUIET_HOURS, parseRaceOutcome, buildRaceOutcomeContext, raceAfterInstruction, raceOutcomeNote, buildRacePlanContext, buildSplitsComparisonContext, buildRaceEveContext, hhmm, detectRaceFollowup, buildRaceFollowupContext, runUpdateRaceEvent, matchRaceByName, normalizeRaceName, buildRaceCaptionPrompt, computeMealTypicalTimes, buildGoalsInterventionInstruction, buildInterventionStartTurn, runResolveIntervention, closeInterventionOnTalk, readTalkedIntervention, buildTalkedInterventionInstruction, buildAdaptationInterventionInstruction, findAnsweredDuplicate, flatPaceLine, loadTopicLastMessage, proactiveTriggerOff, withoutOffAchievements, withoutWaterGoal, withoutWaterGoalTool, onlyWaterGoal, GOALS_RULE_WITH_WATER, WATER_GOAL_OFF_RESULT, DUPLICATE_WINDOW_MS, type RaceOutcome, type BodyAssessmentRow, type TurnCase } from "./index.ts";
 import { buildAcwrLine, chatToolsFor, checkPlanLoad, loadPriorGym, loadProfileRequested, NO_NOTES_PHOTO_NOTE, NO_NOTES_PROACTIVE_NOTE } from "./index.ts";
 import { RESPONSE_SCHEMA, RESPONSE_SCHEMA_BASE, shouldRetryWithoutRecommendations, saveRecommendations } from "./index.ts";
 import { CHAT_OWN_FAILURE_TEXT, CHAT_SESSION_TEXT, CHAT_MESSAGE_NOT_SAVED_TEXT } from "./index.ts";
@@ -6659,6 +6659,34 @@ Deno.test("dias parciais e o atleta ocasional (2026-11-01): a regra vai ao promp
   assertEquals(loggingProfileText({ kind: "completo" }), "regista tudo");
 });
 
+import { CHART_EXPLAIN_RULE } from "./index.ts";
+import { buildSystemInstruction as buildSysChart } from "./index.ts";
+
+Deno.test("explicar um gráfico (2026-11-01): a regra vai à doutrina fixa, nos dois turnos, e o exemplo é na voz dela", async () => {
+  const src = await Deno.readTextFile(new URL("./index.ts", import.meta.url));
+  assertStringIncludes(src, String.raw`CHART_EXPLAIN_RULE + ` + "`\\n` +");
+  // O formato do pedido do botão (BI/ExplainChartButton, buildChartExplainText).
+  assertStringIncludes(CHART_EXPLAIN_RULE, "Explica-me a leitura do gráfico");
+  assertStringIncludes(CHART_EXPLAIN_RULE, "1. Como se lê");
+  assertStringIncludes(CHART_EXPLAIN_RULE, "2. O que os números dele mostram");
+  assertStringIncludes(CHART_EXPLAIN_RULE, "não inventes pontos, datas nem valores intermédios");
+  assertStringIncludes(CHART_EXPLAIN_RULE, "Com um só ponto não há tendência");
+  assertStringIncludes(CHART_EXPLAIN_RULE, "sem repetir a lista de números");
+  // Doutrina fixa: entra com e sem a doutrina de plano (os mesmos argumentos
+  // vazios de staticDoctrineChars), e pesa pouco.
+  for (const planDoctrine of [true, false]) {
+    const args: unknown[] = [null, { height_cm: null, weight_kg: null, gender: null, birth_date: null, experience_level: null, resting_hr_bpm: null, dietary_restrictions: null, dietary_notes: null }, null, null, "", ""];
+    while (args.length < 36) args.push(undefined);
+    // deno-lint-ignore no-explicit-any
+    assertStringIncludes((buildSysChart as any)(...args, planDoctrine), CHART_EXPLAIN_RULE, `planDoctrine=${planDoctrine}`);
+  }
+  assert(CHART_EXPLAIN_RULE.length < 2000, String(CHART_EXPLAIN_RULE.length));
+  // O exemplo de resposta respeita a voz dela.
+  const exemplo = CHART_EXPLAIN_RULE.split("Resposta: «")[1].replace(/»\n$/, "");
+  assertCarolVoice(exemplo);
+  assert(!/\d+ pontos/.test(exemplo), "a resposta não repete a lista");
+});
+
 Deno.test("coach-chat: o objetivo calórico de cada dia vem do histórico de objetivos, como no ecrã (2026-11-02)", async () => {
   const src = await Deno.readTextFile(new URL("./index.ts", import.meta.url));
   assertStringIncludes(src, '.from("profile_goal_history").select(GOAL_HISTORY_SELECT)');
@@ -7071,4 +7099,25 @@ Deno.test("v1 lite: as ligações no handler (Taça, vitrina, badges, sapatilhas
   // Revisão do 8b3c67db: o Mestre da Z2 e as etiquetas dos momentos da vitrina só com os badges.
   assertEquals(src.split("fetchChatMemoryBlocks(sb, userId, todayISO, profile, { badges: flags.badges })").length - 1, 2);
   assertStringIncludes(src, "?.filter((t) => proactiveTriggerAllowed(t, flags)) ?? null,");
+});
+
+Deno.test("v1 lite (revisão pré-deploy): o update_goals sem a água com ela desligada — a declaração, a regra e o pedido só de água", async () => {
+  const tools = [{ functionDeclarations: [
+    { name: "update_goals", description: "Gera uma proposta de atualização de metas (macronutrientes, água, corpo) para o atleta.", parameters: { type: "OBJECT", properties: { calorie_goal: {}, water_goal_ml: {} } } },
+    { name: "save_coach_note", parameters: { properties: { note: {} } } },
+  ] }];
+  const out = withoutWaterGoalTool(tools)[0].functionDeclarations;
+  assertEquals(Object.keys(out[0].parameters.properties), ["calorie_goal"]);
+  assertEquals(String(out[0].description).includes("água"), false);
+  assertEquals(out[1], tools[0].functionDeclarations[1]);
+  assertEquals([onlyWaterGoal({ water_goal_ml: 3000 }), onlyWaterGoal({ water_goal_ml: 3000, calorie_goal: 2200 }), onlyWaterGoal({ calorie_goal: 2200 })], [true, false, false]);
+  const src = await Deno.readTextFile(new URL("./index.ts", import.meta.url));
+  assertStringIncludes(src, "const toolsBlock = flags.water ? toolsBlockAll : withoutWaterGoalTool(toolsBlockAll);");
+  assertStringIncludes(src, "if (!flags.water) finalSystemInstruction = finalSystemInstruction.replace(GOALS_RULE_WITH_WATER, GOALS_RULE_WITHOUT_WATER);");
+  // A regra existe no prompt tal e qual — senão o replace não fazia nada.
+  assertEquals(src.split(GOALS_RULE_WITH_WATER).length - 1 >= 2, true);
+  assertStringIncludes(src, "result = !flags.water && onlyWaterGoal(args)");
+  assertStringIncludes(WATER_GOAL_OFF_RESULT, "A meta de água não está disponível na app neste momento");
+  // E a nota das áreas desligadas vai no prompt do sistema.
+  assertStringIncludes(src, "if (offNote) finalSystemInstruction +=");
 });

@@ -1,6 +1,6 @@
 import { assertEquals } from "jsr:@std/assert@1";
 import {
-  FEATURE_FLAG_DEFAULTS, FEATURE_FLAG_KEYS, FEATURE_FLAGS_CACHE_MS, getFeatureFlags, mergeFeatureFlags, resetFeatureFlagsCache,
+  FEATURE_FLAG_DEFAULTS, FEATURE_FLAG_KEYS, FEATURE_FLAGS_CACHE_MS, getFeatureFlags, memoryFlagOpts, mergeFeatureFlags, resetFeatureFlagsCache,
 } from "./featureFlags.ts";
 
 const db = (result: { data?: unknown; error?: unknown } | Error, calls: { n: number } = { n: 0 }) => ({
@@ -57,7 +57,7 @@ Deno.test("getFeatureFlags: lê, guarda 60 s, e numa falha nunca liga tudo", asy
 Deno.test("v1 lite: as analyze-* não levam a vitrina com os badges desligados; o diploma desliga-se com as memórias", async () => {
   for (const f of ["analyze-run", "analyze-meal", "analyze-gym", "analyze-body"]) {
     const src = await Deno.readTextFile(new URL(`../${f}/index.ts`, import.meta.url));
-    assertEquals(src.includes("vitrina: (await getFeatureFlags()).badges"), true, f);
+    assertEquals(src.includes("memoryFlagOpts(await getFeatureFlags())"), true, f);
   }
   const run = await Deno.readTextFile(new URL("../analyze-run/index.ts", import.meta.url));
   assertEquals(run.includes("const seriesPromise = (await getFeatureFlags()).cup"), true);
@@ -72,4 +72,11 @@ Deno.test("v1 lite: as analyze-* não levam a vitrina com os badges desligados; 
   assertEquals(chat.includes("const captionOutcome = withoutOffAchievements(parseRaceOutcome(body.race_outcome), flags);"), true);
   assertEquals(chat.includes("water_reminder_enabled: flags.water ?"), true);
   assertEquals(chat.includes("waterGoalMl:   flags.water ?"), true);
+});
+
+Deno.test("memoryFlagOpts: a vitrina com os badges e a nota das áreas desligadas", () => {
+  assertEquals(memoryFlagOpts(FEATURE_FLAG_DEFAULTS).vitrina, false);
+  assertEquals(typeof memoryFlagOpts(FEATURE_FLAG_DEFAULTS).offNote, "string");
+  const allOn = Object.fromEntries(FEATURE_FLAG_KEYS.map((k) => [k, true])) as typeof FEATURE_FLAG_DEFAULTS;
+  assertEquals(memoryFlagOpts(allOn), { vitrina: true, offNote: null });
 });

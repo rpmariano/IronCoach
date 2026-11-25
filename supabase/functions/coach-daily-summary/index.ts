@@ -35,7 +35,7 @@ import { selectRaces } from "../_shared/formulas/mainRace.ts";
 import { recentExecutionLines } from "../_shared/formulas/planExecution.ts";
 import { fetchTrainingWeatherBlock } from "../_shared/trainingWeatherFetch.ts";
 import { fetchSeriesBlock, seriesPromptSection, seriesRacePhaseText } from "../_shared/seriesBlock.ts";
-import { getFeatureFlags } from "../_shared/featureFlags.ts";
+import { getFeatureFlags, memoryFlagOpts } from "../_shared/featureFlags.ts";
 import { type GeminiUsage, usageFromGemini } from "../_shared/geminiUsage.ts";
 import { withUsageRecording } from "../_shared/usageRecorder.ts";
 import { attemptTimeoutMs, geminiHeaders, geminiUrl, geminiWithFallback, thinkingConfig } from "../_shared/geminiModel.ts";
@@ -348,6 +348,15 @@ export function hhmmOf(value: unknown): string | null {
   return m ? `${m[1].padStart(2, "0")}:${m[2]}` : null;
 }
 
+/** A prova sem a partida do GPX (`course_start:course_profile->start`): esse campo é jsonb do
+ *  cliente, só serve para a meteorologia, e nem as coordenadas nem o que lá estiver vão ao modelo. */
+// deno-lint-ignore no-explicit-any
+export function withoutCourseStart(race: any): any {
+  if (!race || typeof race !== "object") return race;
+  const { course_start: _courseStart, ...rest } = race;
+  return rest;
+}
+
 export function buildDailySummaryContext(params: {
   today: string;
   // deno-lint-ignore no-explicit-any
@@ -518,7 +527,9 @@ export function buildDailySummaryContext(params: {
       ? (nextRace ? "PROVA_COM_PLANO" : "MANUTENCAO_COM_PLANO")
       : (nextRace ? "PROVA_SEM_PLANO" : "LIVRE"),
     proxima_prova: nextRace ? {
-      ...nextRace,
+      // Sem a partida do GPX (course_start): é jsonb do cliente, só serve para a meteorologia, e as
+      // coordenadas nunca vão ao modelo (revisão pré-deploy do GPX, 2026-11-14).
+      ...withoutCourseStart(nextRace),
       fase_do_plano: getRacePhase(
         Math.round((new Date(nextRace.date + "T00:00:00Z").getTime() - new Date(today + "T00:00:00Z").getTime()) / 86400000),
         nextRace.distance_km ?? null,
@@ -1065,7 +1076,7 @@ Deno.serve(withUsageRecording("coach-daily-summary", async (req) => {
     // o retrato da época (5.3): o cartão via só 30 dias de tendência.
     // v1 lite (2026-11-22): o que está desligado não entra no resumo.
     const flags = await getFeatureFlags();
-    const memoryPromise = fetchSharedMemoryBlock(sb, userId, { portrait: true, todayISO: today, vitrina: flags.badges });
+    const memoryPromise = fetchSharedMemoryBlock(sb, userId, { portrait: true, todayISO: today, ...memoryFlagOpts(flags) });
     // O bloco da competição por jornadas (specs/trofeu.md §5, Fase 2): uma
     // leitura e null para quem não está inscrito. Nunca rejeita.
     const seriesPromise = flags.cup ? fetchSeriesBlock(sb, userId, today, { channel: "daily" }) : Promise.resolve(null);

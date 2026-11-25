@@ -1300,7 +1300,8 @@ export async function fetchSharedMemoryBlock(
   userId: string,
   // `vitrina` (2026-09-25): os badges, o percentil e as tabelas — ligado por
   // omissão, é a mesma Carol em todos os sítios onde fala com ele.
-  opts: { portrait?: boolean; todayISO?: string; vitrina?: boolean } = {},
+  // `offNote` (v1 lite): as áreas desligadas — logo a seguir ao histórico, que as pode mencionar.
+  opts: { portrait?: boolean; todayISO?: string; vitrina?: boolean; offNote?: string | null } = {},
 ): Promise<string | null> {
   try {
     const today = lisbonTodayISO();
@@ -1319,7 +1320,7 @@ export async function fetchSharedMemoryBlock(
     const checkin = await fetchCheckinBlock(sb, userId, today);
     const portrait = opts.portrait ? await fetchPortraitBlock(sb, userId, opts.todayISO || today) : null;
     const vitrina = opts.vitrina === false ? null : await fetchVitrinaBlock(sb, userId, opts.todayISO || today, { withBadges: true });
-    return [checkin, portrait, vitrina, shared].filter(Boolean).join("\n\n") || null;
+    return [checkin, portrait, vitrina, shared, opts.offNote ?? null].filter(Boolean).join("\n\n") || null;
   } catch (e) {
     console.warn("carolMemory: fetchSharedMemoryBlock falhou:", e);
     return null;

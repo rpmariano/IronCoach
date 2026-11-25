@@ -1,7 +1,7 @@
 import { assert, assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
 import {
   buildProactiveInstruction, buildRaceOutcomeContext, parseRaceOutcome, RACE_AFTER_SUSPECT_TIME_INSTRUCTION, raceAfterDecision,
-  raceAfterInstruction, raceAfterStampOf, raceOutcomeHasBalance, recordProactiveDelivered, replayRaceBalance,
+  raceAfterFingerprint, raceAfterInstruction, raceAfterStampOf, raceOutcomeHasBalance, recordProactiveDelivered, replayRaceBalance,
 } from "./index.ts";
 import { raceBalanceFingerprint } from "../_shared/formulas/raceBalanceFingerprint.ts";
 
@@ -79,11 +79,11 @@ Deno.test("replayRaceBalance: devolve o balanço guardado, marcado replayed; sem
 
 Deno.test("o handler: decide antes do Gemini, refaz substituindo, carimba com a impressão digital", async () => {
   const src = await Deno.readTextFile(new URL("./index.ts", import.meta.url));
-  const decideAt = src.indexOf("const decision = raceAfterDecision(raceOutcome, log, raceAfterForce);");
+  const decideAt = src.indexOf("const decision = raceAfterDecision(raceOutcome, log, raceAfterForce, flags);");
   assert(decideAt > 0 && decideAt < src.indexOf("async function callGemini("));
   assertStringIncludes(src, `await sb.from("coach_messages").delete().eq("id", raceAfterRedo.message_id).eq("user_id", userId);`);
   assertStringIncludes(src, `await sb.from("coach_notes").delete().eq("user_id", userId).eq("note", raceAfterRedo.note);`);
-  assertStringIncludes(src, "const stamp: RaceAfterStamp = { fingerprint: raceBalanceFingerprint(raceOutcome), message_id: modelMsg?.id ?? null, note: raceAfterNote };");
+  assertStringIncludes(src, "const stamp: RaceAfterStamp = { fingerprint: raceAfterFingerprint(raceOutcome, flags), message_id: modelMsg?.id ?? null, note: raceAfterNote };");
   assertStringIncludes(src, "await recordProactiveDelivered(sb, userId, proactiveTrigger, proactiveKey, stamp, { replace: true });");
   // Tempo impossível: sem nota para a memória dela. O coach_balance é reescrito (o mesmo update de sempre).
   assert(src.indexOf("if (!raceOutcome.time_suspect) {") < src.indexOf("raceAfterNote = raceOutcomeNote(raceOutcome);"));
@@ -145,6 +145,19 @@ Deno.test("B1: sem a política, o 42501 não passa por gravado — devolve false
 });
 
 Deno.test("B1: a migration cria a política de UPDATE do dono", async () => {
-  const sql = await Deno.readTextFile(new URL("../../migrations/20261115120000_coach_proactive_log_update_policy.sql", import.meta.url));
+  const sql = await Deno.readTextFile(new URL("../../migrations/20261115205324_coach_proactive_log_update_policy.sql", import.meta.url));
   assertStringIncludes(sql.replace(/\s+/g, " "), 'create policy "own proactive log update" on public.coach_proactive_log for update to authenticated using (auth.uid() = user_id) with check (auth.uid() = user_id);');
+});
+
+Deno.test("v1 lite: ligar ou desligar as conquistas ou a Taça refaz o balanço uma vez", () => {
+  const o = parseRaceOutcome({ ...BUG, distance_km: 10, official_seconds: 4980, verdict: "aquem" })!;
+  const launch = { cup: false, race_memories: false, badges: false, water: false, pantry_advanced: false, advanced_charts: false, tutorial: false, shoes: true, load_profile_choice: true };
+  const stampedOff = { payload: { fingerprint: raceAfterFingerprint(o, launch), message_id: "m1", note: null } };
+  assertEquals(raceAfterDecision(o, stampedOff, true, launch), "replay");
+  assertEquals(raceAfterDecision(o, stampedOff, true, { ...launch, badges: true }), "redo");
+  assertEquals(raceAfterDecision(o, stampedOff, true, { ...launch, cup: true }), "redo");
+  // A água ou as sapatilhas não mexem no balanço.
+  assertEquals(raceAfterDecision(o, stampedOff, true, { ...launch, water: true, shoes: false }), "replay");
+  // Um carimbo de antes dos interruptores (só a prova): refaz-se uma vez.
+  assertEquals(raceAfterDecision(o, { payload: { fingerprint: raceBalanceFingerprint(o), message_id: null, note: null } }, true, launch), "redo");
 });

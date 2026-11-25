@@ -41,5 +41,6 @@ describe('courseProfileUpload', () => {
     expect(await saveCourseProfile({ raceId: 'r1', userId: 'u1', profile: null })).toEqual({ ok: false, message: COURSE_COLUMN_MISSING_TEXT });
     expect(isMissingColumnError({ code: '42703' })).toBe(true);
     expect(isMissingColumnError({ code: '23505', message: 'dup' })).toBe(false);
+    expect(isMissingColumnError({ code: '23514', message: 'violates check constraint "race_events_course_profile_shape"' })).toBe(false);
   });
 });
