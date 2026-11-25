@@ -718,3 +718,15 @@ Deno.test("guardRecap (revisão do 1eb00de1): o alarme de sono de vários dias f
   assertEquals(guardRecap("Acordaste com o sono e a energia no máximo.", { hasCheckin: false, raceToday: false }), null);
   assertEquals(guardRecap("Hoje dormiste bem.", { hasCheckin: false, raceToday: false }), null);
 });
+
+Deno.test("guardRecap (revisão do 8edeefa7): letras acentuadas e «acordas» — as frases exatas da revisão", () => {
+  const off = { hasCheckin: false, raceToday: false };
+  // «últimas noites» (com «ú») é um alarme de vários dias: fica.
+  assertEquals(guardRecap("Nas últimas noites dormiste pouco, hoje vai com calma.", off), "Nas últimas noites dormiste pouco, hoje vai com calma.");
+  // «esta manhã» (com «ã») é sobre hoje: sai.
+  assertEquals(guardRecap("Dormiste bem esta manhã.", off), null);
+  // «acordas» no presente de vários dias: fica.
+  assertEquals(guardRecap("Há dias que acordas cansado.", off), "Há dias que acordas cansado.");
+  // E no dia da prova, «séries» (com «é») sai.
+  assertEquals(guardRecap("Hoje é dia de prova. Tens séries no plano.", { hasCheckin: true, raceToday: true }), "Hoje é dia de prova.");
+});

@@ -827,18 +827,22 @@ export function computeTDEE(profile: any, weeklyVolumeKm: number | null = null):
      mal»), que o prompt manda manter (revisão do 1eb00de1).
    - Prova hoje: as frases sobre treinos do plano (rodagem, séries…).
    Devolve null se não sobrar nada. */
-const SLEEP_WORDS = /\b(dorm\w*|acord\w*|sono|energia|descansad[oa]|noite)\b/i;
+// Fronteiras de palavra com letras acentuadas (revisão do 8edeefa7): o `\b`
+// do JS não vê «ú» nem «ã» como letra — «últimas noites» e «esta manhã»
+// nunca batiam. (?<!\p{L}) / (?!\p{L}) com a flag `u`.
+const SLEEP_WORDS = /(?<!\p{L})(dorm\p{L}*|acord\p{L}*|sono|energia|descansad[oa]|noite)(?!\p{L})/iu;
 // Marcas fortes de hoje: «acordaste», «esta noite», «esta manhã», a energia no presente.
-const SLEEP_TODAY_STRONG = /\b(acordaste|acordas|esta noite|esta manhã|energia no máximo|cheio de energia)\b/i;
-const TODAY_WORD = /\bhoje\b/i;
+// Sem «acordas»: «Há dias que acordas cansado» é um alarme de vários dias.
+const SLEEP_TODAY_STRONG = /(?<!\p{L})(acordaste|esta noite|esta manhã|energia no máximo|cheio de energia)(?!\p{L})/iu;
+const TODAY_WORD = /(?<!\p{L})hoje(?!\p{L})/iu;
 // Um alarme de vários dias não é uma afirmação sobre hoje.
-const MULTI_DAY = /\b(há (?:\d+ |uns |alguns )?dias|dias seguidos|noites seguidas|últimas noites|nos últimos|esta semana|há uma semana)\b/i;
+const MULTI_DAY = /(?<!\p{L})(há (?:\d+ |uns |alguns )?dias|dias seguidos|noites seguidas|últimas noites|nos últimos|esta semana|há uma semana)(?!\p{L})/iu;
 function isSleepClaimToday(s: string): boolean {
   if (!SLEEP_WORDS.test(s)) return false;
   if (SLEEP_TODAY_STRONG.test(s)) return true;
   return TODAY_WORD.test(s) && !MULTI_DAY.test(s);
 }
-const PLAN_TRAINING_TODAY = /\b(rodagem|rodagens|séries|intervalos|treino (?:previsto )?(?:de|para) hoje|plano (?:de|para) hoje)\b/i;
+const PLAN_TRAINING_TODAY = /(?<!\p{L})(rodagem|rodagens|séries|intervalos|treino (?:previsto )?(?:de|para) hoje|plano (?:de|para) hoje)(?!\p{L})/iu;
 
 export function guardRecap(text: string | null, opts: { hasCheckin: boolean; raceToday: boolean }): string | null {
   if (!text) return text;
