@@ -187,3 +187,18 @@ button.v2-sp:focus-visible { outline: 2px solid var(--v2-acc); outline-offset: -
 .v2-say-home .v2-say-actions .v2-link-inline { color: var(--v2-acc); }
 /* Os cartões encaixados: sem as etiquetas em maiúsculas espaçadas (direção C). */
 .v2-embed .uppercase { text-transform: none !important; letter-spacing: 0 !important; font-size: 13.5px !important; }
+
+/* Os avisos do Início de sempre, no v2 (revisão de 2026-11-25). */
+.v2-alert { margin-top: 12px; display: flex; align-items: center; gap: 8px; min-height: 44px; cursor: pointer; font-size: 15px; font-weight: 600; }
+.v2-alert:focus-visible { outline: 2px solid var(--v2-acc); outline-offset: 2px; }
+.v2-alert .v2-dot { margin: 0; }
+.v2-say-act { margin-top: 4px; }
+.v2-milestone > * { border-top: 0 !important; padding-top: 0 !important; }
+/* As ações das mensagens da Carol (a prova, a inscrição): botões do v2, a âmbar (são da prova). O
+   .v2-say button { all: unset } e o estilo inline do cartão de sempre obrigam ao !important. */
+.v2-say .v2-say-act button, .v2-say .v2-say-act a {
+  box-sizing: border-box; display: flex !important; align-items: center; justify-content: center; gap: 6px;
+  width: 100%; min-height: 44px; padding: 0 14px; margin-top: 4px; border: 0 !important; border-radius: var(--v2-radius) !important;
+  background: var(--race) !important; color: var(--race-ink) !important; font: 700 15px var(--v2-font); text-decoration: none; cursor: pointer;
+}
+.v2-say .v2-say-act button:focus-visible, .v2-say .v2-say-act a:focus-visible { outline: 2px solid var(--v2-ink); outline-offset: 2px; }

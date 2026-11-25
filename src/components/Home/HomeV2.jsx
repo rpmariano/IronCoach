@@ -4,7 +4,7 @@ import '../../styles/v2-components.css';
 import { useAppStore } from '../../store';
 import { addDaysISO } from '../../lib/utils';
 import { buildPlanDays, computeAcceptedWindow } from './WeeklyPlanCard';
-import { liveItems, trainingItems, planItemTitle, isRacePlanItem, MEAL_LABEL_BY_TIPO } from '../../utils/homeModels';
+import { liveItems, trainingItems, planItemTitle, isRacePlanItem, MEAL_LABEL_BY_TIPO, raceForDate } from '../../utils/homeModels';
 import { prescriptionExercises } from '../../utils/prescriptionView';
 import { mealNutrients } from '../../utils/nutrition';
 import { raceForecast } from '../../utils/raceTimes';
@@ -13,7 +13,12 @@ import { upcomingRaces } from '../../utils/upcomingRaces';
 import { useCupListing } from '../../utils/useCup';
 import CheckinCard from './CheckinCard';
 import GettingStartedCard from './GettingStartedCard';
-import { useCoachDailyMessages } from './CarolCard';
+import { useCoachDailyMessages, MessageAction, MessageActions, MessageText } from './CarolCard';
+import { pendingProposalsText, useDayDoneMoment, noPlanCopy } from './DayPlanCard';
+import { useRaceCardModel, RaceMilestoneLine } from './RaceCard';
+import WeekDoneRibbon from './WeekDoneRibbon';
+import { weekDone } from './weekDone';
+import { isQuotaNoticeActive } from '../../utils/quotaNotice';
 
 /* O Início no Design v2 (direção C · Painel, 2026-11-24; utils/designV2.js). Só com o v2 ligado: o
    Home.jsx escolhe-o e passa-lhe os mesmos modelos e os mesmos handlers — a lógica é a de sempre,
@@ -88,15 +93,17 @@ const KIND_DOT = { prova: 'var(--race)', corrida: 'var(--run)', ginasio: 'var(--
 
 /* «Hoje»: o treino do dia por extenso (o título, o que o plano diz e o estado), e, se está por
    fazer, o toque abre o registo já com o item do plano (o mesmo caminho do «Começar treino»). */
-function TodayBlock({ items, raceName, onStart }) {
+function TodayBlock({ items, raceName, onStart, doneMoment = false }) {
   const vivos = liveItems(items);
   const treinos = trainingItems(vivos).filter((i) => i.status !== 'cancelado' && !isRacePlanItem(i) && !i.isRace);
   if (!treinos.length) {
-    const titulo = vivos.some((i) => isRacePlanItem(i) || i.isRace) ? `Prova${raceName ? `: ${raceName}` : ''}` : vivos.length ? 'Descanso' : 'Sem treino no plano';
+    const prova = vivos.some((i) => isRacePlanItem(i) || i.isRace);
+    const titulo = prova ? `Prova${raceName ? `: ${raceName}` : ''}` : vivos.length ? 'Descanso' : 'Sem treino no plano';
+    const sub = prova ? 'Hoje, o que conta é a prova.' : vivos.length ? 'Hoje é para recuperar.' : 'O plano não tem nada para hoje.';
     return (
       <div className="v2-panel v2-today" data-testid="home-v2-today">
         <b className="v2-today-t">{titulo}</b>
-        <span className="v2-today-s">{vivos.length ? 'Hoje é para recuperar.' : 'O plano não tem nada para hoje.'}</span>
+        <span className="v2-today-s">{sub}</span>
       </div>
     );
   }
@@ -112,7 +119,7 @@ function TodayBlock({ items, raceName, onStart }) {
             <span className="v2-today-head">
               <i className="v2-dot" style={{ background: item.kind === 'ginasio' ? 'var(--gym)' : 'var(--run)' }} aria-hidden="true" />
               <b className="v2-today-t">{titulo}</b>
-              <span className={`v2-today-state${feito ? ' is-done' : ''}`} data-testid="home-v2-today-state">{feito ? 'Feito' : 'Por fazer'}</span>
+              <span className={`v2-today-state${feito ? ' is-done' : ''}${feito && doneMoment ? ' day-done-check' : ''}`} data-testid="home-v2-today-state">{feito ? 'Feito' : 'Por fazer'}</span>
             </span>
             {/* A distância já vem no título («Corrida contínua · 8 km»); a duração, se o plano a tiver. */}
             {item.kind === 'corrida' && item.target_duration_min > 0 && (
@@ -136,6 +143,14 @@ function TodayBlock({ items, raceName, onStart }) {
       })}
     </div>
   );
+}
+
+/* As ações de uma mensagem da Carol (a prova, a inscrição no Troféu): as mesmas do cartão de sempre. */
+function CarolMessageActions({ m, onOpenRace }) {
+  if (!m) return null;
+  if (m.actions?.length) return <div className="v2-say-act"><MessageActions actions={m.actions} onOpenRace={onOpenRace} /></div>;
+  if (m.action) return <div className="v2-say-act"><MessageAction action={m.action} onOpenRace={onOpenRace} /></div>;
+  return null;
 }
 
 /* «Esta semana»: os 7 dias do plano (segunda a domingo), o tipo de cada um e um visto nos feitos.
@@ -168,7 +183,7 @@ function WeekStrip({ days, today, raceDate }) {
 }
 
 export default function HomeV2({ today, gauges, notices, onOpenRace, onRegisterRace, onCreateRace, onCompleteItem, onOpenMeals = null, onGettingStarted = null }) {
-  const { raceEvents, runs, profile, coachPlans, coachPlanItems, loadDailySummary, meals, dailyCheckins } = useAppStore();
+  const { raceEvents, runs, profile, coachPlans, coachPlanItems, loadDailySummary, meals, dailyCheckins, dailySummaryNotice, setActiveTab } = useAppStore();
   const messages = useCoachDailyMessages();
   const [carolAberta, setCarolAberta] = useState(false);
   useEffect(() => { loadDailySummary?.(); }, [today]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -194,10 +209,40 @@ export default function HomeV2({ today, gauges, notices, onOpenRace, onRegisterR
   }, [coachPlans, coachPlanItems, today]);
   const hoje = semana.find((d) => d.dateISO === today)?.items || [];
   const raceDateISO = race?.date?.slice(0, 10) || null;
-  const raceName = raceDateISO === today ? race.name : null;
+  // O nome da prova de hoje (pela agenda, como o cartão de sempre), mesmo que o herói seja outra.
+  const raceName = raceForDate(raceEvents, today)?.name || (raceDateISO === today ? race.name : null);
   const cHoje = dayCell(hoje, 'hoje', raceName);
   const pendenteHoje = trainingItems(liveItems(hoje)).find((i) => i.status === 'pendente' && !isRacePlanItem(i) && !i.isRace);
   const checkinFeito = (dailyCheckins || []).some((c) => c?.date === today);
+
+  /* Os avisos do Início de sempre, com as mesmas regras (revisão de 2026-11-25: «os avisos para falar
+     com a Carol não apareciam» com o v2). O que vem do botão flutuante (useCarolNotices: as
+     intervenções, o assunto da carga, os balanços, os insights) já cá estava, montado pelo Home:
+     · as propostas de plano por rever (o aviso do «O que faço hoje», DayPlanCard);
+     · a semana do plano cumprida (WeekDoneRibbon, weekDone);
+     · o momento do dia fechado (useDayDoneMoment, o mesmo do DayPlanCard);
+     · o marco da contagem da prova (RaceMilestoneLine, com o modelo do RaceCard);
+     · as ações das mensagens da Carol (a prova, a inscrição no Troféu) e o aviso da quota. */
+  const propostas = (coachPlans || []).filter((p) => p.status === 'proposto').length;
+  /* Sem plano aceite, o «Hoje» diz o que o cartão de sempre diz (noPlanCopy, DayPlanCard): a prova
+     de hoje, as propostas no chat, o plano que acabou, ou «Sem plano acordado» com o pedido à
+     Carol; e o aviso das propostas só aparece quando esse texto não as diz já (hideBanner). */
+  const temPlano = !!computeAcceptedWindow(coachPlans, coachPlanItems, today);
+  const semPlano = temPlano ? null : noPlanCopy({
+    pendingCount: propostas,
+    hadPlan: (coachPlans || []).some((p) => p?.status === 'aceite'),
+    raceToday: raceForDate(raceEvents, today),
+  });
+  const mostrarPropostas = propostas > 0 && (temPlano || !semPlano?.hideBanner);
+  const semPlanoAcao = () => {
+    if (semPlano?.raceId) { onOpenRace(semPlano.raceId); return; }
+    if (!propostas) useAppStore.getState().setCoachIntent('adapt_plan');
+    setActiveTab?.('coach');
+  };
+  const semanaFeita = useMemo(() => weekDone({ plans: coachPlans, planItems: coachPlanItems, today }), [coachPlans, coachPlanItems, today]);
+  const doneMoment = useDayDoneMoment(hoje, today);
+  const raceModel = useRaceCardModel({ race, profile, runs, today });
+  const quota = isQuotaNoticeActive(dailySummaryNotice, Date.now(), today) ? dailySummaryNotice.text : null;
 
   const kcal = gauges?.macros?.find((m) => m.key === 'calories');
   const prot = gauges?.macros?.find((m) => m.key === 'protein');
@@ -256,18 +301,31 @@ export default function HomeV2({ today, gauges, notices, onOpenRace, onRegisterR
         )}
       </section>
 
+      {/* O marco da contagem (100, 50, 30, 14, 7, 3 dias), como no cartão da prova de sempre. */}
+      {race && raceModel.model && !raceToRegister && (
+        <div className="v2-embed v2-milestone">
+          <RaceMilestoneLine key={`${race.id}-${raceModel.model.days}`} raceId={race.id} days={raceModel.model.days} prioridade={race.race_priority} flags={raceModel.flags} comPlano={raceModel.comPlano} comCorridas={raceModel.comCorridas} />
+        </div>
+      )}
+
       {carol && (
         <div className="v2-say v2-say-home" data-testid="home-v2-carol">
           <i aria-hidden="true" />
           <div className="min-w-0">
             <p id="home-v2-carol-text" style={carolAberta ? undefined : { display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
-              <span className="v2-who">Carol.</span> {carol}
+              <span className="v2-who">Carol.</span> <MessageText m={{ ...messages[0], text: carol }} />
             </p>
+            <CarolMessageActions m={messages[0]} onOpenRace={onOpenRace} />
             {carolAberta && messages.slice(1).map((m) => (
-              <p key={m.key} className="v2-say-more" data-testid="home-v2-carol-more">
-                <span className="v2-say-label">{m.label}.</span> {String(m.text).replace(/\s+—\s+/g, ': ')}
-              </p>
+              <div key={m.key} data-testid="home-v2-carol-more">
+                <p className="v2-say-more">
+                  <span className="v2-say-label" style={m.color === 'var(--warn)' ? { color: 'var(--warn)' } : undefined}>{m.label}.</span>{' '}
+                  <MessageText m={{ ...m, text: String(m.text).replace(/\s+—\s+/g, ': ') }} />
+                </p>
+                <CarolMessageActions m={m} onOpenRace={onOpenRace} />
+              </div>
             ))}
+            {quota && <p role="status" className="v2-say-more" data-testid="carol-quota-notice">{quota}</p>}
             <div className="v2-say-actions">
               {carolLonga && (
                 <button type="button" className="v2-link v2-link-inline" aria-expanded={carolAberta} aria-controls="home-v2-carol-text" data-testid="home-v2-carol-more-toggle" onClick={() => setCarolAberta((a) => !a)}>
@@ -280,8 +338,24 @@ export default function HomeV2({ today, gauges, notices, onOpenRace, onRegisterR
         </div>
       )}
 
+      {mostrarPropostas && (
+        <button type="button" className="v2-panel v2-alert" data-testid="home-v2-proposals" onClick={() => setActiveTab?.('coach')}>
+          <i className="v2-dot" style={{ background: 'var(--coach)' }} aria-hidden="true" />
+          <span>{pendingProposalsText(propostas)}</span>
+        </button>
+      )}
+
       <h2 className="v2-label">Hoje</h2>
-      <TodayBlock items={hoje} raceName={raceName} onStart={onCompleteItem} />
+      {semanaFeita && <div className="v2-embed" style={{ marginTop: 0, marginBottom: 8 }}><WeekDoneRibbon done={semanaFeita} /></div>}
+      {semPlano ? (
+        <div className="v2-panel v2-today" data-testid="home-v2-today">
+          <b className="v2-today-t">{semPlano.title}</b>
+          <span className="v2-today-s">{semPlano.body}</span>
+          <button type="button" className={`v2-btn ${semPlano.raceId ? 'is-race' : 'is-quiet'}`} data-testid="home-v2-no-plan-cta" onClick={semPlanoAcao}>{semPlano.cta}</button>
+        </div>
+      ) : (
+        <TodayBlock items={hoje} raceName={raceName} onStart={onCompleteItem} doneMoment={doneMoment} />
+      )}
 
       <h2 className="v2-label">Esta semana</h2>
       <WeekStrip days={semana} today={today} raceDate={raceDateISO} />

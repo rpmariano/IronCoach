@@ -84,7 +84,7 @@ function findScheduledRace(raceEvents, dateISO) {
    onde vive o plano km a km. Âmbar porque é da prova. Depois da partida
    (pedido 2026-09-26) o botão é o registo da prova (`registar`), o mesmo que
    o Início e o hub abrem: é o que a frase pede. */
-function MessageAction({ action, onOpenRace }) {
+export function MessageAction({ action, onOpenRace }) {
   if (!action?.raceId) return null;
   // Sem callback (o cartão montado sozinho), abre o hub pelo store.
   const open = action.registar
@@ -111,7 +111,7 @@ function MessageAction({ action, onOpenRace }) {
    [Já me inscrevi] (grava entry_done; a linha some quando a vista
    atualiza). Uma mensagem com `actions` desenha-as todas, 44 px cada; as
    outras continuam com a `action` de sempre (MessageAction, acima). */
-function MessageActions({ actions, onOpenRace }) {
+export function MessageActions({ actions, onOpenRace }) {
   const { showToast } = useToast();
   const [busy, setBusy] = useState(null);
   const estilo = { minHeight: 44, padding: '0 14px', background: 'var(--tint-race-bg)', border: '1px solid var(--tint-race-bd)', color: 'var(--race)' };
@@ -148,7 +148,7 @@ function MessageActions({ actions, onOpenRace }) {
 /* O texto de uma mensagem. A linha da semana do Troféu leva a previsão com
    o ícone de cálculo (CupPrevisao — nunca gravada, §2.6): o `lead` e, a
    seguir, o número. */
-function MessageText({ m }) {
+export function MessageText({ m }) {
   if (m.calc && m.lead) return <>{m.lead}, <CupPrevisao label={m.calc} />.</>;
   return m.text;
 }
