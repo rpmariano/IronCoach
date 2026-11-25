@@ -61,7 +61,10 @@ export function watchDesignV2Storage() {
 /* Só um admin pode ter o v2 (revisão de 2026-11-25): num telemóvel partilhado, um atleta nunca o
    vê. A flag apaga-se ao sair da conta (a sessão passa de alguém a ninguém) e quando o perfil
    carregado não é de admin. Antes de o perfil chegar não se decide nada: no arranque a sessão
-   ainda é null e apagar ali tirava o v2 ao próprio admin. */
+   ainda é null e apagar ali tirava o v2 ao próprio admin. E só decide com uma leitura completa do
+   perfil — a linha da BD traz `is_admin` (boolean); os sets parciais do perfil (o onboarding, as
+   intervenções da Carol) podem nascer sem ele, e com um isAdmin ainda por ler apagavam a flag do
+   admin (revisão de 2026-11-25). */
 export function enforceDesignV2Access(store) {
   if (!store?.subscribe) return () => {};
   let prevSession = store.getState?.().session || null;
@@ -69,7 +72,7 @@ export function enforceDesignV2Access(store) {
     const session = s.session || null;
     if (prevSession && !session) {
       if (isDesignV2()) setDesignV2(false);
-    } else if (s.profile && !s.isAdmin && isDesignV2()) {
+    } else if (s.profile && typeof s.profile.is_admin === 'boolean' && s.profile.is_admin === false && !s.isAdmin && isDesignV2()) {
       setDesignV2(false);
     }
     prevSession = session;

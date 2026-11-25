@@ -134,3 +134,13 @@ button.v2-sp:focus-visible { outline: 2px solid var(--v2-acc); outline-offset: -
 .v2-plan-img .v2-btn { margin-top: 4px; }
 .v2-link-inline { display: inline-block; margin: 0; white-space: nowrap; color: var(--v2-acc); }
 .v2-btn:disabled { opacity: .6; cursor: default; }
+
+/* Revisão da fase 2: o que faltava no Início v2. */
+/* Os mosaicos que são botões (as kcal e a proteína abrem as refeições): alinhados como os outros. */
+.v2-cell-btn { appearance: none; border: 0; text-align: left; font: inherit; color: inherit; cursor: pointer; display: block; width: 100%; min-height: 44px; }
+.v2-cell-btn:focus-visible { outline: 2px solid var(--v2-acc); outline-offset: 2px; }
+/* «Por registar» no herói: cabe a 375 px. */
+.v2-hero-n.is-small { font-size: 44px; line-height: 1; }
+/* Os cartões de sempre encaixados no ecrã v2 (o check-in, «O que falta para começar»). */
+.v2-embed { margin-top: 12px; }
+.v2-embed > * { margin: 0 !important; }

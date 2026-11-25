@@ -4,12 +4,14 @@
 
 /* ── Os separadores: uma só fila ─────────────────────────────────────────── */
 .v2-evo-tabs {
-  display: grid; grid-template-columns: repeat(4, 1fr);
+  /* Cinco áreas (o Geral é a 1.ª): numa linha só, mesmo a 375 px. */
+  display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr);
   background: var(--v2-panel); border-radius: var(--v2-radius); padding: 3px;
 }
 .v2-evo-tabs > button {
   min-height: 44px; border: 0; border-radius: 6px; background: transparent;
-  font: 500 14px var(--v2-font); color: var(--v2-ink2); cursor: pointer;
+  font: 500 13.5px var(--v2-font); color: var(--v2-ink2); cursor: pointer;
+  padding: 0 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .v2-evo-tabs > button.is-on { background: var(--v2-rule); color: var(--v2-ink); font-weight: 600; }
 .v2-evo-tabs > button:focus-visible { outline: 2px solid var(--v2-acc); outline-offset: -2px; }

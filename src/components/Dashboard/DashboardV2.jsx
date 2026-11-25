@@ -19,6 +19,7 @@ import Run from '../Run/Run';
 import Gym from '../Gym/Gym';
 import Nutrition from '../Nutrition/Nutrition';
 import Body from '../Body/Body';
+import OverviewDashboard from './OverviewDashboard';
 
 /* A Evolução no Design v2 (direção C · Painel, fase 2; utils/designV2.js). Só com o v2 ligado: o
    Dashboard.jsx escolhe-a. Um só nível de separadores (Corrida, Ginásio, Nutrição, Corpo) e o
@@ -29,16 +30,18 @@ import Body from '../Body/Body';
    · os blocos de sempre (os dashboards do v1 lite, com os gráficos, as entradas animadas e o
      botão de explicar de cada ChartFrame), vestidos pelo v2-evolucao.css: sem a barra de pílulas,
      sem o navegador ‹ › (sobe para o cabeçalho) e sem a frase do veredicto (já dita em cima).
-   O Geral fica de fora (não tem um número herói); quem chega com «hub» vê a Corrida. */
+   O Geral é o 1.º separador (revisão de 2026-11-25): o resumo dos quatro pilares de sempre
+   (OverviewDashboard), sem número herói nem seletor de período, que ele já traz por pilar. */
 
 export const AREAS = [
+  { key: 'hub', label: 'Geral', options: null, color: 'var(--coach)', Body: null },
   { key: 'corrida', label: 'Corrida', options: CORRIDA, color: 'var(--run)', Body: Run },
   { key: 'ginasio', label: 'Ginásio', options: GINASIO, color: 'var(--gym)', Body: Gym },
   { key: 'nutricao', label: 'Nutrição', options: NUTRICAO, color: 'var(--nutrition)', Body: Nutrition },
   { key: 'corpo', label: 'Corpo', options: CORPO, color: 'var(--body)', Body: Body },
 ];
 const AREA_BY_KEY = Object.fromEntries(AREAS.map((a) => [a.key, a]));
-const ALIASES = { hub: 'corrida', holistica: 'corrida' };
+const ALIASES = { holistica: 'hub' };
 
 const plural = (n, one, many) => (n === 1 ? one : many);
 
@@ -162,6 +165,20 @@ function PeriodBar({ area, cal }) {
   );
 }
 
+/* O Geral: o resumo de sempre, com a navegação para cada área pelo mesmo setActiveTab. */
+function GeralArea({ onGo }) {
+  const ready = useAppStore((s) => sliceReady(s, EVOLUTION_TAB_SLICES.hub || []));
+  return (
+    <div className="v2-evo-area" role="tabpanel" id="evo-v2-panel-hub" aria-labelledby="evo-v2-tab-hub" data-testid="evo-v2-area-hub">
+      <div className="v2-evo-body" data-testid="evo-v2-body">
+        <TabReadyContext.Provider value={ready}>
+          <OverviewDashboard scrollToTab={onGo} />
+        </TabReadyContext.Provider>
+      </div>
+    </div>
+  );
+}
+
 function Area({ area }) {
   const view = useEvolutionView(area);
   const cal = useCalendarPeriod(area, { dataStartISO: view?.dataStartISO });
@@ -247,7 +264,8 @@ export default function DashboardV2({ activeModule }) {
               role="tab"
               id={`evo-v2-tab-${a.key}`}
               aria-selected={on}
-              aria-controls={`evo-v2-panel-${a.key}`}
+              // Só o separador ativo tem painel montado: os outros não apontam para nada.
+              aria-controls={on ? `evo-v2-panel-${a.key}` : undefined}
               tabIndex={on ? 0 : -1}
               className={on ? 'is-on' : undefined}
               onClick={() => go(a.key)}
@@ -258,7 +276,7 @@ export default function DashboardV2({ activeModule }) {
         })}
       </div>
       {/* key: trocar de área remonta-a, e as entradas dos gráficos voltam a correr. */}
-      <Area key={area} area={area} />
+      {area === 'hub' ? <GeralArea key="hub" onGo={go} /> : <Area key={area} area={area} />}
       <CoachInsightsDock />
     </div>
   );

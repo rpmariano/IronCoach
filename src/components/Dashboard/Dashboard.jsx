@@ -24,8 +24,9 @@ import Body from '../Body/Body';
 import OverviewDashboard from './OverviewDashboard';
 import CoachInsightsDock from '../BI/CoachInsightsDock';
 import { useDesignV2 } from '../../utils/designV2';
+import { retryOnce } from '../../lib/retryOnce';
 // O v2 só se descarrega a quem o liga: o bundle principal fica o de sempre.
-const DashboardV2 = lazy(() => import('./DashboardV2'));
+const DashboardV2 = lazy(retryOnce(() => import('./DashboardV2')));
 
 /* Cinco separadores em 390px não cabem com "Visão Geral" por extenso a 11px
    (auditoria, achado 1) — o mock "Dashboard · Visão Geral" resolve-o a

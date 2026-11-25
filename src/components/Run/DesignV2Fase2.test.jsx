@@ -85,6 +85,16 @@ describe('Lista de provas v2', () => {
   });
 });
 
+describe('Lista de provas v2 — revisão', () => {
+  it('a data entra no nome acessível do botão de cada linha', () => {
+    const d = new Date(); d.setDate(d.getDate() + 12);
+    useAppStore.setState({ raceEvents: [{ id: 'a', name: 'Corrida do Tejo', date: d.toISOString().slice(0, 10), distance_km: 10, status: 'agendada' }], runs: [] });
+    render(<RacesV2 />);
+    const nome = within(screen.getByTestId('race-list-a')).getAllByRole('button')[0].getAttribute('aria-label');
+    expect(nome).toMatch(new RegExp(`^${d.getDate()} de [a-zç]+(?: de \\d{4})?, Corrida do Tejo, 10 km · sem objetivo, daqui a 12 dias$`));
+  });
+});
+
 describe('SegmentedV2', () => {
   it('o ativo com aria-current; um toque muda', () => {
     const onChange = vi.fn();
@@ -141,6 +151,41 @@ describe('Depois da prova v2', () => {
     render(<RaceHubView race={RACE} runs={[RUN]} profile={{ experience_level: 'medio' }} />);
     expect(screen.getByTestId('race-hub-completed')).not.toHaveAttribute('data-design');
     expect(screen.getByTestId('race-hub-eyebrow')).toBeInTheDocument();
+  });
+});
+
+describe('Depois da prova v2 — o tempo e o ritmo', () => {
+  const RACE = { id: 'race-1', name: 'Meia de Lisboa', date: inDays(-10), distance_km: 21.1, race_type: 'estrada', race_priority: 'a', status: 'concluida' };
+
+  it('sem tempo oficial: «Tempo da corrida» e «ritmo/km», sobre a distância da prova', async () => {
+    act(() => setDesignV2(true));
+    const RUN = { id: 'run-1', race_id: 'race-1', kind: 'competicao', date: inDays(-10), distance_km: 21.4, duration_seconds: 6822 };
+    render(<RaceHubView race={RACE} runs={[RUN]} profile={{ experience_level: 'medio' }} />);
+    await screen.findByTestId('race-done-v2-main');
+    expect(screen.getByTestId('race-done-v2-sentence')).toHaveTextContent(/^Tempo da corrida\./);
+    expect(screen.getByTestId('race-done-v2-pace')).toHaveTextContent('ritmo/km');
+    expect(screen.getByTestId('race-done-v2-pace')).not.toHaveTextContent('oficial');
+    expect(screen.getByTestId('race-done-v2-pace-note')).toHaveTextContent('tempo da corrida a dividir pelos 21,1 km da prova');
+  });
+
+  it('a prova sem distância: o ritmo pela distância da corrida', async () => {
+    act(() => setDesignV2(true));
+    const RUN = { id: 'run-1', race_id: 'race-1', kind: 'competicao', date: inDays(-10), distance_km: 20, duration_seconds: 6000, details: { official_time_seconds: 6000 } };
+    render(<RaceHubView race={{ ...RACE, distance_km: null }} runs={[RUN]} profile={{ experience_level: 'medio' }} />);
+    await screen.findByTestId('race-done-v2-main');
+    expect(screen.getByTestId('race-done-v2-pace')).toHaveTextContent(/5[.:]00/);
+    expect(screen.getByTestId('race-done-v2-pace-note')).toHaveTextContent('sobre os 20 km da corrida');
+  });
+
+  it('o que o hub de sempre tinha existe no v2: os tempos, o ciclo, as memórias', async () => {
+    act(() => setDesignV2(true));
+    const RUN = { id: 'run-1', race_id: 'race-1', kind: 'competicao', date: inDays(-10), distance_km: 21.1, duration_seconds: 6822, details: { official_time_seconds: 6822, gun_time_seconds: 6900, position: 3 } };
+    render(<RaceHubView race={{ ...RACE, target_time: '1:52:00', target_time_seconds: 6720 }} runs={[RUN]} profile={{ experience_level: 'medio' }} />);
+    await screen.findByTestId('race-done-v2-main');
+    expect(screen.getByTestId('race-done-v2-times')).toBeInTheDocument();
+    expect(screen.getByTestId('race-official-times')).toHaveTextContent('tempo bruto 1:55:00');
+    expect(screen.getByTestId('race-done-v2-cycle')).toBeInTheDocument();
+    expect(screen.getByTestId('race-memories-invite')).toBeInTheDocument();
   });
 });
 

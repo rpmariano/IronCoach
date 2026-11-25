@@ -2308,8 +2308,11 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
         setRunTrainingType(read.training_type);
         readExtra.training_type = read.training_type;
       }
-      if (v2 && typeof read.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(read.date) && read.date <= todayISO()
-        && !dateTouchedRef.current && !planChoice && !cameFromHomePlan && !raceId && !runIdToEdit) {
+      /* A data lida (revisão de 2026-11-25): nunca por cima do dia que veio do calendário (dateIso),
+         e só uma data plausível: nunca no futuro, no máximo um ano para trás. */
+      const umAnoAtras = (() => { const d = new Date(`${todayISO()}T12:00:00Z`); d.setUTCFullYear(d.getUTCFullYear() - 1); return d.toISOString().slice(0, 10); })();
+      if (v2 && typeof read.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(read.date) && read.date <= todayISO() && read.date >= umAnoAtras
+        && !dateIso && !dateTouchedRef.current && !planChoice && !cameFromHomePlan && !raceId && !runIdToEdit) {
         setRunDate(read.date);
         readExtra.date = read.date;
       }

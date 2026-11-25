@@ -155,6 +155,48 @@ describe('RunRegistration · Design v2', () => {
   });
 });
 
+describe('RunRegistration · Design v2, a data lida', () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+    mocks.invoke.mockReset();
+    useAppStore.setState({ profile: PROFILE, runs: [], raceEvents: [] });
+    act(() => setDesignV2(true));
+  });
+  afterEach(() => {
+    act(() => setDesignV2(false));
+  });
+
+  const ler = async (date, props = {}) => {
+    mocks.invoke.mockResolvedValueOnce({ data: { preview: { distance_km: 10, duration_seconds: 3000, date } }, error: null });
+    render(<RunRegistration onClose={vi.fn()} {...props} />);
+    await selectPhoto();
+    fireEvent.click(screen.getByRole('button', { name: 'Ler os prints e preencher' }));
+    await screen.findByTestId('v2-reg-read');
+  };
+  const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+  it('não passa por cima do dia que veio do calendário', async () => {
+    const doCalendario = ontem();
+    const d = new Date(); d.setDate(d.getDate() - 3);
+    await ler(iso(d), { dateIso: doCalendario });
+    expect(screen.getByLabelText('Data da corrida')).toHaveValue(doCalendario);
+  });
+
+  it('uma data no futuro ou com mais de um ano não entra', async () => {
+    const antes = screen.queryByLabelText('Data da corrida');
+    expect(antes).toBeNull();
+    const velha = new Date(); velha.setFullYear(velha.getFullYear() - 2);
+    await ler(iso(velha));
+    expect(screen.getByLabelText('Data da corrida')).not.toHaveValue(iso(velha));
+  });
+
+  it('uma data no futuro não entra', async () => {
+    const futuro = new Date(); futuro.setDate(futuro.getDate() + 5);
+    await ler(iso(futuro));
+    expect(screen.getByLabelText('Data da corrida')).not.toHaveValue(iso(futuro));
+  });
+});
+
 describe('RunRegistration · v2 desligado', () => {
   beforeEach(() => {
     window.localStorage.clear();

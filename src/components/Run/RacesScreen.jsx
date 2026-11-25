@@ -10,9 +10,10 @@ import CupTrofeuScreen from './CupTrofeuScreen';
 import { useCup } from '../../utils/useCup';
 import { cupScreenRequestValid } from '../../store/cupSlice';
 import { useDesignV2 } from '../../utils/designV2';
+import { retryOnce } from '../../lib/retryOnce';
 
 // O Design v2 (utils/designV2.js): a lista é o ecrã. Só se descarrega a quem o liga.
-const RacesV2 = lazy(() => import('./RacesV2'));
+const RacesV2 = lazy(retryOnce(() => import('./RacesV2')));
 
 /* "As tuas provas" — o separador Provas da barra (2026-09-13, opção A de
    "Onde vivem as provas"). A prova é o grande objetivo da app e estava

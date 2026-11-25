@@ -71,9 +71,12 @@ describe('designV2 — só para admins, e a classe sem componente montado', () =
     const stop = enforceDesignV2Access(store);
     store.set({ session: { user: { id: 'a' } } });
     expect(isDesignV2()).toBe(true);
-    store.set({ profile: { id: 'a' }, isAdmin: true });
+    store.set({ profile: { id: 'a', is_admin: true }, isAdmin: true });
     expect(isDesignV2()).toBe(true);
-    store.set({ profile: { id: 'b' }, isAdmin: false });
+    // Um set parcial do perfil, sem is_admin (e com o isAdmin ainda por ler), não decide nada.
+    store.set({ profile: { onboarding_done: true }, isAdmin: false });
+    expect(isDesignV2()).toBe(true);
+    store.set({ profile: { id: 'b', is_admin: false }, isAdmin: false });
     expect(isDesignV2()).toBe(false);
     stop();
   });
