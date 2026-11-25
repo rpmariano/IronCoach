@@ -139,13 +139,21 @@ describe('Evolução — Design v2', () => {
   });
 
   for (const area of ['corrida', 'ginasio', 'nutricao', 'corpo']) {
-    it(`${area}: um número herói, a Carol sem siglas e sem travessões no texto do v2`, async () => {
+    it(`${area}: um número herói (ou, a zero, um estado vazio útil), a Carol sem siglas e sem travessões no texto do v2`, async () => {
       setTab(area);
       render(<Host />);
       await screen.findByTestId(`evo-v2-area-${area}`);
-      const heroes = screen.getAllByTestId('evo-v2-hero');
-      expect(heroes).toHaveLength(1);
-      expect(screen.getByTestId('evo-v2-hero-n').textContent).toMatch(/^\d/);
+      // Zero não é herói (crítica de 2026-11-25): sem dados no período, o estado vazio com a ação.
+      const heroes = screen.queryAllByTestId('evo-v2-hero');
+      const vazio = screen.queryByTestId('evo-v2-empty');
+      expect(heroes.length + (vazio ? 1 : 0)).toBe(1);
+      if (heroes.length) {
+        expect(screen.getByTestId('evo-v2-hero-n').textContent).toMatch(/^\d/);
+        expect(Number(screen.getByTestId('evo-v2-hero-n').textContent.replace(',', '.'))).not.toBe(0);
+      } else {
+        expect(vazio).toHaveTextContent(/^Ainda sem /);
+        expect(vazio.querySelector('button')).not.toBeNull();
+      }
       const say = screen.queryByTestId('evo-v2-say');
       if (say) {
         expect(say).toHaveTextContent(/^Carol\./);

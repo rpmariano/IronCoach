@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, fireEvent, act } from '@testing-library/react';
+import { render, screen, fireEvent, act, within } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { useAppStore } from '../../store';
 import { todayISO, addDaysISO } from '../../lib/utils';
@@ -65,8 +65,9 @@ describe('Início — Design v2', () => {
     expect(screen.getByTestId('home-v2-today')).toHaveTextContent('Corrida contínua · 8 km');
     expect(screen.getByTestId('home-v2-today-state')).toHaveTextContent('Por fazer');
     expect(screen.getAllByTestId('home-v2-week-day')).toHaveLength(7);
-    expect(screen.getByTestId('home-v2-kcal')).toHaveTextContent('de 2 400 kcal');
-    expect(screen.getByTestId('home-v2-proteina')).toHaveTextContent('de 160 g de proteína');
+    // Sem nada comido hoje, o zero não é herói: o estado vazio diz o objetivo e o que fazer.
+    expect(screen.queryByTestId('home-v2-kcal')).toBeNull();
+    expect(screen.getByTestId('home-v2-nutrition-empty')).toHaveTextContent(/Ainda sem refeições hoje\. O objetivo são 2.400 kcal e 160 g de proteína\./);
     // A ação principal é a do dia; «Abrir a prova» fica como link no herói.
     expect(screen.getAllByTestId('home-v2-action')).toHaveLength(1);
     expect(screen.getByTestId('home-v2-action')).toHaveTextContent('Começar a corrida de hoje');
@@ -193,7 +194,7 @@ describe('Início — Design v2', () => {
 });
 
 describe('Início — Design v2, o que a revisão pediu de volta', () => {
-  it('uma prova de há 2 dias por registar é o herói, com «Registar a prova»', async () => {
+  it('uma prova de há 2 dias por registar NÃO é o herói: fica numa linha por baixo, com a ação', async () => {
     act(() => setDesignV2(true));
     const openRaceRun = vi.fn();
     useAppStore.setState({ openRaceRun, raceEvents: [
@@ -202,20 +203,65 @@ describe('Início — Design v2, o que a revisão pediu de volta', () => {
     ] });
     renderHome();
     await screen.findByTestId('home-v2');
-    expect(screen.getByTestId('home-v2-hero')).toHaveTextContent('Por registar');
-    expect(screen.getByTestId('home-v2-hero')).toHaveTextContent('Trail dos Moinhos, há 2 dias');
-    fireEvent.click(screen.getByTestId('home-v2-action'));
+    // O herói é a próxima prova; a que falta registar vai para a linha.
+    expect(screen.getByTestId('home-v2-hero')).toHaveTextContent('para a Corrida do Tejo');
+    const linha = screen.getByTestId('home-v2-pending-race');
+    expect(linha).toHaveTextContent('Falta registar: Trail dos Moinhos');
+    fireEvent.click(within(linha).getByRole('button', { name: 'Registar a prova: Trail dos Moinhos' }));
     expect(openRaceRun).toHaveBeenCalledWith('p');
   });
 
   it('o check-in diário está lá, e as kcal abrem as refeições de hoje', async () => {
     act(() => setDesignV2(true));
+    useAppStore.setState({ meals: [{ id: 'm1', date: today, meal_type: 'almoco', meal_items: [{ name: 'Arroz', calories: 400, protein: 8 }] }] });
     renderHome();
     await screen.findByTestId('home-v2');
     expect(screen.getByTestId('home-v2-checkin')).toBeInTheDocument();
     expect(screen.queryByRole('dialog')).toBeNull();
     fireEvent.click(screen.getByTestId('home-v2-kcal'));
     expect(await screen.findByRole('dialog')).toBeInTheDocument();
+  });
+});
+
+describe('Início — Design v2, o foco (crítica de 2026-11-25)', () => {
+  it('dia de prova com outra por registar: o herói, o «Hoje» e o botão são da prova de hoje; a outra numa linha', async () => {
+    act(() => setDesignV2(true));
+    const openRaceRun = vi.fn();
+    useAppStore.setState({
+      openRaceRun,
+      raceEvents: [
+        { id: 'trail', name: 'Trail dos Moinhos', date: inDays(-2), status: 'agendada', distance_km: 15 },
+        { id: 'sil', name: 'São Silvestre', date: today, start_time: '09:00:00', status: 'agendada', distance_km: 10 },
+      ],
+      dailySummary: { date: today, recap: 'Ontem a rodagem de 5 km saiu bem, com o ritmo certo do princípio ao fim e as pernas frescas para o que aí vem.' },
+    });
+    renderHome();
+    await screen.findByTestId('home-v2');
+    expect(screen.getByTestId('home-v2-hero')).toHaveTextContent('São Silvestre, às 09:00');
+    const acao = screen.getByTestId('home-v2-action');
+    expect(acao).toHaveTextContent('Registar a prova: São Silvestre');
+    fireEvent.click(acao);
+    expect(openRaceRun).toHaveBeenCalledWith('sil');
+    expect(screen.getByTestId('home-v2-pending-race')).toHaveTextContent('Falta registar: Trail dos Moinhos');
+    // A Carol fala da prova de hoje, não do treino de ontem.
+    const carol = screen.getByTestId('home-v2-carol');
+    expect(carol).not.toHaveTextContent('rodagem de 5 km');
+    expect(carol.textContent).toMatch(/prova/i);
+  });
+
+  it('na véspera: o herói é a prova de amanhã e a Carol fala dela', async () => {
+    act(() => setDesignV2(true));
+    useAppStore.setState({
+      ...PLANO,
+      raceEvents: [{ id: 'sil', name: 'São Silvestre', date: tomorrow, start_time: '09:00:00', status: 'agendada', distance_km: 10 }],
+      coachPlanItems: [{ id: 'i1', plan_id: 'p1', planned_date: today, kind: 'corrida', training_type: 'continuo', target_distance_km: 5, status: 'pendente' }],
+    });
+    renderHome();
+    await screen.findByTestId('home-v2');
+    expect(screen.getByTestId('home-v2-hero')).toHaveTextContent('Amanhã');
+    expect(screen.getByTestId('home-v2-hero')).toHaveTextContent('para a São Silvestre');
+    const carol = screen.queryByTestId('home-v2-carol');
+    if (carol) expect(carol).not.toHaveTextContent(/corrida contínua de 5 km/i);
   });
 });
 
