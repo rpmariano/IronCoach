@@ -231,7 +231,11 @@ export function buildCheckinContext(checkins: DailyCheckin[] | null | undefined,
 
   const lines: string[] = [];
   const today = week.find((c) => c.date === todayISO);
-  lines.push(today ? `- Hoje: ${describeDay(today) || "check-in sem valores"}.` : "- Hoje: ainda sem check-in.");
+  lines.push(today
+    ? `- Hoje: ${describeDay(today) || "check-in sem valores"}.`
+    // P0 da crítica de design (2026-11-25): o resumo disse «acordaste com o sono e a energia no máximo» sem
+    // check-in — as médias de baixo são de OUTROS dias.
+    : "- Hoje: ainda sem check-in — não sabes como dormiu nem como acordou hoje; as médias abaixo são de outros dias, nunca as digas como hoje.");
   if (week.length) {
     // Esta semana vs as 3 semanas antes (ação 5.4) — só com pelo menos 3
     // check-ins em cada janela: com menos, uma tendência é uma afirmação a

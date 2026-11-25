@@ -91,7 +91,7 @@ Deno.test("buildCheckinContext: hoje, a média, os dias com dor e os alarmes", (
 
 Deno.test("buildCheckinContext: sem check-in hoje diz-o; sem nada na semana nem ciclo é null", () => {
   const text = buildCheckinContext([{ date: "2026-09-15", sleep: 4, pain: 0 }], TODAY, NO_CYCLE)!;
-  assertStringIncludes(text, "- Hoje: ainda sem check-in.");
+  assertStringIncludes(text, "- Hoje: ainda sem check-in — não sabes como dormiu nem como acordou hoje; as médias abaixo são de outros dias, nunca as digas como hoje.");
   assert(!text.includes("SINAIS DE ALARME"));
   assertEquals(buildCheckinContext([], TODAY, NO_CYCLE), null);
   assertEquals(buildCheckinContext([{ date: "2026-08-01", sleep: 3 }], TODAY, NO_CYCLE), null);

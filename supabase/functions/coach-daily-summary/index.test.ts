@@ -1,5 +1,5 @@
 import { assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
-import { addDaysISO, buildDailySummaryContext, buildWarningsMessage, buildTomorrowPrepMessage, isFemale, computeBodyMetrics, computeTDEE, hhmmOf, checkinForSummary, treinoFalado, weightStaleness, staleWeightPromptSection } from "./index.ts";
+import { guardRecap, addDaysISO, buildDailySummaryContext, buildWarningsMessage, buildTomorrowPrepMessage, isFemale, computeBodyMetrics, computeTDEE, hhmmOf, checkinForSummary, treinoFalado, weightStaleness, staleWeightPromptSection } from "./index.ts";
 import { assertCarolVoice } from "../_shared/carolTone.ts";
 import { seriesPromptSection, seriesRacePhaseText } from "../_shared/seriesBlock.ts";
 
@@ -655,4 +655,34 @@ Deno.test("v1 lite: a Taça (o bloco) e a vitrina só com os interruptores; o av
   assertStringIncludes(src, 'const seriesPromise = flags.cup ? fetchSeriesBlock(sb, userId, today, { channel: "daily" }) : Promise.resolve(null);');
   assertStringIncludes(src, "fetchSharedMemoryBlock(sb, userId, { portrait: true, todayISO: today, ...memoryFlagOpts(flags) })");
   assertStringIncludes(src, "flags.water && profile?.water_reminder_enabled ? (profile?.water_goal_ml ?? null) : null,");
+});
+
+// P0 da crítica de design (2026-11-25): «Acordaste com o sono e a energia no
+// máximo» num dia sem check-in; e o treino do plano no dia da prova.
+Deno.test("guardRecap: sem check-in, nada de como dormiu ou acordou; com ele, fica", () => {
+  const recap = "Acordaste com o sono e a energia no máximo. Ontem fizeste 8 km a 5:40/km, bem dentro do plano. Hoje é dia de descanso.";
+  assertEquals(guardRecap(recap, { hasCheckin: false, raceToday: false }), "Ontem fizeste 8 km a 5:40/km, bem dentro do plano. Hoje é dia de descanso.");
+  assertEquals(guardRecap(recap, { hasCheckin: true, raceToday: false }), recap);
+  assertEquals(guardRecap("Dormiste bem esta noite.", { hasCheckin: false, raceToday: false }), null);
+  assertEquals(guardRecap(null, { hasCheckin: false, raceToday: false }), null);
+});
+
+Deno.test("guardRecap: no dia da prova, nada de treinos do plano", () => {
+  const recap = "Hoje é o dia da Meia dos Descobrimentos. Tens uma rodagem de 5 km no plano. Arranca controlado e guarda as pernas para o fim.";
+  assertEquals(guardRecap(recap, { hasCheckin: true, raceToday: true }), "Hoje é o dia da Meia dos Descobrimentos. Arranca controlado e guarda as pernas para o fim.");
+  assertEquals(guardRecap(recap, { hasCheckin: true, raceToday: false }), recap);
+});
+
+Deno.test("o contexto: no dia da prova, o plano de hoje é a prova; sem check-in, di-lo; e o prompt proíbe os dois", async () => {
+  const withPlan = { ...baseParams, planItems: [{ planned_date: baseParams.today, kind: "corrida", training_type: "continuo", target_distance_km: 5, status: "pendente" }] };
+  const race = buildDailySummaryContext({ ...withPlan, raceTodayName: "Meia dos Descobrimentos" }) as Record<string, any>;
+  assertEquals(race.plano_treino_hoje, { data: baseParams.today, resumo: "Prova: Meia dos Descobrimentos", itens: [], prova_hoje: true });
+  const normal = buildDailySummaryContext(withPlan) as Record<string, any>;
+  assertEquals(normal.plano_treino_hoje.itens.length, 1);
+  const src = await Deno.readTextFile(new URL("./index.ts", import.meta.url));
+  assertStringIncludes(src, "else (ctx as Record<string, unknown>).sem_checkin_hoje = true;");
+  assertStringIncludes(src, "SEM CHECK-IN HOJE (existe \"sem_checkin_hoje\"): não digas como ele dormiu, como acordou");
+  assertStringIncludes(src, "PROVA HOJE (existe \"plano_treino_hoje.prova_hoje\"): a prova manda");
+  assertStringIncludes(src, "recap: guardRecap(generated.recap || null, { hasCheckin: !!checkinHoje, raceToday: raceEveDays === 0 }),");
+  assertStringIncludes(src, 'raceTodayName: raceEveDays === 0 ? (nearestRace?.name ?? "a prova") : null,');
 });
