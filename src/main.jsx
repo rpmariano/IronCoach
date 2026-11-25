@@ -10,7 +10,7 @@ import { startDailySummaryRefresh } from './utils/dailySummaryRefresh';
 import './styles/globals.css';
 import './styles/v2.css';
 import { bootPhase } from './utils/bootTrace';
-import { applyDesignV2Class } from './utils/designV2';
+import { applyDesignV2Class, watchDesignV2Storage, enforceDesignV2Access } from './utils/designV2';
 
 // O JavaScript da app chegou e corre (utils/bootTrace.js).
 bootPhase('main');
@@ -21,6 +21,9 @@ window.useAppStore = useAppStore;
 // design antigo. Uma leitura do localStorage e um classList — não espera por nada, não toca no
 // logo do index.html (#boot-splash tem o seu próprio CSS, que o v2.css não mexe).
 applyDesignV2Class();
+watchDesignV2Storage();
+// Só admins: ao sair da conta, ou com o perfil de quem não é admin, a flag apaga-se.
+enforceDesignV2Access(useAppStore);
 
 // Marca `data-page-hidden` no <html> — o CSS pára os loops enquanto a
 // página está em segundo plano (ver globals.css).

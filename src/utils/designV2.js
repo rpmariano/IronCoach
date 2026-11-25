@@ -40,13 +40,40 @@ export function setDesignV2(on) {
 
 function subscribe(cb) {
   if (typeof window === 'undefined') return () => {};
-  const onStorage = (e) => { if (!e || e.key === null || e.key === DESIGN_V2_KEY) { applyDesignV2Class(); cb(); } };
+  const onStorage = (e) => { if (!e || e.key === null || e.key === DESIGN_V2_KEY) cb(); };
   window.addEventListener(EVENT, cb);
   window.addEventListener('storage', onStorage);
   return () => {
     window.removeEventListener(EVENT, cb);
     window.removeEventListener('storage', onStorage);
   };
+}
+
+/** Ouve a mudança feita noutro separador (o evento 'storage') e re-aplica a classe no <html>,
+ *  mesmo sem nenhum componente com useDesignV2 montado. Corre uma vez, no main.jsx. */
+export function watchDesignV2Storage() {
+  if (typeof window === 'undefined') return () => {};
+  const onStorage = (e) => { if (!e || e.key === null || e.key === DESIGN_V2_KEY) applyDesignV2Class(); };
+  window.addEventListener('storage', onStorage);
+  return () => window.removeEventListener('storage', onStorage);
+}
+
+/* Só um admin pode ter o v2 (revisão de 2026-11-25): num telemóvel partilhado, um atleta nunca o
+   vê. A flag apaga-se ao sair da conta (a sessão passa de alguém a ninguém) e quando o perfil
+   carregado não é de admin. Antes de o perfil chegar não se decide nada: no arranque a sessão
+   ainda é null e apagar ali tirava o v2 ao próprio admin. */
+export function enforceDesignV2Access(store) {
+  if (!store?.subscribe) return () => {};
+  let prevSession = store.getState?.().session || null;
+  return store.subscribe((s) => {
+    const session = s.session || null;
+    if (prevSession && !session) {
+      if (isDesignV2()) setDesignV2(false);
+    } else if (s.profile && !s.isAdmin && isDesignV2()) {
+      setDesignV2(false);
+    }
+    prevSession = session;
+  });
 }
 
 /** O interruptor como hook: troca sem recarregar quando o admin o muda. */

@@ -110,6 +110,33 @@ describe('Início — Design v2', () => {
   });
 });
 
+describe('Início — Design v2, o que a revisão pediu de volta', () => {
+  it('uma prova de há 2 dias por registar é o herói, com «Registar a prova»', async () => {
+    act(() => setDesignV2(true));
+    const openRaceRun = vi.fn();
+    useAppStore.setState({ openRaceRun, raceEvents: [
+      { id: 'p', name: 'Trail dos Moinhos', date: inDays(-2), status: 'agendada', distance_km: 15 },
+      { id: 'f', name: 'Corrida do Tejo', date: inDays(20), status: 'agendada', distance_km: 10 },
+    ] });
+    renderHome();
+    await screen.findByTestId('home-v2');
+    expect(screen.getByTestId('home-v2-hero')).toHaveTextContent('Por registar');
+    expect(screen.getByTestId('home-v2-hero')).toHaveTextContent('Trail dos Moinhos, há 2 dias');
+    fireEvent.click(screen.getByTestId('home-v2-action'));
+    expect(openRaceRun).toHaveBeenCalledWith('p');
+  });
+
+  it('o check-in diário está lá, e as kcal abrem as refeições de hoje', async () => {
+    act(() => setDesignV2(true));
+    renderHome();
+    await screen.findByTestId('home-v2');
+    expect(screen.getByTestId('home-v2-checkin')).toBeInTheDocument();
+    expect(screen.queryByRole('dialog')).toBeNull();
+    fireEvent.click(screen.getByTestId('home-v2-kcal'));
+    expect(await screen.findByRole('dialog')).toBeInTheDocument();
+  });
+});
+
 describe('dayCell', () => {
   it('um dia sem nada é «Livre»; um descanso é «Descanso»', () => {
     expect(dayCell([], 'hoje')).toMatchObject({ big: 'Livre', small: 'hoje' });

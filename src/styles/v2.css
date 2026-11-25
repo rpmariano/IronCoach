@@ -34,7 +34,7 @@ html.design-v2 {
   /* Os tokens globais, redefinidos só aqui: os ecrãs ainda por fazer (fase 2) herdam o fundo, os
      painéis, os filetes e o texto do v2 sem mudarem uma linha. Contraste (AA) medido contra o
      painel #152031: --text-1 14,7:1, --text-2 12,6:1, --text-3 9,3:1, --text-4 6,8:1,
-     --text-muted 5,8:1, --text-placeholder 4,7:1; o ciano 9,1:1, o âmbar 9,8:1. */
+     --text-muted 5,8:1, --text-placeholder 5,2:1 (4,8:1 sobre o painel em hover, #1a283c); o ciano 9,1:1, o âmbar 9,8:1. */
   --font-sans: var(--v2-font);
   --bg-app: var(--v2-bg);
   --bg-header: var(--v2-bg);
@@ -54,7 +54,7 @@ html.design-v2 {
   --text-3: var(--v2-ink2);
   --text-4: #9aa8ba;
   --text-muted: #8d9bae;
-  --text-placeholder: #7d8b9e;
+  --text-placeholder: #8593a6;
   --brand: var(--v2-ink2);
 
   /* Sem gradientes, sem brilho, sem sombras: os tokens que os davam passam a cor lisa ou nada. */
@@ -87,29 +87,29 @@ html.design-v2 body {
 html.design-v2 .app-bg { display: none; }
 
 /* ── O cabeçalho ─────────────────────────────────────────────────────────── */
-html.design-v2 div:has(> header) {
+html.design-v2 div:has(> header[data-app-header]) {
   background: var(--v2-bg) !important;
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
   border-color: var(--v2-rule) !important;
   box-shadow: none !important;
 }
-html.design-v2 header h1 {
+html.design-v2 header[data-app-header] h1 {
   font: 800 19px/1 var(--v2-font-num);
   letter-spacing: .01em;
   color: var(--v2-ink) !important;
 }
-html.design-v2 header h1 + p {
+html.design-v2 header[data-app-header] h1 + p {
   font-size: 13.5px;
   color: var(--v2-ink2) !important;
 }
-html.design-v2 header button[aria-label]:not([aria-label^="IronCoach"]) {
+html.design-v2 header[data-app-header] button[aria-label]:not([aria-label^="IronCoach"]) {
   background: transparent !important;
   border-color: var(--v2-rule) !important;
   border-radius: var(--v2-radius) !important;
   color: var(--v2-ink2) !important;
 }
-html.design-v2 header button[aria-current="page"] { color: var(--v2-acc) !important; border-color: var(--v2-acc) !important; }
+html.design-v2 header[data-app-header] button[aria-current="page"] { color: var(--v2-acc) !important; border-color: var(--v2-acc) !important; }
 
 /* ── A barra inferior ────────────────────────────────────────────────────── */
 html.design-v2 [data-testid="bottom-nav"] {
@@ -133,3 +133,11 @@ html.design-v2 [data-testid="bottom-nav"] > button[aria-expanded] {
 
 /* As peças dos ecrãs v2 (.v2-hero, .v2-say, .v2-grid…) vivem em v2-components.css, importado pelo
    HomeV2 e pelo RaceHubV2: chegam com eles, no chunk deles, e não pesam a quem não liga o v2. */
+
+/* O seletor plano (shared/SegmentedV2.jsx): aqui e não nas peças, porque o RunAgenda o monta fora
+   dos componentes lazy do v2. Só existe com o v2 ligado. */
+.v2-seg { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; background: var(--v2-panel); border-radius: var(--v2-radius); padding: 3px; }
+.v2-seg button { all: unset; box-sizing: border-box; cursor: pointer; min-height: 44px; display: grid; place-items: center; padding: 0 6px; border-radius: 6px; font: 500 14px var(--v2-font); color: var(--v2-ink2); text-align: center; }
+.v2-seg button.is-on { background: var(--v2-rule); color: var(--v2-ink); font-weight: 600; }
+.v2-seg button:focus-visible { outline: 2px solid var(--v2-acc); outline-offset: -2px; }
+html.design-v2 [data-testid="race-hub-screen"] h2.v2-hub-h { font: 600 15px var(--v2-font); color: var(--v2-ink2); letter-spacing: 0; }

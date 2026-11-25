@@ -17,6 +17,8 @@ import { format, parseISO } from 'date-fns';
 import { pt } from 'date-fns/locale';
 import { supabase, invokeEdgeFunctionWithTimeout } from '../../lib/supabase';
 import RaceHubView from './RaceHubView';
+import SegmentedV2 from '../shared/SegmentedV2';
+import { useDesignV2 } from '../../utils/designV2';
 import RaceLevelSuggestion, { predictRaceSeconds } from './RaceLevelSuggestion';
 import { useCupPromoteGuard } from './CupPromoteDialog';
 import {
@@ -152,6 +154,8 @@ export default function RunAgenda({ onClose }) {
   const editingEventId = editingRaceId;
   const isFormOpen = true;
   const [activePage, setActivePage] = useState('hub'); // 'hub' | 'details'
+  // O Design v2 (utils/designV2.js): o cabeçalho do hub com o seletor plano de dois.
+  const v2 = useDesignV2();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [draft, setDraft] = useState(EMPTY_DRAFT);
   const [isDirty, setIsDirty] = useState(false);
@@ -1070,7 +1074,17 @@ export default function RunAgenda({ onClose }) {
   const showSaveBar = !detailsLocked && (!isHubScreen || activePage === 'details' || isDirty);
 
   // Prova concluída: só há o hub, e um subnav com uma página não faz sentido.
-  const subnav = !detailsLocked && (
+  const subnav = !detailsLocked && (v2 ? (
+    <SegmentedV2
+      items={PAGE_TABS}
+      label="Páginas da prova"
+      activeIndex={activePageIndex >= 0 ? activePageIndex : 0}
+      onChange={(i, item) => {
+        setActivePage(item.key);
+        scrollTo(i);
+      }}
+    />
+  ) : (
     <SubNav
       items={PAGE_TABS}
       activeIndex={activePageIndex >= 0 ? activePageIndex : 0}
@@ -1079,7 +1093,7 @@ export default function RunAgenda({ onClose }) {
         scrollTo(i);
       }}
     />
-  );
+  ));
 
   return (
     // --focus-ring: anel de teclado na cor do contexto (handoff, "Fidelity").
@@ -1120,9 +1134,13 @@ export default function RunAgenda({ onClose }) {
               >
                 <ChevronLeft size={20} />
               </button>
+              {v2 ? (
+                <h2 className="v2-hub-h min-w-0 truncate">Hub da prova</h2>
+              ) : (
               <h2 className="min-w-0 truncate text-[16px] font-black" style={{ color: 'var(--text-1)', letterSpacing: '-.02em' }}>
                 Hub da prova
               </h2>
+              )}
             </div>
           ) : (
             <div className="flex items-center justify-between gap-2">

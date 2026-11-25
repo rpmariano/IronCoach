@@ -1,0 +1,108 @@
+/* A Evolução no Design v2 (DashboardV2.jsx). Só chega com o v2 ligado: o ficheiro vem no chunk do
+   DashboardV2, e as regras do corpo só valem dentro de .v2-evo-body (os dashboards de sempre,
+   vestidos aqui sem lhes mudar uma linha). Tokens em v2.css; peças partilhadas em v2-components.css. */
+
+/* ── Os separadores: uma só fila ─────────────────────────────────────────── */
+.v2-evo-tabs {
+  display: grid; grid-template-columns: repeat(4, 1fr);
+  background: var(--v2-panel); border-radius: var(--v2-radius); padding: 3px;
+}
+.v2-evo-tabs > button {
+  min-height: 44px; border: 0; border-radius: 6px; background: transparent;
+  font: 500 14px var(--v2-font); color: var(--v2-ink2); cursor: pointer;
+}
+.v2-evo-tabs > button.is-on { background: var(--v2-rule); color: var(--v2-ink); font-weight: 600; }
+.v2-evo-tabs > button:focus-visible { outline: 2px solid var(--v2-acc); outline-offset: -2px; }
+
+/* ── O período: ‹ título › e um seletor nativo pequeno ───────────────────── */
+.v2-evo-period {
+  margin-top: 12px; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px;
+}
+.v2-evo-nav { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: 2px; }
+.v2-evo-arrow {
+  flex: none; width: 44px; height: 44px; display: grid; place-items: center;
+  border: 0; border-radius: var(--v2-radius); background: transparent; color: var(--v2-ink2); cursor: pointer;
+}
+.v2-evo-arrow:disabled { opacity: .35; cursor: default; }
+.v2-evo-arrow:focus-visible { outline: 2px solid var(--v2-acc); outline-offset: -2px; }
+.v2-evo-when { margin: 0; min-width: 0; flex: 1 1 auto; text-align: center; line-height: 1.15; }
+.v2-evo-when b { display: block; font: 700 19px var(--v2-font-num); color: var(--v2-ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.v2-evo-when span { display: block; font-size: 12.5px; color: var(--v2-ink2); }
+.v2-evo-select { flex: none; position: relative; }
+.v2-evo-select select {
+  appearance: none; -webkit-appearance: none;
+  min-height: 44px; padding: 0 32px 0 12px;
+  background: var(--v2-panel); color: var(--v2-ink);
+  border: 1px solid var(--v2-rule); border-radius: var(--v2-radius);
+  font: 600 14.5px var(--v2-font); cursor: pointer;
+}
+.v2-evo-select::after {
+  content: ''; position: absolute; right: 13px; top: 50%; width: 7px; height: 7px; margin-top: -5px;
+  border-right: 2px solid var(--v2-ink2); border-bottom: 2px solid var(--v2-ink2);
+  transform: rotate(45deg); pointer-events: none;
+}
+.v2-evo-select select:focus-visible { outline: 2px solid var(--v2-acc); outline-offset: 2px; }
+.v2-evo-select option { background: var(--v2-panel); color: var(--v2-ink); }
+.v2-evo-back {
+  flex: 1 0 100%; min-height: 44px; border: 0; background: transparent;
+  font: 600 13.5px var(--v2-font); color: var(--v2-acc); cursor: pointer;
+}
+.v2-evo-back:focus-visible { outline: 2px solid var(--v2-acc); border-radius: 4px; }
+
+/* ── O herói e a Carol ───────────────────────────────────────────────────── */
+.v2-evo-top { margin-top: 8px; }
+.v2-evo-hero-n { display: flex; align-items: baseline; gap: 8px; }
+.v2-evo-hero-u { font: 600 20px var(--v2-font-num); color: var(--v2-ink2); }
+.v2-evo-top .v2-hero-r b { white-space: nowrap; }
+
+/* ── Os blocos de sempre, vestidos de v2 ─────────────────────────────────── */
+.v2-evo-body { margin-top: 12px; }
+/* A barra de pílulas, o navegador ‹ › e a frase do veredicto já estão no topo do ecrã. */
+.v2-evo-body [data-testid="period-header"],
+.v2-evo-body [data-testid="period-nav"],
+.v2-evo-body [data-testid="verdict-line"] { display: none !important; }
+/* Sem vidro, sem sombra, raio de 8; títulos em caixa normal, sem espaçamento de letras. */
+.v2-evo-body * {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  box-shadow: none !important;
+  text-transform: none !important;
+  letter-spacing: normal !important;
+}
+.v2-evo-body [data-testid="chart-frame"],
+.v2-evo-body [data-testid="period-summary"],
+.v2-evo-body section,
+.v2-evo-body [style*="border-radius: 20px"] {
+  border-radius: var(--v2-radius) !important;
+  border-color: transparent !important;
+}
+.v2-evo-body [data-testid="chart-frame"] > div:first-child > span:first-child {
+  font: 600 16px var(--v2-font) !important;
+  color: var(--v2-ink) !important;
+}
+/* O número de cada bloco: tinta, não a cor do módulo (essa fica para o traço do gráfico). */
+.v2-evo-body [data-testid="chart-frame-value"] {
+  font-family: var(--v2-font-num) !important;
+  color: var(--v2-ink) !important;
+}
+/* «Carol explica»: o botão de explicar de cada bloco, como ligação ciano. O nome acessível fica o
+   de sempre («Pedir à Carol que explique o gráfico …»). */
+.v2-evo-body [data-testid="explain-chart"] {
+  background: transparent !important;
+  border: 0 !important;
+  padding: 0 4px !important;
+  margin-top: 6px !important;
+  border-radius: 4px !important;
+  font-size: 0 !important;
+  color: var(--v2-acc) !important;
+}
+.v2-evo-body [data-testid="explain-chart"] > svg { display: none; }
+.v2-evo-body [data-testid="explain-chart"]::after {
+  content: 'Carol explica';
+  font: 600 14px var(--v2-font);
+}
+.v2-evo-body [data-testid="explain-chart"]:focus-visible { outline: 2px solid var(--v2-acc); outline-offset: 2px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .v2-evo-body .fade-in { animation: none !important; }
+}

@@ -44,8 +44,9 @@ describe('RaceHubView — Design v2', () => {
     expect(screen.getByTestId('race-hub-summary')).toBeInTheDocument();
   });
 
-  it('longe: o herói é a contagem a âmbar, com o objetivo; o objetivo e a previsão em grelha de dois', () => {
+  it('longe: o herói é a contagem a âmbar, com o objetivo; o objetivo e a previsão em grelha de dois', async () => {
     render(<RaceHubView race={race(70)} runs={TREINO} profile={PROFILE} />);
+    await screen.findByTestId('race-hub-v2-main');
     const hub = screen.getByTestId('race-hub-prerace');
     expect(hub).toHaveAttribute('data-design', 'v2');
     expect(hub).toHaveAttribute('data-moment', 'longe');
@@ -63,15 +64,17 @@ describe('RaceHubView — Design v2', () => {
     expect(screen.getByTestId('race-hub-v2-main').textContent).not.toMatch(/—/);
   });
 
-  it('longe sem objetivo: «Marcar o objetivo de tempo» leva aos Detalhes', () => {
+  it('longe sem objetivo: «Marcar o objetivo de tempo» leva aos Detalhes', async () => {
     const onGoToEdit = vi.fn();
     render(<RaceHubView race={race(70, { target_time: null, target_time_seconds: null })} runs={TREINO} profile={PROFILE} onGoToEdit={onGoToEdit} />);
+    await screen.findByTestId('race-hub-v2-main');
     fireEvent.click(screen.getByTestId('race-forecast-set-target'));
     expect(onGoToEdit).toHaveBeenCalled();
   });
 
-  it('última semana: o herói é a chegada planeada, e os troços todos à vista', () => {
+  it('última semana: o herói é a chegada planeada, e os troços todos à vista', async () => {
     render(<RaceHubView race={race(4)} runs={TREINO} profile={PROFILE} />);
+    await screen.findByTestId('race-hub-v2-main');
     expect(screen.getByTestId('race-hub-prerace')).toHaveAttribute('data-moment', 'semana');
     expect(screen.getByTestId('race-pacing-finish').textContent).toMatch(/^\d:\d\d:\d\d$/);
     expect(screen.getByTestId('race-hub-phase')).toHaveTextContent('chegada planeada, daqui a 4 dias');
@@ -95,8 +98,9 @@ describe('RaceHubView — Design v2', () => {
     expect(why).toHaveTextContent(/decide-se ao km 15/);
   });
 
-  it('os troços: uma etiqueta curta (2 a 4 palavras); a instrução inteira a um toque', () => {
+  it('os troços: uma etiqueta curta (2 a 4 palavras); a instrução inteira a um toque', async () => {
     render(<RaceHubView race={race(4)} runs={TREINO} profile={PROFILE} />);
+    await screen.findByTestId('race-hub-v2-main');
     const etiquetas = screen.getAllByTestId('race-hub-v2-split-label').map((e) => e.textContent);
     expect(etiquetas[0]).toBe('Arranque controlado');
     expect(etiquetas).toContain('Decide aqui');
@@ -112,14 +116,42 @@ describe('RaceHubView — Design v2', () => {
     expect(mais).toHaveTextContent(/mais lento do que o ritmo alvo/);
   });
 
-  it('última semana sem objetivo nem previsão: o pedido do objetivo, uma vez', () => {
+  it('o resto do Plano para o dia: guardar como imagem, e o atalho para a hora de partida', async () => {
+    const onGoToEdit = vi.fn();
+    render(<RaceHubView race={race(4)} runs={TREINO} profile={PROFILE} onGoToEdit={onGoToEdit} />);
+    await screen.findByTestId('race-hub-v2-main');
+    expect(screen.getByTestId('race-pacing-save-image')).toHaveTextContent('Guardar como imagem');
+    expect(screen.getByTestId('race-pacing-start-time-missing')).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('race-pacing-edit'));
+    expect(onGoToEdit).toHaveBeenCalled();
+  });
+
+  it('com hora de partida e um site sem percurso lido: «Partida às» e «Buscar o percurso»', async () => {
+    const onFetchWebInfo = vi.fn();
+    render(<RaceHubView race={race(4, { start_time: '09:30:00', website: 'https://prova.pt' })} runs={TREINO} profile={PROFILE} onFetchWebInfo={onFetchWebInfo} />);
+    await screen.findByTestId('race-hub-v2-main');
+    expect(screen.getByTestId('race-pacing-start-time')).toHaveTextContent('Partida às 09:30');
+    fireEvent.click(screen.getByTestId('race-pacing-fetch-route'));
+    expect(onFetchWebInfo).toHaveBeenCalled();
+  });
+
+  it('no trail: «por esforço» no herói e na nota', async () => {
+    render(<RaceHubView race={race(4, { race_type: 'trail', distance_km: 21, elevation_gain_m: 900 })} runs={TREINO} profile={PROFILE} />);
+    await screen.findByTestId('race-hub-v2-main');
+    expect(screen.getByTestId('race-hub-phase')).toHaveTextContent('por esforço');
+    expect(screen.getByTestId('race-pacing-effort')).toBeInTheDocument();
+  });
+
+  it('última semana sem objetivo nem previsão: o pedido do objetivo, uma vez', async () => {
     render(<RaceHubView race={race(4, { target_time: null, target_time_seconds: null })} runs={[]} profile={PROFILE} onGoToEdit={vi.fn()} />);
+    await screen.findByTestId('race-hub-v2-main');
     expect(screen.getByTestId('race-pacing-card')).toHaveTextContent('Marca um objetivo de tempo para eu montar o plano.');
     expect(screen.queryByTestId('race-forecast-set-target')).toBeNull();
   });
 
-  it('dia: «Registar a prova» a âmbar logo a seguir ao herói, os troços e a frase da Carol do dia', () => {
+  it('dia: «Registar a prova» a âmbar logo a seguir ao herói, os troços e a frase da Carol do dia', async () => {
     render(<RaceHubView race={race(0)} runs={TREINO} profile={PROFILE} />);
+    await screen.findByTestId('race-hub-v2-main');
     expect(screen.getByTestId('race-hub-prerace')).toHaveAttribute('data-moment', 'dia');
     const registar = screen.getByTestId('race-hub-register');
     expect(registar).toHaveClass('is-race');

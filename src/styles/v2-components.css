@@ -90,3 +90,47 @@ button.v2-sp:focus-visible { outline: 2px solid var(--v2-acc); outline-offset: -
 @media (prefers-reduced-motion: reduce) {
   .v2-enter > *, .v2-bar > i { animation: none; }
 }
+
+/* ── Lista de provas (RacesV2, fase 2) ───────────────────────────────────── */
+.v2-rl-list { margin-top: 4px; }
+.v2-rl-it { display: flex; align-items: center; gap: 8px; border-top: 1px solid var(--v2-rule); }
+.v2-rl-list > .v2-rl-it:first-child { border-top: 0; }
+.v2-rl-main {
+  all: unset; box-sizing: border-box; cursor: pointer; flex: 1; min-width: 0; min-height: 56px;
+  display: grid; grid-template-columns: 48px 1fr auto; gap: 12px; align-items: center; padding: 12px 0;
+}
+.v2-rl-main:focus-visible { outline: 2px solid var(--v2-acc); outline-offset: 2px; border-radius: 4px; }
+.v2-rl-dt { text-align: center; font: 800 24px/1 var(--v2-font-num); color: var(--v2-ink); }
+.v2-rl-dt small { display: block; font: 600 11.5px var(--v2-font); color: var(--v2-ink2); margin-top: 2px; }
+.v2-rl-main b { display: block; font-size: 15.5px; font-weight: 600; color: var(--v2-ink); line-height: 1.3; }
+.v2-rl-meta { display: block; margin-top: 2px; font-size: 13.5px; color: var(--v2-ink2); }
+.v2-rl-tag { font: 700 15px var(--v2-font-num); color: var(--v2-ink2); white-space: nowrap; }
+.v2-rl-it.is-next .v2-rl-dt, .v2-rl-it.is-next .v2-rl-tag { color: var(--race); }
+.v2-rl-act {
+  all: unset; box-sizing: border-box; cursor: pointer; min-height: 44px; padding: 0 14px;
+  display: inline-flex; align-items: center; border-radius: 6px;
+  background: var(--race); color: var(--race-ink); font: 700 14px var(--v2-font);
+}
+.v2-rl-act:focus-visible { outline: 2px solid var(--v2-ink); outline-offset: 2px; }
+
+/* ── Depois da prova (RaceDoneV2, fase 2) ────────────────────────────────── */
+.v2-res { background: var(--v2-panel); border-radius: var(--v2-radius); padding: 18px 16px; }
+.v2-res-n { font: 800 72px/.9 var(--v2-font-num); color: var(--v2-ink); }
+.v2-res-n.is-race { color: var(--race); font-size: 44px; }
+.v2-res-d { margin: 8px 0 0; font-size: 15px; line-height: 1.45; color: var(--v2-ink); }
+.v2-res-note { margin: 10px 0 0; font-size: 12.5px; color: var(--v2-ink2); }
+.v2-row3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 14px; }
+.v2-row3 > div { border-top: 1px solid var(--v2-rule); padding-top: 8px; min-width: 0; }
+.v2-row3 b { display: block; font: 700 22px/1 var(--v2-font-num); color: var(--v2-ink); }
+.v2-row3 span { font-size: 12.5px; color: var(--v2-ink2); }
+.v2-link { all: unset; cursor: pointer; display: block; margin: 8px auto 0; min-height: 44px; line-height: 44px; padding: 0 8px; font-size: 13.5px; color: var(--v2-ink2); text-decoration: underline; text-underline-offset: 3px; }
+.v2-link:focus-visible { outline: 2px solid var(--v2-acc); border-radius: 4px; }
+
+/* O resto do Plano para o dia no hub v2 (PlanTools). */
+.v2-plan-tools { margin-top: 10px; display: grid; gap: 6px; }
+.v2-plan-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.v2-plan-note { font-size: 13.5px; }
+.v2-plan-img { display: flex; gap: 8px; }
+.v2-plan-img .v2-btn { margin-top: 4px; }
+.v2-link-inline { display: inline-block; margin: 0; white-space: nowrap; color: var(--v2-acc); }
+.v2-btn:disabled { opacity: .6; cursor: default; }

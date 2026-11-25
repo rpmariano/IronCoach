@@ -6,6 +6,10 @@ import { buildPlanDays, computeAcceptedWindow } from './WeeklyPlanCard';
 import { liveItems, trainingItems, planItemTitle, isRacePlanItem } from '../../utils/homeModels';
 import { raceForecast } from '../../utils/raceTimes';
 import { findRaceRun } from '../../utils/run';
+import { upcomingRaces } from '../../utils/upcomingRaces';
+import { useCupListing } from '../../utils/useCup';
+import CheckinCard from './CheckinCard';
+import GettingStartedCard from './GettingStartedCard';
 import { useCoachDailyMessages } from './CarolCard';
 
 /* O Início no Design v2 (direção C · Painel, 2026-11-24; utils/designV2.js). Só com o v2 ligado: o
@@ -39,25 +43,33 @@ export function dayCell(items, quando, raceName = null) {
   };
 }
 
-function Cell({ big, small, dot = null, pct = null, testId }) {
-  return (
-    <div className="v2-cell" data-testid={testId}>
+function Cell({ big, small, dot = null, pct = null, testId, onClick = null, label = null }) {
+  const body = (
+    <>
       <b className="v2-num">{big}</b>
       <span>{dot && <i className="v2-dot" style={{ background: dot }} aria-hidden="true" />}{small}</span>
       {pct != null && <div className="v2-bar" aria-hidden="true"><i style={{ width: `${Math.max(2, Math.min(100, pct))}%` }} /></div>}
-    </div>
+    </>
   );
+  // Com ação (as refeições de hoje), o mosaico é um botão.
+  return onClick
+    ? <button type="button" className="v2-cell v2-cell-btn" data-testid={testId} onClick={onClick} aria-label={label || undefined}>{body}</button>
+    : <div className="v2-cell" data-testid={testId}>{body}</div>;
 }
 
-export default function HomeV2({ today, gauges, notices, onOpenRace, onRegisterRace, onCreateRace, onCompleteItem }) {
+export default function HomeV2({ today, gauges, notices, onOpenRace, onRegisterRace, onCreateRace, onCompleteItem, onOpenMeals = null, onGettingStarted = null }) {
   const { raceEvents, runs, profile, coachPlans, coachPlanItems, loadDailySummary } = useAppStore();
   const messages = useCoachDailyMessages();
   useEffect(() => { loadDailySummary?.(); }, [today]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // A próxima prova: a de hoje fica até estar registada; depois, a seguinte.
-  const race = useMemo(() => (raceEvents || [])
-    .filter((e) => e?.date && e.date.slice(0, 10) >= today && e.status !== 'concluida' && !findRaceRun(runs, e))
-    .sort((a, b) => a.date.localeCompare(b.date))[0] || null, [raceEvents, runs, today]);
+  /* A próxima prova: a mesma do «Para onde vou» (utils/upcomingRaces.js) — a de hoje e as dos
+     últimos 7 dias ficam até estarem registadas; as jornadas fixas do Troféu futuras saem. */
+  const { listing: cupListing } = useCupListing();
+  const cupFixed = cupListing ? cupListing.isFixed : null;
+  const race = useMemo(() => {
+    const registadas = new Set((raceEvents || []).filter((e) => findRaceRun(runs, e)).map((e) => e.id));
+    return upcomingRaces({ raceEvents, today, isRegistered: (id) => registadas.has(id), cupFixed, limit: 1 })[0] || null;
+  }, [raceEvents, runs, today, cupFixed]);
   const forecast = useMemo(() => (race ? raceForecast({ race, runs, profile }) : null), [race, runs, profile]);
 
   const [hoje, amanha] = useMemo(() => {
@@ -93,7 +105,9 @@ export default function HomeV2({ today, gauges, notices, onOpenRace, onRegisterR
     const right = forecast?.target
       ? { v: forecast.target.timeLabel, l: 'objetivo' }
       : forecast?.predicted ? { v: forecast.predicted.timeLabel, l: 'o treino aponta' } : null;
-    hero = dias <= 0
+    hero = dias < 0
+      ? { n: 'Por registar', l: `${race.name}, ${dias === -1 ? 'ontem' : `há ${-dias} dias`}`, right, race: true, small: true }
+      : dias === 0
       ? { n: kmText(race.distance_km) || 'Hoje', l: `${race.name}${hora ? `, às ${hora}` : ', hoje'}`, right, race: true }
       : { n: dias === 1 ? 'Amanhã' : `${dias} dias`, l: `para a ${race.name}${kmText(race.distance_km) ? `, ${kmText(race.distance_km)}` : ''}`, right, race: true };
   } else {
@@ -101,7 +115,8 @@ export default function HomeV2({ today, gauges, notices, onOpenRace, onRegisterR
   }
 
   // A ação: uma só.
-  const raceToday = race && race.date.slice(0, 10) === today;
+  // Hoje, ou passada e por registar: a ação é registá-la.
+  const raceToday = race && race.date.slice(0, 10) <= today;
   const action = raceToday
     ? { label: 'Registar a prova', cls: 'is-race', onClick: () => onRegisterRace(race.id) }
     : race
@@ -117,7 +132,7 @@ export default function HomeV2({ today, gauges, notices, onOpenRace, onRegisterR
     <div className="v2-screen v2-enter pb-2" data-testid="home-v2">
       <section className="v2-hero" data-testid="home-v2-hero" aria-label={race ? `Próxima prova: ${race.name}` : 'O treino de hoje'}>
         <div className="min-w-0">
-          <div className={`v2-hero-n v2-num${hero.race ? ' is-race' : ''}`}>{hero.n}</div>
+          <div className={`v2-hero-n v2-num${hero.race ? ' is-race' : ''}${hero.small ? ' is-small' : ''}`}>{hero.n}</div>
           <div className="v2-hero-l">{hero.l}</div>
         </div>
         {hero.right && (
@@ -139,12 +154,18 @@ export default function HomeV2({ today, gauges, notices, onOpenRace, onRegisterR
         </div>
       )}
 
+      {/* O que falta para começar (só enquanto falta alguma coisa: o próprio cartão decide). */}
+      {onGettingStarted && <div className="v2-embed"><GettingStartedCard onAction={onGettingStarted} /></div>}
+
       <div className="v2-grid" data-testid="home-v2-grid">
         <Cell testId="home-v2-hoje" big={cHoje.big} small={cHoje.small} dot={cHoje.race ? 'var(--race)' : treinoDot(hoje)} />
         <Cell testId="home-v2-amanha" big={cAmanha.big} small={cAmanha.small} dot={cAmanha.race ? 'var(--race)' : treinoDot(amanha)} />
-        {kcal && <Cell testId="home-v2-kcal" big={nf0.format(kcal.value)} small={`de ${nf0.format(kcal.target)} kcal`} dot="var(--nutrition)" pct={kcal.target ? (kcal.value / kcal.target) * 100 : 0} />}
-        {prot && <Cell testId="home-v2-proteina" big={`${nf0.format(prot.value)} g`} small={`de ${nf0.format(prot.target)} g de proteína`} dot="var(--nutrition)" pct={prot.target ? (prot.value / prot.target) * 100 : 0} />}
+        {kcal && <Cell testId="home-v2-kcal" onClick={onOpenMeals} label={onOpenMeals ? `${nf0.format(kcal.value)} de ${nf0.format(kcal.target)} kcal. Ver as refeições de hoje` : null} big={nf0.format(kcal.value)} small={`de ${nf0.format(kcal.target)} kcal`} dot="var(--nutrition)" pct={kcal.target ? (kcal.value / kcal.target) * 100 : 0} />}
+        {prot && <Cell testId="home-v2-proteina" onClick={onOpenMeals} label={onOpenMeals ? `${nf0.format(prot.value)} de ${nf0.format(prot.target)} g de proteína. Ver as refeições de hoje` : null} big={`${nf0.format(prot.value)} g`} small={`de ${nf0.format(prot.target)} g de proteína`} dot="var(--nutrition)" pct={prot.target ? (prot.value / prot.target) * 100 : 0} />}
       </div>
+
+      {/* O check-in diário (como te sentes hoje): o mesmo cartão, com os tokens do v2. */}
+      <div className="v2-embed" data-testid="home-v2-checkin"><CheckinCard /></div>
 
       <button type="button" className={`v2-btn ${action.cls}`} onClick={action.onClick} data-testid="home-v2-action">{action.label}</button>
     </div>

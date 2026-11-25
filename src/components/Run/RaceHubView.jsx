@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { Suspense, lazy, useEffect, useMemo, useState } from 'react';
 import { useFeature } from '../../utils/features';
 import CoachAvatar from '../Coach/CoachAvatar';
 import {
@@ -39,7 +39,12 @@ import RacePacingPlanCard from './RacePacingPlanCard';
 import RaceMemoriesSheet from './RaceMemoriesSheet';
 import RaceBalanceCard from './RaceBalanceCard';
 import RaceForecastCard from './RaceForecastCard';
-import RaceHubV2 from './RaceHubV2';
+import { retryOnce } from '../../lib/retryOnce';
+
+// O Design v2: lazy (com o retryOnce, um chunk velho depois de um deploy não parte o hub).
+const loadHubV2 = retryOnce(() => import('./RaceHubV2'));
+const RaceHubV2 = lazy(loadHubV2);
+const RaceDoneV2 = lazy(() => loadHubV2().then((m) => ({ default: m.RaceDoneV2 })));
 import { useDesignV2 } from '../../utils/designV2';
 import RaceTimesBreakdown from './RaceTimesBreakdown';
 import { raceForecast, raceTimesBreakdown, targetLine } from '../../utils/raceTimes';
@@ -498,6 +503,68 @@ export default function RaceHubView({
     // openRaceRun já fecha a prova em edição (editingRaceId) por si.
     const openRunEdit = () => useAppStore.getState().openRaceRun(race.id, raceRun.id);
     const memoriesUserId = useAppStore.getState().profile?.id || profile?.id || null;
+
+    // O Design v2 (utils/designV2.js): a forma do RaceDoneV2, com os mesmos números e as mesmas saídas.
+    if (v2) {
+      const talk = () => {
+        const store = useAppStore.getState();
+        store.setCoachIntent({ kind: 'say', text: `${race.name ? `Já fiz a prova «${race.name}».` : 'Já fiz a prova.'} O que fazemos a seguir?` });
+        if (store.setActiveTab('coach') === false) { store.setCoachIntent(null); return; }
+        leaveTo(null);
+      };
+      return (
+        <Suspense fallback={null}>
+        <RaceDoneV2
+          race={race}
+          finalSeconds={finalSeconds}
+          breakdown={timesBreakdown}
+          details={raceRun?.details}
+          carolText={race?.coach_balance || (raceOutcome ? describeRaceOutcome(raceOutcome, race) : carolAnalysis.overviewText)}
+          onEditRun={raceRun?.id ? openRunEdit : null}
+          onRegister={openRaceRegistration}
+          onNext={() => leaveTo('race')}
+          onTalk={talk}
+          markCompleted={markCompletedButton && <div className="mt-2">{markCompletedButton}{confirmCompletedModal}</div>}
+          extras={cupOn && <CupRaceBlock race={race} />}
+          sections={(
+            <>
+              {/* O balanço inteiro (com as sugestões): recolhido, mas montado — é ele que o pede. */}
+              <HubCollapsible id="balanco" title="O balanço da Carol" testId="race-done-v2-balance">
+                <RaceBalanceCard
+                  race={race}
+                  run={raceRun}
+                  runs={runs}
+                  profile={profile}
+                  numbersLine={raceOutcome ? describeRaceOutcome(raceOutcome, race) : carolAnalysis.overviewText}
+                  onLeave={() => leaveTo(null)}
+                  onSaved={onMemoriesSaved}
+                />
+              </HubCollapsible>
+              {raceRun && raceAchievements.length > 0 && (
+                <HubCollapsible id="conquistas" title="Conquistas" summary={`${raceAchievements.length}`} testId="race-done-v2-achievements">
+                  <div data-testid="race-hub-achievements" className="flex flex-col gap-2">
+                    {raceAchievements.map((a) => <AchievementCard key={a.key} achievement={a} showDate={false} />)}
+                  </div>
+                </HubCollapsible>
+              )}
+              {raceRun && (
+                <button type="button" className="v2-btn is-quiet" data-testid="race-memories-invite" onClick={openMemories}>
+                  {memoriesOn ? (hasMemories ? 'Ver as memórias da prova' : 'Guardar as memórias da prova') : 'Juntar o diploma da prova'}
+                </button>
+              )}
+            </>
+          )}
+          sheets={(
+            <>
+              {memoriesOpen && (
+                <RaceMemoriesSheet race={race} run={raceRun} userId={memoriesUserId} diplomaOnly={!memoriesOn} onSaved={onMemoriesSaved} onClose={() => setMemoriesOpen(false)} />
+              )}
+            </>
+          )}
+        />
+        </Suspense>
+      );
+    }
 
     return (
       <div className="race-hub-container" data-testid="race-hub-completed">
@@ -1123,6 +1190,7 @@ export default function RaceHubView({
 
   if (v2) {
     return (
+      <Suspense fallback={null}>
       <RaceHubV2
         race={race}
         moment={moment}
@@ -1138,6 +1206,8 @@ export default function RaceHubView({
         canRegister={canRegisterRace}
         onRegister={openRaceRegistration}
         onGoToEdit={onGoToEdit}
+        onFetchWebInfo={onFetchWebInfo}
+        fetchingWebInfo={fetchingWebInfo}
         extras={extras}
         carolSection={(
           <HubCollapsible id="carol" title="Como chegaste aqui" summary={calibrating ? 'Prontidão a calibrar' : `Prontidão ${readinessTitle} (${readiness.score}%)`} testId="race-hub-carol-section">
@@ -1149,6 +1219,7 @@ export default function RaceHubView({
         site={site}
         modal={confirmCompletedModal}
       />
+      </Suspense>
     );
   }
 

@@ -42,3 +42,51 @@ describe('designV2', () => {
     expect(result.current).toBe(false);
   });
 });
+
+describe('designV2 — só para admins, e a classe sem componente montado', () => {
+  const fakeStore = (initial) => {
+    let state = initial; const subs = new Set();
+    return {
+      getState: () => state,
+      subscribe: (fn) => { subs.add(fn); return () => subs.delete(fn); },
+      set: (patch) => { state = { ...state, ...patch }; subs.forEach((fn) => fn(state)); },
+    };
+  };
+
+  it('ao sair da conta, a flag apaga-se', async () => {
+    const { enforceDesignV2Access } = await import('./designV2');
+    setDesignV2(true);
+    const store = fakeStore({ session: { user: { id: 'a' } }, profile: { id: 'a' }, isAdmin: true });
+    const stop = enforceDesignV2Access(store);
+    store.set({ session: null, profile: null, isAdmin: false });
+    expect(isDesignV2()).toBe(false);
+    expect(document.documentElement.classList.contains(DESIGN_V2_CLASS)).toBe(false);
+    stop();
+  });
+
+  it('com o perfil de quem não é admin, a flag apaga-se; no arranque (sem perfil) não', async () => {
+    const { enforceDesignV2Access } = await import('./designV2');
+    setDesignV2(true);
+    const store = fakeStore({ session: null, profile: null, isAdmin: false });
+    const stop = enforceDesignV2Access(store);
+    store.set({ session: { user: { id: 'a' } } });
+    expect(isDesignV2()).toBe(true);
+    store.set({ profile: { id: 'a' }, isAdmin: true });
+    expect(isDesignV2()).toBe(true);
+    store.set({ profile: { id: 'b' }, isAdmin: false });
+    expect(isDesignV2()).toBe(false);
+    stop();
+  });
+
+  it('a mudança noutro separador re-aplica a classe sem nenhum componente montado', async () => {
+    const { watchDesignV2Storage } = await import('./designV2');
+    const stop = watchDesignV2Storage();
+    window.localStorage.setItem(DESIGN_V2_KEY, '1');
+    window.dispatchEvent(new StorageEvent('storage', { key: DESIGN_V2_KEY }));
+    expect(document.documentElement.classList.contains(DESIGN_V2_CLASS)).toBe(true);
+    window.localStorage.removeItem(DESIGN_V2_KEY);
+    window.dispatchEvent(new StorageEvent('storage', { key: DESIGN_V2_KEY }));
+    expect(document.documentElement.classList.contains(DESIGN_V2_CLASS)).toBe(false);
+    stop();
+  });
+});

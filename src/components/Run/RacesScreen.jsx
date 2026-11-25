@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { Suspense, lazy, useEffect, useState } from 'react';
 import { useAppStore } from '../../store';
 import RaceCard from '../Home/RaceCard';
 import RaceListCard from './RaceListCard';
@@ -9,6 +9,10 @@ import CupEnrollmentScreen from './CupEnrollmentScreen';
 import CupTrofeuScreen from './CupTrofeuScreen';
 import { useCup } from '../../utils/useCup';
 import { cupScreenRequestValid } from '../../store/cupSlice';
+import { useDesignV2 } from '../../utils/designV2';
+
+// O Design v2 (utils/designV2.js): a lista é o ecrã. Só se descarrega a quem o liga.
+const RacesV2 = lazy(() => import('./RacesV2'));
 
 /* "As tuas provas" — o separador Provas da barra (2026-09-13, opção A de
    "Onde vivem as provas"). A prova é o grande objetivo da app e estava
@@ -40,6 +44,7 @@ export default function RacesScreen() {
   // chega a ter para onde abrir, e nada abaixo desta linha muda o ecrã de
   // hoje (teste de invariância em RacesScreen.test.jsx).
   const cup = useCup();
+  const v2 = useDesignV2();
   // null | 'inscricao' | { kind: 'trofeu', mode, roundId } — `mode` e
   // `roundId` dizem ao ecrã do Troféu onde abrir (null: ele decide).
   const [cupScreen, setCupScreen] = useState(null);
@@ -69,6 +74,10 @@ export default function RacesScreen() {
 
   return (
     <div className="flex flex-col gap-2 fade-in pb-2" data-testid="races-screen">
+      {v2 ? (
+        <Suspense fallback={null}><RacesV2 /></Suspense>
+      ) : (
+      <>
       <h2 className="sr-only">As tuas provas</h2>
 
       <SectionLabel>Para onde vou</SectionLabel>
@@ -84,6 +93,8 @@ export default function RacesScreen() {
       <div className="flex flex-col gap-2" style={{ marginTop: 6 }}>
         <RaceListCard />
       </div>
+      </>
+      )}
 
       {/* O cartão do Troféu vive no FIM do ecrã (§4.1) — depois de tudo o
           que já existia, nunca antes. Com inscrição, a lista tem o bloco

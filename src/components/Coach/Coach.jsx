@@ -30,6 +30,8 @@ import { nextPlanContinuation, rebuildPlanChain, findPromisedContinuation, PLAN_
 import { usePersistedFormDraft, restorePersistedFormDraft, clearPersistedFormDraft } from '../../utils/formDraftPersistence';
 import { hasAnyRecord } from '../../utils/homeModels';
 import { isOnboardingDoneLocally } from '../../utils/onboarding';
+import { useDesignV2 } from '../../utils/designV2';
+import { V2Message, V2Typing, V2Chip, V2ComposerRow } from './CoachV2Parts';
 
 // Chave única — o chat da Carol é uma conversa só, não um registo por id
 // como os formulários (RunAgenda, MealRegistration, ...), por isso não há
@@ -131,6 +133,8 @@ export const busyWaitingMessage = (n) =>
   `${n ? `${n}, ainda` : 'Ainda'} estou a acabar de te responder à mensagem anterior. Respondo a esta logo a seguir.`;
 
 export default function Coach() {
+  // Design v2 (fase 2): só as peças de apresentação mudam (CoachV2Parts.jsx); desligado, o DOM é o de sempre.
+  const v2 = useDesignV2();
   const {
     coachMessages,
     addCoachMessage,
@@ -1709,6 +1713,13 @@ export default function Coach() {
             <p className="text-xs text-[var(--text-3)] leading-relaxed mb-5 max-w-xs">
               {emptyStateText}
             </p>
+            {v2 ? (
+              <div className="v2-chat-chips is-stack w-full max-w-xs">
+                {defaultSuggestions.map((s, idx) => (
+                  <V2Chip key={idx} onClick={() => handleSend(s)}>{s}</V2Chip>
+                ))}
+              </div>
+            ) : (
             <div className="space-y-2 w-full max-w-xs text-left">
               {defaultSuggestions.map((s, idx) => (
                 <button
@@ -1725,12 +1736,16 @@ export default function Coach() {
                 </button>
               ))}
             </div>
+            )}
           </div>
         )}
 
         {/* Load More Button */}
         {hasMoreMessages && (
           <div className="flex justify-center mb-4 mt-2">
+            {v2 ? (
+              <V2Chip onClick={() => setHoursToShow(prev => prev + 24)}>Carregar mensagens anteriores</V2Chip>
+            ) : (
             <button
               onClick={() => setHoursToShow(prev => prev + 24)}
               className="tap-h-44 text-xs rounded-xl px-4 py-2.5 transition font-medium"
@@ -1742,6 +1757,7 @@ export default function Coach() {
             >
               Carregar mensagens anteriores
             </button>
+            )}
           </div>
         )}
 
@@ -1765,6 +1781,21 @@ export default function Coach() {
           const chunks = isUser ? [msg.content] : splitIntoBubbles(msg.content);
           const shown = reveal[msg.id] === undefined ? chunks.length : Math.min(reveal[msg.id], chunks.length);
           if (shown === 0) return null;
+          if (v2) {
+            // Sem a cara em cada bolha: o nome dela só na primeira de cada grupo seguido.
+            const prev = visibleMessages[idx - 1];
+            return (
+              <V2Message
+                key={idx}
+                isUser={isUser}
+                chunks={chunks}
+                shown={shown}
+                isWaiting={isWaiting}
+                withName={!prev || prev.role === 'user'}
+                timeStr={timeStr}
+              />
+            );
+          }
 
           const bubbles = (
             <div className={`flex flex-col gap-1.5 ${isUser ? 'items-end' : 'items-start min-w-0 flex-1'}`}>
@@ -1803,7 +1834,14 @@ export default function Coach() {
 
         {/* "a escrever…" — CAROL.md §5: precede cada mensagem dela, 600 a
             900 ms; some com prefers-reduced-motion (as bolhas entram logo). */}
-        {(coachLoading || typingActive) && (
+        {(coachLoading || typingActive) && v2 && (
+          <V2Typing withName={(() => {
+            // A última mensagem já à vista (a que está a entrar ainda tem 0 bolhas).
+            const last = [...visibleMessages].reverse().find((m) => reveal[m.id] !== 0);
+            return !last || last.role === 'user';
+          })()} />
+        )}
+        {(coachLoading || typingActive) && !v2 && (
           <div className="flex justify-start items-start gap-2" data-testid="coach-typing">
             <CoachAvatar size={36} talking style={{ marginTop: 2 }} />
             <div className="coach-bubble-model px-[15px] py-3 flex items-center gap-2">
@@ -1818,7 +1856,15 @@ export default function Coach() {
         )}
 
         {/* Reenviar a mensagem que falhou, sem a escrever outra vez. */}
-        {!coachLoading && !typingActive && retryMsg && (
+        {!coachLoading && !typingActive && retryMsg && v2 && (
+          <div className="v2-chat-chips">
+            <V2Chip data-testid="coach-retry" onClick={() => handleSend(retryMsg.retryText, retryMsg.retryExtras)}>
+              <RotateCcw size={14} aria-hidden="true" />
+              Reenviar a mensagem
+            </V2Chip>
+          </div>
+        )}
+        {!coachLoading && !typingActive && retryMsg && !v2 && (
           <div className="flex pl-11">
             <button
               type="button"
@@ -1838,7 +1884,14 @@ export default function Coach() {
         )}
 
         {/* Contextual Suggestions after response */}
-        {!coachLoading && !typingActive && coachSuggestions.length > 0 && (
+        {!coachLoading && !typingActive && coachSuggestions.length > 0 && v2 && (
+          <div className="v2-chat-chips" data-testid="coach-suggestions">
+            {coachSuggestions.map((s, idx) => (
+              <V2Chip key={idx} onClick={() => handleSend(s)}>{s}</V2Chip>
+            ))}
+          </div>
+        )}
+        {!coachLoading && !typingActive && coachSuggestions.length > 0 && !v2 && (
           <div className="flex flex-wrap gap-2 pt-1">
             {coachSuggestions.map((s, idx) => (
               <button
@@ -1870,7 +1923,7 @@ export default function Coach() {
             respondem ao que ela perguntou), escondida com o teclado aberto, e sai com «Agora não»
             ou quando ele escreve outra coisa (handleSend). */}
         {loadChoice && !typingActive && (
-          <div className="hide-when-keyboard mb-2 px-1" data-testid="coach-load-choice">
+          <div className={v2 ? 'hide-when-keyboard mb-2 px-1 v2-chat-load' : 'hide-when-keyboard mb-2 px-1'} data-testid="coach-load-choice">
             <LoadProfileChoice raceId={loadChoice.raceId} disabled={coachLoading} onDone={handleLoadChoiceDone} onLater={() => setLoadChoice(null)} />
           </div>
         )}
@@ -1895,8 +1948,8 @@ export default function Coach() {
                 setActiveProposalSheetPlan(pendingPlans.find((p) => p.id === latestId) || pendingPlans[0] || null);
                 setActiveGoalProposal(pendingGoalProposals[0] || null);
               }}
-              className="text-[var(--coach-ink)] font-bold text-xs rounded-xl px-4 py-2.5 min-h-[44px] shadow-[0_8px_30px_rgb(0,0,0,0.12)] flex items-center gap-2 transition active:scale-95 coach-nudge hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
-              style={{ background: 'var(--grad-coach-legible)' }}
+              className={v2 ? 'v2-chat-nudge' : 'text-[var(--coach-ink)] font-bold text-xs rounded-xl px-4 py-2.5 min-h-[44px] shadow-[0_8px_30px_rgb(0,0,0,0.12)] flex items-center gap-2 transition active:scale-95 coach-nudge hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed'}
+              style={v2 ? undefined : { background: 'var(--grad-coach-legible)' }}
             >
               <Sparkles className="w-4 h-4" />
               <span>
@@ -1928,6 +1981,18 @@ export default function Coach() {
           </div>
         )}
         {photoNote && <p role="status" className="text-[12px] text-[var(--text-2)] mb-2 px-1">{photoNote}</p>}
+        {v2 ? (
+          <V2ComposerRow
+            photosCount={photos.length}
+            coachLoading={coachLoading}
+            photoBusy={photoBusy}
+            onSelectPhotos={handleSelectPhotos}
+            textareaRef={textareaRef}
+            value={inputStr}
+            onChange={handleInputChange}
+            onSend={() => handleSend()}
+          />
+        ) : (
         <div className="flex gap-2 items-end">
           {photos.length < MAX_CHAT_PHOTOS && (
             <label
@@ -1971,6 +2036,7 @@ export default function Coach() {
             )}
           </button>
         </div>
+        )}
       </div>
 
 
