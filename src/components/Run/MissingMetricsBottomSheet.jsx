@@ -59,6 +59,9 @@ export default function MissingMetricsBottomSheet({
      se grava. Na v1, a folha de sempre. */
   const v2 = useDesignV2();
   const semNucleo = v2 && (missingKeys.includes('distance_km') || missingKeys.includes('duration_seconds'));
+  const nucleoFalta = missingKeys.includes('distance_km') && missingKeys.includes('duration_seconds')
+    ? 'À mão: falta a distância e o tempo.'
+    : missingKeys.includes('distance_km') ? 'À mão: falta a distância.' : 'À mão: falta o tempo.';
   const nucleoMsg = missingKeys.includes('distance_km') && missingKeys.includes('duration_seconds')
     ? 'Sem a distância e o tempo a corrida não se grava. Junta um print que os mostre ou preenche à mão.'
     : missingKeys.includes('distance_km')
@@ -149,10 +152,15 @@ export default function MissingMetricsBottomSheet({
               }}
               className="text-sm py-3.5 shrink-0 px-5"
               icon={<PencilLine size={16} />}
+              aria-describedby={semNucleo ? 'missing-metrics-core-manual' : undefined}
             >
               Preencher à mão
             </Button>
           </div>
+          {/* Design v2: junto de «Preencher à mão», qual dos dois falta. */}
+          {semNucleo && (
+            <p id="missing-metrics-core-manual" className="v2-mm-manual" data-testid="missing-metrics-core-manual">{nucleoFalta}</p>
+          )}
 
           {semNucleo ? (
             <p className="v2-mm-block" role="status" data-testid="missing-metrics-core">{nucleoMsg}</p>

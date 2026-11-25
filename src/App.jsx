@@ -1324,7 +1324,7 @@ export default function App() {
         // O ecrã aberto e o guardado não passam para outra conta.
         useAppStore.setState({
           openCreationMode: null, editingRunId: null, editingRaceId: null,
-          planItemPrefill: null, runRacePrefill: null, racePrefill: null,
+          planItemPrefill: null, runRacePrefill: null, racePrefill: null, runRegistrationReturn: null,
         });
         clearNavigation();
         setSession(null);
@@ -1503,7 +1503,7 @@ export default function App() {
             <RunRegistration
               key={editingRunId || 'nova-corrida'}
               runIdToEdit={editingRunId}
-              onClose={() => useAppStore.getState().closeRunRegistration()}
+              onClose={(opts) => useAppStore.getState().closeRunRegistration(opts)}
             />
           )}
           {openCreationMode === 'workout' && <GymRegistration onClose={() => setOpenCreationMode(null)} />}

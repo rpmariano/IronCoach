@@ -35,7 +35,7 @@ export default class AppErrorBoundary extends Component {
     // O ecrã aberto sai da store: senão a atualização automática via a app
     // "ocupada" e nunca recarregava para a versão com a correção.
     try {
-      useAppStore.setState({ openCreationMode: null, editingRunId: null, editingRaceId: null });
+      useAppStore.setState({ openCreationMode: null, editingRunId: null, editingRaceId: null, runRegistrationReturn: null });
     } catch { /* a store é o que menos importa aqui */ }
     // Depois disso (a persistência ainda está ligada e guardaria o estado
     // novo): o ecrã reposto depois de o Android matar a app (utils/

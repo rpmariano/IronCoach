@@ -28,6 +28,7 @@ import { isFeatureOn, useFeature } from '../../utils/features';
 import { raceResultSeconds, gpsMatchesOfficialDistance, raceTargetSeconds, racePredictionSeconds } from '../../utils/raceOutcome';
 import { todayISO } from '../../lib/utils';
 import MissingMetricsBottomSheet from './MissingMetricsBottomSheet';
+import ConfirmDeleteModal from '../shared/ConfirmDeleteModal';
 import { ecrasQueSePerdem } from '../../../supabase/functions/_shared/sourceApps.ts';
 import PremiumModal from '../shared/PremiumModal';
 import { firstRecordMoment } from '../../utils/firstRecord';
@@ -532,10 +533,15 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
     setErrorMsg(msg);
     setValidationError(msg);
   };
-  // Design v2: o que falta para se poder gravar (a distância e o tempo), ou null.
+  /* Design v2: o que falta para se poder gravar uma corrida NOVA (a distância e o tempo), ou null.
+     Só a criar (editar uma corrida que já existe nunca se trava aqui). Na prova (ou numa competição)
+     o tempo oficial conta como tempo; nos treinos de repetições a distância é opcional. */
   const missingCoreV2 = () => {
-    const noDist = !(parseFloat(String(liveForm.current?.runDistance ?? runDistance).replace(',', '.')) > 0);
-    const noTime = !(parseDurationToSeconds(liveForm.current?.runDuration ?? runDuration) > 0);
+    if (runIdToEdit) return null;
+    const official = (isRaceMode || runKind === 'competicao') ? parseDurationToSeconds(officialTime) : 0;
+    const distOptional = runKind === 'treino' && RUN_REPEAT_TRAINING_TYPES.has(runTrainingType);
+    const noDist = !distOptional && !(parseFloat(String(liveForm.current?.runDistance ?? runDistance).replace(',', '.')) > 0);
+    const noTime = !(parseDurationToSeconds(liveForm.current?.runDuration ?? runDuration) > 0) && !(official > 0);
     if (noDist && noTime) return 'Para gravar, faltam a distância e o tempo.';
     if (noDist) return 'Para gravar, falta a distância.';
     if (noTime) return 'Para gravar, falta o tempo.';
@@ -544,7 +550,46 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
   const [originalSnapshot, setOriginalSnapshot] = useState(null);
   const [isFormDirty, setIsFormDirty] = useState(false);
   // Sair do registo (aviso, navGuard, beforeunload, destino pendente): RegistrationShell.
-  const exit = useRegistrationExit({ isDirty: isFormDirty, onClose, draftKey: draftStorageKey });
+  /* Design v2 (revisão da 2.ª crítica, 2026-11-25): pelo caminho do print, a análise cria a corrida
+     antes da folha das métricas. Se ficou sem distância e sem tempo e o atleta sai (fecha a folha
+     ou o registo), pergunta-se se a apaga. Só se apaga se ele confirmar; senão fica e sai-se. */
+  const [emptyRunPrompt, setEmptyRunPrompt] = useState(null);
+  const [deletingEmptyRun, setDeletingEmptyRun] = useState(false);
+  const emptyCreatedRunV2 = () => {
+    const r = createdRunRef.current?.run;
+    return v2 && r && !(Number(r.distance_km) > 0) && !(Number(r.duration_seconds) > 0) ? r : null;
+  };
+  const closeOrAskEmptyRun = (opts) => {
+    if (emptyCreatedRunV2()) { setEmptyRunPrompt({ kind: 'exit', opts }); return; }
+    onClose?.(opts);
+  };
+  const finishEmptyRunPrompt = (prompt) => {
+    setEmptyRunPrompt(null);
+    if (prompt?.kind === 'exit') onClose?.(prompt.opts);
+    else if (prompt?.kind === 'sheet') setSheetClosedViaTouch(true);
+  };
+  const deleteEmptyRun = async () => {
+    const run = emptyCreatedRunV2();
+    const prompt = emptyRunPrompt;
+    if (!run) { finishEmptyRunPrompt(prompt); return; }
+    setDeletingEmptyRun(true);
+    try {
+      const store = useAppStore.getState();
+      const { error } = await supabase.from('runs').delete().eq('id', run.id).eq('user_id', (store.session?.user?.id || profile?.id));
+      if (error) throw error;
+      store.setRuns((store.runs || []).filter((r) => r.id !== run.id));
+      forgetCreatedRun();
+      if (prompt?.kind === 'sheet') { setEmptyRunPrompt(null); onClose?.(); return; }
+      finishEmptyRunPrompt(prompt);
+    } catch (err) {
+      console.error('Error deleting empty run:', err);
+      setEmptyRunPrompt(null);
+      setErrorMsg('Não deu para apagar a corrida. Tenta outra vez.');
+    } finally {
+      setDeletingEmptyRun(false);
+    }
+  };
+  const exit = useRegistrationExit({ isDirty: isFormDirty, onClose: closeOrAskEmptyRun, draftKey: draftStorageKey });
 
   // Ao gravar uma corrida NOVA (foto ou manual), vai sempre para o
   // Calendário, aberto no dia da corrida — mesmo padrão de RunAgenda.jsx
@@ -3893,8 +3938,18 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
         onProceedAnyway={handleProceedAnyway}
         onClose={() => {
           setShowMissingMetricsSheet(false);
+          if (emptyCreatedRunV2()) { setEmptyRunPrompt({ kind: 'sheet' }); return; }
           setSheetClosedViaTouch(true);
         }}
+      />
+      <ConfirmDeleteModal
+        isOpen={!!emptyRunPrompt}
+        onClose={() => finishEmptyRunPrompt(emptyRunPrompt)}
+        onConfirm={deleteEmptyRun}
+        isDeleting={deletingEmptyRun}
+        title="Apagar a corrida?"
+        confirmLabel="Eliminar corrida"
+        message="A corrida ficou gravada sem distância e sem tempo. Queres apagá-la? Se não, fica como está e podes completá-la depois. Isto não se desfaz."
       />
 
       {/* Botão flutuante para reabrir o Bottom Sheet quando fechado pelo traço */}

@@ -27,7 +27,8 @@ export default function useRegistrationExit({ isDirty, onClose, draftKey }) {
   useEffect(() => {
     if (activeTab !== initialTab && !autoCloseRef.current && !isDirty) {
       autoCloseRef.current = true;
-      onClose?.();
+      // Saiu-se para outro separador: quem fecha não repõe o ecrã de onde se abriu (Design v2).
+      onClose?.({ navigating: true });
     }
   }, [activeTab, initialTab, onClose, isDirty]);
 
@@ -53,7 +54,8 @@ export default function useRegistrationExit({ isDirty, onClose, draftKey }) {
     const target = pendingNavTarget.current;
     pendingNavTarget.current = null;
     if (draftKey) clearPersistedFormDraft(draftKey);
-    onClose?.();
+    // Com um destino pendente (troca de separador), fecha sem repor o ecrã de origem (Design v2).
+    onClose?.(target ? { navigating: true } : undefined);
     if (target) {
       setNavGuard(null);
       useAppStore.getState().setActiveTab(target);

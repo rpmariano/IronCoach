@@ -136,6 +136,7 @@ export function applyNavigation(store, saved) {
     openCreationMode: screen.openCreationMode || null,
     editingRaceId: screen.editingRaceId || null,
     editingRunId: screen.editingRunId || null,
+    runRegistrationReturn: null,
   });
 }
 
@@ -148,7 +149,7 @@ export function dropMissingScreen(store) {
   const runGone = s.openCreationMode === 'run' && s.editingRunId && !(s.runs || []).some((r) => r.id === s.editingRunId);
   const raceGone = s.editingRaceId && !(s.raceEvents || []).some((e) => e.id === s.editingRaceId);
   if (runGone || raceGone) {
-    store.setState({ openCreationMode: null, editingRunId: null, editingRaceId: null, runRacePrefill: null });
+    store.setState({ openCreationMode: null, editingRunId: null, editingRaceId: null, runRacePrefill: null, runRegistrationReturn: null });
   }
 }
 

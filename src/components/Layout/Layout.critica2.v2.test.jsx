@@ -142,3 +142,96 @@ describe('P1.1 · os estilos v2 das ilhas', () => {
     expect(c).toMatch(/\[data-testid="checkin-card"\] \{ background: var\(--v2-panel\) !important; border: 0 !important; border-radius: var\(--v2-radius\)/);
   });
 });
+
+describe('Revisão · fechar ao trocar de separador não repõe o hub', () => {
+  it('v2: closeRunRegistration({ navigating }) fecha sem repor o hub', () => {
+    act(() => setDesignV2(true));
+    useAppStore.setState({ ...BASE, activeTab: 'provas', openCreationMode: 'race', editingRaceId: 'r1' });
+    useAppStore.getState().openRaceRun('r1');
+    act(() => useAppStore.getState().closeRunRegistration({ navigating: true }));
+    const s = useAppStore.getState();
+    expect(s.openCreationMode).toBeNull();
+    expect(s.editingRaceId).toBeNull();
+    expect(s.runRegistrationReturn).toBeNull();
+  });
+
+  it('v2: o registo aberto do hub, tocar noutro separador sem alterações: fecha e o hub não volta', async () => {
+    act(() => setDesignV2(true));
+    const { default: useRegistrationExit } = await import('../shared/registration/useRegistrationExit');
+    useAppStore.setState({ ...BASE, activeTab: 'provas', openCreationMode: 'race', editingRaceId: 'r1' });
+    useAppStore.getState().openRaceRun('r1');
+    function Reg() {
+      useRegistrationExit({ isDirty: false, onClose: (o) => useAppStore.getState().closeRunRegistration(o) });
+      return null;
+    }
+    render(<Reg />);
+    act(() => { useAppStore.getState().setActiveTab('home'); });
+    const s = useAppStore.getState();
+    expect(s.activeTab).toBe('home');
+    expect(s.openCreationMode).toBeNull();
+    expect(s.editingRaceId).toBeNull();
+  });
+
+  it('v2: com alterações, «Sair sem gravar» para outro separador fecha sem repor o hub', async () => {
+    act(() => setDesignV2(true));
+    const { default: useRegistrationExit } = await import('../shared/registration/useRegistrationExit');
+    useAppStore.setState({ ...BASE, activeTab: 'provas', openCreationMode: 'race', editingRaceId: 'r1' });
+    useAppStore.getState().openRaceRun('r1');
+    let exit;
+    function Reg() {
+      exit = useRegistrationExit({ isDirty: true, onClose: (o) => useAppStore.getState().closeRunRegistration(o) });
+      return null;
+    }
+    render(<Reg />);
+    act(() => { useAppStore.getState().setActiveTab('home'); });
+    expect(useAppStore.getState().activeTab).toBe('provas');
+    act(() => exit.close());
+    const s = useAppStore.getState();
+    expect(s.activeTab).toBe('home');
+    expect(s.openCreationMode).toBeNull();
+    expect(s.editingRaceId).toBeNull();
+  });
+
+  it('o X do registo (sem destino pendente) volta ao hub', async () => {
+    act(() => setDesignV2(true));
+    const { default: useRegistrationExit } = await import('../shared/registration/useRegistrationExit');
+    useAppStore.setState({ ...BASE, activeTab: 'provas', openCreationMode: 'race', editingRaceId: 'r1' });
+    useAppStore.getState().openRaceRun('r1');
+    let exit;
+    function Reg() {
+      exit = useRegistrationExit({ isDirty: false, onClose: (o) => useAppStore.getState().closeRunRegistration(o) });
+      return null;
+    }
+    render(<Reg />);
+    act(() => exit.requestClose());
+    expect(useAppStore.getState().openCreationMode).toBe('race');
+    expect(useAppStore.getState().editingRaceId).toBe('r1');
+  });
+});
+
+describe('Revisão · o regresso velho limpa-se', () => {
+  it('abrir a prova pelo hub, voltar com o telemóvel, «Começar a corrida» no Início e fechar: fica no Início', () => {
+    act(() => setDesignV2(true));
+    useAppStore.setState({ ...BASE, activeTab: 'provas', openCreationMode: 'race', editingRaceId: 'r1' });
+    useAppStore.getState().openRaceRun('r1');
+    const s0 = useAppStore.getState();
+    s0.setOpenCreationMode(null); s0.setEditingRaceId(null); s0.setEditingRunId(null);
+    expect(useAppStore.getState().runRegistrationReturn).toBeNull();
+    useAppStore.getState().setActiveTab('home');
+    useAppStore.getState().setOpenCreationMode('run');
+    act(() => useAppStore.getState().closeRunRegistration());
+    const s = useAppStore.getState();
+    expect(s.activeTab).toBe('home');
+    expect(s.openCreationMode).toBeNull();
+    expect(s.editingRaceId).toBeNull();
+  });
+
+  it('setOpenCreationMode e setEditingRaceId esquecem o regresso', () => {
+    useAppStore.setState({ runRegistrationReturn: { openCreationMode: 'race', editingRaceId: 'r1' } });
+    useAppStore.getState().setOpenCreationMode('meal');
+    expect(useAppStore.getState().runRegistrationReturn).toBeNull();
+    useAppStore.setState({ runRegistrationReturn: { openCreationMode: 'race', editingRaceId: 'r1' } });
+    useAppStore.getState().setEditingRaceId('r2');
+    expect(useAppStore.getState().runRegistrationReturn).toBeNull();
+  });
+});

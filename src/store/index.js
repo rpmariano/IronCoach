@@ -492,15 +492,17 @@ export const useAppStore = create((set, get) => ({
      partir do hub de uma prova ficava no hub dela (bug de produção, 2026-10-26: o RunAgenda não remonta
      e lê o id). raceFormKey muda para o formulário remontar de raiz (estado, rascunho, página). */
   raceFormKey: 0,
+  /* runRegistrationReturn (Design v2) só vale para o registo que o openRaceRun abriu, e esse não
+     passa por aqui: qualquer outra abertura ou fecho esquece-o. */
   setOpenCreationMode: (mode) => set((s) => {
-    if (mode === 'race') return { openCreationMode: mode, editingRunId: null, editingRaceId: null, raceFormKey: s.raceFormKey + 1 };
-    return mode === 'run' ? { openCreationMode: mode } : { openCreationMode: mode, editingRunId: null };
+    if (mode === 'race') return { openCreationMode: mode, editingRunId: null, editingRaceId: null, raceFormKey: s.raceFormKey + 1, runRegistrationReturn: null };
+    return mode === 'run' ? { openCreationMode: mode, runRegistrationReturn: null } : { openCreationMode: mode, editingRunId: null, runRegistrationReturn: null };
   }),
   // A confirmação de gravação à vista (RecordConfirmation): o registo já
   // está gravado, e o ecrã deixa de contar como aberto para a reposição.
   recordSaved: false,
   setRecordSaved: (v) => set({ recordSaved: !!v }),
-  setEditingRaceId: (id) => set({ editingRaceId: id, openCreationMode: id ? 'race' : null }),
+  setEditingRaceId: (id) => set({ editingRaceId: id, openCreationMode: id ? 'race' : null, runRegistrationReturn: null }),
   /* Abre o registo de corrida em MODO PROVA (specs/prova-concluida.md §3).
      Ponto único das três entradas — hub da prova, cartão do Início e cartão
      da agenda — para o prefill, o separador e o ecrã de topo ficarem sempre
@@ -528,8 +530,9 @@ export const useAppStore = create((set, get) => ({
   setEditingRunId: (id) => set({ editingRunId: id || null }),
   /* Fecha o registo de corrida. No v2 volta ao ecrã de onde se abriu (o hub da prova, se foi daí);
      na v1 (sem regresso guardado) fica como sempre: o registo fecha e fica o separador de baixo. */
-  closeRunRegistration: () => {
-    const ret = get().runRegistrationReturn;
+  closeRunRegistration: (opts) => {
+    // A sair para outro separador (ou para a raiz do ativo), não se repõe o hub: fecha só.
+    const ret = opts?.navigating ? null : get().runRegistrationReturn;
     set({
       openCreationMode: ret ? (ret.openCreationMode === 'run' ? null : ret.openCreationMode) : null,
       editingRaceId: ret ? ret.editingRaceId : get().editingRaceId,

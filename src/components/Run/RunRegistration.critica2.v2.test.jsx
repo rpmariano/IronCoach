@@ -16,12 +16,13 @@ vi.setConfig({ testTimeout: 15000 });
 vi.mock('../../utils/firstRecord', () => ({ firstRecordMoment: () => null }));
 vi.mock('@formulas/runRecord.ts', () => ({ runRecordMoment: () => null }));
 
-const mocks = vi.hoisted(() => ({ invoke: vi.fn() }));
+const mocks = vi.hoisted(() => ({ invoke: vi.fn(), deleted: [] }));
 vi.mock('../../lib/supabase', () => ({
   supabase: {
     from: () => ({
       insert: () => ({ select: () => ({ single: () => Promise.resolve({ data: null, error: null }) }) }),
       update: () => ({ eq: () => Promise.resolve({ error: null }) }),
+      delete: () => ({ eq: (...a1) => ({ eq: (...a2) => { mocks.deleted.push([a1, a2]); return Promise.resolve({ error: null }); } }) }),
     }),
     storage: {
       from: () => ({
@@ -139,5 +140,99 @@ describe('A folha «Métricas em falta»', () => {
     expect(screen.getByText('Prosseguir sem estas métricas')).toBeInTheDocument();
     expect(screen.getByText(/Métricas sugeridas \(1\):/)).toHaveClass('uppercase');
     expect(screen.queryByTestId('missing-metrics-core')).toBeNull();
+  });
+});
+
+describe('Revisão da 2.ª crítica · o guard da distância e do tempo', () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+    mocks.invoke.mockReset();
+    useAppStore.setState({ profile: PROFILE, runs: [], raceEvents: [], shoes: [], runRacePrefill: null });
+    act(() => setDesignV2(true));
+  });
+  afterEach(() => act(() => setDesignV2(false)));
+
+  it('na prova, o tempo oficial conta como tempo (sem o tempo do relógio)', async () => {
+    mocks.invoke.mockResolvedValue({ data: { run: { id: 'run-p', name: 'Meia de Lisboa', distance_km: 21.1, duration_seconds: 6700, details: {} } }, error: null });
+    useAppStore.setState({ raceEvents: [PROVA], runRacePrefill: { raceId: 'race-1' } });
+    render(<RunRegistration onClose={vi.fn()} />);
+    fireEvent.click(screen.getByTestId('v2-reg-manual'));
+    fireEvent.change(document.getElementById('rr-distancia'), { target: { value: '21.1' } });
+    fireEvent.change(document.getElementById('rr-tempo-oficial'), { target: { value: '1:51:40' } });
+    fireEvent.click(screen.getByRole('button', { name: /Registar a prova/ }));
+    // Passa o guard: segue para a gravação (ou para a folha das métricas opcionais, como sempre).
+    await waitFor(() => expect(mocks.invoke.mock.calls.length > 0 || !!screen.queryByTestId('missing-metrics-bottom-sheet')).toBe(true));
+    expect(screen.queryByText(/Para gravar, falta/)).toBeNull();
+  });
+
+  it('nos treinos de repetições a distância é opcional: só com o tempo, grava', async () => {
+    mocks.invoke.mockResolvedValue({ data: { run: { id: 'run-i', name: 'Intervalos', duration_seconds: 2400, details: {} } }, error: null });
+    render(<RunRegistration onClose={vi.fn()} />);
+    fireEvent.click(screen.getByTestId('v2-reg-manual'));
+    fireEvent.change(document.getElementById('rr-tipo-de-treino'), { target: { value: 'intervalos' } });
+    fireEvent.change(document.getElementById('rr-duracao'), { target: { value: '40:00' } });
+    fireEvent.click(screen.getByRole('button', { name: /Analisar corrida/ }));
+    // Passa o guard: segue para a gravação (ou para a folha das métricas opcionais, como sempre).
+    await waitFor(() => expect(mocks.invoke.mock.calls.length > 0 || !!screen.queryByTestId('missing-metrics-bottom-sheet')).toBe(true));
+    expect(screen.queryByText(/Para gravar, falta/)).toBeNull();
+  });
+
+  it('a editar uma corrida que já existe, o guard nunca trava', async () => {
+    const antiga = { id: 'r-old', name: 'Corrida antiga', date: todayISO(), kind: 'treino', training_type: 'continuo', distance_km: null, duration_seconds: null, details: {}, photo_paths: [] };
+    useAppStore.setState({ runs: [antiga] });
+    render(<RunRegistration onClose={vi.fn()} runIdToEdit="r-old" />);
+    fireEvent.change(screen.getByLabelText(/Nome da corrida/), { target: { value: 'Corrida antiga, editada' } });
+    fireEvent.click(await screen.findByRole('button', { name: /Guardar alterações/ }));
+    await new Promise((r) => setTimeout(r, 50));
+    expect(screen.queryByText(/Para gravar, falta/)).toBeNull();
+  });
+});
+
+describe('Revisão da 2.ª crítica · a corrida criada vazia pelo caminho do print', () => {
+  const vazia = { id: 'run-vazia', name: 'Corrida de Hoje', date: todayISO(), kind: 'treino', training_type: 'continuo', distance_km: null, duration_seconds: null, details: {}, photo_paths: ['user-1/a.jpg'] };
+  beforeEach(() => {
+    window.localStorage.clear();
+    mocks.invoke.mockReset();
+    mocks.deleted.length = 0;
+    useAppStore.setState({ profile: PROFILE, runs: [], raceEvents: [], shoes: [], runRacePrefill: null });
+    act(() => setDesignV2(true));
+  });
+  afterEach(() => act(() => setDesignV2(false)));
+
+  const chegarAFolha = async (onClose) => {
+    mocks.invoke
+      .mockResolvedValueOnce({ data: { preview: { avg_heart_rate_bpm: 150 } }, error: null })
+      .mockResolvedValueOnce({ data: { run: vazia }, error: null });
+    render(<RunRegistration onClose={onClose} />);
+    const input = document.querySelector('input[type="file"]');
+    await fireEvent.change(input, { target: { files: [new File(['x'], 'print.jpg', { type: 'image/jpeg' })] } });
+    await screen.findByAltText('Print 1');
+    fireEvent.click(screen.getByRole('button', { name: 'Ler os prints e preencher' }));
+    await screen.findByTestId('v2-reg-confirm');
+    fireEvent.click(screen.getByRole('button', { name: /Analisar corrida/ }));
+    return screen.findByTestId('missing-metrics-bottom-sheet');
+  };
+
+  it('a folha diz, junto de «Preencher à mão», que faltam os dois; fechar a folha pergunta se apaga', async () => {
+    const onClose = vi.fn();
+    const folha = await chegarAFolha(onClose);
+    expect(within(folha).getByTestId('missing-metrics-core-manual')).toHaveTextContent('À mão: falta a distância e o tempo.');
+    expect(within(folha).getByRole('button', { name: /Preencher à mão/ })).toHaveAttribute('aria-describedby', 'missing-metrics-core-manual');
+    fireEvent.click(within(folha).getByRole('button', { name: /Fechar/ }));
+    expect(await screen.findByText(/A corrida ficou gravada sem distância e sem tempo/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Eliminar corrida' }));
+    await waitFor(() => expect(mocks.deleted).toHaveLength(1));
+    expect(mocks.deleted[0][0]).toEqual(['id', 'run-vazia']);
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+  });
+
+  it('sem confirmar, nada se apaga', async () => {
+    const onClose = vi.fn();
+    const folha = await chegarAFolha(onClose);
+    fireEvent.click(within(folha).getByRole('button', { name: /Fechar/ }));
+    await screen.findByText(/A corrida ficou gravada sem distância e sem tempo/);
+    fireEvent.click(screen.getByRole('button', { name: 'Cancelar' }));
+    expect(mocks.deleted).toHaveLength(0);
+    await waitFor(() => expect(screen.queryByText(/A corrida ficou gravada sem distância e sem tempo/)).toBeNull());
   });
 });
