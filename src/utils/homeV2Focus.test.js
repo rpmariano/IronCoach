@@ -125,3 +125,15 @@ describe('carolMessagesForMoment — os avisos de segurança nunca se filtram', 
     expect(carolMessagesForMoment(so, 'vespera').map((m) => m.key)).toEqual(['safety']);
   });
 });
+
+describe('carolMessagesForMoment — a dor do check-in (a frase do próprio cartão)', () => {
+  it('véspera, treino por fazer, dor alta: a frase da dor é o aviso, primeiro; sem resto, não há warnings', () => {
+    const dor = 'Hoje tens uma corrida contínua de 5 km no plano, mas com a dor de que me falaste quero falar contigo antes de treinares.';
+    const out = carolMessagesForMoment([
+      { key: 'warnings', text: dor, safety: dor, rest: null },
+      { key: 'tomorrow_prep', text: 'Amanhã é a São Silvestre.' },
+    ], 'vespera');
+    expect(out.map((m) => m.key)).toEqual(['safety', 'tomorrow_prep']);
+    expect(out[0].text).toBe(dor);
+  });
+});
