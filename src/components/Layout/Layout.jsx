@@ -275,6 +275,7 @@ export default function Layout({ children }) {
       {fabOpen && v2 && (
         <FabSheetV2
           sheetRef={fabRef}
+          returnFocusRef={fabBtnRef}
           onClose={closeFab}
           items={[
             { key: 'run', label: 'Nova corrida', icon: <Footprints size={18} />, color: 'var(--run)', go: () => goRegister('corrida', 'run') },
@@ -547,7 +548,39 @@ function DashboardVBarBtn({ activeTab, setTab, lastDashboardTab, pillRef }) {
    linhas planas de 44 px e um ícone pequeno à esquerda; a cor do módulo só no ícone. A entrada é a
    do menu de sempre (.fab-item, de baixo para cima, desfasada), que já respeita o
    prefers-reduced-motion. O ✕ fecha; o «+» da barra também, como antes. */
-function FabSheetV2({ items, onClose, sheetRef }) {
+function FabSheetV2({ items, onClose, sheetRef, returnFocusRef }) {
+  /* O foco (revisão de 2026-11-25): ao abrir vai para a primeira linha; fica preso dentro da folha
+     (aria-modal) enquanto está aberta; o Escape fecha; ao fechar volta ao «+». */
+  useEffect(() => {
+    const sheet = sheetRef?.current;
+    const focusables = () => (sheet ? [...sheet.querySelectorAll('button:not([disabled])')] : []);
+    focusables()[1]?.focus(); // [0] é o ✕; a primeira linha é a ação que se procura
+    const onKey = (e) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        onClose();
+        return;
+      }
+      if (e.key !== 'Tab') return;
+      const list = focusables();
+      if (!list.length) return;
+      const first = list[0];
+      const last = list[list.length - 1];
+      if (e.shiftKey && (document.activeElement === first || !sheet.contains(document.activeElement))) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && (document.activeElement === last || !sheet.contains(document.activeElement))) {
+        e.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener('keydown', onKey);
+    const back = returnFocusRef?.current;
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      back?.focus?.();
+    };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
   return (
     <>
       <div className="fixed inset-0 z-40 fade-in v2-fab-scrim" onClick={(e) => { e.stopPropagation(); onClose(); }} />
