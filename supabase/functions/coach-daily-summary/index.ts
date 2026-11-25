@@ -395,6 +395,9 @@ export function buildDailySummaryContext(params: {
   seriesIntents?: Record<string, SeriesIntent> | null;
   /** v1 lite: com a água desligada, o resumo não a leva (nem a meta, nem o registo). */
   water?: boolean;
+  /** A prova é hoje (o nome): o «plano de hoje» é a prova — os treinos do plano
+   *  desse dia não entram (P0 da crítica de design, 2026-11-25). */
+  raceTodayName?: string | null;
 }) {
   const showWater = params.water !== false;
   const { today, profile, todayMeals, todayWater, recentRuns, recentGym, planItems, nextRace, racesBefore, bodyAssessments, acwr, tdee, lastWeekPlan, vesperaDaProva, seriesIntents, execucaoRecente } = params;
@@ -500,11 +503,9 @@ export function buildDailySummaryContext(params: {
     // peso em dia fica undefined — o contexto é o de sempre.
     ...(pesoDesatualizado ? { peso_desatualizado: pesoDesatualizado } : {}),
     acwr: acwr ?? null,
-    plano_treino_hoje: {
-      data: today,
-      resumo: planTodayDesc,
-      itens: todayPlan,
-    },
+    plano_treino_hoje: params.raceTodayName
+      ? { data: today, resumo: `Prova: ${params.raceTodayName}`, itens: [], prova_hoje: true }
+      : { data: today, resumo: planTodayDesc, itens: todayPlan },
     plano_treino_amanha: {
       data: tomorrow,
       resumo: planTomorrowDesc,
@@ -818,6 +819,26 @@ export function computeTDEE(profile: any, weeklyVolumeKm: number | null = null):
   return sharedComputeTDEE(bmr, weeklyVolumeKm, Number(weight_kg));
 }
 
+/* A rede de segurança do recap (P0 da crítica de design, 2026-11-25): o
+   resumo escreveu «Acordaste com o sono e a energia no máximo» num dia sem
+   check-in. O prompt já o proíbe; isto tira a frase se ainda assim vier.
+   - Sem check-in hoje: as frases que dizem como dormiu ou acordou.
+   - Prova hoje: as frases sobre treinos do plano (rodagem, séries…).
+   Devolve null se não sobrar nada. */
+const SLEEP_CLAIM = /\b(acordaste|acordou|dormiste|dormiu|noite (?:bem|mal) dormida|sono e (?:a )?energia|energia no máximo|cheio de energia|descansad[oa] hoje)\b/i;
+const PLAN_TRAINING_TODAY = /\b(rodagem|rodagens|séries|intervalos|treino (?:previsto )?(?:de|para) hoje|plano (?:de|para) hoje)\b/i;
+
+export function guardRecap(text: string | null, opts: { hasCheckin: boolean; raceToday: boolean }): string | null {
+  if (!text) return text;
+  const sentences = text.split(/(?<=[.!?…])\s+/);
+  const kept = sentences.filter((s) =>
+    !(!opts.hasCheckin && SLEEP_CLAIM.test(s)) && !(opts.raceToday && PLAN_TRAINING_TODAY.test(s))
+  );
+  if (kept.length === sentences.length) return text;
+  const out = kept.join(" ").trim();
+  return out || null;
+}
+
 // O check-in de hoje como a Carol o lê no recap: as escalas em palavras (as
 // mesmas do cartão, src/utils/checkin.js) e o veredicto já decidido —
 // `dia_em_baixo` com sono ≤2 ou energia ≤2, `dor_alta` a partir do limiar
@@ -943,7 +964,11 @@ async function generateSummary(ctx: Record<string, unknown>, geminiKey: string, 
     `uma noite mal dormida antes da prova é normal e não estraga a prova; diz-lho, com calma.\n` +
     `  - Stress "tenso"/"muito tenso" sozinho: uma frase a lembrar que o treino leve também conta, sem mexer no plano.\n` +
     `  - Tudo bem: uma frase curta a confirmar que o dia está a favor do treino previsto. Não repitas os valores todos.\n` +
-    `  Sem "checkin_hoje", não inventes como ele acordou hoje (os alarmes do bloco de memória continuam a valer).\n` +
+    `  SEM CHECK-IN HOJE (existe "sem_checkin_hoje"): não digas como ele dormiu, como acordou nem como está de sono ou de ` +
+    `energia hoje — nem a partir das médias da semana do bloco de memória, que são de OUTROS dias. Podes pedir-lhe o ` +
+    `check-in numa frase. Os alarmes do bloco de memória continuam a valer.\n` +
+    `PROVA HOJE (existe "plano_treino_hoje.prova_hoje"): a prova manda — não fales de treinos do plano para hoje (nada ` +
+    `de rodagens, séries ou do treino previsto); o dia é a prova.\n` +
     `ENQUADRAMENTO OBRIGATÓRIO — lê "modo_acompanhamento" antes de escrever:\n` +
     `  - PROVA_COM_PLANO: podes falar de plano, de dias previstos e de fase de preparação.\n` +
     `  - MANUTENCAO_COM_PLANO: há plano mas NÃO há prova. Fala do plano, mas nunca de taper, ` +
@@ -1295,6 +1320,7 @@ Deno.serve(withUsageRecording("coach-daily-summary", async (req) => {
     const series = await seriesPromise;
     const ctx = buildDailySummaryContext({
       water: flags.water,
+      raceTodayName: raceEveDays === 0 ? (nearestRace?.name ?? "a prova") : null,
       today, profile, todayMeals: todayMeals || [], todayWater: todayWater || [],
       recentRuns: recentRuns || [], recentGym: recentGym || [], planItems, nextRace, racesBefore,
       bodyAssessments: bodyAssessments || [],
@@ -1330,6 +1356,8 @@ Deno.serve(withUsageRecording("coach-daily-summary", async (req) => {
     if (impressions) (ctx as Record<string, unknown>).o_que_ja_viu_na_app = impressions;
     const checkinHoje = checkinForSummary(todayCheckin);
     if (checkinHoje) (ctx as Record<string, unknown>).checkin_hoje = checkinHoje;
+    // Sem check-in hoje, di-lo às claras: o modelo lia as médias da semana como hoje.
+    else (ctx as Record<string, unknown>).sem_checkin_hoje = true;
 
     // No dia da prova o aviso é a prova (o cliente escreve-a): listar aqui
     // "Corrida (contínuo, 10 km)" era o item do plano a contradizer o dia. E
@@ -1402,7 +1430,8 @@ Deno.serve(withUsageRecording("coach-daily-summary", async (req) => {
     const row = {
       user_id: userId,
       date: today,
-      recap: generated.recap || null,
+      // A rede de segurança (P0 da crítica de design): o que o prompt proíbe não chega ao ecrã.
+      recap: guardRecap(generated.recap || null, { hasCheckin: !!checkinHoje, raceToday: raceEveDays === 0 }),
       warnings: warningsMsg,
       meal_suggestion: generated.meal_suggestion || null,
       tomorrow_prep: tomorrowPrepMsg,
