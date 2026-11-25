@@ -4,6 +4,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { useAppStore } from '../../store';
 import RunRegistration from './RunRegistration';
 import MissingMetricsBottomSheet from './MissingMetricsBottomSheet';
+import { ToastProvider } from '../shared/ToastProvider';
 import { setDesignV2 } from '../../utils/designV2';
 import { todayISO } from '../../lib/utils';
 
@@ -234,5 +235,55 @@ describe('Revisão da 2.ª crítica · a corrida criada vazia pelo caminho do pr
     fireEvent.click(screen.getByRole('button', { name: 'Cancelar' }));
     expect(mocks.deleted).toHaveLength(0);
     await waitFor(() => expect(screen.queryByText(/A corrida ficou gravada sem distância e sem tempo/)).toBeNull());
+  });
+});
+
+describe('Revisão do 85ad7d3c · apagar a corrida vazia como o cartão', () => {
+  const vazia = { id: 'run-vazia', name: 'Corrida de Hoje', date: todayISO(), kind: 'treino', training_type: 'continuo', distance_km: null, duration_seconds: null, details: {}, photo_paths: ['user-1/a.jpg'] };
+  let reload;
+  beforeEach(() => {
+    window.localStorage.clear();
+    mocks.invoke.mockReset();
+    mocks.deleted.length = 0;
+    reload = vi.fn(() => Promise.resolve());
+    useAppStore.setState({ profile: PROFILE, runs: [], raceEvents: [], shoes: [], runRacePrefill: null, reloadAfterRunDeleted: reload });
+    act(() => setDesignV2(true));
+  });
+  afterEach(() => act(() => setDesignV2(false)));
+
+  const chegarAFolha = async (run, onClose) => {
+    mocks.invoke
+      .mockResolvedValueOnce({ data: { preview: { avg_heart_rate_bpm: 150 } }, error: null })
+      .mockResolvedValueOnce({ data: { run }, error: null });
+    render(<ToastProvider><RunRegistration onClose={onClose} /></ToastProvider>);
+    const input = document.querySelector('input[type="file"]');
+    await fireEvent.change(input, { target: { files: [new File(['x'], 'print.jpg', { type: 'image/jpeg' })] } });
+    await screen.findByAltText('Print 1');
+    fireEvent.click(screen.getByRole('button', { name: 'Ler os prints e preencher' }));
+    await screen.findByTestId('v2-reg-confirm');
+    fireEvent.click(screen.getByRole('button', { name: /Analisar corrida/ }));
+    return screen.findByTestId('missing-metrics-bottom-sheet');
+  };
+
+  it('depois de apagar: reloadAfterRunDeleted (o plano e o balanço da prova) e o aviso «Corrida eliminada»', async () => {
+    const onClose = vi.fn();
+    const folha = await chegarAFolha(vazia, onClose);
+    fireEvent.click(within(folha).getByRole('button', { name: /Fechar/ }));
+    await screen.findByText(/A corrida ficou gravada sem distância e sem tempo/);
+    fireEvent.click(screen.getByRole('button', { name: 'Eliminar corrida' }));
+    await waitFor(() => expect(mocks.deleted).toHaveLength(1));
+    await waitFor(() => expect(reload).toHaveBeenCalledTimes(1));
+    expect(await screen.findByText('Corrida eliminada')).toBeInTheDocument();
+    expect(useAppStore.getState().runs.some((r) => r.id === 'run-vazia')).toBe(false);
+  });
+
+  it('uma prova só com o tempo oficial não é vazia: fechar a folha não pergunta se apaga', async () => {
+    const soOficial = { ...vazia, id: 'run-oficial', details: { official_time_seconds: 2865 } };
+    const folha = await chegarAFolha(soOficial, vi.fn());
+    fireEvent.click(within(folha).getByRole('button', { name: /Fechar/ }));
+    await new Promise((r) => setTimeout(r, 50));
+    expect(screen.queryByText(/A corrida ficou gravada sem distância e sem tempo/)).toBeNull();
+    expect(mocks.deleted).toHaveLength(0);
+    expect(reload).not.toHaveBeenCalled();
   });
 });

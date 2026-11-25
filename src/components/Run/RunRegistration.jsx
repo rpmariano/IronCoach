@@ -29,6 +29,7 @@ import { raceResultSeconds, gpsMatchesOfficialDistance, raceTargetSeconds, raceP
 import { todayISO } from '../../lib/utils';
 import MissingMetricsBottomSheet from './MissingMetricsBottomSheet';
 import ConfirmDeleteModal from '../shared/ConfirmDeleteModal';
+import { useToast } from '../shared/ToastProvider';
 import { ecrasQueSePerdem } from '../../../supabase/functions/_shared/sourceApps.ts';
 import PremiumModal from '../shared/PremiumModal';
 import { firstRecordMoment } from '../../utils/firstRecord';
@@ -555,9 +556,15 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
      ou o registo), pergunta-se se a apaga. Só se apaga se ele confirmar; senão fica e sai-se. */
   const [emptyRunPrompt, setEmptyRunPrompt] = useState(null);
   const [deletingEmptyRun, setDeletingEmptyRun] = useState(false);
+  // O aviso «Corrida eliminada», como no cartão e no Calendário (fora do ToastProvider, nada).
+  const toast = useToast();
+  /* A mesma regra do missingCoreV2: o tempo oficial (details.official_time_seconds) conta como
+     tempo. Uma prova só com o tempo oficial não é uma corrida vazia. */
   const emptyCreatedRunV2 = () => {
     const r = createdRunRef.current?.run;
-    return v2 && r && !(Number(r.distance_km) > 0) && !(Number(r.duration_seconds) > 0) ? r : null;
+    if (!v2 || !r) return null;
+    const hasTime = Number(r.duration_seconds) > 0 || Number(r.details?.official_time_seconds) > 0;
+    return !(Number(r.distance_km) > 0) && !hasTime ? r : null;
   };
   const closeOrAskEmptyRun = (opts) => {
     if (emptyCreatedRunV2()) { setEmptyRunPrompt({ kind: 'exit', opts }); return; }
@@ -578,8 +585,18 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
       const { error } = await supabase.from('runs').delete().eq('id', run.id).eq('user_id', (store.session?.user?.id || profile?.id));
       if (error) throw error;
       store.setRuns((store.runs || []).filter((r) => r.id !== run.id));
+      /* Os mesmos efeitos do eliminar do cartão e do Calendário: o item do plano que a corrida tinha
+         riscado e o balanço da prova em cache voltam ao que eram. */
+      Promise.resolve(useAppStore.getState().reloadAfterRunDeleted?.()).catch(() => {});
+      toast?.showToast?.('Corrida eliminada');
       forgetCreatedRun();
-      if (prompt?.kind === 'sheet') { setEmptyRunPrompt(null); onClose?.(); return; }
+      if (prompt?.kind === 'sheet') {
+        // A sair pela folha, o rascunho também vai (o nome, a data, os prints): como no fecho do registo.
+        clearPersistedFormDraft(draftStorageKey);
+        setEmptyRunPrompt(null);
+        onClose?.();
+        return;
+      }
       finishEmptyRunPrompt(prompt);
     } catch (err) {
       console.error('Error deleting empty run:', err);
