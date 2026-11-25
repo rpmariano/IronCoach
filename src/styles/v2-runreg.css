@@ -66,3 +66,17 @@ html.design-v2 .v2-runreg-go button:focus-visible { outline: 2px solid var(--rac
 @media (prefers-reduced-motion: no-preference) {
   .v2-runreg-more > summary::after { transition: transform .15s ease; }
 }
+
+/* ── A folha «Métricas em falta» no v2 (2.ª crítica, 2026-11-25) ─────────────────────────────────
+   Sem caixas dentro de caixas nem maiúsculas: o título em texto simples, cada métrica uma linha com
+   a régua por cima, e o «Prosseguir» em caixa normal. Sem a distância e o tempo, a frase do que
+   falta em vez do «Prosseguir». */
+.v2-mm-t { margin: 0 0 4px; }
+.v2-mm-row { display: flex; align-items: center; gap: 10px; min-height: 40px; padding: 8px 2px; border-top: 1px solid var(--v2-rule); font-size: 14px; color: var(--v2-ink); }
+.v2-mm-row:first-child { border-top: 0; }
+.v2-mm-foot { background: var(--v2-panel); }
+.v2-mm-proceed { all: unset; box-sizing: border-box; cursor: pointer; width: 100%; min-height: 44px; display: flex; align-items: center; justify-content: center; gap: 6px; font: 600 14px var(--v2-font); color: var(--v2-ink2); }
+.v2-mm-proceed:hover { color: var(--v2-ink); }
+.v2-mm-proceed:focus-visible { outline: 2px solid var(--v2-acc); outline-offset: 2px; border-radius: 6px; }
+.v2-mm-block { margin: 4px 0 0; font-size: 14px; line-height: 1.45; color: var(--v2-ink); text-align: center; }
+.v2-runreg-shotstage .v2-runreg-hint { text-align: center; }

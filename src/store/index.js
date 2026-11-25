@@ -8,6 +8,7 @@ import { markOnboardingDoneLocally } from '../utils/onboarding';
 import { newCheckinAlarms, interventionReasonFor, mergeCheckin, readCheckinReason, checkinReasonNow } from '../utils/checkin';
 import { TABELAS_POLICY_VERSION } from '../utils/percentile';
 import { RACE_BALANCE_CACHE_PREFIX } from '../utils/coachProactive';
+import { isDesignV2 } from '../utils/designV2';
 import { isGoalsIntervention } from '@formulas/goalsIntervention.ts';
 import { INTERVENTION_OUTCOME, INTERVENTION_ORIGIN } from '@formulas/interventionOutcomes.ts';
 import { createCupSlice, CUP_EMPTY } from './cupSlice';
@@ -320,6 +321,9 @@ export const useAppStore = create((set, get) => ({
   // agenda não é um item de plano e não pode acabar a marcar um.
   // Ver specs/prova-concluida.md §3.
   runRacePrefill: null,
+  /* Design v2 (2.ª crítica, 2026-11-25): o ecrã de onde se abriu o registo da prova (o hub da prova,
+     tipicamente), para fechar ou cancelar voltar lá e não ao separador de baixo. null na v1. */
+  runRegistrationReturn: null,
 
   // Coach State
   coachMessages: [],
@@ -505,12 +509,38 @@ export const useAppStore = create((set, get) => ({
      como o "+" da barra inferior já faz (Layout.jsx). */
   openRaceRun: (raceId, runId = null) => {
     if (!raceId) return false;
+    /* Design v2: abre-se por cima do ecrã onde se está, sem trocar de separador (a v1 ia para
+       'corrida', a Evolução), e lembra-se de onde se veio para lá voltar ao fechar. Com um
+       formulário por gravar à frente (navGuard), segue o caminho de sempre, que pergunta. */
+    if (isDesignV2() && !get().navGuard) {
+      const s = get();
+      set({
+        runRegistrationReturn: { openCreationMode: s.openCreationMode, editingRaceId: s.editingRaceId },
+        runRacePrefill: { raceId }, editingRunId: runId, editingRaceId: null, openCreationMode: 'run',
+      });
+      return true;
+    }
     set({ runRacePrefill: { raceId }, editingRunId: runId, editingRaceId: null, openCreationMode: null });
     if (!get().setActiveTab('corrida')) { set({ runRacePrefill: null, editingRunId: null }); return false; }
     set({ openCreationMode: 'run' });
     return true;
   },
   setEditingRunId: (id) => set({ editingRunId: id || null }),
+  /* Fecha o registo de corrida. No v2 volta ao ecrã de onde se abriu (o hub da prova, se foi daí);
+     na v1 (sem regresso guardado) fica como sempre: o registo fecha e fica o separador de baixo. */
+  closeRunRegistration: () => {
+    const ret = get().runRegistrationReturn;
+    set({
+      openCreationMode: ret ? (ret.openCreationMode === 'run' ? null : ret.openCreationMode) : null,
+      editingRaceId: ret ? ret.editingRaceId : get().editingRaceId,
+      editingRunId: null,
+      runRegistrationReturn: null,
+    });
+  },
+  /* Design v2: tocar no separador ativo volta à raiz dele (fecha o registo ou o hub por cima). */
+  resetToTabRootV2: () => set({
+    openCreationMode: null, editingRaceId: null, editingRunId: null, runRacePrefill: null, runRegistrationReturn: null,
+  }),
   // Onboarding (ponto 8 do redesenho 2026-09). No primeiro acesso é App.jsx
   // que o decide sozinho, a partir do perfil e dos registos (ver
   // utils/onboarding.js) — esta flag é só a REENTRADA de propósito, pelo

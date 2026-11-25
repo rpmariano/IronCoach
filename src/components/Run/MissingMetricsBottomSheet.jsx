@@ -2,6 +2,7 @@ import React from 'react';
 import { Sparkles, ImagePlus, PencilLine, ArrowRight, HeartPulse, Zap, Navigation, Droplet, Footprints, Activity, Split } from 'lucide-react';
 import Button from '../shared/Button';
 import PremiumModal from '../shared/PremiumModal';
+import { useDesignV2 } from '../../utils/designV2';
 import { agruparCamposPorEcra, appDaFonte } from '../../../supabase/functions/_shared/sourceApps.ts';
 
 export const METRIC_CONFIGS = {
@@ -25,11 +26,11 @@ const WALK_LABELS = {
 };
 
 /* Uma linha por métrica em falta — o que o painel sempre mostrou. */
-function LinhaMetrica({ chave, walk = false }) {
+function LinhaMetrica({ chave, walk = false, v2 = false }) {
   const base = METRIC_CONFIGS[chave] || { label: chave, icon: <Sparkles className="w-4 h-4 text-[var(--text-3)]" /> };
   const cfg = walk && WALK_LABELS[chave] ? { ...base, label: WALK_LABELS[chave] } : base;
   return (
-    <div className="flex items-center gap-2.5 bg-[var(--surface-soft)] rounded-xl px-3 py-2.5 text-xs font-medium text-[var(--text-2)] border border-[var(--border-faint)]">
+    <div className={v2 ? 'v2-mm-row' : 'flex items-center gap-2.5 bg-[var(--surface-soft)] rounded-xl px-3 py-2.5 text-xs font-medium text-[var(--text-2)] border border-[var(--border-faint)]'}>
       {cfg.icon}
       <span>{cfg.label}</span>
     </div>
@@ -53,6 +54,16 @@ export default function MissingMetricsBottomSheet({
   const app = appDaFonte(sourceApp);
   const grupos = agruparCamposPorEcra(sourceApp, missingKeys);
   const temEcras = grupos.some((g) => g.ecra);
+  /* Design v2 (2.ª crítica, 2026-11-25): os tokens do v2 (sem caixas dentro de caixas, sem
+     maiúsculas, raio 8), e sem a distância e o tempo não há «Prosseguir»: uma corrida sem eles não
+     se grava. Na v1, a folha de sempre. */
+  const v2 = useDesignV2();
+  const semNucleo = v2 && (missingKeys.includes('distance_km') || missingKeys.includes('duration_seconds'));
+  const nucleoMsg = missingKeys.includes('distance_km') && missingKeys.includes('duration_seconds')
+    ? 'Sem a distância e o tempo a corrida não se grava. Junta um print que os mostre ou preenche à mão.'
+    : missingKeys.includes('distance_km')
+      ? 'Sem a distância a corrida não se grava. Junta um print que a mostre ou preenche à mão.'
+      : 'Sem o tempo a corrida não se grava. Junta um print que o mostre ou preenche à mão.';
 
   return (
     <PremiumModal
@@ -66,13 +77,17 @@ export default function MissingMetricsBottomSheet({
       testId="missing-metrics-bottom-sheet"
     >
       <div className="flex flex-col h-full">
-        <div className="flex-1 overflow-y-auto px-6 py-4 space-y-5 no-scrollbar bg-[var(--surface-soft)]">
+        <div className={v2 ? 'flex-1 overflow-y-auto px-6 py-4 space-y-5 no-scrollbar v2-mm-body' : 'flex-1 overflow-y-auto px-6 py-4 space-y-5 no-scrollbar bg-[var(--surface-soft)]'}>
           {/* Lista de Métricas em Falta */}
           {missingKeys.length > 0 && (
-            <div className="bg-[var(--surface-faint)] border border-[var(--border-glass)] rounded-2xl p-4 space-y-3 shadow-sm">
+            <div className={v2 ? 'space-y-3' : 'bg-[var(--surface-faint)] border border-[var(--border-glass)] rounded-2xl p-4 space-y-3 shadow-sm'}>
+              {v2 ? (
+                <h3 className="v2-label v2-mm-t">Métricas sugeridas ({missingKeys.length})</h3>
+              ) : (
               <span className="text-[11px] font-bold text-[var(--text-3)] block uppercase tracking-wider">
                 Métricas sugeridas ({missingKeys.length}):
               </span>
+              )}
               {temEcras ? (
                 /* Fonte reconhecida: as métricas agrupam-se pelo PRINT que as
                    traz. O atleta não tem de perceber que a oscilação vertical
@@ -93,7 +108,7 @@ export default function MissingMetricsBottomSheet({
                         )}
                       </p>
                       <div className="space-y-1.5">
-                        {grupo.chaves.map((key) => <LinhaMetrica key={key} chave={key} walk={walk} />)}
+                        {grupo.chaves.map((key) => <LinhaMetrica key={key} chave={key} walk={walk} v2={v2} />)}
                       </div>
                     </div>
                   ))}
@@ -103,7 +118,7 @@ export default function MissingMetricsBottomSheet({
                    exatamente o painel de sempre — nunca se inventa o nome de
                    um ecrã de uma app que o catálogo não conhece. */
                 <div className="space-y-1.5">
-                  {missingKeys.map((key) => <LinhaMetrica key={key} chave={key} walk={walk} />)}
+                  {missingKeys.map((key) => <LinhaMetrica key={key} chave={key} walk={walk} v2={v2} />)}
                 </div>
               )}
             </div>
@@ -111,7 +126,7 @@ export default function MissingMetricsBottomSheet({
         </div>
 
         {/* Rodapé Fixo */}
-        <div className="p-4 border-t border-[var(--border-glass)] bg-[var(--surface-faint)] shrink-0 flex flex-col gap-2">
+        <div className={v2 ? 'p-4 border-t border-[var(--v2-rule)] shrink-0 flex flex-col gap-2 v2-mm-foot' : 'p-4 border-t border-[var(--border-glass)] bg-[var(--surface-faint)] shrink-0 flex flex-col gap-2'}>
           <div className="flex items-center gap-3">
             <Button
               variant="module"
@@ -139,17 +154,21 @@ export default function MissingMetricsBottomSheet({
             </Button>
           </div>
 
+          {semNucleo ? (
+            <p className="v2-mm-block" role="status" data-testid="missing-metrics-core">{nucleoMsg}</p>
+          ) : (
           <button
             type="button"
             onClick={() => {
               onProceedAnyway();
               onClose();
             }}
-            className="w-full min-h-[44px] text-[var(--text-3)] font-semibold text-[11px] uppercase tracking-wider py-2 flex items-center justify-center gap-1.5 hover:text-[var(--text-2)] transition"
+            className={v2 ? 'v2-mm-proceed' : 'w-full min-h-[44px] text-[var(--text-3)] font-semibold text-[11px] uppercase tracking-wider py-2 flex items-center justify-center gap-1.5 hover:text-[var(--text-2)] transition'}
           >
             <span>Prosseguir sem estas métricas</span>
             <ArrowRight className="w-3.5 h-3.5" />
           </button>
+          )}
         </div>
       </div>
     </PremiumModal>

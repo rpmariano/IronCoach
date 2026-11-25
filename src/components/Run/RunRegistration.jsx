@@ -532,6 +532,15 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
     setErrorMsg(msg);
     setValidationError(msg);
   };
+  // Design v2: o que falta para se poder gravar (a distância e o tempo), ou null.
+  const missingCoreV2 = () => {
+    const noDist = !(parseFloat(String(liveForm.current?.runDistance ?? runDistance).replace(',', '.')) > 0);
+    const noTime = !(parseDurationToSeconds(liveForm.current?.runDuration ?? runDuration) > 0);
+    if (noDist && noTime) return 'Para gravar, faltam a distância e o tempo.';
+    if (noDist) return 'Para gravar, falta a distância.';
+    if (noTime) return 'Para gravar, falta o tempo.';
+    return null;
+  };
   const [originalSnapshot, setOriginalSnapshot] = useState(null);
   const [isFormDirty, setIsFormDirty] = useState(false);
   // Sair do registo (aviso, navGuard, beforeunload, destino pendente): RegistrationShell.
@@ -1996,6 +2005,13 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
       failValidation('Preenche o nome da corrida.');
       return;
     }
+    /* Design v2 (2.ª crítica, 2026-11-25): uma corrida sem distância nem tempo não se grava, nem
+       pelo «Prosseguir» da folha das métricas. A mensagem diz o que falta. */
+    const coreMissing = v2 ? missingCoreV2() : null;
+    if (coreMissing) {
+      failValidation(coreMissing);
+      return;
+    }
     if (runKind === 'treino' && !runTrainingType) {
       failValidation('Escolhe o tipo de treino.');
       return;
@@ -2496,6 +2512,9 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
      leitura, os números grandes para confirmar e o resto fechado em «Mais dados do relógio»;
      'full' = o formulário inteiro (à mão, a editar, ou com o v2 desligado). */
   const v2Stage = !v2 || !showToggle || manualOpenV2 ? 'full' : (readOut ? 'confirm' : 'shot');
+  /* Design v2 (2.ª crítica): no passo do print, sem imagem nenhuma não há o que analisar; o caminho
+     sem print é «Preencher à mão». Antes, «Analisar» gravava uma corrida vazia. */
+  const shotWithoutPhotoV2 = v2Stage === 'shot' && !runPhotos.length;
   // As etiquetas do v2 (unidades por extenso, vírgula decimal); com o v2 desligado, as de sempre.
   const lbl = (v1Text, v2Text) => (v2 ? v2Text : v1Text);
 
@@ -2518,9 +2537,10 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
     // No modo prova o botão nomeia o que está mesmo a acontecer.
     <CoachAnalyzeButton
       onClick={handleAnalyze}
-      disabled={isSubmitting || analyzingRun || reading}
+      disabled={isSubmitting || analyzingRun || reading || shotWithoutPhotoV2}
       busy={isSubmitting || analyzingRun}
       label={isRaceMode ? 'Registar a prova' : 'Analisar corrida'}
+      aria-describedby={shotWithoutPhotoV2 ? 'v2-reg-shot-hint' : undefined}
     />
   );
   /* Design v2: na ActionBar o --mod-prova passa a neutro; o «Registar a prova» é a ação da prova e
@@ -2726,9 +2746,16 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
 
   /* Design v2 (P2a): o caminho para o formulário inteiro, discreto, por baixo do print. */
   const renderManualLinkV2 = () => (
-    <button type="button" className="v2-link" data-testid="v2-reg-manual" onClick={() => setManualOpenV2(true)}>
-      Preencher à mão
-    </button>
+    <>
+      {shotWithoutPhotoV2 && (
+        <p id="v2-reg-shot-hint" className="v2-runreg-hint" data-testid="v2-reg-shot-hint">
+          Para analisar, carrega o print do relógio. Sem print, preenche à mão.
+        </p>
+      )}
+      <button type="button" className="v2-link" data-testid="v2-reg-manual" onClick={() => setManualOpenV2(true)}>
+        Preencher à mão
+      </button>
+    </>
   );
 
   /* Design v2 (P2a): o que a leitura trouxe, em grande, para confirmar ou corrigir. Os mesmos

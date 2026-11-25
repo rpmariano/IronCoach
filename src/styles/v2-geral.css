@@ -78,3 +78,12 @@ button.v2-geral-ready-head:focus-visible { outline: 2px solid var(--v2-acc); out
 .v2-geral { display: flex; flex-direction: column; gap: 12px; }
 .v2-geral > .v2-label { margin: 8px 4px -4px; }
 .v2-geral > .v2-label:first-child { margin-top: 0; }
+
+/* ── 2.ª crítica (2026-11-25) ────────────────────────────────────────────────────────────────────
+   O Geral vive dentro do .v2-evo-body, que esconde o navegador ‹ › (os outros separadores têm-no no
+   topo): aqui é o único, por isso volta a ver-se (a caixa ficava vazia). */
+.v2-evo-body .v2-geral-period [data-testid="period-nav"] { display: block !important; }
+/* As ações dos insights com os botões do v2: raio 8, caixa normal; «Percebi» e «Agora não»
+   discretos (o painel e a régua), «Falar com a Carol» o ciano de sempre. */
+.v2-geral-insight [role="group"] button { border-radius: var(--v2-radius) !important; font: 600 14px var(--v2-font) !important; text-transform: none !important; letter-spacing: 0 !important; }
+.v2-geral-insight [role="group"] > div button { background: transparent !important; color: var(--v2-ink) !important; border: 1px solid var(--v2-rule) !important; }

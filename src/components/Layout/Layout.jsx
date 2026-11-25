@@ -185,7 +185,15 @@ export default function Layout({ children }) {
   // setActiveTab devolve false quando o navGuard recusa (ex.: Perfil com
   // alterações por gravar). Sem isto, openCreationMode ficava no store e o
   // formulário de registo abria sozinho na visita seguinte a esse módulo.
+  /* Design v2 (2.ª crítica, 2026-11-25): o + abre o registo por cima do ecrã onde se está, sem
+     trocar de separador antes; fechar volta a esse ecrã. Com um formulário por gravar à frente
+     (navGuard), o caminho de sempre, que pergunta antes de sair. */
   const goRegister = (tab, mode) => {
+    if (v2 && !useAppStore.getState().navGuard) {
+      useAppStore.setState({ runRegistrationReturn: null, editingRunId: null });
+      setOpenCreationMode(mode);
+      return;
+    }
     if (setActiveTab('calendario')) setOpenCreationMode(mode);
   };
 
@@ -199,6 +207,14 @@ export default function Layout({ children }) {
     if (openCreationMode === 'plano') {
       setOpenCreationMode(null);
       if (tab === activeTab) return true;
+    }
+    /* Design v2: tocar no separador ativo, com um registo ou o hub da prova por cima, volta à raiz
+       dele. Um registo com alterações pergunta antes (o navGuard dele). */
+    if (v2 && tab === activeTab && openCreationMode) {
+      const guard = useAppStore.getState().navGuard;
+      if (guard && !guard(tab)) return false;
+      useAppStore.getState().resetToTabRootV2();
+      return true;
     }
     return setActiveTab(tab);
   };

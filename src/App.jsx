@@ -1503,7 +1503,7 @@ export default function App() {
             <RunRegistration
               key={editingRunId || 'nova-corrida'}
               runIdToEdit={editingRunId}
-              onClose={() => { setOpenCreationMode(null); setEditingRunId(null); }}
+              onClose={() => useAppStore.getState().closeRunRegistration()}
             />
           )}
           {openCreationMode === 'workout' && <GymRegistration onClose={() => setOpenCreationMode(null)} />}
