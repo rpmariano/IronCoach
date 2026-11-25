@@ -130,7 +130,9 @@ describe('Registo de corrida a partir do print · Design v2 (P2a)', () => {
     expect(within(mais).getByLabelText(/Frequência cardíaca média/)).toHaveValue(168);
     expect(within(mais).getByLabelText(/Frequência cardíaca média/)).not.toBeVisible();
     expect(within(mais).getByText('Fisiologia e relógio')).toBeInTheDocument();
-    expect(within(mais).getByLabelText(/Nome da corrida/)).toBeInTheDocument();
+    // O nome é obrigatório: fica à vista, fora do recolhido.
+    expect(within(mais).queryByLabelText(/Nome da corrida/)).toBeNull();
+    expect(within(screen.getByTestId('v2-reg-name')).getByLabelText(/Nome da corrida/)).toBeInTheDocument();
 
     fireEvent.click(within(mais).getByText('5 dados lidos do relógio'));
     expect(mais).toHaveAttribute('open');
@@ -140,6 +142,19 @@ describe('Registo de corrida a partir do print · Design v2 (P2a)', () => {
     render(<RunRegistration onClose={vi.fn()} />);
     await lerPrint({ distance_km: 8, duration_seconds: 2400, avg_heart_rate_bpm: 150 });
     expect(screen.getByTestId('v2-reg-more').querySelector('summary')).toHaveTextContent(/^1 dado lido do relógio$/);
+  });
+
+  it('o nome (obrigatório) fica à vista na confirmação, fora do «Mais dados do relógio» fechado', async () => {
+    render(<RunRegistration onClose={vi.fn()} />);
+    await lerPrint({ distance_km: 8, duration_seconds: 2400, avg_heart_rate_bpm: 150 });
+    const nome = screen.getByLabelText(/Nome da corrida/);
+    expect(screen.getByTestId('v2-reg-name')).toContainElement(nome);
+    expect(screen.getByTestId('v2-reg-more')).not.toContainElement(nome);
+    // Vazio, o aviso aponta para um campo que se vê.
+    fireEvent.change(nome, { target: { value: '' } });
+    fireEvent.click(screen.getByRole('button', { name: /Analisar corrida/ }));
+    expect((await screen.findAllByText('Preenche o nome da corrida.')).length).toBeGreaterThan(0);
+    expect(nome.closest('details')).toBeNull();
   });
 
   it('sem dados lidos para lá da confirmação, só «Mais dados do relógio»', async () => {

@@ -77,6 +77,19 @@ describe('Layout — o separador aceso', () => {
   });
 });
 
+describe('Layout — um só h1 por ecrã', () => {
+  it('v1: a marca do cabeçalho é o h1 de sempre', () => {
+    render(<Layout><div /></Layout>);
+    expect(screen.getByRole('heading', { level: 1, name: 'IronCoach' })).toBeInTheDocument();
+  });
+  it('v2: a marca do cabeçalho é texto; o h1 fica para o título do ecrã', () => {
+    act(() => setDesignV2(true));
+    render(<Layout><ScreenTitleV2 title="Perfil" onBack={() => {}} /></Layout>);
+    expect(screen.getAllByRole('heading', { level: 1 }).map((h) => h.textContent)).toEqual(['Perfil']);
+    expect(screen.getByText('IronCoach')).toHaveClass('v2-app-brand');
+  });
+});
+
 describe('ScreenTitleV2', () => {
   it('o título no topo e um voltar com nome', () => {
     const onBack = vi.fn();
