@@ -53,11 +53,23 @@
 .v2-splits { margin-top: 12px; background: var(--v2-panel); border-radius: var(--v2-radius); padding: 6px 14px; }
 .v2-sp {
   display: grid; grid-template-columns: 60px 1fr 64px; gap: 10px; align-items: center;
-  padding: 9px 0; border-top: 1px solid var(--v2-rule); font-size: 14.5px;
+  padding: 8px 0; border-top: 1px solid var(--v2-rule); font-size: 14.5px;
 }
-.v2-sp:first-child { border-top: 0; }
+.v2-splits > :first-child, .v2-splits > :first-child > .v2-sp { border-top: 0; }
+/* A linha é um botão (a instrução a um toque): sem o aspeto de botão, alvo de 44 px. */
+button.v2-sp { width: 100%; min-height: 44px; background: none; border-left: 0; border-right: 0; border-bottom: 0; color: inherit; text-align: left; font: inherit; cursor: pointer; }
+button.v2-sp:focus-visible { outline: 2px solid var(--v2-acc); outline-offset: -2px; border-radius: 4px; }
+.v2-sp-wrap > .v2-sp { border-top: 1px solid var(--v2-rule); }
+.v2-sp .v2-w { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.v2-sp-more { margin: 0 0 8px 70px; font-size: 13px; line-height: 1.4; color: var(--v2-ink2); }
+.v2-sp-wrap.is-up .v2-pace { color: var(--v2-acc); }
+.v2-info { all: unset; cursor: pointer; display: inline-grid; place-items: center; width: 28px; height: 28px; margin: -6px -6px -6px 2px; vertical-align: middle; color: var(--v2-ink2); position: relative; }
+.v2-info::after { content: ''; position: absolute; inset: -8px; }
+.v2-info:focus-visible { outline: 2px solid var(--v2-acc); border-radius: 50%; }
+.v2-info[aria-expanded="true"] { color: var(--v2-acc); }
+.v2-hero-why { grid-column: 1 / -1; margin: 8px 0 0; font-size: 13.5px; line-height: 1.45; color: var(--v2-ink2); }
 .v2-sp .v2-km { font: 700 17px var(--v2-font-num); color: var(--v2-ink2); }
-.v2-sp .v2-pace { font: 700 19px var(--v2-font-num); color: var(--v2-ink); }
+.v2-sp .v2-pace { display: block; font: 700 19px/1.1 var(--v2-font-num); color: var(--v2-ink); }
 .v2-sp .v2-w { display: block; font-size: 12.5px; color: var(--v2-ink2); }
 .v2-sp .v2-cum { text-align: right; font: 600 16px var(--v2-font-num); color: var(--v2-ink2); }
 .v2-sp.is-up .v2-pace { color: var(--v2-acc); }

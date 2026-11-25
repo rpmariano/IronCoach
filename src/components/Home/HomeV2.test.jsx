@@ -77,10 +77,12 @@ describe('Início — Design v2', () => {
   it('ligado, no dia da prova: «Registar a prova» a âmbar', async () => {
     act(() => setDesignV2(true));
     const openRaceRun = vi.fn();
-    useAppStore.setState({ openRaceRun, raceEvents: [{ id: 'r1', name: 'São Silvestre', date: today, start_time: '09:00:00', status: 'agendada', distance_km: 10, target_time_seconds: 2880, target_time: '48:00' }] });
+    useAppStore.setState({ openRaceRun, raceEvents: [{ id: 'r1', name: 'São Silvestre', date: today, start_time: '09:00:00', location: 'Lisboa', status: 'agendada', distance_km: 10, target_time_seconds: 2880, target_time: '48:00' }] });
     renderHome();
     await screen.findByTestId('home-v2');
     expect(screen.getByTestId('home-v2-hero')).toHaveTextContent('São Silvestre, às 09:00');
+    // O mosaico de hoje não repete o herói: a hora de partida e o local.
+    expect(screen.getByTestId('home-v2-hoje')).toHaveTextContent('09:00partida, Lisboa');
     const acao = screen.getByTestId('home-v2-action');
     expect(acao).toHaveTextContent('Registar a prova');
     expect(acao).toHaveClass('is-race');

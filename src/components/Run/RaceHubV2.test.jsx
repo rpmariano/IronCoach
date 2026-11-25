@@ -84,7 +84,32 @@ describe('RaceHubView — Design v2', () => {
     expect(troços[troços.length - 1]).toHaveTextContent(screen.getByTestId('race-pacing-finish').textContent);
     expect(screen.queryByTestId('race-hub-register')).toBeNull();
     // O objetivo é ambicioso: a chegada é a previsão, e à direita fica o objetivo (não o mesmo número).
-    expect(screen.getByTestId('race-hub-v2-hero')).toHaveTextContent('1:45:00objetivo');
+    expect(screen.getByTestId('race-hub-v2-hero')).toHaveTextContent('1:45:00objetivo, decide ao km 15');
+    // A frase inteira do objetivo ambicioso num ⓘ, recolhida.
+    const why = screen.getByTestId('race-pacing-ambitious');
+    expect(why).not.toBeVisible();
+    const i = screen.getByRole('button', { name: 'Porque decide ao km' });
+    fireEvent.click(i);
+    expect(i).toHaveAttribute('aria-expanded', 'true');
+    expect(why).toBeVisible();
+    expect(why).toHaveTextContent(/decide-se ao km 15/);
+  });
+
+  it('os troços: uma etiqueta curta (2 a 4 palavras); a instrução inteira a um toque', () => {
+    render(<RaceHubView race={race(4)} runs={TREINO} profile={PROFILE} />);
+    const etiquetas = screen.getAllByTestId('race-hub-v2-split-label').map((e) => e.textContent);
+    expect(etiquetas[0]).toBe('Arranque controlado');
+    expect(etiquetas).toContain('Decide aqui');
+    expect(etiquetas[etiquetas.length - 1]).toBe('Final');
+    etiquetas.forEach((t) => expect(t.split(/\s+/).length).toBeLessThanOrEqual(4));
+    const primeira = screen.getAllByTestId('race-hub-v2-split')[0];
+    const botao = within(primeira).getByRole('button');
+    const mais = within(primeira).getByTestId('race-hub-v2-split-more');
+    expect(mais).not.toBeVisible();
+    fireEvent.click(botao);
+    expect(botao).toHaveAttribute('aria-expanded', 'true');
+    expect(mais).toBeVisible();
+    expect(mais).toHaveTextContent(/mais lento do que o ritmo alvo/);
   });
 
   it('última semana sem objetivo nem previsão: o pedido do objetivo, uma vez', () => {

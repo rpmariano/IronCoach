@@ -68,7 +68,17 @@ export default function HomeV2({ today, gauges, notices, onOpenRace, onRegisterR
     return [days[0]?.items || [], days[1]?.items || []];
   }, [coachPlans, coachPlanItems, today]);
   const raceName = race?.date?.slice(0, 10) === today ? race.name : null;
-  const cHoje = dayCell(hoje, 'hoje', raceName);
+  let cHoje = dayCell(hoje, 'hoje', raceName);
+  /* No dia da prova o herói já é ela: o mosaico de hoje não a repete. A hora de partida e o local,
+     ou, sem hora, o que o treino aponta. */
+  if (race && race.date.slice(0, 10) === today) {
+    const hora = race.start_time ? String(race.start_time).slice(0, 5) : null;
+    const local = race.location ? String(race.location).trim() : '';
+    const fc = forecast?.target && forecast?.predicted ? forecast.predicted : null;
+    if (hora) cHoje = { big: hora, small: local ? `partida, ${local}` : 'partida', race: true };
+    else if (fc) cHoje = { big: fc.timeLabel, small: 'o treino aponta', race: true };
+    else if (local) cHoje = { big: 'Hoje', small: local, race: true };
+  }
   const cAmanha = dayCell(amanha, 'amanhã', race?.date?.slice(0, 10) === addDaysISO(today, 1) ? race.name : null);
   const pendenteHoje = trainingItems(liveItems(hoje)).find((i) => i.status === 'pendente' && !isRacePlanItem(i));
 

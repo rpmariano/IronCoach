@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useState } from 'react';
+import { Info } from 'lucide-react';
 import '../../styles/v2-components.css';
 import { formatDuration, formatPace } from '../../utils/run';
 import { FUEL_LABEL } from '../../utils/racePlanImage';
@@ -27,20 +28,47 @@ function Say({ text, testId }) {
   );
 }
 
+/* A etiqueta curta de cada troço (2 a 4 palavras), para caberem 6 a 8 no ecrã: o nome do troço do
+   percurso, quando o plano o conhece; senão, a fase do plano. A instrução inteira do motor
+   (racePacing.ts) fica a um toque na linha. */
+export function splitShortLabel(row) {
+  if (row?.route) return semTravessao(row.route);
+  const ins = String(row?.instruction || '');
+  if (row?.label === 'subida') return 'Subida';
+  if (row?.label === 'descida') return 'Descida';
+  if (row?.label === 'decidir') return 'Decide aqui';
+  if (/^Arranque/.test(ins)) return 'Arranque controlado';
+  if (/^Ainda a controlar/.test(ins)) return 'Ainda a controlar';
+  if (/^Ritmo alvo/.test(ins)) return 'Ritmo alvo';
+  if (/^Aguentar/.test(ins)) return 'Aguentar';
+  if (/^Se decidiste/.test(ins)) return 'Acelera, se decidiste';
+  if (/^Final/.test(ins)) return 'Final';
+  return semTravessao(ins.split(/[:.]/)[0]);
+}
+
+function Split({ row, effort }) {
+  const [open, setOpen] = useState(false);
+  const id = `v2-sp-${row.fromKm}-${row.toKm}`;
+  return (
+    <div className={`v2-sp-wrap${row.label === 'subida' ? ' is-up' : ''}`} data-testid="race-hub-v2-split">
+      <button type="button" className="v2-sp" aria-expanded={open} aria-controls={id} onClick={() => setOpen((o) => !o)}>
+        <span className="v2-km">{kmN(row.fromKm)} a {kmN(row.toKm)}</span>
+        <span className="min-w-0">
+          <span className="v2-pace" style={effort ? { color: 'var(--v2-ink2)' } : undefined}>{formatPace(row.paceSecPerKm)}</span>
+          <span className="v2-w" data-testid="race-hub-v2-split-label">{splitShortLabel(row)}</span>
+        </span>
+        <span className="v2-cum">{formatDuration(row.cumulativeSeconds)}</span>
+      </button>
+      <p id={id} hidden={!open} className="v2-sp-more" data-testid="race-hub-v2-split-more">{semTravessao(row.instruction)}</p>
+    </div>
+  );
+}
+
 function Splits({ plan }) {
   const effort = plan.effortMode;
   return (
     <div className="v2-splits" data-testid="race-hub-v2-splits">
-      {plan.rows.map((row) => (
-        <div key={`${row.fromKm}-${row.toKm}`} className={`v2-sp${row.label === 'subida' ? ' is-up' : ''}`} data-testid="race-hub-v2-split">
-          <span className="v2-km">{kmN(row.fromKm)} a {kmN(row.toKm)}</span>
-          <span className="min-w-0">
-            <span className="v2-pace" style={effort ? { color: 'var(--v2-ink2)' } : undefined}>{formatPace(row.paceSecPerKm)}</span>
-            <span className="v2-w">{row.route ? `${semTravessao(row.route)}. ` : ''}{semTravessao(row.instruction)}</span>
-          </span>
-          <span className="v2-cum">{formatDuration(row.cumulativeSeconds)}</span>
-        </div>
-      ))}
+      {plan.rows.map((row) => <Split key={`${row.fromKm}-${row.toKm}`} row={row} effort={effort} />)}
       {plan.fuel?.length > 0 && (
         <div className="v2-sp is-stop" data-testid="race-hub-v2-fuel">
           <span className="v2-km">Abastecer</span>
@@ -70,7 +98,7 @@ export default function RaceHubV2({
     // À direita, o número que não é a chegada: num objetivo ambicioso o plano monta-se sobre a
     // previsão (a chegada é ela), e o que fica a ver é o objetivo.
     const right = plan.basis === 'previsao'
-      ? (target ? { v: target.timeLabel, l: 'objetivo' } : null)
+      ? (target ? { v: target.timeLabel, l: plan.ambitious ? `objetivo, decide ao km ${kmN(plan.decisionKm)}` : 'objetivo' } : null)
       : (predicted ? { v: predicted.timeLabel, l: 'o treino aponta' } : null);
     hero = {
       n: finish,
@@ -80,6 +108,7 @@ export default function RaceHubV2({
     };
   }
   const ambitious = plan?.ambitious ? plan.notes?.[0] : null;
+  const [showWhy, setShowWhy] = useState(false);
   const longeComDois = moment === 'longe' && target && predicted;
 
   return (
@@ -98,8 +127,26 @@ export default function RaceHubV2({
           {hero.right && (
             <div className="v2-hero-r">
               <b className="v2-num">{hero.right.v}</b>
-              <span>{hero.right.l}</span>
+              <span>
+                {hero.right.l}
+                {ambitious && moment !== 'longe' && (
+                  <button
+                    type="button"
+                    className="v2-info"
+                    data-testid="race-pacing-ambitious-toggle"
+                    aria-label="Porque decide ao km"
+                    aria-expanded={showWhy}
+                    aria-controls="race-pacing-ambitious"
+                    onClick={() => setShowWhy((v) => !v)}
+                  >
+                    <Info size={15} aria-hidden="true" />
+                  </button>
+                )}
+              </span>
             </div>
+          )}
+          {ambitious && moment !== 'longe' && (
+            <p id="race-pacing-ambitious" hidden={!showWhy} className="v2-hero-why" data-testid="race-pacing-ambitious">{semTravessao(ambitious)}</p>
           )}
         </section>
 
@@ -119,7 +166,6 @@ export default function RaceHubV2({
           <button type="button" className="v2-btn is-quiet" data-testid="race-forecast-set-target" onClick={onGoToEdit}>Marcar o objetivo de tempo</button>
         )}
 
-        {ambitious && <p className="v2-sub" style={{ marginTop: 10, color: 'var(--warn)' }} data-testid="race-pacing-ambitious">{semTravessao(ambitious)}</p>}
 
         {moment !== 'longe' && (plan ? <Splits plan={plan} /> : (
           <div className="v2-splits" data-testid="race-pacing-card">
