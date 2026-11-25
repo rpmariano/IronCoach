@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useAppStore } from '../../store';
-import { House, Dumbbell, Plus, Camera, User, Calendar, LayoutDashboard, Trophy, Footprints, Droplets, Calculator } from 'lucide-react';
+import { House, Dumbbell, Plus, Camera, User, Calendar, LayoutDashboard, Trophy, Footprints, Droplets, Calculator, X } from 'lucide-react';
 import CarolIcon from '../Coach/CarolIcon';
 import ReportIssueButton from '../shared/ReportIssueButton';
 import BugNotificationsHandler from '../shared/BugNotificationsHandler';
@@ -271,8 +271,24 @@ export default function Layout({ children }) {
           do Escape (pilha partilhada), por isso fecha-se por onClose. */}
       {calculadoraAberta && <PaceCalculatorSheet onClose={() => setCalculadoraAberta(false)} />}
 
+      {/* Design v2: o menu do «+» é uma folha de baixo, com linhas planas (FabSheetV2). */}
+      {fabOpen && v2 && (
+        <FabSheetV2
+          sheetRef={fabRef}
+          onClose={closeFab}
+          items={[
+            { key: 'run', label: 'Nova corrida', icon: <Footprints size={18} />, color: 'var(--run)', go: () => goRegister('corrida', 'run') },
+            { key: 'meal', label: 'Registar refeição', icon: <Camera size={18} />, color: 'var(--nutrition)', go: () => goRegister('nutricao', 'meal') },
+            { key: 'workout', label: 'Novo treino', icon: <Dumbbell size={18} />, color: 'var(--gym)', go: () => goRegister('ginasio', 'workout') },
+            { key: 'assessment', label: 'Nova avaliação', icon: <User size={18} />, color: 'var(--body)', go: () => goRegister('corpo', 'assessment') },
+            { key: 'race', label: 'Nova prova', icon: <Trophy size={18} />, color: 'var(--race)', go: () => goRegister(activeTab, 'race') },
+            ...(waterOn ? [{ key: 'water', label: 'Registar água', icon: <Droplets size={18} />, color: 'var(--neon-agua)', go: () => setWaterSheetOpen(true) }] : []),
+          ]}
+        />
+      )}
+
       {/* FAB Backdrop & Menu — abre sobre o botão "+" */}
-      {fabOpen && (
+      {fabOpen && !v2 && (
         <>
           <div 
             className="fixed inset-0 z-40 fade-in"
@@ -524,6 +540,41 @@ function DashboardVBarBtn({ activeTab, setTab, lastDashboardTab, pillRef }) {
       <LayoutDashboard size={20} />
       <span className="text-[11px] leading-none whitespace-nowrap">Evolução</span>
     </button>
+  );
+}
+
+/* O menu do «+» no Design v2 (pedido do Rui, 25/11): uma folha de baixo, no painel do v2, com
+   linhas planas de 44 px e um ícone pequeno à esquerda; a cor do módulo só no ícone. A entrada é a
+   do menu de sempre (.fab-item, de baixo para cima, desfasada), que já respeita o
+   prefers-reduced-motion. O ✕ fecha; o «+» da barra também, como antes. */
+function FabSheetV2({ items, onClose, sheetRef }) {
+  return (
+    <>
+      <div className="fixed inset-0 z-40 fade-in v2-fab-scrim" onClick={(e) => { e.stopPropagation(); onClose(); }} />
+      <div ref={sheetRef} role="dialog" aria-modal="true" aria-labelledby="v2-fab-title" className="v2-fab-sheet" data-testid="fab-sheet-v2">
+        <div className="v2-fab-head">
+          <h2 id="v2-fab-title">Registar</h2>
+          <button type="button" className="v2-fab-close" aria-label="Fechar" onClick={(e) => { e.stopPropagation(); onClose(); }}>
+            <X size={18} />
+          </button>
+        </div>
+        <ul>
+          {items.map((it, i) => (
+            <li key={it.key} className="fab-item" style={{ '--fab-i': items.length - 1 - i }}>
+              <button
+                type="button"
+                className="v2-fab-row"
+                data-testid={`fab-v2-${it.key}`}
+                onClick={(e) => { e.stopPropagation(); onClose(); it.go(); }}
+              >
+                <span className="v2-fab-ic" style={{ color: it.color }} aria-hidden="true">{it.icon}</span>
+                <span>{it.label}</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </>
   );
 }
 
