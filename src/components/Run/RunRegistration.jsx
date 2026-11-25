@@ -198,6 +198,18 @@ const PREVIEW_FIELDS = [
 /** O que só os prints sabem (a app, a regularidade, a hidratação, a temperatura) — vai com o registo revisto. */
 const READ_ONLY_KEYS = ['source_app', 'regularity_score', 'recommended_hydration_ml', 'temperature_c'];
 
+/* Design v2 (P2a): quantos dados a leitura trouxe para «Mais dados do relógio» (tudo menos a
+   distância, o tempo, o tempo oficial e a posição, que ficam à vista para confirmar). */
+const CONFIRM_KEYS_V2 = new Set(['distance_km', 'duration_seconds', 'official_time_seconds', 'position']);
+const countMoreReadV2 = (read) => {
+  if (!read) return 0;
+  const isNum = (v) => typeof v === 'number' && Number.isFinite(v) && v > 0;
+  let n = PREVIEW_FIELDS.filter(([k]) => !CONFIRM_KEYS_V2.has(k) && isNum(read[k])).length;
+  if (Array.isArray(read.splits) && read.splits.length) n += 1;
+  if (Array.isArray(read.hr_zones) && read.hr_zones.length) n += 1;
+  return n;
+};
+
 /** Um rascunho com a corrida gravada mas sem a fotografia das métricas: nunca bate com nada. */
 const RASCUNHO_SEM_ASSINATURA = '__rascunho-sem-assinatura__';
 
@@ -465,6 +477,9 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
      o que a última leitura devolveu; só para mostrar, não vai no rascunho). A lógica é esta. */
   const v2 = useDesignV2();
   const [readOut, setReadOut] = useState(null);
+  /* Design v2 (P2a): o print primeiro e sozinho no ecrã; o formulário inteiro só com «Preencher à
+     mão» (ou um rascunho reaberto, ou o «Escrever à mão» do aviso das métricas em falta). */
+  const [manualOpenV2, setManualOpenV2] = useState(false);
   // O tipo e a data que o atleta escolheu à mão não se trocam pelo que a leitura trouxer.
   const typeTouchedRef = useRef(false);
   const dateTouchedRef = useRef(false);
@@ -892,6 +907,8 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
     restoredForKeyRef.current = draftStorageKey;
     const persisted = restorePersistedFormDraft(draftStorageKey);
     if (!persisted) return;
+    // Design v2: um rascunho reaberto volta ao formulário inteiro (o que já lá estava fica à vista).
+    setManualOpenV2(true);
     if (persisted.readState) setReadState(persisted.readState);
     if (persisted.planValues && typeof persisted.planValues === 'object') planValuesRef.current = persisted.planValues;
     if (persisted.planChoice) {
@@ -2475,6 +2492,12 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
   // RENDER CORRIDA (Runs)
   // ----------------------------------
   const showToggle = !runIdToEdit;
+  /* Design v2 (P2a), a criar: 'shot' = só o print (e «Preencher à mão»); 'confirm' = depois da
+     leitura, os números grandes para confirmar e o resto fechado em «Mais dados do relógio»;
+     'full' = o formulário inteiro (à mão, a editar, ou com o v2 desligado). */
+  const v2Stage = !v2 || !showToggle || manualOpenV2 ? 'full' : (readOut ? 'confirm' : 'shot');
+  // As etiquetas do v2 (unidades por extenso, vírgula decimal); com o v2 desligado, as de sempre.
+  const lbl = (v1Text, v2Text) => (v2 ? v2Text : v1Text);
 
   /* Ação primária do ecrã — vive na ActionBar fixa (ponto 2 do handoff), não
      no fim do formulário: num ecrã de registo com este comprimento ficava
@@ -2553,7 +2576,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
           onRetry={analysis.quota ? undefined : analysis.retry}
             quota={analysis.quota}
           onManual={showToggle && runPhotos.some((p) => p.base64) && !createdRunRef.current
-            ? () => { analysis.reset(); setRunPhotos((prev) => prev.filter((p) => !p.base64)); setReadState(null); }
+            ? () => { analysis.reset(); setRunPhotos((prev) => prev.filter((p) => !p.base64)); setReadState(null); setManualOpenV2(true); }
             : undefined}
           manualLabel="Seguir sem os prints"
         >
@@ -2575,7 +2598,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
      espaço entre os filhos (gap) — aí a margem só o duplicava. */
   const renderEffortField = (spaced = true) => (
     <div className={spaced ? 'mb-4' : undefined}>
-      <label className="text-[11px] text-[var(--text-3)] mb-1.5 block">Nível de esforço (RPE, opcional)</label>
+      <label className="text-[11px] text-[var(--text-3)] mb-1.5 block">{lbl('Nível de esforço (RPE, opcional)', 'Esforço (1 a 10, opcional)')}</label>
       <div className="flex gap-1.5">
         {Array.from({ length: 10 }).map((_, i) => (
           <button
@@ -2645,7 +2668,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
           <FieldInput
             type="number" min="0" step="0.01"
             id="rr-distancia"
-            placeholder="0.00"
+            placeholder={lbl('0.00', '0,00')}
             value={runDistance} onChange={e => { setRunDistance(e.target.value); setIsFormDirty(true); }}
             className="pr-10"
           />
@@ -2701,6 +2724,93 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
     onClose?.();
   };
 
+  /* Design v2 (P2a): o caminho para o formulário inteiro, discreto, por baixo do print. */
+  const renderManualLinkV2 = () => (
+    <button type="button" className="v2-link" data-testid="v2-reg-manual" onClick={() => setManualOpenV2(true)}>
+      Preencher à mão
+    </button>
+  );
+
+  /* Design v2 (P2a): o que a leitura trouxe, em grande, para confirmar ou corrigir. Os mesmos
+     campos (ids, estado e validação) do formulário inteiro; o ritmo calcula-se dos dois. */
+  const renderConfirmV2 = () => {
+    const distKm = parseFloat(runDistance);
+    const durS = parseDurationToSeconds(runDuration);
+    const pace = distKm > 0 && durS > 0 ? `${formatPace(durS / distKm)}/km` : null;
+    const showResult = isRaceMode || runKind === 'competicao';
+    return (
+      <section className="v2-runreg-confirm" data-testid="v2-reg-confirm" aria-labelledby="v2-reg-confirm-t">
+        <h3 id="v2-reg-confirm-t" className="v2-label v2-runreg-t">Confirma os números</h3>
+        <div className="v2-runreg-big" ref={metricsAnchorRef}>
+          <div className="v2-runreg-bigf">
+            <label htmlFor="rr-distancia">{isRepeatType ? 'Distância total' : 'Distância'}</label>
+            <span className="v2-runreg-bigin">
+              <FieldInput
+                id="rr-distancia" type="number" min="0" step="0.01" inputMode="decimal" placeholder="0,00"
+                className="v2-num" value={runDistance}
+                onChange={e => { setRunDistance(e.target.value); setIsFormDirty(true); }}
+              />
+              <span className="v2-runreg-unit" aria-hidden="true">km</span>
+            </span>
+          </div>
+          <div className="v2-runreg-bigf">
+            <label htmlFor="rr-duracao">{runKind === 'competicao' ? 'Tempo pessoal' : 'Tempo'}</label>
+            <DurationInput
+              id="rr-duracao" placeholder="00:00" className="v2-num"
+              value={runDuration} onChange={(v) => { setRunDuration(v); setIsFormDirty(true); }}
+              onBlur={() => setTimeTouched(t => ({ ...t, duration: true }))}
+              aria-invalid={timeTouched.duration && !!durationProblem() ? true : undefined}
+              aria-describedby={timeTouched.duration && durationProblem() ? 'rr-duracao-erro' : undefined}
+            />
+          </div>
+          <div className="v2-runreg-bigf">
+            <span id="v2-reg-ritmo-t" className="v2-runreg-biglbl">Ritmo médio</span>
+            <output aria-labelledby="v2-reg-ritmo-t" data-testid="v2-reg-pace" className={`v2-num v2-runreg-pace${pace ? '' : ' is-empty'}`}>
+              {pace || '0.00/km'}
+            </output>
+          </div>
+        </div>
+        {timeTouched.duration && renderTimeProblem(durationProblem(), 'rr-duracao-erro', (v) => { setRunDuration(v); setIsFormDirty(true); })}
+        {showResult && (
+          <div className="v2-runreg-big">
+            <div className="v2-runreg-bigf">
+              <label htmlFor="rr-tempo-oficial">
+                Tempo oficial{isRaceMode && <span className="text-[var(--danger)]"> *</span>}
+              </label>
+              <DurationInput
+                id="rr-tempo-oficial" placeholder="ex.: 1:45:00" className="v2-num"
+                value={officialTime} onChange={(v) => { setOfficialTime(v); setIsFormDirty(true); }}
+                onBlur={() => setTimeTouched(t => ({ ...t, official: true }))}
+                aria-invalid={isRaceMode && timeTouched.official && !!officialTimeProblem() ? true : undefined}
+                aria-describedby={isRaceMode && timeTouched.official && officialTimeProblem() ? 'rr-tempo-oficial-erro' : undefined}
+              />
+            </div>
+            <div className="v2-runreg-bigf">
+              <label htmlFor="rr-posicao">Posição (opcional)</label>
+              <FieldInput
+                id="rr-posicao" type="number" min="1" placeholder="ex.: 12" className="v2-num"
+                value={position} onChange={e => { setPosition(e.target.value); setIsFormDirty(true); }}
+              />
+            </div>
+          </div>
+        )}
+        {isRaceMode && timeTouched.official && renderTimeProblem(officialTimeProblem(), 'rr-tempo-oficial-erro', (v) => { setOfficialTime(v); setIsFormDirty(true); })}
+      </section>
+    );
+  };
+
+  /* Design v2 (P2a): o resto do que o relógio dá, fechado por omissão (mesmo quando a leitura o
+     encheu). O resumo diz quantos desses dados vieram do print. */
+  const renderMoreV2 = (children) => {
+    const n = countMoreReadV2(readOut);
+    return (
+      <details className="v2-runreg-more" data-testid="v2-reg-more">
+        <summary>{n > 0 ? `${n} ${n === 1 ? 'dado lido' : 'dados lidos'} do relógio` : 'Mais dados do relógio'}</summary>
+        <div className="v2-runreg-more-in">{children}</div>
+      </details>
+    );
+  };
+
   const renderProvaForm = () => {
     const objetivo = [
       raceEvent?.target_time ? `Tempo ${formatTargetTimeLabel(raceEvent.target_time)}` : null,
@@ -2721,6 +2831,70 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
     const sectionTitle = (text) => (v2
       ? <h3 className="v2-label v2-runreg-t">{text}</h3>
       : <SectionLabel tone="race">{text}</SectionLabel>);
+
+    const raceStartTimeField = (
+      <>
+      {/* Hora de partida — vem preenchida da agenda, mas é a desta
+          corrida (runs.start_time): a partida real pode não ser a
+          anunciada. Até aqui a herança era invisível e o atleta não a
+          via nem a corrigia (relatado 2026-09-13). É ela que ordena o
+          dia no Calendário e que a Carol usa na véspera e no balanço. */}
+      <div className="grid grid-cols-2 gap-2.5 mb-4 items-end">
+        <div>
+          <label htmlFor="rr-hora-da-prova" className="text-[11px] text-[var(--text-3)] block mb-1.5">Hora de partida</label>
+          <FieldInput
+            id="rr-hora-da-prova"
+            type="time"
+            value={runStartTime}
+            onChange={e => { setRunStartTime(e.target.value); setIsFormDirty(true); }}
+          />
+        </div>
+        <p className="text-[11px] leading-[1.45] pb-2.5" style={{ color: 'var(--text-4)' }}>
+          A hora a que partiste. Ordena o dia no Calendário e entra na análise da Carol.
+        </p>
+      </div>
+      </>
+    );
+
+    const raceDiplomaFields = (
+      <>
+      {/* O que o diploma traz (pedido 2026-09-13): dorsal, escalão e
+          posição nele, posição por género, participantes. Tudo
+          opcional; o ritmo médio calcula-se e o clube é do perfil. A
+          leitura da Carol preenche-os a partir do diploma, em baixo —
+          nas Memórias ou, com elas desligadas (v1 lite), na secção
+          «Diploma». */}
+      <div data-testid="race-result-fields" className="mb-4">
+        {v2
+          ? <h4 className="v2-runreg-sub">Do diploma (opcional)</h4>
+          : <p className="text-[11px] font-extrabold uppercase mb-2" style={{ letterSpacing: 'var(--tracking-label)', color: 'var(--text-3)' }}>Do diploma (opcional)</p>}
+        <div className="grid grid-cols-2 gap-2.5">
+          <div>
+            <label htmlFor="rr-dorsal" className="text-[11px] text-[var(--text-3)] block mb-1.5">Dorsal</label>
+            <FieldInput id="rr-dorsal" type="text" inputMode="numeric" placeholder="ex.: 1234" value={bibNumber} onChange={e => { setBibNumber(e.target.value); setIsFormDirty(true); }}  />
+          </div>
+          <div>
+            <label htmlFor="rr-escalao" className="text-[11px] text-[var(--text-3)] block mb-1.5">Escalão</label>
+            <FieldInput id="rr-escalao" type="text" placeholder="ex.: M40" value={ageGroup} onChange={e => { setAgeGroup(e.target.value); setIsFormDirty(true); }}  />
+          </div>
+        </div>
+        <div className="grid grid-cols-3 gap-2.5 mt-2.5">
+          <div>
+            <label htmlFor="rr-pos-escalao" className="text-[11px] text-[var(--text-3)] block mb-1.5">Pos. escalão</label>
+            <FieldInput className="px-2!" id="rr-pos-escalao" type="number" min="1" placeholder="ex.: 41" value={ageGroupPosition} onChange={e => { setAgeGroupPosition(e.target.value); setIsFormDirty(true); }}  />
+          </div>
+          <div>
+            <label htmlFor="rr-pos-genero" className="text-[11px] text-[var(--text-3)] block mb-1.5">Pos. género</label>
+            <FieldInput className="px-2!" id="rr-pos-genero" type="number" min="1" placeholder="ex.: 280" value={genderPosition} onChange={e => { setGenderPosition(e.target.value); setIsFormDirty(true); }}  />
+          </div>
+          <div>
+            <label htmlFor="rr-participantes" className="text-[11px] text-[var(--text-3)] block mb-1.5">Participantes</label>
+            <FieldInput className="px-2!" id="rr-participantes" type="number" min="1" placeholder="ex.: 1850" value={participants} onChange={e => { setParticipants(e.target.value); setIsFormDirty(true); }}  />
+          </div>
+        </div>
+      </div>
+      </>
+    );
 
     return (
       <div className={v2 ? 'v2-screen v2-reg v2-runreg fade-in pb-10' : 'space-y-2.5 fade-in pb-10'} data-testid="run-race-mode">
@@ -2745,7 +2919,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
             <dl className="v2-runreg-facts">
               <div><dt>Distância</dt><dd className="v2-num">{raceDistanceLabel(raceEvent.distance_km)}</dd></div>
               <div><dt>Terreno</dt><dd>{raceTerrainLabel(raceEvent.race_type)}</dd></div>
-              {raceEvent.elevation_gain_m ? <div><dt>Desnível</dt><dd className="v2-num">{`${raceEvent.elevation_gain_m} m D+`}</dd></div> : null}
+              {raceEvent.elevation_gain_m ? <div><dt>Desnível</dt><dd className="v2-num">{`${raceEvent.elevation_gain_m} m de desnível positivo`}</dd></div> : null}
               {objetivo && <div data-testid="v2-runreg-objetivo"><dt>Objetivo</dt><dd className="v2-num">{objetivo}</dd></div>}
             </dl>
             <p className="v2-runreg-hint">Estes dados vêm da agenda, e é lá que se mudam.</p>
@@ -2788,6 +2962,22 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
           >
             {/* Design v2: também na prova, o print primeiro (e o que a Carol leu dele). */}
             {v2 && showToggle && <div className="v2-screen v2-reg v2-reg-race">{renderPhotoBlockV2()}</div>}
+            {/* Design v2 (P2a): antes da leitura, só o print e o «Preencher à mão»; depois dela,
+                os números grandes e o resto fechado em «Mais dados do relógio». */}
+            {v2Stage === 'shot' && renderManualLinkV2()}
+            {v2Stage === 'confirm' && (
+              <>
+                {renderConfirmV2()}
+                {raceStartTimeField}
+                {renderMoreV2(
+                  <>
+                    {raceDiplomaFields}
+                    {renderManualDetails()}
+                  </>,
+                )}
+              </>
+            )}
+            {v2Stage === 'full' && (<>
             <div className="grid grid-cols-2 gap-2.5 mb-4">
               <div>
                 <label htmlFor="rr-tempo-oficial" className="text-[11px] text-[var(--text-3)] block mb-1.5">
@@ -2817,70 +3007,21 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
 
             {timeTouched.official && renderTimeProblem(officialTimeProblem(), 'rr-tempo-oficial-erro', (v) => { setOfficialTime(v); setIsFormDirty(true); }, 'mb-4 -mt-2')}
 
-            {/* Hora de partida — vem preenchida da agenda, mas é a desta
-                corrida (runs.start_time): a partida real pode não ser a
-                anunciada. Até aqui a herança era invisível e o atleta não a
-                via nem a corrigia (relatado 2026-09-13). É ela que ordena o
-                dia no Calendário e que a Carol usa na véspera e no balanço. */}
-            <div className="grid grid-cols-2 gap-2.5 mb-4 items-end">
-              <div>
-                <label htmlFor="rr-hora-da-prova" className="text-[11px] text-[var(--text-3)] block mb-1.5">Hora de partida</label>
-                <FieldInput
-                  id="rr-hora-da-prova"
-                  type="time"
-                  value={runStartTime}
-                  onChange={e => { setRunStartTime(e.target.value); setIsFormDirty(true); }}
-                />
-              </div>
-              <p className="text-[11px] leading-[1.45] pb-2.5" style={{ color: 'var(--text-4)' }}>
-                A hora a que partiste. Ordena o dia no Calendário e entra na análise da Carol.
-              </p>
-            </div>
+            {raceStartTimeField}
 
-            {/* O que o diploma traz (pedido 2026-09-13): dorsal, escalão e
-                posição nele, posição por género, participantes. Tudo
-                opcional; o ritmo médio calcula-se e o clube é do perfil. A
-                leitura da Carol preenche-os a partir do diploma, em baixo —
-                nas Memórias ou, com elas desligadas (v1 lite), na secção
-                «Diploma». */}
-            <div data-testid="race-result-fields" className="mb-4">
-              {v2
-                ? <h4 className="v2-runreg-sub">Do diploma (opcional)</h4>
-                : <p className="text-[11px] font-extrabold uppercase mb-2" style={{ letterSpacing: 'var(--tracking-label)', color: 'var(--text-3)' }}>Do diploma (opcional)</p>}
-              <div className="grid grid-cols-2 gap-2.5">
-                <div>
-                  <label htmlFor="rr-dorsal" className="text-[11px] text-[var(--text-3)] block mb-1.5">Dorsal</label>
-                  <FieldInput id="rr-dorsal" type="text" inputMode="numeric" placeholder="ex.: 1234" value={bibNumber} onChange={e => { setBibNumber(e.target.value); setIsFormDirty(true); }}  />
-                </div>
-                <div>
-                  <label htmlFor="rr-escalao" className="text-[11px] text-[var(--text-3)] block mb-1.5">Escalão</label>
-                  <FieldInput id="rr-escalao" type="text" placeholder="ex.: M40" value={ageGroup} onChange={e => { setAgeGroup(e.target.value); setIsFormDirty(true); }}  />
-                </div>
-              </div>
-              <div className="grid grid-cols-3 gap-2.5 mt-2.5">
-                <div>
-                  <label htmlFor="rr-pos-escalao" className="text-[11px] text-[var(--text-3)] block mb-1.5">Pos. escalão</label>
-                  <FieldInput className="px-2!" id="rr-pos-escalao" type="number" min="1" placeholder="ex.: 41" value={ageGroupPosition} onChange={e => { setAgeGroupPosition(e.target.value); setIsFormDirty(true); }}  />
-                </div>
-                <div>
-                  <label htmlFor="rr-pos-genero" className="text-[11px] text-[var(--text-3)] block mb-1.5">Pos. género</label>
-                  <FieldInput className="px-2!" id="rr-pos-genero" type="number" min="1" placeholder="ex.: 280" value={genderPosition} onChange={e => { setGenderPosition(e.target.value); setIsFormDirty(true); }}  />
-                </div>
-                <div>
-                  <label htmlFor="rr-participantes" className="text-[11px] text-[var(--text-3)] block mb-1.5">Participantes</label>
-                  <FieldInput className="px-2!" id="rr-participantes" type="number" min="1" placeholder="ex.: 1850" value={participants} onChange={e => { setParticipants(e.target.value); setIsFormDirty(true); }}  />
-                </div>
-              </div>
-            </div>
+            {raceDiplomaFields}
 
             {showToggle && !v2 && renderPhotoBlock()}
             {renderCoreMetrics()}
             {renderManualDetails()}
+            </>)}
 
             <SaveErrorLine message={errorMsg} center={false} onRetry={failedSave && failedSave.message === errorMsg ? failedSave.retry : null} retrying={isSubmitting} />
           </div>
         </section>
 
+        {/* Design v2 (P2a): antes da leitura do print, o «Como correu» e as memórias esperam. */}
+        {v2Stage !== 'shot' && (<>
         {/* ── 3. COMO CORREU ─────────────────────────────────────────────── */}
         {sectionTitle('Como correu')}
         <section className="reg-section">
@@ -2941,6 +3082,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
             </Warning>
           )}
         </section>
+        </>)}
 
         {runIdToEdit && (
           <div className="pt-1 pb-2">
@@ -3126,6 +3268,18 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
           </RegistrationSection>
     );
 
+    const nameField = (
+          <div>
+            <label htmlFor="rr-nome-da-corrida" className="text-[11px] text-[var(--text-3)] mb-1.5 block">Nome da corrida <span className="text-[var(--danger)]">*</span></label>
+            <FieldInput id="rr-nome-da-corrida"
+              type="text"
+              value={runName}
+              onChange={e => { setRunName(e.target.value); setIsFormDirty(true); }}
+            />
+            <p className="text-[11px] text-[var(--text-3)] mt-1.5">Sugestão automática — muda se quiseres.</p>
+          </div>
+    );
+
     const numbersSection = (
           /* Os números: os prints (opcionais) e logo a seguir os campos,
               sempre à vista — "Ler os prints" enche os que estiverem vazios.
@@ -3148,15 +3302,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
               </div>
             )}
 
-            <div>
-              <label htmlFor="rr-nome-da-corrida" className="text-[11px] text-[var(--text-3)] mb-1.5 block">Nome da corrida <span className="text-[var(--danger)]">*</span></label>
-              <FieldInput id="rr-nome-da-corrida"
-                type="text"
-                value={runName}
-                onChange={e => { setRunName(e.target.value); setIsFormDirty(true); }}
-              />
-              <p className="text-[11px] text-[var(--text-3)] mt-1.5">Sugestão automática — muda se quiseres.</p>
-            </div>
+            {nameField}
           </RegistrationSection>
     );
 
@@ -3188,6 +3334,47 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
 
     // Design v2: o print do relógio primeiro (o atalho), o que a Carol leu, e só depois o
     // tipo, a data e a hora (já preenchidos pela leitura) e o resto do formulário de sempre.
+    /* Design v2 (P2a): antes da leitura, só o print (o ecrã é dele) e o «Preencher à mão». */
+    if (v2Stage === 'shot') {
+      return (
+        <div className="v2-screen v2-reg v2-runreg-shotstage" data-testid="run-registration-v2">
+          {renderPhotoBlockV2()}
+          {renderManualLinkV2()}
+          <SaveErrorLine message={errorMsg} center={false} onRetry={failedSave && failedSave.message === errorMsg ? failedSave.retry : null} retrying={isSubmitting} />
+        </div>
+      );
+    }
+    /* Depois da leitura: a distância, o tempo e o ritmo em grande para confirmar, o tipo, a data e
+       a hora, e o que é do relógio fechado em «Mais dados do relógio». Os mesmos campos e estado. */
+    if (v2Stage === 'confirm') {
+      return (
+        <div className="v2-screen v2-reg" data-testid="run-registration-v2">
+          {renderPhotoBlockV2()}
+          {renderConfirmV2()}
+          {kindSection}
+          {planBanner}
+          <RegistrationSection title="Como te sentiste" optional>
+            {renderEffortField(false)}
+            {renderShoesField(false)}
+            {renderNotesField(false)}
+          </RegistrationSection>
+          {renderMoreV2(
+            <>
+              {nameField}
+              <RegistrationSection title="Parciais e estrutura" optional>
+                {renderRepeatStructure(false)}
+                {renderSplits(false)}
+              </RegistrationSection>
+              <RegistrationSection title="Fisiologia e relógio" optional>
+                {renderWatchMetrics(false)}
+                {renderHrZones(false)}
+              </RegistrationSection>
+            </>,
+          )}
+          <SaveErrorLine message={errorMsg} center={false} onRetry={failedSave && failedSave.message === errorMsg ? failedSave.retry : null} retrying={isSubmitting} />
+        </div>
+      );
+    }
     if (v2) {
       return (
         <div className="v2-screen v2-reg" data-testid="run-registration-v2">
@@ -3231,7 +3418,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
           race={isRaceMode}
         />
         <PrintQuestions questions={printQuestions} answers={printAnswers} onChange={setPrintAnswers} />
-        {showReadOut && <RunReadOutV2 rows={readOutRows(readOut, { trainingTypeLabel: typeLabel })} />}
+        {showReadOut && v2Stage !== 'confirm' && <RunReadOutV2 rows={readOutRows(readOut, { trainingTypeLabel: typeLabel })} />}
       </div>
     );
   }
@@ -3362,72 +3549,72 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
         {metricGroup(boxed ? 'Fisiologia & Relógio' : (flatTitled ? 'Fisiologia e relógio' : null), (
               <div className="grid grid-cols-2 gap-2.5">
                 <div>
-                  <label htmlFor="rr-desnivel-subida-m" className="text-[11px] font-semibold text-[var(--text-3)] block mb-1">Desnível subida (m)</label>
+                  <label htmlFor="rr-desnivel-subida-m" className="text-[11px] font-semibold text-[var(--text-3)] block mb-1">{lbl('Desnível subida (m)', 'Desnível positivo (metros)')}</label>
                   <FieldInput id="rr-desnivel-subida-m" 
-                    type="number" placeholder="Ex: 120" 
+                    type="number" placeholder={lbl('Ex: 120', 'Ex.: 120')} 
                     value={elevationGain} onChange={e=>{setElevationGain(e.target.value); setIsFormDirty(true);}} 
                   />
                 </div>
                 <div>
-                  <label htmlFor="rr-desnivel-descida-m" className="text-[11px] font-semibold text-[var(--text-3)] block mb-1">Desnível descida (m)</label>
+                  <label htmlFor="rr-desnivel-descida-m" className="text-[11px] font-semibold text-[var(--text-3)] block mb-1">{lbl('Desnível descida (m)', 'Desnível negativo (metros)')}</label>
                   <FieldInput id="rr-desnivel-descida-m" 
-                    type="number" placeholder="Ex: 80" 
+                    type="number" placeholder={lbl('Ex: 80', 'Ex.: 80')} 
                     value={elevationLoss} onChange={e=>{setElevationLoss(e.target.value); setIsFormDirty(true);}} 
                   />
                 </div>
                 <div>
-                  <label htmlFor="rr-cadencia-media-spm" className="text-[11px] font-semibold text-[var(--text-3)] block mb-1">Cadência média (spm)</label>
+                  <label htmlFor="rr-cadencia-media-spm" className="text-[11px] font-semibold text-[var(--text-3)] block mb-1">{lbl('Cadência média (spm)', 'Cadência média (passos por minuto)')}</label>
                   <FieldInput id="rr-cadencia-media-spm"
-                    type="number" placeholder="Ex: 158"
+                    type="number" placeholder={lbl('Ex: 158', 'Ex.: 158')}
                     value={cadence} onChange={e=>{setCadence(e.target.value); setIsFormDirty(true);}}
                   />
                 </div>
                 <div>
-                  <label htmlFor="rr-cadencia-max-spm" className="text-[11px] font-semibold text-[var(--text-3)] block mb-1">Cadência máx (spm)</label>
+                  <label htmlFor="rr-cadencia-max-spm" className="text-[11px] font-semibold text-[var(--text-3)] block mb-1">{lbl('Cadência máx (spm)', 'Cadência máxima (passos por minuto)')}</label>
                   <FieldInput id="rr-cadencia-max-spm"
-                    type="number" placeholder="Ex: 175"
+                    type="number" placeholder={lbl('Ex: 175', 'Ex.: 175')}
                     value={maxCadence} onChange={e=>{setMaxCadence(e.target.value); setIsFormDirty(true);}}
                   />
                 </div>
                 <div>
-                  <label htmlFor="rr-calorias-kcal" className="text-[11px] font-semibold text-[var(--text-3)] block mb-1">Calorias (kcal)</label>
+                  <label htmlFor="rr-calorias-kcal" className="text-[11px] font-semibold text-[var(--text-3)] block mb-1">{lbl('Calorias (kcal)', 'Calorias (quilocalorias)')}</label>
                   <FieldInput id="rr-calorias-kcal"
-                    type="number" placeholder="Ex: 450"
+                    type="number" placeholder={lbl('Ex: 450', 'Ex.: 450')}
                     value={calories} onChange={e=>{setCalories(e.target.value); setIsFormDirty(true);}} 
                   />
                 </div>
                 <div>
-                  <label htmlFor="rr-vo2-max" className="text-[11px] font-semibold text-[var(--text-3)] block mb-1">VO2 máx</label>
+                  <label htmlFor="rr-vo2-max" className="text-[11px] font-semibold text-[var(--text-3)] block mb-1">{lbl('VO2 máx', 'VO2 máximo')}</label>
                   <FieldInput id="rr-vo2-max" 
-                    type="number" step="0.1" placeholder="Ex: 48.5" 
+                    type="number" step="0.1" placeholder={lbl('Ex: 48.5', 'Ex.: 48,5')} 
                     value={vo2Max} onChange={e=>{setVo2Max(e.target.value); setIsFormDirty(true);}} 
                   />
                 </div>
                 <div>
-                  <label htmlFor="rr-fc-media-bpm" className="text-[11px] font-semibold text-[var(--text-3)] block mb-1">FC média (bpm)</label>
+                  <label htmlFor="rr-fc-media-bpm" className="text-[11px] font-semibold text-[var(--text-3)] block mb-1">{lbl('FC média (bpm)', 'Frequência cardíaca média (batimentos por minuto)')}</label>
                   <FieldInput id="rr-fc-media-bpm" 
-                    type="number" placeholder="Ex: 142" 
+                    type="number" placeholder={lbl('Ex: 142', 'Ex.: 142')} 
                     value={avgHeartRate} onChange={e=>{setAvgHeartRate(e.target.value); setIsFormDirty(true);}} 
                   />
                 </div>
                 <div>
-                  <label htmlFor="rr-fc-maxima-bpm" className="text-[11px] font-semibold text-[var(--text-3)] block mb-1">FC máxima (bpm)</label>
+                  <label htmlFor="rr-fc-maxima-bpm" className="text-[11px] font-semibold text-[var(--text-3)] block mb-1">{lbl('FC máxima (bpm)', 'Frequência cardíaca máxima (batimentos por minuto)')}</label>
                   <FieldInput id="rr-fc-maxima-bpm" 
-                    type="number" placeholder="Ex: 172" 
+                    type="number" placeholder={lbl('Ex: 172', 'Ex.: 172')} 
                     value={maxHeartRate} onChange={e=>{setMaxHeartRate(e.target.value); setIsFormDirty(true);}} 
                   />
                 </div>
                 <div>
-                  <label htmlFor="rr-fc-limiar-aerobio-bpm" className="text-[11px] font-semibold text-[var(--text-3)] block mb-1">FC Limiar Aeróbio (bpm)</label>
+                  <label htmlFor="rr-fc-limiar-aerobio-bpm" className="text-[11px] font-semibold text-[var(--text-3)] block mb-1">{lbl('FC Limiar Aeróbio (bpm)', 'Limiar aeróbio (batimentos por minuto)')}</label>
                   <FieldInput id="rr-fc-limiar-aerobio-bpm" 
-                    type="number" placeholder="Ex: 145" 
+                    type="number" placeholder={lbl('Ex: 145', 'Ex.: 145')} 
                     value={aerobicThreshold} onChange={e=>{setAerobicThreshold(e.target.value); setIsFormDirty(true);}} 
                   />
                 </div>
                 <div>
-                  <label htmlFor="rr-fc-limiar-anaerobio-bpm" className="text-[11px] font-semibold text-[var(--text-3)] block mb-1">FC Limiar Anaeróbio (bpm)</label>
+                  <label htmlFor="rr-fc-limiar-anaerobio-bpm" className="text-[11px] font-semibold text-[var(--text-3)] block mb-1">{lbl('FC Limiar Anaeróbio (bpm)', 'Limiar anaeróbio (batimentos por minuto)')}</label>
                   <FieldInput id="rr-fc-limiar-anaerobio-bpm" 
-                    type="number" placeholder="Ex: 165" 
+                    type="number" placeholder={lbl('Ex: 165', 'Ex.: 165')} 
                     value={anaerobicThreshold} onChange={e=>{setAnaerobicThreshold(e.target.value); setIsFormDirty(true);}} 
                   />
                 </div>
@@ -3436,44 +3623,44 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
         {metricGroup(boxed ? 'Biomecânica de Corrida' : 'Biomecânica', (
               <div className="grid grid-cols-2 gap-2.5">
                 <div>
-                  <label htmlFor="rr-contacto-solo-ms" className="text-[11px] font-semibold text-[var(--text-3)] block mb-1">Contacto Solo (ms)</label>
+                  <label htmlFor="rr-contacto-solo-ms" className="text-[11px] font-semibold text-[var(--text-3)] block mb-1">{lbl('Contacto Solo (ms)', 'Contacto com o solo (milissegundos)')}</label>
                   <FieldInput id="rr-contacto-solo-ms" 
-                    type="number" placeholder="Ex: 215" 
+                    type="number" placeholder={lbl('Ex: 215', 'Ex.: 215')} 
                     value={groundContactTime} onChange={e=>{setGroundContactTime(e.target.value); setIsFormDirty(true);}} 
                   />
                 </div>
                 <div>
-                  <label htmlFor="rr-tempo-de-voo-ms" className="text-[11px] font-semibold text-[var(--text-3)] block mb-1">Tempo de Voo (ms)</label>
+                  <label htmlFor="rr-tempo-de-voo-ms" className="text-[11px] font-semibold text-[var(--text-3)] block mb-1">{lbl('Tempo de Voo (ms)', 'Tempo de voo (milissegundos)')}</label>
                   <FieldInput id="rr-tempo-de-voo-ms" 
-                    type="number" placeholder="Ex: 190" 
+                    type="number" placeholder={lbl('Ex: 190', 'Ex.: 190')} 
                     value={flightTime} onChange={e=>{setFlightTime(e.target.value); setIsFormDirty(true);}} 
                   />
                 </div>
                 <div>
-                  <label htmlFor="rr-oscilacao-vertical-cm" className="text-[11px] font-semibold text-[var(--text-3)] block mb-1">Oscilação Vertical (cm)</label>
+                  <label htmlFor="rr-oscilacao-vertical-cm" className="text-[11px] font-semibold text-[var(--text-3)] block mb-1">{lbl('Oscilação Vertical (cm)', 'Oscilação vertical (centímetros)')}</label>
                   <FieldInput id="rr-oscilacao-vertical-cm" 
-                    type="number" step="0.1" placeholder="Ex: 8.5" 
+                    type="number" step="0.1" placeholder={lbl('Ex: 8.5', 'Ex.: 8,5')} 
                     value={verticalOscillation} onChange={e=>{setVerticalOscillation(e.target.value); setIsFormDirty(true);}} 
                   />
                 </div>
                 <div>
-                  <label htmlFor="rr-assimetria" className="text-[11px] font-semibold text-[var(--text-3)] block mb-1">Assimetria (%)</label>
+                  <label htmlFor="rr-assimetria" className="text-[11px] font-semibold text-[var(--text-3)] block mb-1">{lbl('Assimetria (%)', 'Assimetria (percentagem)')}</label>
                   <FieldInput id="rr-assimetria" 
-                    type="number" step="0.1" placeholder="Ex: 48.2" 
+                    type="number" step="0.1" placeholder={lbl('Ex: 48.2', 'Ex.: 48,2')} 
                     value={asymmetryPct} onChange={e=>{setAsymmetryPct(e.target.value); setIsFormDirty(true);}} 
                   />
                 </div>
                 <div>
-                  <label htmlFor="rr-rigidez-perna-kn-m" className="text-[11px] font-semibold text-[var(--text-3)] block mb-1">Rigidez Perna (kN/m)</label>
+                  <label htmlFor="rr-rigidez-perna-kn-m" className="text-[11px] font-semibold text-[var(--text-3)] block mb-1">{lbl('Rigidez Perna (kN/m)', 'Rigidez da perna (quilonewtons por metro)')}</label>
                   <FieldInput id="rr-rigidez-perna-kn-m" 
-                    type="number" step="0.1" placeholder="Ex: 11.5" 
+                    type="number" step="0.1" placeholder={lbl('Ex: 11.5', 'Ex.: 11,5')} 
                     value={legStiffness} onChange={e=>{setLegStiffness(e.target.value); setIsFormDirty(true);}} 
                   />
                 </div>
                 <div>
-                  <label htmlFor="rr-pace-max-min-km" className="text-[11px] font-semibold text-[var(--text-3)] block mb-1">Pace máx (min/km)</label>
+                  <label htmlFor="rr-pace-max-min-km" className="text-[11px] font-semibold text-[var(--text-3)] block mb-1">{lbl('Pace máx (min/km)', 'Ritmo máximo (minutos por quilómetro)')}</label>
                   <FieldInput id="rr-pace-max-min-km" 
-                    type="text" placeholder="Ex: 4:15" 
+                    type="text" placeholder={lbl('Ex: 4:15', 'Ex.: 4:15')} 
                     value={maxPace} onChange={e=>{setMaxPace(e.target.value); setIsFormDirty(true);}} 
                   />
                 </div>
@@ -3482,16 +3669,16 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
         {metricGroup(boxed ? 'Hidratação & Atividade' : 'Hidratação e atividade', (
               <div className="grid grid-cols-2 gap-2.5">
                 <div>
-                  <label htmlFor="rr-perda-transpiracao-ml" className="text-[11px] font-semibold text-[var(--text-3)] block mb-1">Perda transpiração (ml)</label>
+                  <label htmlFor="rr-perda-transpiracao-ml" className="text-[11px] font-semibold text-[var(--text-3)] block mb-1">{lbl('Perda transpiração (ml)', 'Perda por transpiração (mililitros)')}</label>
                   <FieldInput id="rr-perda-transpiracao-ml" 
-                    type="number" placeholder="Ex: 850" 
+                    type="number" placeholder={lbl('Ex: 850', 'Ex.: 850')} 
                     value={sweatLossMl} onChange={e=>{setSweatLossMl(e.target.value); setIsFormDirty(true);}} 
                   />
                 </div>
                 <div>
                   <label htmlFor="rr-passos-totais" className="text-[11px] font-semibold text-[var(--text-3)] block mb-1">Passos totais</label>
                   <FieldInput id="rr-passos-totais" 
-                    type="number" placeholder="Ex: 12500" 
+                    type="number" placeholder={lbl('Ex: 12500', 'Ex.: 12500')} 
                     value={totalSteps} onChange={e=>{setTotalSteps(e.target.value); setIsFormDirty(true);}} 
                   />
                 </div>
@@ -3505,7 +3692,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
     return (
             <div role="group" aria-labelledby="rr-zonas-titulo" className={boxed ? 'rounded-xl border border-[var(--border-glass)] bg-[var(--surface-glass)] text-white p-3 mb-4' : undefined}>
               <div className="flex items-center justify-between mb-2">
-                <p id="rr-zonas-titulo" className="text-[12px] font-bold text-[var(--text-3)]">Zonas de FC (tempo em cada zona)</p>
+                <p id="rr-zonas-titulo" className="text-[12px] font-bold text-[var(--text-3)]">{lbl('Zonas de FC (tempo em cada zona)', 'Zonas de frequência cardíaca (tempo em cada zona)')}</p>
                 <AddButton
                   onClick={() => { setHrZones([...hrZones, { zone: '', minutes: '' }]); setIsFormDirty(true); }}
                   variant="run"
@@ -3668,6 +3855,8 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
         }}
         onGoManual={() => {
           setShowMissingMetricsSheet(false);
+          // Design v2: o formulário inteiro abre-se primeiro (no v1 já está sempre à vista).
+          setManualOpenV2(true);
           // Os campos já estão à vista (formulário único): leva-o até eles.
           metricsAnchorRef.current?.scrollIntoView?.({ block: 'center' });
           metricsAnchorRef.current?.querySelector?.('input')?.focus?.();

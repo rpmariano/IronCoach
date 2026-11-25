@@ -63,6 +63,9 @@ describe('RunRegistration · Design v2', () => {
 
   it('o print é o primeiro bloco do ecrã, antes do tipo, da data e da hora', () => {
     render(<RunRegistration onClose={vi.fn()} />);
+    // P2a (2026-11-25): ao abrir, só o print; o manual vem por «Preencher à mão».
+    expect(screen.queryByLabelText('Data da corrida')).toBeNull();
+    fireEvent.click(screen.getByTestId('v2-reg-manual'));
     const screenV2 = screen.getByTestId('run-registration-v2');
     const first = screenV2.firstElementChild;
     expect(first).toHaveAttribute('data-testid', 'v2-reg-lead');
@@ -76,7 +79,7 @@ describe('RunRegistration · Design v2', () => {
     expect(screen.queryByText('Prints da app de corrida (opcional)')).not.toBeInTheDocument();
   });
 
-  it('depois da leitura, o painel lista o que a Carol leu e o tipo, a data e a hora ficam preenchidos', async () => {
+  it('depois da leitura, a confirmação mostra os números e o tipo, a data e a hora ficam preenchidos', async () => {
     const dia = ontem();
     mocks.invoke.mockResolvedValueOnce({
       data: {
@@ -97,28 +100,28 @@ describe('RunRegistration · Design v2', () => {
     await selectPhoto();
     fireEvent.click(screen.getByRole('button', { name: 'Ler os prints e preencher' }));
 
-    const panel = await screen.findByTestId('v2-reg-read');
+    const panel = await screen.findByTestId('v2-reg-confirm');
     expect(mocks.invoke.mock.calls[0][1].body.mode).toBe('preview');
-    expect(within(panel).getByText('A Carol leu isto do print')).toBeInTheDocument();
-    expect(within(screen.getByTestId('v2-reg-fld-distance')).getByText('10,04 km')).toBeInTheDocument();
-    expect(within(screen.getByTestId('v2-reg-fld-duration')).getByText('49:58')).toBeInTheDocument();
-    expect(within(screen.getByTestId('v2-reg-fld-pace')).getByText(/\/km$/)).toBeInTheDocument();
-    expect(within(screen.getByTestId('v2-reg-fld-hr')).getByText('168 bpm')).toBeInTheDocument();
-    const parciais = within(screen.getByTestId('v2-reg-fld-splits')).getByText('10 lidos');
-    expect(parciais).toHaveClass('is-ok');
+    // P2a: a distância, o tempo e o ritmo em grande, para confirmar ou corrigir.
+    expect(document.getElementById('rr-distancia')).toHaveValue(10.04);
+    expect(document.getElementById('rr-duracao')).toHaveValue('49:58');
+    expect(screen.getByTestId('v2-reg-pace')).toHaveTextContent(/\/km$/);
+    // O resto (a frequência cardíaca, os parciais) fica recolhido, com a conta do que se leu.
+    const mais = screen.getByTestId('v2-reg-more');
+    expect(mais).not.toHaveAttribute('open');
+    expect(mais.querySelector('summary')).toHaveTextContent('2 dados lidos do relógio');
 
-    // O que a leitura trouxe entra nos campos de sempre, por baixo.
-    expect(screen.getByLabelText('Distância (km)')).toHaveValue(10.04);
+    // O tipo, a data e a hora vêm preenchidos, por baixo dos números.
     expect(document.getElementById('rr-tipo-de-treino')).toHaveValue('longo');
     expect(screen.getByLabelText('Data da corrida')).toHaveValue(dia);
     expect(screen.getByLabelText('Hora')).toHaveValue('07:30');
-    // E o painel vem antes deles.
     expect(panel.compareDocumentPosition(screen.getByLabelText('Data da corrida')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   it('o tipo escolhido à mão não se troca pelo que a leitura trouxer', async () => {
     mocks.invoke.mockResolvedValueOnce({ data: { preview: { distance_km: 8, training_type: 'longo' } }, error: null });
     render(<RunRegistration onClose={vi.fn()} />);
+    fireEvent.click(screen.getByTestId('v2-reg-manual'));
     fireEvent.change(document.getElementById('rr-tipo-de-treino'), { target: { value: 'fartlek' } });
     await selectPhoto();
     fireEvent.click(screen.getByRole('button', { name: 'Ler os prints e preencher' }));
@@ -142,8 +145,9 @@ describe('RunRegistration · Design v2', () => {
     await waitFor(() => expect(screen.getByRole('button', { name: /Analisar corrida/ })).toBeEnabled());
   });
 
-  it('os campos manuais continuam lá, sem print nenhum', () => {
+  it('os campos manuais continuam lá, sem print nenhum (por «Preencher à mão»)', () => {
     render(<RunRegistration onClose={vi.fn()} />);
+    fireEvent.click(screen.getByTestId('v2-reg-manual'));
     const dist = screen.getByLabelText('Distância (km)');
     fireEvent.change(dist, { target: { value: '7.5' } });
     expect(dist).toHaveValue(7.5);
@@ -171,7 +175,7 @@ describe('RunRegistration · Design v2, a data lida', () => {
     render(<RunRegistration onClose={vi.fn()} {...props} />);
     await selectPhoto();
     fireEvent.click(screen.getByRole('button', { name: 'Ler os prints e preencher' }));
-    await screen.findByTestId('v2-reg-read');
+    await screen.findByTestId('v2-reg-confirm');
   };
   const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
