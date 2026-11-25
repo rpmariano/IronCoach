@@ -130,15 +130,44 @@ export function noPlanCopy({ pendingCount = 0, hadPlan = false, raceToday = null
   };
 }
 
+/** «Tens uma proposta minha por rever» / «Tens duas propostas minhas por rever». */
+export function pendingProposalsText(count) {
+  return count === 1 ? 'Tens uma proposta minha por rever' : `Tens ${EXTENSO[count] || count} propostas minhas por rever`;
+}
+
+/* O dia fechado (dayDone.js): o momento decide-se ao montar — que é quando se volta do registo que
+   fechou o dia — e marca-se como visto logo a seguir. Exportado (2026-11-25) para o Início v2 ter
+   o mesmo momento, com a mesma regra. */
+export function useDayDoneMoment(items, today) {
+  const userId = useAppStore((s) => s.session?.user?.id || s.profile?.id);
+  const logImpression = useAppStore((s) => s.logImpression);
+  const impressionShown = useAppStore((s) => s.impressionShown);
+  const todayDone = useMemo(() => {
+    // O redundante cancelado ao lado do treino feito não tira o "Cumprido.".
+    const t = trainingItems(liveItems(items || [])).filter((i) => !i.isRace && !isRacePlanItem(i));
+    return t.length > 0 && t.every((i) => i.status === 'concluido');
+  }, [items]);
+  // A chave deste momento em coach_impressions (kind 'moment', ação 5.1),
+  // sem título: o servidor já tem os treinos do dia. Na leitura, visto no
+  // outro telemóvel conta como visto aqui.
+  const momentKey = dayDoneMomentKey(today);
+  // Só quando se vê: nunca por baixo das boas-vindas (utils/useMomentOnce).
+  return useMomentOnce(
+    todayDone,
+    () => wasDayDoneSeen(userId, today, impressionShown),
+    () => {
+      markDayDoneSeen(userId, today);
+      logImpression({ kind: 'moment', key: momentKey, title: null });
+    },
+  );
+}
+
 export default function DayPlanCard({ plans = [], planItems = [], raceEvents = [], onComplete, onNav, onOpenRace, onOpenPlano }) {
   const today = todayISO();
   const tomorrow = addDaysISO(today, 1);
   const [open, setOpen] = useState(false);
   const runs = useAppStore((s) => s.runs);
   const gymSessions = useAppStore((s) => s.gymSessions);
-  const userId = useAppStore((s) => s.session?.user?.id || s.profile?.id);
-  const logImpression = useAppStore((s) => s.logImpression);
-  const impressionShown = useAppStore((s) => s.impressionShown);
 
   const pendingCount = useMemo(() => (plans || []).filter((p) => p.status === 'proposto').length, [plans]);
   const planWindow = useMemo(() => computeAcceptedWindow(plans, planItems, today), [plans, planItems, today]);
@@ -171,7 +200,7 @@ export default function DayPlanCard({ plans = [], planItems = [], raceEvents = [
       <MessageCircle size={14} style={{ color: 'var(--coach)' }} className="shrink-0" />
       <span className="flex-1 text-[12.5px] font-semibold" style={{ color: 'var(--coach-soft)' }}>
         {/* Na voz dela, como o resto do cartão (pedido 2026-09-26). */}
-        {pendingCount === 1 ? 'Tens uma proposta minha por rever' : `Tens ${EXTENSO[pendingCount] || pendingCount} propostas minhas por rever`}
+        {pendingProposalsText(pendingCount)}
       </span>
       <ChevronRight size={14} style={{ color: 'var(--coach)' }} className="shrink-0" />
     </button>
@@ -180,24 +209,7 @@ export default function DayPlanCard({ plans = [], planItems = [], raceEvents = [
   /* Os hooks do dia fechado vivem aqui, antes do return antecipado. O
      momento decide-se ao montar — que é quando se volta do registo que
      fechou o dia — e marca-se como visto logo a seguir. */
-  const todayDone = useMemo(() => {
-    // O redundante cancelado ao lado do treino feito não tira o "Cumprido.".
-    const t = trainingItems(liveItems(day?.items || [])).filter((i) => !i.isRace && !isRacePlanItem(i));
-    return t.length > 0 && t.every((i) => i.status === 'concluido');
-  }, [day]);
-  // A chave deste momento em coach_impressions (kind 'moment', ação 5.1),
-  // sem título: o servidor já tem os treinos do dia. Na leitura, visto no
-  // outro telemóvel conta como visto aqui.
-  const momentKey = dayDoneMomentKey(today);
-  // Só quando se vê: nunca por baixo das boas-vindas (utils/useMomentOnce).
-  const doneMoment = useMomentOnce(
-    todayDone,
-    () => wasDayDoneSeen(userId, today, impressionShown),
-    () => {
-      markDayDoneSeen(userId, today);
-      logImpression({ kind: 'moment', key: momentKey, title: null });
-    },
-  );
+  const doneMoment = useDayDoneMoment(day?.items, today);
 
   if (!planWindow || !day) {
     const copy = noPlanCopy({

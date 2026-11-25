@@ -144,3 +144,61 @@ button.v2-sp:focus-visible { outline: 2px solid var(--v2-acc); outline-offset: -
 /* Os cartões de sempre encaixados no ecrã v2 (o check-in, «O que falta para começar»). */
 .v2-embed { margin-top: 12px; }
 .v2-embed > * { margin: 0 !important; }
+
+/* ── Início v2, ronda do Rui (25/11): «Hoje», «Esta semana», a nutrição de hoje ── */
+.v2-panel { display: block; width: 100%; background: var(--v2-panel); border: 0; border-radius: var(--v2-radius); padding: 12px 14px; color: var(--v2-ink); text-align: left; font: inherit; }
+.v2-today-list { display: grid; gap: 8px; }
+.v2-today-btn { cursor: pointer; min-height: 44px; }
+.v2-today-btn:focus-visible, .v2-meals:focus-visible { outline: 2px solid var(--v2-acc); outline-offset: 2px; }
+.v2-today-head { display: flex; align-items: center; gap: 6px; }
+.v2-today-head .v2-dot { margin-right: 0; }
+.v2-today-t { flex: 1; min-width: 0; font: 700 20px/1.15 var(--v2-font-num); color: var(--v2-ink); }
+.v2-today-state { font-size: 13px; font-weight: 600; color: var(--v2-acc); white-space: nowrap; }
+.v2-today-state.is-done { color: var(--ok); }
+.v2-today-s { display: block; margin-top: 4px; font-size: 14px; color: var(--v2-ink2); }
+.v2-today-note { display: block; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--v2-rule); font-size: 14px; line-height: 1.45; color: var(--v2-ink); white-space: pre-line; }
+.v2-today-ex { list-style: none; margin: 8px 0 0; padding: 0; }
+.v2-today-ex li { display: flex; justify-content: space-between; gap: 8px; padding: 6px 0; border-top: 1px solid var(--v2-rule); font-size: 14px; }
+.v2-today-ex li b { font: 700 16px var(--v2-font-num); color: var(--v2-ink2); white-space: nowrap; }
+
+.v2-week { list-style: none; margin: 0; padding: 6px; display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 2px; background: var(--v2-panel); border-radius: var(--v2-radius); }
+.v2-week-d { display: grid; justify-items: center; gap: 4px; padding: 6px 0; border-radius: 6px; min-width: 0; }
+.v2-week-d.is-today { background: var(--v2-rule); }
+.v2-week-n { font: 600 13px var(--v2-font); color: var(--v2-ink2); }
+.v2-week-d.is-today .v2-week-n { color: var(--v2-ink); }
+.v2-week-k { height: 16px; display: grid; place-items: center; color: var(--ok); }
+.v2-week-none { display: block; width: 7px; height: 1px; background: var(--v2-ink2); opacity: .5; }
+.v2-week-l { font-size: 11px; color: var(--v2-ink2); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.v2-week-d.is-race .v2-week-n, .v2-week-d.is-race .v2-week-l { color: var(--race); }
+
+.v2-meals { margin-top: 8px; cursor: pointer; min-height: 44px; }
+.v2-meals:disabled { cursor: default; }
+.v2-meals ul { list-style: none; margin: 0; padding: 0; }
+.v2-meals li { display: flex; justify-content: space-between; gap: 8px; padding: 6px 0; border-top: 1px solid var(--v2-rule); font-size: 14px; }
+.v2-meals li:first-child { border-top: 0; padding-top: 0; }
+.v2-meals li b { font: 700 16px var(--v2-font-num); color: var(--v2-ink2); }
+.v2-meals-go { display: block; margin-top: 8px; font-size: 13.5px; font-weight: 600; color: var(--v2-acc); }
+
+.v2-say-home .v2-say-actions { display: flex; gap: 16px; flex-wrap: wrap; }
+.v2-say-home .v2-link-inline { min-height: 44px; line-height: 44px; padding: 0; text-decoration: none; font-weight: 600; font-size: 14px; }
+.v2-say-more { margin: 8px 0 0 !important; font-size: 14.5px !important; color: var(--v2-ink2) !important; }
+.v2-say-label { color: var(--v2-acc); font-weight: 600; }
+/* Os links da linha da Carol: o .v2-say button { all: unset } apagava-lhes a cor. */
+.v2-say-home .v2-say-actions .v2-link-inline { color: var(--v2-acc); }
+/* Os cartões encaixados: sem as etiquetas em maiúsculas espaçadas (direção C). */
+.v2-embed .uppercase { text-transform: none !important; letter-spacing: 0 !important; font-size: 13.5px !important; }
+
+/* Os avisos do Início de sempre, no v2 (revisão de 2026-11-25). */
+.v2-alert { margin-top: 12px; display: flex; align-items: center; gap: 8px; min-height: 44px; cursor: pointer; font-size: 15px; font-weight: 600; }
+.v2-alert:focus-visible { outline: 2px solid var(--v2-acc); outline-offset: 2px; }
+.v2-alert .v2-dot { margin: 0; }
+.v2-say-act { margin-top: 4px; }
+.v2-milestone > * { border-top: 0 !important; padding-top: 0 !important; }
+/* As ações das mensagens da Carol (a prova, a inscrição): botões do v2, a âmbar (são da prova). O
+   .v2-say button { all: unset } e o estilo inline do cartão de sempre obrigam ao !important. */
+.v2-say .v2-say-act button, .v2-say .v2-say-act a {
+  box-sizing: border-box; display: flex !important; align-items: center; justify-content: center; gap: 6px;
+  width: 100%; min-height: 44px; padding: 0 14px; margin-top: 4px; border: 0 !important; border-radius: var(--v2-radius) !important;
+  background: var(--race) !important; color: var(--race-ink) !important; font: 700 15px var(--v2-font); text-decoration: none; cursor: pointer;
+}
+.v2-say .v2-say-act button:focus-visible, .v2-say .v2-say-act a:focus-visible { outline: 2px solid var(--v2-ink); outline-offset: 2px; }

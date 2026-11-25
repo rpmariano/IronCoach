@@ -158,7 +158,30 @@ function ProvaConcluidaCard({ race, run, outcome, ordem, conquistas, dias, onOpe
 /* O marco da contagem (raceMilestone.js): nos dias que não são iguais aos
    outros — 100, 50, 30, 14, 7 e 3 —, a Carol diz o que ele quer dizer.
    Na primeira vez que se vê nesse dia, ela respira e a frase entra. */
-function RaceMilestoneLine({ raceId, days, prioridade, flags, comPlano, comCorridas }) {
+/* O modelo da prova do cartão: o trilho, a viabilidade e o contexto do marco. Exportado
+   (2026-11-25) para o Início v2 dizer o mesmo marco com as mesmas entradas. */
+export function useRaceCardModel({ race, profile, runs, today }) {
+  const base = useMemo(() => {
+    if (!race) return { model: null, flags: null, comCorridas: false };
+    const plano = calculateRaceTrainingPlan({ race, profile, runs, todayISO: today });
+    const inicio = plano?.effectiveStartDate || plano?.planStartDate;
+    return {
+      model: buildTrailModel(plano),
+      flags: plano?.viability?.flags || null,
+      comCorridas: !!inicio && (runs || []).some((r) => r?.date && r.date >= inicio && r.date <= today),
+    };
+  }, [race, profile, runs, today]);
+  // "Com plano" é um plano aceite que cobre os dias daqui até à prova — um
+  // plano de base que acaba no domingo não é "o que está no plano" da
+  // semana da prova (raceMilestone.js).
+  const coachPlans = useAppStore((s) => s.coachPlans);
+  const raceDay = race ? String(race.date).slice(0, 10) : null;
+  const comPlano = !!raceDay && (coachPlans || []).some((p) => p?.status === 'aceite'
+    && String(p.period_start).slice(0, 10) <= today && String(p.period_end).slice(0, 10) >= raceDay);
+  return { ...base, comPlano };
+}
+
+export function RaceMilestoneLine({ raceId, days, prioridade, flags, comPlano, comCorridas }) {
   // Com o contexto da prova: sem marcos de polimento numa prova B ou C, e o
   // dos 100 dias pela viabilidade (raceMilestone.js).
   const line = raceMilestoneLine(days, { prioridade, flags, comPlano, comCorridas });
@@ -285,23 +308,7 @@ export default function RaceCard({ raceEvents = [], runs = [], profile = {}, onO
   // hub diz "tempo insuficiente" (pedido 2026-09-26). E o início real do
   // ciclo (o mesmo do trilho): aos 14 dias, «já está feito» só com corridas
   // registadas desde aí (revisão de 2026-09-26).
-  const { model, flags, comCorridas } = useMemo(() => {
-    if (!race) return { model: null, flags: null, comCorridas: false };
-    const plano = calculateRaceTrainingPlan({ race, profile, runs, todayISO: today });
-    const inicio = plano?.effectiveStartDate || plano?.planStartDate;
-    return {
-      model: buildTrailModel(plano),
-      flags: plano?.viability?.flags || null,
-      comCorridas: !!inicio && (runs || []).some((r) => r?.date && r.date >= inicio && r.date <= today),
-    };
-  }, [race, profile, runs, today]);
-  // "Com plano" é um plano aceite que cobre os dias daqui até à prova — um
-  // plano de base que acaba no domingo não é "o que está no plano" da
-  // semana da prova (raceMilestone.js).
-  const coachPlans = useAppStore((s) => s.coachPlans);
-  const raceDay = race ? String(race.date).slice(0, 10) : null;
-  const comPlano = !!raceDay && (coachPlans || []).some((p) => p?.status === 'aceite'
-    && String(p.period_start).slice(0, 10) <= today && String(p.period_end).slice(0, 10) >= raceDay);
+  const { model, flags, comCorridas, comPlano } = useRaceCardModel({ race, profile, runs, today });
 
   /* A jornada do Troféu: com prova, abre o hub dela (como qualquer prova);
      sem prova, a jornada no calendário do ecrã do Troféu; sem jornada

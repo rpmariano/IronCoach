@@ -141,3 +141,25 @@ html.design-v2 [data-testid="bottom-nav"] > button[aria-expanded] {
 .v2-seg button.is-on { background: var(--v2-rule); color: var(--v2-ink); font-weight: 600; }
 .v2-seg button:focus-visible { outline: 2px solid var(--v2-acc); outline-offset: -2px; }
 html.design-v2 [data-testid="race-hub-screen"] h2.v2-hub-h { font: 600 15px var(--v2-font); color: var(--v2-ink2); letter-spacing: 0; }
+
+/* O menu do «+» no v2 (Layout, FabSheetV2): aqui e não nas peças, porque o Layout está sempre
+   montado. As classes só existem com o v2 ligado. */
+.v2-fab-scrim { background: rgba(5, 9, 16, .6); }
+.v2-fab-sheet {
+  position: fixed; z-index: 50; left: 50%; transform: translateX(-50%);
+  bottom: calc(var(--nav-h) + env(safe-area-inset-bottom, 0px) + 8px);
+  width: calc(100% - 24px); max-width: 424px;
+  background: var(--v2-panel); border: 1px solid var(--v2-rule); border-radius: var(--v2-radius);
+  padding: 6px 6px 8px; font-family: var(--v2-font); color: var(--v2-ink);
+}
+.v2-fab-head { display: flex; align-items: center; justify-content: space-between; padding: 0 4px 0 10px; }
+.v2-fab-head h2 { margin: 0; font: 700 17px var(--v2-font); color: var(--v2-ink); }
+.v2-fab-close { all: unset; cursor: pointer; width: 44px; height: 44px; display: grid; place-items: center; border-radius: 6px; color: var(--v2-ink2); }
+.v2-fab-close:focus-visible, .v2-fab-row:focus-visible { outline: 2px solid var(--v2-acc); outline-offset: -2px; }
+.v2-fab-sheet ul { list-style: none; margin: 0; padding: 0; }
+.v2-fab-sheet li + li .v2-fab-row { border-top: 1px solid var(--v2-rule); }
+.v2-fab-row { all: unset; box-sizing: border-box; cursor: pointer; width: 100%; min-height: 48px; display: flex; align-items: center; gap: 12px; padding: 0 10px; font: 500 16px var(--v2-font); color: var(--v2-ink); }
+.v2-fab-row:active { background: var(--v2-rule); }
+.v2-fab-ic { display: grid; place-items: center; width: 24px; }
+/* O «+» aberto (vira ✕): liso, no filete, sem o âmbar — o âmbar é para registar a prova. */
+html.design-v2 [data-testid="bottom-nav"] > button.fab-open { background: var(--v2-rule) !important; color: var(--v2-ink) !important; }
