@@ -79,11 +79,17 @@ describe('Evolução — Design v2', () => {
     expect(screen.getAllByTestId('period-header').length).toBeGreaterThan(0);
   });
 
-  it('uma só fila de separadores: Corrida, Ginásio, Nutrição, Corpo; sem a barra de pílulas por cima', async () => {
+  it('uma só fila de separadores: Geral, Corrida, Ginásio, Nutrição, Corpo; sem a barra de pílulas por cima', async () => {
     render(<Host />);
     await screen.findByTestId('evolucao-v2');
     const tabs = within(screen.getByTestId('evo-v2-tabs')).getAllByRole('tab');
-    expect(tabs.map((t) => t.textContent)).toEqual(['Corrida', 'Ginásio', 'Nutrição', 'Corpo']);
+    expect(tabs.map((t) => t.textContent)).toEqual(['Geral', 'Corrida', 'Ginásio', 'Nutrição', 'Corpo']);
+    // Só o separador ativo aponta para um painel, e o painel existe.
+    tabs.forEach((t) => {
+      const id = t.getAttribute('aria-controls');
+      if (t.getAttribute('aria-selected') === 'true') expect(document.getElementById(id)).toBeTruthy();
+      else expect(id).toBeNull();
+    });
     expect(screen.getAllByRole('tablist')).toHaveLength(1);
     expect(screen.getByRole('tab', { name: 'Corrida' })).toHaveAttribute('aria-selected', 'true');
     // O seletor do período é um <select> nativo, não um grupo de pílulas.
@@ -98,10 +104,15 @@ describe('Evolução — Design v2', () => {
     expect(screen.getByRole('tab', { name: 'Ginásio' })).toHaveAttribute('aria-selected', 'true');
   });
 
-  it('«hub» (o Geral do v1) abre a Corrida', async () => {
+  it('«hub» abre o Geral (o resumo dos pilares); «holistica» também', async () => {
     setTab('hub');
+    const { unmount } = render(<Host />);
+    expect(await screen.findByTestId('evo-v2-area-hub')).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Geral' })).toHaveAttribute('aria-selected', 'true');
+    unmount();
+    setTab('holistica');
     render(<Host />);
-    expect(await screen.findByTestId('evo-v2-area-corrida')).toBeInTheDocument();
+    expect(await screen.findByTestId('evo-v2-area-hub')).toBeInTheDocument();
   });
 
   it('o seletor compacto muda o período mostrado (e o dos dashboards, que é o mesmo)', async () => {

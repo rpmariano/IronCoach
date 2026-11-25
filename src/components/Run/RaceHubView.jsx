@@ -504,6 +504,180 @@ export default function RaceHubView({
     const openRunEdit = () => useAppStore.getState().openRaceRun(race.id, raceRun.id);
     const memoriesUserId = useAppStore.getState().profile?.id || profile?.id || null;
 
+    /* Os blocos do depois da prova em constantes (2026-11-25): o hub de sempre e o v2
+       (RaceDoneV2) mostram os mesmos — as memórias, o mural, as conquistas e o ciclo. */
+    const memoriesBlock = (
+      <>
+      {/* 1b. As memórias do dia — medalha em destaque, diploma e as
+          fotografias. Sem nada guardado fica o convite, discreto: é uma
+          oferta, não uma tarefa por cumprir. */}
+      {/* As memórias têm interruptor (v1 lite): desligadas, fica só o diploma (é resultado — a Carol
+          lê-o); a medalha, as fotos e o mural saem. */}
+      {(memoriesOn ? hasMemories : !!memoryPaths.diploma) ? (
+        <>
+          <div className="flex items-center justify-between" style={{ margin: '16px 2px 0' }}>
+            <SectionLabel tone="race">{memoriesOn ? 'Memórias' : 'Diploma'}</SectionLabel>
+            <button
+              type="button"
+              data-testid="race-memories-edit"
+              onClick={openMemories}
+              className="inline-flex items-center gap-1 text-[12px] font-extrabold"
+              style={{ minHeight: 'var(--tap)', padding: '0 6px', color: 'var(--race)', background: 'none', border: 'none', cursor: 'pointer' }}
+            >
+              <Award size={13} /> Editar
+            </button>
+          </div>
+          <div data-testid="race-memories-gallery" style={{ borderRadius: 22, background: 'var(--surface-glass)', border: '1px solid var(--border-glass)', padding: 14, marginTop: 8 }}>
+            {memoriesOn && memoryUrls.medal && (
+              <img
+                src={memoryUrls.medal}
+                alt="A medalha da prova"
+                style={{ width: '100%', maxHeight: 260, objectFit: 'cover', borderRadius: 16, border: '1px solid var(--tint-race-bd)', display: 'block' }}
+              />
+            )}
+
+            {memoryPaths.diploma && (
+              memoryPaths.diploma.toLowerCase().endsWith('.pdf') ? (
+                <a
+                  href={memoryUrls.diploma || undefined}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-full inline-flex items-center justify-center gap-2"
+                  style={{ minHeight: 'var(--tap)', marginTop: memoryUrls.medal ? 10 : 0, borderRadius: 14, background: 'var(--tint-race-bg)', border: '1px solid var(--tint-race-bd)', color: 'var(--race)', fontSize: 12.5, fontWeight: 800, textDecoration: 'none' }}
+                >
+                  <Award size={15} /> Abrir diploma
+                </a>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setOpenPhoto(memoryUrls.diploma)}
+                  aria-label="Ver o diploma em ecrã inteiro"
+                  style={{ display: 'block', width: '100%', minHeight: 'var(--tap)', marginTop: memoryUrls.medal ? 10 : 0, border: 'none', background: 'none', padding: 0, cursor: 'pointer' }}
+                >
+                  <img src={memoryUrls.diploma} alt="Diploma da prova" style={{ width: '100%', maxHeight: 220, objectFit: 'cover', borderRadius: 16, border: '1px solid var(--border-glass)', display: 'block' }} />
+                </button>
+              )
+            )}
+
+            {memoriesOn && memoryUrls.photos.length > 0 && (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginTop: (memoryUrls.medal || memoryPaths.diploma) ? 10 : 0 }}>
+                {memoryUrls.photos.map((url, i) => (
+                  <button
+                    key={url}
+                    type="button"
+                    onClick={() => setOpenPhoto(url)}
+                    aria-label={`Ver a fotografia ${i + 1} em ecrã inteiro`}
+                    // Miniatura quadrada, nunca abaixo do piso de toque.
+                    style={{ minHeight: 'var(--tap)', minWidth: 'var(--tap)', aspectRatio: '1 / 1', padding: 0, border: 'none', background: 'none', cursor: 'pointer' }}
+                  >
+                    <img src={url} alt={`Fotografia ${i + 1} da prova`} style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 12, border: '1px solid var(--border-glass)' }} />
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </>
+      ) : raceRun ? (
+        <button
+          type="button"
+          data-testid="race-memories-invite"
+          onClick={openMemories}
+          className="w-full inline-flex items-center justify-center gap-2"
+          style={{ minHeight: 'var(--tap)', marginTop: 12, borderRadius: 14, background: 'rgba(255,255,255,.05)', border: '1px solid var(--border-glass-strong)', color: 'var(--text-3)', fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}
+        >
+          <Award size={15} /> {memoriesOn ? 'Guardar as memórias da prova' : 'Juntar o diploma da prova'}
+        </button>
+      ) : null}
+
+      {memoriesOn && raceRun && (
+        <button
+          type="button"
+          data-testid="race-mural-open"
+          onClick={() => setMuralOpen(true)}
+          className="w-full inline-flex items-center justify-center gap-2"
+          style={{ minHeight: 'var(--tap)', marginTop: 10, borderRadius: 14, background: 'var(--tint-race-bg)', border: '1px solid var(--tint-race-bd)', color: 'var(--race)', fontSize: 12.5, fontWeight: 800, cursor: 'pointer' }}
+        >
+          <Star size={15} /> Montar o mural para partilhar
+        </button>
+      )}
+
+      </>
+    );
+    const memorySheets = (
+      <>
+      {memoriesOpen && (
+        <RaceMemoriesSheet race={race} run={raceRun} userId={memoriesUserId} diplomaOnly={!memoriesOn} onSaved={onMemoriesSaved} onClose={() => setMemoriesOpen(false)} />
+      )}
+      {memoriesOn && muralOpen && (
+        <RaceMuralSheet race={race} run={raceRun} seconds={finalSeconds} classification={classification} achievements={raceAchievements} badges={raceBadges} memoryUrls={memoryUrls} onSaved={onMemoriesSaved} onClose={() => setMuralOpen(false)} />
+      )}
+
+      {openPhoto && (
+        <Sheet eyebrow="Memórias" eyebrowTone="race" onClose={() => setOpenPhoto(null)} testId="race-photo-viewer" maxHeight="90dvh">
+          <img src={openPhoto} alt="Memória da prova em ecrã inteiro" style={{ width: '100%', borderRadius: 14, display: 'block', marginBottom: 8 }} />
+        </Sheet>
+      )}
+
+      </>
+    );
+    const achievementsBlock = (
+      <>
+      {/* 1c. Conquistas — o que esta prova deu ao palmarés, e o que ficou
+          para a próxima. Só com a corrida registada: sem números não há
+          conquista nenhuma para mostrar. */}
+      {raceRun && raceAchievements.length > 0 && (
+        <>
+          <SectionLabel tone="race" style={{ margin: '16px 2px 0' }}>Conquistas</SectionLabel>
+          <div data-testid="race-hub-achievements" className="flex flex-col gap-2" style={{ marginTop: 8 }}>
+            {raceAchievements.map((a) => <AchievementCard key={a.key} achievement={a} showDate={false} />)}
+          </div>
+        </>
+      )}
+      {raceRun && raceMissed.length > 0 && (
+        <div data-testid="race-hub-achievements-missed" style={{ marginTop: raceAchievements.length ? 8 : 12 }}>
+          {raceMissed.map((a) => (
+            <p key={a.key} className="text-[11.5px] leading-[1.45]" style={{ color: 'var(--text-4)', padding: '0 2px' }}>
+              {describeMissedInRace(a, raceOutcome)}
+            </p>
+          ))}
+        </div>
+      )}
+
+      </>
+    );
+    const cycleBlock = (
+      <>
+      {/* 3. O ciclo fechado: trilho completo (marcador na meta) e o que se
+          consegue somar dos registos reais. */}
+      <SectionLabel style={{ margin: '16px 2px 0' }}>{`Ciclo de ${totalWeeks} semanas`}</SectionLabel>
+
+      <RaceTrail
+        weeks={totalWeeks}
+        current={totalWeeks}
+        startLabel={formatDateDayMonth(planStartDate)}
+        endLabel={formatDateDayMonth(raceDate)}
+      />
+
+      {(cycleSummary?.totalKm || cycleSummary?.vdot) && (
+        <div style={{ borderRadius: 20, background: 'var(--surface-glass)', border: '1px solid var(--border-glass)', padding: '6px 16px', marginTop: 10 }}>
+          {cycleSummary.totalKm && (
+            <div className="flex items-center justify-between" style={{ padding: '12px 0', borderBottom: cycleSummary.vdot ? '1px solid rgba(255,255,255,.08)' : 'none' }}>
+              <span className="text-[12.5px]" style={{ color: 'var(--text-3)' }}>Volume total</span>
+              <span className="text-[13px] font-extrabold" style={{ color: 'var(--text-1)' }}>{cycleSummary.totalKm}</span>
+            </div>
+          )}
+          {cycleSummary.vdot && (
+            <div className="flex items-center justify-between" style={{ padding: '12px 0' }}>
+              <span className="text-[12.5px]" style={{ color: 'var(--text-3)' }}>Forma no início / fim</span>
+              <span className="text-[13px] font-extrabold" style={{ color: 'var(--text-1)' }}>{cycleSummary.vdot}</span>
+            </div>
+          )}
+        </div>
+      )}
+
+      </>
+    );
+
     // O Design v2 (utils/designV2.js): a forma do RaceDoneV2, com os mesmos números e as mesmas saídas.
     if (v2) {
       const talk = () => {
@@ -517,6 +691,7 @@ export default function RaceHubView({
         <RaceDoneV2
           race={race}
           finalSeconds={finalSeconds}
+          runDistanceKm={Number(raceRun?.distance_km) || null}
           breakdown={timesBreakdown}
           details={raceRun?.details}
           carolText={race?.coach_balance || (raceOutcome ? describeRaceOutcome(raceOutcome, race) : carolAnalysis.overviewText)}
@@ -540,27 +715,26 @@ export default function RaceHubView({
                   onSaved={onMemoriesSaved}
                 />
               </HubCollapsible>
-              {raceRun && raceAchievements.length > 0 && (
-                <HubCollapsible id="conquistas" title="Conquistas" summary={`${raceAchievements.length}`} testId="race-done-v2-achievements">
-                  <div data-testid="race-hub-achievements" className="flex flex-col gap-2">
-                    {raceAchievements.map((a) => <AchievementCard key={a.key} achievement={a} showDate={false} />)}
-                  </div>
+              {/* Os tempos todos: o objetivo, o que o treino previa e o melhor anterior, cada um com a
+                  diferença, e o que o diploma trouxe (a classificação, o tempo bruto, as passagens). */}
+              {(timesBreakdown || classification || officialTimes) && (
+                <HubCollapsible id="tempos" title="Os tempos" summary={timesBreakdown?.rows?.some((r) => r.key === 'melhor') ? 'com o melhor anterior' : null} testId="race-done-v2-times">
+                  {classification && <p data-testid="race-classification" className="v2-sub">{classification}</p>}
+                  {officialTimes && <p data-testid="race-official-times" className="v2-sub" style={{ marginTop: 4 }}>{officialTimes}</p>}
+                  {timesBreakdown && <RaceTimesBreakdown breakdown={timesBreakdown} />}
                 </HubCollapsible>
               )}
-              {raceRun && (
-                <button type="button" className="v2-btn is-quiet" data-testid="race-memories-invite" onClick={openMemories}>
-                  {memoriesOn ? (hasMemories ? 'Ver as memórias da prova' : 'Guardar as memórias da prova') : 'Juntar o diploma da prova'}
-                </button>
-              )}
+              {/* As memórias (a galeria, o convite, o mural) e as conquistas (as ganhas e as que
+                  ficaram por fazer), com os interruptores de sempre. */}
+              {memoriesBlock}
+              {achievementsBlock}
+              {/* O ciclo fechado: recolhido. */}
+              <HubCollapsible id="ciclo" title={`O ciclo de ${totalWeeks} semanas`} summary={cycleSummary?.totalKm || null} testId="race-done-v2-cycle">
+                {cycleBlock}
+              </HubCollapsible>
             </>
           )}
-          sheets={(
-            <>
-              {memoriesOpen && (
-                <RaceMemoriesSheet race={race} run={raceRun} userId={memoriesUserId} diplomaOnly={!memoriesOn} onSaved={onMemoriesSaved} onClose={() => setMemoriesOpen(false)} />
-              )}
-            </>
-          )}
+          sheets={memorySheets}
         />
         </Suspense>
       );
@@ -674,133 +848,9 @@ export default function RaceHubView({
 
         {cupOn && <CupRaceBlock race={race} />}
 
-        {/* 1b. As memórias do dia — medalha em destaque, diploma e as
-            fotografias. Sem nada guardado fica o convite, discreto: é uma
-            oferta, não uma tarefa por cumprir. */}
-        {/* As memórias têm interruptor (v1 lite): desligadas, fica só o diploma (é resultado — a Carol
-            lê-o); a medalha, as fotos e o mural saem. */}
-        {(memoriesOn ? hasMemories : !!memoryPaths.diploma) ? (
-          <>
-            <div className="flex items-center justify-between" style={{ margin: '16px 2px 0' }}>
-              <SectionLabel tone="race">{memoriesOn ? 'Memórias' : 'Diploma'}</SectionLabel>
-              <button
-                type="button"
-                data-testid="race-memories-edit"
-                onClick={openMemories}
-                className="inline-flex items-center gap-1 text-[12px] font-extrabold"
-                style={{ minHeight: 'var(--tap)', padding: '0 6px', color: 'var(--race)', background: 'none', border: 'none', cursor: 'pointer' }}
-              >
-                <Award size={13} /> Editar
-              </button>
-            </div>
-            <div data-testid="race-memories-gallery" style={{ borderRadius: 22, background: 'var(--surface-glass)', border: '1px solid var(--border-glass)', padding: 14, marginTop: 8 }}>
-              {memoriesOn && memoryUrls.medal && (
-                <img
-                  src={memoryUrls.medal}
-                  alt="A medalha da prova"
-                  style={{ width: '100%', maxHeight: 260, objectFit: 'cover', borderRadius: 16, border: '1px solid var(--tint-race-bd)', display: 'block' }}
-                />
-              )}
-
-              {memoryPaths.diploma && (
-                memoryPaths.diploma.toLowerCase().endsWith('.pdf') ? (
-                  <a
-                    href={memoryUrls.diploma || undefined}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="w-full inline-flex items-center justify-center gap-2"
-                    style={{ minHeight: 'var(--tap)', marginTop: memoryUrls.medal ? 10 : 0, borderRadius: 14, background: 'var(--tint-race-bg)', border: '1px solid var(--tint-race-bd)', color: 'var(--race)', fontSize: 12.5, fontWeight: 800, textDecoration: 'none' }}
-                  >
-                    <Award size={15} /> Abrir diploma
-                  </a>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => setOpenPhoto(memoryUrls.diploma)}
-                    aria-label="Ver o diploma em ecrã inteiro"
-                    style={{ display: 'block', width: '100%', minHeight: 'var(--tap)', marginTop: memoryUrls.medal ? 10 : 0, border: 'none', background: 'none', padding: 0, cursor: 'pointer' }}
-                  >
-                    <img src={memoryUrls.diploma} alt="Diploma da prova" style={{ width: '100%', maxHeight: 220, objectFit: 'cover', borderRadius: 16, border: '1px solid var(--border-glass)', display: 'block' }} />
-                  </button>
-                )
-              )}
-
-              {memoriesOn && memoryUrls.photos.length > 0 && (
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginTop: (memoryUrls.medal || memoryPaths.diploma) ? 10 : 0 }}>
-                  {memoryUrls.photos.map((url, i) => (
-                    <button
-                      key={url}
-                      type="button"
-                      onClick={() => setOpenPhoto(url)}
-                      aria-label={`Ver a fotografia ${i + 1} em ecrã inteiro`}
-                      // Miniatura quadrada, nunca abaixo do piso de toque.
-                      style={{ minHeight: 'var(--tap)', minWidth: 'var(--tap)', aspectRatio: '1 / 1', padding: 0, border: 'none', background: 'none', cursor: 'pointer' }}
-                    >
-                      <img src={url} alt={`Fotografia ${i + 1} da prova`} style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 12, border: '1px solid var(--border-glass)' }} />
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          </>
-        ) : raceRun ? (
-          <button
-            type="button"
-            data-testid="race-memories-invite"
-            onClick={openMemories}
-            className="w-full inline-flex items-center justify-center gap-2"
-            style={{ minHeight: 'var(--tap)', marginTop: 12, borderRadius: 14, background: 'rgba(255,255,255,.05)', border: '1px solid var(--border-glass-strong)', color: 'var(--text-3)', fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}
-          >
-            <Award size={15} /> {memoriesOn ? 'Guardar as memórias da prova' : 'Juntar o diploma da prova'}
-          </button>
-        ) : null}
-
-        {memoriesOn && raceRun && (
-          <button
-            type="button"
-            data-testid="race-mural-open"
-            onClick={() => setMuralOpen(true)}
-            className="w-full inline-flex items-center justify-center gap-2"
-            style={{ minHeight: 'var(--tap)', marginTop: 10, borderRadius: 14, background: 'var(--tint-race-bg)', border: '1px solid var(--tint-race-bd)', color: 'var(--race)', fontSize: 12.5, fontWeight: 800, cursor: 'pointer' }}
-          >
-            <Star size={15} /> Montar o mural para partilhar
-          </button>
-        )}
-
-        {memoriesOpen && (
-          <RaceMemoriesSheet race={race} run={raceRun} userId={memoriesUserId} diplomaOnly={!memoriesOn} onSaved={onMemoriesSaved} onClose={() => setMemoriesOpen(false)} />
-        )}
-        {memoriesOn && muralOpen && (
-          <RaceMuralSheet race={race} run={raceRun} seconds={finalSeconds} classification={classification} achievements={raceAchievements} badges={raceBadges} memoryUrls={memoryUrls} onSaved={onMemoriesSaved} onClose={() => setMuralOpen(false)} />
-        )}
-
-        {openPhoto && (
-          <Sheet eyebrow="Memórias" eyebrowTone="race" onClose={() => setOpenPhoto(null)} testId="race-photo-viewer" maxHeight="90dvh">
-            <img src={openPhoto} alt="Memória da prova em ecrã inteiro" style={{ width: '100%', borderRadius: 14, display: 'block', marginBottom: 8 }} />
-          </Sheet>
-        )}
-
-        {/* 1c. Conquistas — o que esta prova deu ao palmarés, e o que ficou
-            para a próxima. Só com a corrida registada: sem números não há
-            conquista nenhuma para mostrar. */}
-        {raceRun && raceAchievements.length > 0 && (
-          <>
-            <SectionLabel tone="race" style={{ margin: '16px 2px 0' }}>Conquistas</SectionLabel>
-            <div data-testid="race-hub-achievements" className="flex flex-col gap-2" style={{ marginTop: 8 }}>
-              {raceAchievements.map((a) => <AchievementCard key={a.key} achievement={a} showDate={false} />)}
-            </div>
-          </>
-        )}
-        {raceRun && raceMissed.length > 0 && (
-          <div data-testid="race-hub-achievements-missed" style={{ marginTop: raceAchievements.length ? 8 : 12 }}>
-            {raceMissed.map((a) => (
-              <p key={a.key} className="text-[11.5px] leading-[1.45]" style={{ color: 'var(--text-4)', padding: '0 2px' }}>
-                {describeMissedInRace(a, raceOutcome)}
-              </p>
-            ))}
-          </div>
-        )}
-
+        {memoriesBlock}
+        {memorySheets}
+        {achievementsBlock}
         {/* 2. Balanço da Carol — o balanço completo, pedido ao coach-chat
             assim que a corrida está registada (RaceBalanceCard); por baixo,
             a linha de números da régua única. Sem corrida fica o texto do
@@ -815,34 +865,7 @@ export default function RaceHubView({
           onSaved={onMemoriesSaved}
         />
 
-        {/* 3. O ciclo fechado: trilho completo (marcador na meta) e o que se
-            consegue somar dos registos reais. */}
-        <SectionLabel style={{ margin: '16px 2px 0' }}>{`Ciclo de ${totalWeeks} semanas`}</SectionLabel>
-
-        <RaceTrail
-          weeks={totalWeeks}
-          current={totalWeeks}
-          startLabel={formatDateDayMonth(planStartDate)}
-          endLabel={formatDateDayMonth(raceDate)}
-        />
-
-        {(cycleSummary?.totalKm || cycleSummary?.vdot) && (
-          <div style={{ borderRadius: 20, background: 'var(--surface-glass)', border: '1px solid var(--border-glass)', padding: '6px 16px', marginTop: 10 }}>
-            {cycleSummary.totalKm && (
-              <div className="flex items-center justify-between" style={{ padding: '12px 0', borderBottom: cycleSummary.vdot ? '1px solid rgba(255,255,255,.08)' : 'none' }}>
-                <span className="text-[12.5px]" style={{ color: 'var(--text-3)' }}>Volume total</span>
-                <span className="text-[13px] font-extrabold" style={{ color: 'var(--text-1)' }}>{cycleSummary.totalKm}</span>
-              </div>
-            )}
-            {cycleSummary.vdot && (
-              <div className="flex items-center justify-between" style={{ padding: '12px 0' }}>
-                <span className="text-[12.5px]" style={{ color: 'var(--text-3)' }}>Forma no início / fim</span>
-                <span className="text-[13px] font-extrabold" style={{ color: 'var(--text-1)' }}>{cycleSummary.vdot}</span>
-              </div>
-            )}
-          </div>
-        )}
-
+        {cycleBlock}
         {/* 4. E agora? As duas saídas do mock. "Arquivar e descansar" não
             entra: não existe arquivo no modelo de dados (o estado
             "concluída" já é o fim da linha), e o handoff proíbe inventar

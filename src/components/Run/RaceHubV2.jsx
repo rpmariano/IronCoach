@@ -296,12 +296,21 @@ export function doneSentence(breakdown) {
 }
 
 export function RaceDoneV2({
-  race, finalSeconds, breakdown, details, carolText, onEditRun, onRegister, onNext, onTalk,
+  race, finalSeconds, runDistanceKm = null, breakdown, details, carolText, onEditRun, onRegister, onNext, onTalk,
   markCompleted, extras, sections, sheets,
 }) {
   const [aberto, setAberto] = useState(false);
-  const km = Number(race?.distance_km) || null;
+  /* «Oficial» só quando o tempo é o da organização (details.official_time_seconds); sem ele é a
+     duração do relógio, e diz-se «Tempo da corrida». O ritmo divide pela distância da prova;
+     sem ela, pela da corrida (como o hub de sempre). */
+  const oficial = Number(details?.official_time_seconds) > 0;
+  const raceKm = Number(race?.distance_km) || null;
+  const km = raceKm || Number(runDistanceKm) || null;
   const pace = finalSeconds > 0 && km ? formatPace(Math.round(finalSeconds / km)) : null;
+  const paceNote = !pace ? null
+    : oficial && raceKm ? `O ritmo oficial é o tempo oficial a dividir pelos ${kmN(raceKm)} km da prova.`
+    : raceKm ? `O ritmo é o tempo da corrida a dividir pelos ${kmN(raceKm)} km da prova.`
+    : `O ritmo é sobre os ${kmN(km)} km da corrida.`;
   const n = (v) => { const x = Number(v); return Number.isFinite(x) && x > 0 ? x : null; };
   const pos = n(details?.position);
   const participantes = n(details?.participants);
@@ -322,16 +331,14 @@ export function RaceDoneV2({
           <section className="v2-res" data-testid="race-done-v2-hero">
             <div className="v2-res-n v2-num" data-testid="race-final-time">{formatDuration(Math.round(finalSeconds))}</div>
             <p className="v2-res-d" data-testid="race-done-v2-sentence">
-              Tempo oficial.{frase ? ` ${frase}` : ''}
+              {oficial ? 'Tempo oficial.' : 'Tempo da corrida.'}{frase ? ` ${frase}` : ''}
             </p>
             <div className="v2-row3">
               <div><b className="v2-num">{pos ? ordinal(pos) : '–'}</b><span>{pos && participantes ? `geral, de ${new Intl.NumberFormat('pt-PT', { useGrouping: 'always' }).format(participantes)}` : 'geral'}</span></div>
               <div><b className="v2-num">{escalaoPos ? ordinal(escalaoPos) : '–'}</b><span>{escalao ? `escalão ${escalao}` : 'escalão'}</span></div>
-              <div data-testid="race-done-v2-pace"><b className="v2-num">{pace || '–'}</b><span>ritmo oficial/km</span></div>
+              <div data-testid="race-done-v2-pace"><b className="v2-num">{pace || '–'}</b><span>{oficial && raceKm ? 'ritmo oficial/km' : 'ritmo/km'}</span></div>
             </div>
-            {pace && km && (
-              <p className="v2-res-note">O ritmo oficial é o tempo oficial a dividir pelos {kmN(km)} km da prova.</p>
-            )}
+            {paceNote && <p className="v2-res-note" data-testid="race-done-v2-pace-note">{paceNote}</p>}
           </section>
         ) : (
           <section className="v2-res" data-testid="race-done-v2-hero">

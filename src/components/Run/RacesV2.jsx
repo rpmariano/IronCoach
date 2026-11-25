@@ -6,6 +6,8 @@ import { groupRaces, countdownLabel } from '../../utils/raceList';
 import { formatDuration, formatTargetTimeLabel } from '../../utils/run';
 import { useCupListing } from '../../utils/useCup';
 import { CupListBlock, CupPorRegistarRows } from './CupListBlock';
+import { CupNaoFuiDialog } from './CupBits';
+import { useToast } from '../shared/ToastProvider';
 
 /* A lista de provas no Design v2 (direção C · Painel, fase 2, 2026-11-25; utils/designV2.js). O
    RacesScreen escolhe-a com o v2 ligado. Sai o carrossel «Para onde vou»: a lista é o ecrã. Cada
@@ -15,6 +17,15 @@ import { CupListBlock, CupPorRegistarRows } from './CupListBlock';
    mesmos blocos. */
 
 const MESES = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+const MESES_LONGOS = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
+
+/** «22 de novembro» (com o ano quando não é o deste ano): a data dita, para o nome acessível. */
+export function dateSpoken(date) {
+  const [y, m, d] = String(date || '').slice(0, 10).split('-');
+  if (!d) return '';
+  const ano = y && y !== String(new Date().getFullYear()) ? ` de ${y}` : '';
+  return `${Number(d)} de ${MESES_LONGOS[Number(m) - 1] || ''}${ano}`;
+}
 const nf1 = new Intl.NumberFormat('pt-PT', { maximumFractionDigits: 1 });
 const kmText = (km) => (Number(km) > 0 ? `${nf1.format(Math.round(Number(km) * 10) / 10)} km` : null);
 const CONCLUIDAS_MAX = 5;
@@ -31,15 +42,18 @@ function Dt({ date }) {
 }
 
 function Row({ race, meta, right, rightLabel, next = false, action = null, onOpen, testId }) {
+  // O nome acessível do botão diz tudo, a data incluída: a data grande é aria-hidden, e um
+  // aria-label num span não é lido de forma fiável.
+  const nome = [dateSpoken(race.date), race.name || 'Prova sem nome', meta, rightLabel || right].filter(Boolean).join(', ');
   return (
     <div className={`v2-rl-it${next ? ' is-next' : ''}`} data-testid={testId}>
-      <button type="button" className="v2-rl-main" onClick={() => onOpen(race.id)}>
+      <button type="button" className="v2-rl-main" aria-label={nome} onClick={() => onOpen(race.id)}>
         <Dt date={race.date} />
         <span className="min-w-0">
           <b>{race.name || 'Prova sem nome'}</b>
           {meta && <span className="v2-rl-meta">{meta}</span>}
         </span>
-        {right && <span className="v2-rl-tag v2-num" aria-label={rightLabel || undefined}>{right}</span>}
+        {right && <span className="v2-rl-tag v2-num">{right}</span>}
       </button>
       {action}
     </div>
@@ -51,6 +65,24 @@ export default function RacesV2() {
   const today = todayISO();
   const { view: cupView, listing } = useCupListing();
   const [todas, setTodas] = useState(false);
+  // «Não fui» numa jornada do Troféu: o mesmo diálogo da v1, que grava ali mesmo.
+  const { showToast } = useToast();
+  const [naoFui, setNaoFui] = useState(null);
+  const [naoFuiBusy, setNaoFuiBusy] = useState(false);
+  const confirmarNaoFui = async () => {
+    if (!naoFui || naoFuiBusy) return;
+    setNaoFuiBusy(true);
+    let res;
+    try {
+      res = await useAppStore.getState().markCupRoundNotAttended(naoFui.id);
+    } catch (err) {
+      res = { ok: false, error: { message: err?.message || 'Não consegui gravar.' } };
+    }
+    setNaoFuiBusy(false);
+    setNaoFui(null);
+    if (res?.ok) showToast('Marcada como «Não fui».', 'success');
+    else showToast(res?.error?.message || 'Não consegui gravar.', 'error');
+  };
   const { proximas, porRegistar, concluidas, total, trofeu } = useMemo(
     () => groupRaces({ raceEvents, runs, profile, today, cup: listing }),
     [raceEvents, runs, profile, today, listing],
@@ -106,7 +138,7 @@ export default function RacesV2() {
               />
             ))}
             {listing && trofeuRegistar.length > 0 && (
-              <CupPorRegistarRows entries={trofeuRegistar} view={cupView} runs={runs} onOpenRace={openRace} onRegister={registar} onNaoFui={() => openTrofeu({})} onOpenTrofeu={openTrofeu} />
+              <CupPorRegistarRows entries={trofeuRegistar} view={cupView} runs={runs} onOpenRace={openRace} onRegister={registar} onNaoFui={setNaoFui} onOpenTrofeu={openTrofeu} />
             )}
           </section>
         </>
@@ -136,6 +168,16 @@ export default function RacesV2() {
       )}
 
       <button type="button" className="v2-btn is-quiet" data-testid="race-list-nova" onClick={() => setOpenCreationMode('race')}>Marcar prova</button>
+
+      {naoFui && (
+        <CupNaoFuiDialog
+          round={naoFui}
+          roundLabel={cupView?.roundLabel}
+          busy={naoFuiBusy}
+          onConfirm={confirmarNaoFui}
+          onClose={() => { if (!naoFuiBusy) setNaoFui(null); }}
+        />
+      )}
     </div>
   );
 }
