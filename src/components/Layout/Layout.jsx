@@ -252,7 +252,13 @@ export default function Layout({ children }) {
               <BrandMark variant="icon" playOnce={logoPlays} size={36} className="rounded-xl" />
             </button>
             <div>
-              <h1 className="text-base font-bold tracking-tight leading-none" style={{ color: 'var(--brand)' }}>IronCoach</h1>
+              {/* No v2 o h1 é o título de cada ecrã (Provas, Evolução, Calendário, Perfil): a marca do
+                  cabeçalho passa a texto, para haver um só h1 por ecrã. Na v1, o h1 de sempre. */}
+              {v2 ? (
+                <p className="v2-app-brand text-base font-bold tracking-tight leading-none" style={{ color: 'var(--brand)' }}>IronCoach</p>
+              ) : (
+                <h1 className="text-base font-bold tracking-tight leading-none" style={{ color: 'var(--brand)' }}>IronCoach</h1>
+              )}
               <p className="text-[11px] leading-none mt-1" style={{ color: 'var(--brd-700)' }}>{v2 ? todayLabelV2 : todayLabel}</p>
             </div>
           </div>

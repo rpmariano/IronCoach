@@ -91,7 +91,7 @@ describe('Layout — o menu do «+» no v2', () => {
     expect(shortDatePt(new Date(2026, 10, 25))).toBe('qua, 25 nov');
     act(() => setDesignV2(true));
     render(<Layout><div /></Layout>);
-    expect(document.querySelector('header[data-app-header] p').textContent).toBe(shortDatePt(new Date()));
+    expect(document.querySelector('header[data-app-header] .v2-app-brand + p').textContent).toBe(shortDatePt(new Date()));
   });
 });
 

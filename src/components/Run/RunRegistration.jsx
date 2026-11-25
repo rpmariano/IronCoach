@@ -3351,6 +3351,9 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
         <div className="v2-screen v2-reg" data-testid="run-registration-v2">
           {renderPhotoBlockV2()}
           {renderConfirmV2()}
+          {/* O nome é obrigatório: fica à vista, nunca dentro do «Mais dados do relógio» fechado
+             (o aviso de nome em falta apontava para um campo escondido). */}
+          <div className="v2-runreg-name" data-testid="v2-reg-name">{nameField}</div>
           {kindSection}
           {planBanner}
           <RegistrationSection title="Como te sentiste" optional>
@@ -3360,7 +3363,6 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
           </RegistrationSection>
           {renderMoreV2(
             <>
-              {nameField}
               <RegistrationSection title="Parciais e estrutura" optional>
                 {renderRepeatStructure(false)}
                 {renderSplits(false)}

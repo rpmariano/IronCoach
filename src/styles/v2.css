@@ -94,12 +94,12 @@ html.design-v2 div:has(> header[data-app-header]) {
   border-color: var(--v2-rule) !important;
   box-shadow: none !important;
 }
-html.design-v2 header[data-app-header] h1 {
+html.design-v2 header[data-app-header] :is(h1, .v2-app-brand) {
   font: 800 19px/1 var(--v2-font-num);
   letter-spacing: .01em;
   color: var(--v2-ink) !important;
 }
-html.design-v2 header[data-app-header] h1 + p {
+html.design-v2 header[data-app-header] :is(h1, .v2-app-brand) + p {
   font-size: 13.5px;
   color: var(--v2-ink2) !important;
 }
