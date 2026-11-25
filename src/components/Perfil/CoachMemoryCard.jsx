@@ -43,7 +43,7 @@ export const NOTE_CATEGORIES = [
     key: 'objetivo_pessoal',      label: 'Objetivo',
     hint: 'Ex.: quero acabar a meia maratona a correr',
     description: 'Motivações pessoais que vão além do tempo-alvo de uma prova.',
-    examples: ['Quero acabar a meia maratona a correr, sem parar a andar', 'Esta é a minha primeira maratona, o objetivo é terminar, não o tempo', 'Quero perder peso mantendo a massa muscular'],
+    examples: ['Quero acabar a meia maratona a correr, sem parar a andar', 'Esta é a minha primeira maratona: o objetivo é terminar, não o tempo', 'Quero perder peso mantendo a massa muscular'],
   },
   {
     key: 'preferencia_treino',    label: 'Treino',

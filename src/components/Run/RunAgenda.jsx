@@ -1102,11 +1102,28 @@ export default function RunAgenda({ onClose }) {
     />
   ));
 
-  // O motivo de um «Guardar prova» desativado (a submeter, não precisa: o botão já mostra o spinner).
-  const raceSaveHint = isSubmitting ? null
+  /* Só no Design v2 (a v1 fica como era): o motivo de um «Guardar prova» desativado. A submeter não
+     precisa (o botão já mostra o spinner). O nome em falta vê-se por baixo do botão; «sem alterações»
+     é o estado de repouso e fica só para o leitor de ecrã (aria-describedby). */
+  const raceSaveHint = !v2 || isSubmitting ? null
     : !draft.name.trim() ? 'Falta o nome da prova'
     : !isDirty ? 'Sem alterações para guardar'
     : null;
+  const raceSaveHintShown = v2 && !isSubmitting && !draft.name.trim();
+  const raceSaveButton = (
+    <Button
+      variant="module"
+      moduleColor="var(--mod-prova)"
+      onClick={handleSaveForm}
+      disabled={isSubmitting || !draft.name.trim() || !isDirty}
+      aria-describedby={raceSaveHint ? 'race-save-hint' : undefined}
+      type="button"
+      className="w-full text-xs"
+      icon={isSubmitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+    >
+      Guardar prova
+    </Button>
+  );
 
   return (
     // --focus-ring: anel de teclado na cor do contexto (handoff, "Fidelity").
@@ -1114,7 +1131,7 @@ export default function RunAgenda({ onClose }) {
     <div
       className="w-full max-w-lg mx-auto fade-in"
       data-testid={isHubScreen ? 'race-hub-screen' : undefined}
-      style={{ '--focus-ring': 'var(--mod-prova)', paddingBottom: showSaveBar ? ACTION_BAR_SCROLL_PAD : undefined }}
+      style={{ '--focus-ring': 'var(--mod-prova)', paddingBottom: showSaveBar ? (raceSaveHintShown ? `calc(${ACTION_BAR_SCROLL_PAD} + 22px)` : ACTION_BAR_SCROLL_PAD) : undefined }}
     >
       {leaveModal}
       {validationModal}
@@ -1587,26 +1604,16 @@ export default function RunAgenda({ onClose }) {
           (showSaveBar). */}
       {showSaveBar && (
       <ActionBar>
-        <div className="w-full flex flex-col gap-1">
         {/* Só há o que guardar quando algo mudou (isDirty): a barra também
             está por cima do Hub, que é só de leitura, e um "Guardar prova"
             aceso sem alterações convidava a gravar o nada (relatado
             2026-09-12). Novo registo: escrever o nome já suja o rascunho. */}
-        <Button
-          variant="module"
-          moduleColor="var(--mod-prova)"
-          onClick={handleSaveForm}
-          disabled={isSubmitting || !draft.name.trim() || !isDirty}
-          aria-describedby={raceSaveHint ? 'race-save-hint' : undefined}
-          type="button"
-          className="w-full text-xs"
-          icon={isSubmitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
-        >
-          Guardar prova
-        </Button>
-        {/* Desativado, diz porquê (revisão do P1, 2026-11-25). */}
-        {raceSaveHint && <p id="race-save-hint" data-testid="race-save-hint" className="text-[12px] leading-snug text-center text-[var(--text-3)] m-0">{raceSaveHint}</p>}
-        </div>
+        {v2 ? (
+          <div className="w-full flex flex-col gap-1">
+            {raceSaveButton}
+            {raceSaveHint && <p id="race-save-hint" data-testid="race-save-hint" className={raceSaveHintShown ? 'text-[12px] leading-snug text-center text-[var(--text-3)] m-0' : 'sr-only'}>{raceSaveHint}</p>}
+          </div>
+        ) : raceSaveButton}
       </ActionBar>
       )}
     </div>

@@ -606,10 +606,10 @@ export default function Perfil() {
     />
   );
 
-  // Desativado sem estar a gravar, diz porquê (revisão do P1, 2026-11-25).
-  const saveHint = !isDirty && !isSaving ? 'Sem alterações para guardar' : null;
-  const saveButton = (
-    <div className="w-full flex flex-col gap-1">
+  /* Só no Design v2 (a v1 fica como era): desativado sem estar a gravar, o leitor de ecrã ouve porquê.
+     É o estado de repouso, por isso não se mostra: a barra não cresce. */
+  const saveHint = v2 && !isDirty && !isSaving ? 'Sem alterações para guardar' : null;
+  const saveButtonEl = (
     <Button
       variant="module"
       // Sem moduleColor, "module" (Button.jsx) fica só com text-white
@@ -628,9 +628,13 @@ export default function Perfil() {
     >
       Guardar alterações
     </Button>
-    {saveHint && <p id="perfil-save-hint" data-testid="perfil-save-hint" className="text-[12px] leading-snug text-center text-[var(--text-3)] m-0">{saveHint}</p>}
-    </div>
   );
+  const saveButton = saveHint ? (
+    <>
+      {saveButtonEl}
+      <span id="perfil-save-hint" data-testid="perfil-save-hint" className="sr-only">{saveHint}</span>
+    </>
+  ) : saveButtonEl;
 
   return (
     // --focus-ring: anel de teclado na cor do contexto (handoff, "Fidelity").

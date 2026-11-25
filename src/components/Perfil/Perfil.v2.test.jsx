@@ -126,16 +126,22 @@ describe('Perfil — Design v2', () => {
     expect(guardar.getAttribute('style')).not.toContain('mod-prova');
   });
 
-  it('o «Guardar alterações» desativado diz porquê (v1 e v2)', () => {
-    for (const on of [false, true]) {
-      if (on) ligarV2();
-      const { unmount } = render(<Perfil />);
-      const guardar = screen.getByRole('button', { name: /Guardar alterações/ });
-      expect(guardar).toBeDisabled();
-      expect(screen.getByTestId('perfil-save-hint')).toHaveTextContent('Sem alterações para guardar');
-      expect(guardar).toHaveAttribute('aria-describedby', 'perfil-save-hint');
-      unmount();
-    }
+  it('o «Guardar alterações» desativado: na v1 como era; no v2 o motivo só para o leitor de ecrã', () => {
+    const v1 = render(<Perfil />);
+    let guardar = screen.getByRole('button', { name: /Guardar alterações/ });
+    expect(guardar).not.toHaveAttribute('aria-describedby');
+    expect(screen.queryByTestId('perfil-save-hint')).toBeNull();
+    expect(guardar.parentElement).toBe(screen.getByTestId('action-bar'));
+    v1.unmount();
+
+    ligarV2();
+    render(<Perfil />);
+    guardar = screen.getByRole('button', { name: /Guardar alterações/ });
+    expect(guardar).toBeDisabled();
+    const hint = screen.getByTestId('perfil-save-hint');
+    expect(hint).toHaveTextContent('Sem alterações para guardar');
+    expect(hint).toHaveClass('sr-only');
+    expect(guardar).toHaveAttribute('aria-describedby', 'perfil-save-hint');
   });
 
   it('as entradas da Vitrina e da Carol são linhas planas; o tutorial sem caixa à volta do ícone', () => {
