@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react';
+import CarolLineV2 from '../shared/CarolLineV2';
 import { itemNutrients, mealTypeLabel } from '../../utils/nutrition';
 import { normalizeStartTime } from '../../utils/startTime';
 import { supabase } from '../../lib/supabase';
-import CoachText from '../shared/CoachText';
 import ConfirmDeleteModal from '../shared/ConfirmDeleteModal';
 import PremiumModal from '../shared/PremiumModal';
 import CarolQuestions, { questionsImpactText } from './CarolQuestions';
@@ -16,8 +16,6 @@ import '../../styles/v2-card-meal.css';
    de «Ver tudo». Os valores vêm já calculados do MealCard; eliminar é o mesmo fluxo (a mesma
    confirmação, o mesmo handleDeleteMeal). */
 
-// Acima disto a análise não cabe numa linha e ganha o «Ler mais».
-const CAROL_LONG = 90;
 
 export default function MealCardV2({
   meal, onEdit, defaultExpanded = false, hideActions = false,
@@ -34,7 +32,6 @@ export default function MealCardV2({
   const time = normalizeStartTime(meal.meal_time);
   const when = [formattedDate, time].filter(Boolean).join(' · ');
   const coach = meal.coach_notes;
-  const carolLong = !!coach && String(coach).length > CAROL_LONG;
   const hasPhotos = meal.photo_paths?.length > 0;
 
   // As fotografias só se pedem com o detalhe aberto (como no cartão de sempre), e também quando o
@@ -63,7 +60,7 @@ export default function MealCardV2({
   };
 
   return (
-    <article className="v2-card-meal" data-testid="meal-card-v2">
+    <article className="v2-card-meal v2-rec" data-testid="meal-card-v2">
       <div className="v2-card-meal-head">
         <i className="v2-dot" style={{ background: 'var(--nutrition)' }} aria-hidden="true" />
         <span className="v2-card-meal-type">Refeição</span>
@@ -99,36 +96,20 @@ export default function MealCardV2({
       )}
 
       {coach && (
-        <div className="v2-say v2-card-meal-say" data-testid="meal-card-v2-carol">
-          <i aria-hidden="true" />
-          <div className="v2-card-meal-say-body">
-            <div
-              id={`meal-v2-carol-${id}`}
-              className={`v2-card-meal-say-text${carolOpen ? ' is-open' : ''}`}
-            >
-              <span className="v2-who">Carol.</span>{' '}
-              {carolOpen ? <CoachText>{coach}</CoachText> : <span>{String(coach).replace(/\s+/g, ' ')}</span>}
-            </div>
-            {carolLong && (
-              <button
-                type="button"
-                className="v2-card-meal-link is-acc"
-                aria-expanded={carolOpen}
-                aria-controls={`meal-v2-carol-${id}`}
-                data-testid="meal-card-v2-carol-toggle"
-                onClick={() => setCarolOpen((o) => !o)}
-              >
-                {carolOpen ? 'Ler menos' : 'Ler mais'}
-              </button>
-            )}
-          </div>
-        </div>
+        <CarolLineV2
+          text={coach}
+          id={`meal-v2-carol-${id}`}
+          open={carolOpen}
+          onToggle={() => setCarolOpen((o) => !o)}
+          testId="meal-card-v2-carol"
+          toggleTestId="meal-card-v2-carol-toggle"
+        />
       )}
 
-      <div className="v2-card-meal-bar">
+      <div className="v2-card-meal-bar v2-rec-actions">
         <button
           type="button"
-          className="v2-card-meal-link"
+          className="v2-act is-acc"
           aria-expanded={expanded}
           aria-controls={`meal-v2-more-${id}`}
           data-testid="meal-card-v2-more"
@@ -136,20 +117,18 @@ export default function MealCardV2({
         >
           {expanded ? 'Ver menos' : 'Ver tudo'}
         </button>
+        {!hideActions && onEdit && (
+          <button type="button" className="v2-act" onClick={() => onEdit(meal.id)}>Editar</button>
+        )}
         {!hideActions && (
-          <span className="v2-card-meal-actions">
-            {onEdit && (
-              <button type="button" className="v2-card-meal-link" onClick={() => onEdit(meal.id)}>Editar</button>
-            )}
-            <button
-              type="button"
-              className="v2-card-meal-link is-danger"
-              onClick={() => setShowDeleteConfirm(true)}
-              disabled={isDeleting}
-            >
-              {isDeleting ? 'A eliminar…' : 'Eliminar refeição'}
-            </button>
-          </span>
+          <button
+            type="button"
+            className="v2-act is-danger"
+            onClick={() => setShowDeleteConfirm(true)}
+            disabled={isDeleting}
+          >
+            {isDeleting ? 'A eliminar…' : 'Eliminar refeição'}
+          </button>
         )}
       </div>
 

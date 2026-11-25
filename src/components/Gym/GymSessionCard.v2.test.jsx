@@ -45,7 +45,7 @@ const session = {
   notes: 'Boa sessão',
   exertion: 7,
   duration_seconds: 3600,
-  coach_notes: '## Resumo\nVolume sólido no peito. Mantém a carga na próxima semana.',
+  coach_notes: '## Resumo\nVolume sólido no peito, com as últimas séries ainda limpas. Mantém a carga na próxima semana e sobe só quando as dez repetições saírem fáceis.',
   photo_paths: ['u/p1.jpg'],
   workout_session_sets: [
     { id: 's1', exercise_name: 'Supino', reps: 10, weight: 60 },
@@ -78,15 +78,21 @@ describe('GymSessionCard no Design v2', () => {
     expect(screen.queryByText('Supino')).toBeNull();
   });
 
+  it('uma análise que cabe numa linha não tem «Ler mais»', () => {
+    render(<GymSessionCard session={{ ...session, coach_notes: 'Volume sólido no peito.' }} />);
+    expect(screen.getByTestId('gym-v2-carol')).toHaveTextContent('Carol. Volume sólido no peito.');
+    expect(screen.queryByRole('button', { name: 'Ler mais' })).toBeNull();
+  });
+
   it('a linha da Carol abre no sítio com «Ler mais»', () => {
     render(<GymSessionCard session={session} />);
     const btn = screen.getByRole('button', { name: 'Ler mais' });
     expect(btn).toHaveAttribute('aria-expanded', 'false');
-    expect(screen.getByText(/Volume sólido no peito/).closest('p')).toHaveClass('v2-card-gym-say-line');
+    expect(screen.getByText(/Volume sólido no peito/).closest('p')).toHaveClass('v2-rec-say-line');
     fireEvent.click(btn);
     const less = screen.getByRole('button', { name: 'Ler menos' });
     expect(less).toHaveAttribute('aria-expanded', 'true');
-    expect(screen.getByTestId('gym-v2-carol').querySelector('.v2-card-gym-say-full')).not.toBeNull();
+    expect(screen.getByTestId('gym-v2-carol').querySelector('.v2-rec-say-full')).not.toBeNull();
   });
 
   it('«Ver tudo» mostra as séries, as observações e as fotos (que abrem o print)', async () => {

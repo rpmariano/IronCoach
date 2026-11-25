@@ -48,7 +48,7 @@ describe('RunCard v2 — o cartão plano', () => {
     expect(within(card).getByText('Contínuo')).toBeInTheDocument();
     expect(within(card).getByText('Corrida de Hoje')).toBeInTheDocument();
     expect(within(card).getByText(/07:30/)).toBeInTheDocument();
-    expect(within(card).getByText('10.00')).toBeInTheDocument();
+    expect(within(card).getByText('10')).toBeInTheDocument();
     expect(within(card).getByText('5.00')).toBeInTheDocument();
     expect(within(card).getByText('/km')).toBeInTheDocument();
   });
@@ -57,10 +57,10 @@ describe('RunCard v2 — o cartão plano', () => {
     render(<RunCard run={RUN} />);
     const btn = screen.getByRole('button', { name: 'Ler mais' });
     expect(btn).toHaveAttribute('aria-expanded', 'false');
-    expect(screen.queryByText('Análise da Carol')).toBeNull();
+    expect(screen.getByTestId('run-card-v2-carol').querySelector('.v2-rec-say-full')).toBeNull();
     fireEvent.click(btn);
     expect(screen.getByRole('button', { name: 'Ler menos' })).toHaveAttribute('aria-expanded', 'true');
-    expect(screen.getByText('Análise da Carol')).toBeInTheDocument();
+    expect(screen.getByTestId('run-card-v2-carol').querySelector('.v2-rec-say-full')).not.toBeNull();
   });
 
   it('«Ver tudo» mostra os detalhes de sempre (zonas, splits, kcal)', () => {
@@ -94,7 +94,7 @@ describe('RunCard v2 — o cartão plano', () => {
     render(<RunCard run={RUN} onEdit={() => {}} defaultExpanded hideActions />);
     expect(screen.queryByRole('button', { name: 'Editar' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Eliminar' })).toBeNull();
-    expect(screen.getByText('Análise da Carol')).toBeInTheDocument();
+    expect(screen.getByTestId('run-card-v2-carol').querySelector('.v2-rec-say-full')).not.toBeNull();
     expect(screen.getByTestId('run-card-v2-details')).toBeInTheDocument();
   });
 

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import '../../styles/v2-card-race.css';
+import CarolLineV2 from '../shared/CarolLineV2';
 import AddToCalendar from './AddToCalendar';
 import { formatPace, formatTargetTimeLabel, racePriorityLabel, raceTerrainLabel } from '../../utils/run';
 import { raceResultLine } from '../../utils/raceDay';
@@ -13,7 +14,6 @@ import { safeHttpUrl } from '../../utils/safeUrl';
    hub e o «Eliminar prova» são discretos, e o «Eliminar prova» abre o diálogo de sempre. */
 
 const nf1 = new Intl.NumberFormat('pt-PT', { maximumFractionDigits: 1 });
-const semTravessao = (t) => (typeof t === 'string' ? t.replace(/\s+—\s+/g, ': ') : t);
 
 export default function RaceAgendaCardV2({
   ev, plan, raceRun, done, isPast, canRegister, canAddToCalendar, raceDayReached,
@@ -26,10 +26,10 @@ export default function RaceAgendaCardV2({
     ? formatTargetTimeLabel(ev.target_time)
     : ev.target_pace_seconds_per_km ? `${formatPace(ev.target_pace_seconds_per_km)}/km` : null;
   const resultado = raceRun ? raceResultLine(raceRun) : null;
-  const carol = done ? null : semTravessao(
+  const carol = done ? null : (
     plan.trainingStatus === 'not_started'
       ? plan.carolAnalysis.overviewText
-      : (plan.currentPhase?.evaluation?.summary || plan.carolAnalysis.overviewText),
+      : (plan.currentPhase?.evaluation?.summary || plan.carolAnalysis.overviewText)
   );
   const contagem = done ? 'Concluída'
     : plan.daysToRace === 0 ? 'É hoje' : plan.daysToRace === 1 ? 'Amanhã'
@@ -41,7 +41,7 @@ export default function RaceAgendaCardV2({
   const detalhesId = `v2-race-more-${ev.id}`;
 
   return (
-    <article className={`v2-card-race${done ? ' is-done' : ''}`} data-testid="race-agenda-v2">
+    <article className={`v2-card-race v2-rec${done ? ' is-done' : ''}`} data-testid="race-agenda-v2">
       <header className="v2-card-race-head">
         <i className="v2-dot" style={{ background: 'var(--race)' }} aria-hidden="true" />
         <span className="v2-card-race-type">Prova</span>
@@ -62,28 +62,27 @@ export default function RaceAgendaCardV2({
       </div>
 
       {carol && (
-        <div className="v2-say v2-card-race-say">
-          <i aria-hidden="true" />
-          <div className="min-w-0">
-            <p id={`v2-race-carol-${ev.id}`} style={carolAberta ? undefined : { display: '-webkit-box', WebkitLineClamp: 1, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
-              <span className="v2-who">Carol.</span> {carol}
-            </p>
-            {carol.length > 60 && (
-              <button type="button" className="v2-card-race-link" aria-expanded={carolAberta} aria-controls={`v2-race-carol-${ev.id}`} onClick={() => setCarolAberta((a) => !a)}>
-                {carolAberta ? 'Ler menos' : 'Ler mais'}
-              </button>
-            )}
-          </div>
-        </div>
+        <CarolLineV2
+          text={carol}
+          id={`v2-race-carol-${ev.id}`}
+          open={carolAberta}
+          onToggle={() => setCarolAberta((a) => !a)}
+          testId="race-agenda-v2-carol"
+        />
       )}
 
       {canRegister && onRegisterRace && (
         <button type="button" className="v2-btn is-race" onClick={() => onRegisterRace(ev)}>Registar a prova</button>
       )}
 
-      <button type="button" className="v2-card-race-link" aria-expanded={tudo} aria-controls={detalhesId} onClick={() => setTudo((t) => !t)} data-testid="race-agenda-v2-more">
-        {tudo ? 'Ver menos' : 'Ver tudo'}
-      </button>
+      <div className="v2-card-race-actions v2-rec-actions">
+        <button type="button" className="v2-act is-acc" aria-expanded={tudo} aria-controls={detalhesId} onClick={() => setTudo((t) => !t)} data-testid="race-agenda-v2-more">
+          {tudo ? 'Ver menos' : 'Ver tudo'}
+        </button>
+        {onEdit && <button type="button" className="v2-act" aria-label="Abrir o hub da prova" onClick={() => onEdit(ev.id)}>Hub</button>}
+        {/* Sempre «Eliminar prova»: o botão diz o que apaga (regra do Rui, 2026-11-15). */}
+        <button type="button" className="v2-act is-danger" onClick={() => onDelete && onDelete(ev.id)}>Eliminar prova</button>
+      </div>
       <div id={detalhesId} hidden={!tudo} className="v2-card-race-more">
         <dl>
           <div><dt>Contagem</dt><dd>{contagem}</dd></div>
@@ -111,11 +110,6 @@ export default function RaceAgendaCardV2({
         )}
       </div>
 
-      <div className="v2-card-race-actions">
-        {onEdit && <button type="button" className="v2-card-race-act" aria-label="Abrir o hub da prova" onClick={() => onEdit(ev.id)}>Hub</button>}
-        {/* Sempre «Eliminar prova»: o botão diz o que apaga (regra do Rui, 2026-11-15). */}
-        <button type="button" className="v2-card-race-act is-danger" onClick={() => onDelete && onDelete(ev.id)}>Eliminar prova</button>
-      </div>
     </article>
   );
 }
