@@ -124,24 +124,39 @@ describe('RunAgenda — «Guardar prova» desativado diz porquê', () => {
   });
   afterEach(() => { act(() => { setDesignV2(false); }); });
 
-  for (const on of [false, true]) {
-    it(`${on ? 'v2' : 'v1'}: sem alterações, o motivo fica à vista e ligado ao botão`, () => {
-      if (on) act(() => { setDesignV2(true); });
-      renderAgenda();
-      abrirDetalhes();
-      const guardar = screen.getByRole('button', { name: /Guardar prova/ });
-      expect(guardar).toBeDisabled();
-      expect(screen.getByTestId('race-save-hint')).toHaveTextContent('Sem alterações para guardar');
-      expect(guardar).toHaveAttribute('aria-describedby', 'race-save-hint');
-    });
-  }
+  it('v1: a barra fica como era (o botão sozinho, sem motivo nem invólucro)', () => {
+    renderAgenda();
+    abrirDetalhes();
+    const guardar = screen.getByRole('button', { name: /Guardar prova/ });
+    expect(guardar).toBeDisabled();
+    expect(guardar).not.toHaveAttribute('aria-describedby');
+    expect(screen.queryByTestId('race-save-hint')).toBeNull();
+    expect(guardar.parentElement).toBe(screen.getByTestId('action-bar'));
+    fireEvent.change(screen.getByDisplayValue('Corrida do Tejo'), { target: { value: '' } });
+    expect(screen.queryByTestId('race-save-hint')).toBeNull();
+  });
 
-  it('sem o nome, o motivo é o nome que falta; com uma alteração válida, o motivo sai', () => {
+  it('v2: sem alterações, o motivo é só para o leitor de ecrã (a barra não cresce)', () => {
+    act(() => { setDesignV2(true); });
+    renderAgenda();
+    abrirDetalhes();
+    const guardar = screen.getByRole('button', { name: /Guardar prova/ });
+    expect(guardar).toBeDisabled();
+    const hint = screen.getByTestId('race-save-hint');
+    expect(hint).toHaveTextContent('Sem alterações para guardar');
+    expect(hint).toHaveClass('sr-only');
+    expect(guardar).toHaveAttribute('aria-describedby', 'race-save-hint');
+  });
+
+  it('v2: sem o nome, o motivo vê-se; com uma alteração válida, sai', () => {
+    act(() => { setDesignV2(true); });
     renderAgenda();
     abrirDetalhes();
     const nome = screen.getByDisplayValue('Corrida do Tejo');
     fireEvent.change(nome, { target: { value: '' } });
-    expect(screen.getByTestId('race-save-hint')).toHaveTextContent('Falta o nome da prova');
+    const hint = screen.getByTestId('race-save-hint');
+    expect(hint).toHaveTextContent('Falta o nome da prova');
+    expect(hint).not.toHaveClass('sr-only');
     fireEvent.change(nome, { target: { value: 'Corrida do Tejo 2' } });
     expect(screen.queryByTestId('race-save-hint')).toBeNull();
     expect(screen.getByRole('button', { name: /Guardar prova/ })).not.toHaveAttribute('aria-describedby');
