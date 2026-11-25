@@ -13,6 +13,8 @@ import Button from '../shared/Button';
 import { formatDuration, formatPace } from '../../utils/run';
 import { normalizeStartTime } from '../../utils/startTime';
 import CarolInterventionActions from '../shared/CarolInterventionActions';
+import { useDesignV2 } from '../../utils/designV2';
+import RunCardV2 from './RunCardV2';
 
 function RunIcon({ className = "w-5 h-5" }) {
   return (
@@ -65,6 +67,8 @@ function formatDatePT(isoStr) {
 }
 
 export default function RunCard({ run, onEdit, onDelete, defaultExpanded = false, hideActions = false }) {
+  // Design v2 (cartão plano): decidido no topo; o retorno v2 fica depois de todos os hooks.
+  const v2 = useDesignV2();
   const [expanded, setExpanded] = useState(defaultExpanded);
   /* Escala de esforço (RPE 1-10). Tinha três degraus amarelo/âmbar/laranja
      (bg-yellow-400, bg-amber-400 = exatamente o âmbar da prova) — ponto 3 do
@@ -191,6 +195,39 @@ export default function RunCard({ run, onEdit, onDelete, defaultExpanded = false
     avgHr ? { key: 'avghr', colorClass: 'bg-[var(--surface-strong)] text-[var(--text-2)] border-[var(--border-glass)]', icon: <HeartPulse size={14} className="text-[var(--text-3)]" />, label: `${avgHr} bpm méd` } : null,
     maxHr ? { key: 'maxhr', colorClass: 'bg-[var(--surface-strong)] text-[var(--text-2)] border-[var(--border-glass)]', icon: <TrendingUp size={14} className="text-[var(--text-3)]" />, label: `${maxHr} bpm máx` } : null,
   ].filter(Boolean);
+
+  if (v2) {
+    return (
+      <RunCardV2
+        run={run}
+        onEdit={onEdit}
+        hideActions={hideActions}
+        defaultExpanded={defaultExpanded}
+        expanded={expanded}
+        toggleExpand={toggleExpand}
+        photos={photos}
+        photosLoading={photosLoading}
+        isDeleting={isDeleting}
+        isReanalyzing={isReanalyzing}
+        handleReanalyze={handleReanalyze}
+        handleDelete={handleDelete}
+        showDeleteConfirm={showDeleteConfirm}
+        setShowDeleteConfirm={setShowDeleteConfirm}
+        raceThatReverts={raceThatReverts}
+        raceEvents={raceEvents}
+        kindLabel={kindLabel}
+        dateLine={[formatDatePT(run.date), normalizeStartTime(run.start_time)].filter(Boolean).join(' · ')}
+        durStr={durStr}
+        paceVal={paceVal}
+        coachCommentary={coachCommentary}
+        details={details}
+        hrZones={hrZones}
+        splits={splits}
+        chips={activeChips.filter((c) => c.key !== 'dist' && c.key !== 'pace').map((c) => ({ key: c.key, label: c.label }))}
+        effortColors={effortColors}
+      />
+    );
+  }
 
   return (
     <div className="module-card-contrast space-y-3">

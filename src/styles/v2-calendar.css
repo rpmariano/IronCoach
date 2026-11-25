@@ -1,0 +1,37 @@
+/* O Calendário no Design v2 (CalendarV2Parts). Os tokens estão em v2.css. */
+
+.v2-cal { background: var(--v2-panel); border-radius: var(--v2-radius); padding: 8px 8px 10px; color: var(--v2-ink); font-family: var(--v2-font); }
+.v2-cal-head { display: flex; align-items: center; justify-content: space-between; }
+.v2-cal-nav { all: unset; cursor: pointer; width: 44px; height: 44px; display: grid; place-items: center; border-radius: 6px; color: var(--v2-ink2); }
+.v2-cal-nav:focus-visible, .v2-cal-day:focus-visible, .v2-cal-chip:focus-visible { outline: 2px solid var(--v2-acc); outline-offset: -2px; }
+.v2-cal-month { margin: 0; font: 800 24px/1 var(--v2-font-num); text-transform: capitalize; color: var(--v2-ink); }
+
+.v2-cal-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 2px; margin-top: 6px; }
+.v2-cal-wd { text-align: center; font: 600 12px var(--v2-font); color: var(--v2-ink2); padding: 4px 0 6px; }
+.v2-cal-day {
+  all: unset; box-sizing: border-box; cursor: pointer; min-height: 48px; border-radius: 6px;
+  display: grid; justify-items: center; align-content: center; gap: 4px; border: 1px solid transparent;
+}
+.v2-cal-n { font: 700 17px/1 var(--v2-font-num); color: var(--v2-ink); }
+.v2-cal-dots { display: flex; gap: 3px; height: 5px; }
+.v2-cal-dots i { width: 5px; height: 5px; border-radius: 50%; display: block; }
+.v2-cal-day.is-today .v2-cal-n { color: var(--v2-acc); }
+.v2-cal-day.is-today { border-color: var(--v2-acc); }
+.v2-cal-day.is-race .v2-cal-n { color: var(--race); }
+.v2-cal-day.is-race:not(.is-today) { border-color: color-mix(in srgb, var(--race) 55%, transparent); }
+.v2-cal-day.is-selected { background: var(--v2-rule); }
+
+.v2-cal-filter { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--v2-rule); }
+.v2-cal-filter-2 { margin-top: 4px; padding-top: 4px; }
+.v2-cal-chip {
+  all: unset; box-sizing: border-box; cursor: pointer; min-height: 44px; padding: 0 10px; border-radius: 6px;
+  display: inline-flex; align-items: center; gap: 6px; font: 500 14px var(--v2-font); color: var(--v2-ink2);
+}
+.v2-cal-chip .v2-dot { margin: 0; }
+.v2-cal-chip[aria-pressed="true"] { background: var(--v2-rule); color: var(--v2-ink); font-weight: 600; }
+
+/* O título da lista do dia e o dia vazio. */
+.v2-cal-list-title { margin: 0; font: 700 20px/1.1 var(--v2-font-num); color: var(--v2-ink); text-transform: none; letter-spacing: 0; }
+.v2-cal-empty { background: var(--v2-panel); border-radius: var(--v2-radius); padding: 16px; font-size: 14px; color: var(--v2-ink2); }
+.v2-cal-pager button { all: unset; box-sizing: border-box; cursor: pointer; min-height: 44px; padding: 0 10px; border-radius: 6px; color: var(--v2-ink2); font: 500 14px var(--v2-font); }
+.v2-cal-pager button:disabled { opacity: .4; cursor: default; }

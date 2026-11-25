@@ -23,6 +23,8 @@ import RaceRemoveDialog from '../Run/RaceRemoveDialog';
 import { orderDayRecords } from '../../utils/dayOrder';
 import { runsWithoutRaceRuns } from '../../utils/raceDay';
 import { scrollToTop } from '../../utils/scrollToTop';
+import { useDesignV2 } from '../../utils/designV2';
+import { CalendarMonthV2 } from './CalendarV2Parts';
 import {
   CALENDAR_ALL,
   CALENDAR_FILTER_ALL,
@@ -70,6 +72,8 @@ function FilterChip({ label, color, tone, active, onClick, testId }) {
 export default function Calendar() {
   const { runs, raceEvents, gymSessions, meals, bodyAssessments, setRuns, setRaceEvents, setMeals, setBodyAssessments, setEditingRaceId, pendingCalendarDate, clearPendingCalendarDate, calendarView } = useAppStore();
   const { showToast } = useToast();
+  // O Design v2 (utils/designV2.js): a grelha e a lista na forma do v2; a lógica é esta.
+  const v2 = useDesignV2();
 
   // Onde abrir. Gravar uma prova nova (RunAgenda) deixa aqui a data da
   // prova, para o Calendário abrir logo nesse dia/mês em vez do de hoje —
@@ -322,7 +326,28 @@ export default function Calendar() {
   return (
     <div className="space-y-4 fade-in pb-8">
       
+      {v2 && (
+        <CalendarMonthV2
+          currentDate={currentDate}
+          onPrev={() => setCurrentDate(subMonths(currentDate, 1))}
+          onNext={() => setCurrentDate(addMonths(currentDate, 1))}
+          daysInMonth={daysInMonth}
+          firstWeekday={firstWeekday}
+          selectedDate={selectedDate}
+          onSelect={setSelectedDate}
+          racesByDay={racesByDay}
+          runsByDay={runsByDay}
+          gymByDay={gymByDay}
+          mealsByDay={mealsByDay}
+          bodyByDay={bodyByDay}
+          filter={filter}
+          onChooseType={chooseType}
+          onChooseRaceStatus={chooseRaceStatus}
+        />
+      )}
+
       {/* Calendar Card styled with Homepage aesthetic (Glassmorphism Light) */}
+      {!v2 && (
       <div className="rounded-[28px] p-5 bg-[var(--surface-dim)] backdrop-blur-[20px] border border-[var(--border-glass)] shadow-[0_12px_32px_rgba(0,0,0,0.3)]">
         <div className="flex items-center justify-between mb-5">
           <button type="button" aria-label="Mês anterior" onClick={() => setCurrentDate(subMonths(currentDate, 1))} className="tap-44 flex items-center justify-center text-[var(--text-3)] hover:text-[var(--text-1)] transition">
@@ -437,6 +462,7 @@ export default function Calendar() {
           )}
         </div>
       </div>
+      )}
 
       {/* Selected Date Details */}
       <div className="space-y-3">
@@ -447,10 +473,10 @@ export default function Calendar() {
           <h3
             ref={raceListTitleRef}
             tabIndex={isRaceList ? -1 : undefined}
-            className="text-[11px] font-semibold text-[var(--text-3)] uppercase tracking-wide outline-none"
+            className={v2 ? 'v2-cal-list-title outline-none' : 'text-[11px] font-semibold text-[var(--text-3)] uppercase tracking-wide outline-none'}
             data-testid="calendar-list-title"
           >
-            {isRaceList ? raceListTitle : format(selectedDate, 'dd MMMM yyyy', { locale: pt })}
+            {isRaceList ? raceListTitle : format(selectedDate, v2 ? "d 'de' MMMM" : 'dd MMMM yyyy', { locale: pt })}
           </h3>
           {filterActive && (
             <button
@@ -471,7 +497,10 @@ export default function Calendar() {
           )}
         </div>
 
-        {(isRaceList ? racePageInfo.total === 0 : !hasRecords) && (
+        {(isRaceList ? racePageInfo.total === 0 : !hasRecords) && v2 && (
+          <p className="v2-cal-empty" data-testid="calendar-v2-empty">{emptyDayMessage(filter)}</p>
+        )}
+        {(isRaceList ? racePageInfo.total === 0 : !hasRecords) && !v2 && (
           <div className="rounded-2xl p-6 bg-[var(--surface-dim)] border border-white/15 border-dashed flex flex-col items-center justify-center text-[var(--text-3)]">
             <CalendarIcon size={24} className="opacity-40 mb-2" />
             <p className="text-[11px]">{emptyDayMessage(filter)}</p>

@@ -33,6 +33,8 @@ import { todayISO } from '../../lib/utils';
 import { startTimeInputValue } from '../../utils/startTime';
 import { raceResultLine } from '../../utils/raceDay';
 import { safeHttpUrl } from '../../utils/safeUrl';
+import { useDesignV2 } from '../../utils/designV2';
+import RaceAgendaCardV2 from './RaceAgendaCardV2';
 
 function formatDatePT(isoStr) {
   if (!isoStr) return '';
@@ -78,6 +80,30 @@ export default function RaceCard({ ev, onEdit, onToggleStatus, onDelete, onRegis
       coachPlanItems,
     });
   }, [ev, profile, runs, todayIso, coachPlans, coachPlanItems]);
+
+  // O Design v2 (utils/designV2.js): o mesmo cartão, plano; a lógica é esta.
+  const v2 = useDesignV2();
+  if (v2) {
+    return (
+      <RaceAgendaCardV2
+        ev={ev}
+        plan={plan}
+        raceRun={raceRun}
+        done={done}
+        isPast={isPast}
+        canRegister={canRegister}
+        canAddToCalendar={canAddToCalendar}
+        raceDayReached={raceDayReached}
+        dateLabel={formatDatePT(ev.date)}
+        startTime={ev.start_time && startTimeInputValue(ev.start_time) ? startTimeInputValue(ev.start_time) : null}
+        onEdit={onEdit}
+        onToggleStatus={onToggleStatus}
+        onDelete={onDelete}
+        onRegisterRace={onRegisterRace}
+        onViewRun={onViewRun}
+      />
+    );
+  }
 
   return (
     <div 

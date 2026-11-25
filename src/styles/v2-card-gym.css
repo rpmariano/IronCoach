@@ -1,0 +1,46 @@
+/* O cartão do treino no Design v2 (GymSessionCardV2). Os tokens estão em v2.css. */
+
+.v2-card-gym { font-family: var(--v2-font); color: var(--v2-ink); border-radius: var(--v2-radius); }
+
+.v2-card-gym-head { display: flex; align-items: center; gap: 6px; font-size: 13.5px; color: var(--v2-ink2); }
+.v2-card-gym-head .v2-dot { margin-right: 0; }
+.v2-card-gym-title { margin: 4px 0 0; font: 700 21px/1.15 var(--v2-font-num); color: var(--v2-ink); overflow-wrap: anywhere; }
+.v2-card-gym-meta { margin: 2px 0 0; font-size: 14px; color: var(--v2-ink2); }
+
+.v2-card-gym-nums { display: flex; flex-wrap: wrap; gap: 6px 20px; margin-top: 10px; }
+.v2-card-gym-num b { display: block; font: 700 30px/1 var(--v2-font-num); color: var(--v2-ink); }
+.v2-card-gym-num span { display: block; margin-top: 2px; font-size: 13px; color: var(--v2-ink2); }
+
+.v2-card-gym-say-body { min-width: 0; }
+.v2-card-gym-say-line { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.v2-card-gym-say-full { font-size: 15px; line-height: 1.45; color: var(--v2-ink); }
+.v2-card-gym-say-full p { margin: 0 0 6px; }
+
+/* As ações discretas: texto pequeno, alvo de 44 px. O .v2-say button { all: unset } obriga a
+   repetir a altura e a cor aqui. */
+.v2-card-gym-actions { display: flex; flex-wrap: wrap; gap: 0 18px; margin-top: 4px; }
+.v2-card-gym .v2-card-gym-link {
+  all: unset; box-sizing: border-box; cursor: pointer; display: inline-flex; align-items: center;
+  min-height: 44px; font-size: 14px; font-weight: 600; color: var(--v2-ink2);
+}
+.v2-card-gym .v2-card-gym-link.is-acc { color: var(--v2-acc); }
+.v2-card-gym .v2-card-gym-link.is-danger { color: var(--danger, #f87171); }
+.v2-card-gym .v2-card-gym-link:disabled { opacity: .6; cursor: default; }
+.v2-card-gym .v2-card-gym-link:focus-visible { outline: 2px solid var(--v2-acc); outline-offset: 2px; border-radius: 4px; }
+
+.v2-card-gym-details { margin-top: 4px; padding-top: 10px; border-top: 1px solid var(--v2-rule); display: grid; gap: 12px; }
+.v2-card-gym-metrics { margin: 0; font-size: 14px; color: var(--v2-ink2); }
+.v2-card-gym-block { display: grid; gap: 4px; }
+.v2-card-gym-label { margin: 0; font-size: 13.5px; font-weight: 600; color: var(--v2-ink2); }
+.v2-card-gym-muted { margin: 0; font-size: 14px; line-height: 1.45; color: var(--v2-ink); white-space: pre-line; }
+
+.v2-card-gym-photos { display: flex; flex-wrap: wrap; gap: 8px; }
+.v2-card-gym-thumb { display: block; width: 56px; height: 56px; border-radius: 6px; overflow: hidden; border: 1px solid var(--v2-rule); }
+.v2-card-gym-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.v2-card-gym-thumb:focus-visible { outline: 2px solid var(--v2-acc); outline-offset: 2px; }
+
+.v2-card-gym-ex { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.v2-card-gym-ex-name { margin: 0 0 2px; font-size: 15px; font-weight: 600; color: var(--v2-ink); }
+.v2-card-gym-sets { list-style: none; margin: 0; padding: 0; }
+.v2-card-gym-sets li { display: flex; justify-content: space-between; gap: 8px; padding: 6px 0; border-top: 1px solid var(--v2-rule); font-size: 14px; color: var(--v2-ink2); }
+.v2-card-gym-sets li b { font: 700 16px var(--v2-font-num); color: var(--v2-ink); text-align: right; }

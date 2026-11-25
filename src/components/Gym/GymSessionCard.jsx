@@ -13,6 +13,8 @@ import { formatDuration } from '../../utils/run';
 import { describeSavedSet } from '../../utils/gymSets';
 import { normalizeStartTime } from '../../utils/startTime';
 import CarolInterventionActions from '../shared/CarolInterventionActions';
+import { useDesignV2 } from '../../utils/designV2';
+import GymSessionCardV2 from './GymSessionCardV2';
 
 /* O cartão é só de consulta e de eliminar. Qualquer alteração ao conteúdo
    passa pelo botão "Editar" → GymRegistration, porque mexer nas séries, no
@@ -20,6 +22,7 @@ import CarolInterventionActions from '../shared/CarolInterventionActions';
    Editar aqui à mão deixava a "Análise do Coach" a descrever um treino que
    já não existe. Mesmo padrão da Nutrição (ver MealCard.jsx e PRD 3.2). */
 export default function GymSessionCard({ session, onEdit, defaultExpanded = false, hideActions = false }) {
+  const v2 = useDesignV2();
   const [isExpanded, setIsExpanded] = useState(defaultExpanded);
   const onToggleExpand = () => setIsExpanded(prev => !prev);
   const { profile, loadInitialData } = useAppStore();
@@ -61,20 +64,24 @@ export default function GymSessionCard({ session, onEdit, defaultExpanded = fals
   const effortColors = ['#2ee0ff', '#35dbef', '#3cd6df', '#34d399', '#6ed092', '#a7cd85', '#fb9d6d', '#fb7c4d', '#f4603f', '#f87171'];
     const formattedDate = dateParts.length === 3 ? `${dateParts[2]}/${dateParts[1]}/${dateParts[0]}` : session.date;
 
+  const loadPhotos = async () => {
+    setPhotosLoading(true);
+    try {
+      const { data, error } = await supabase.storage.from('gym-photos').createSignedUrls(session.photo_paths, 3600);
+      if (!error && data) {
+        setPhotos(data.map(d => d.signedUrl).filter(Boolean));
+      }
+    } catch (err) {
+      console.error('Error loading gym photos:', err);
+    } finally {
+      setPhotosLoading(false);
+    }
+  };
+
   const handleExpandToggle = async () => {
     onToggleExpand();
     if (!isExpanded && session.photo_paths?.length > 0 && photos.length === 0) {
-      setPhotosLoading(true);
-      try {
-        const { data, error } = await supabase.storage.from('gym-photos').createSignedUrls(session.photo_paths, 3600);
-        if (!error && data) {
-          setPhotos(data.map(d => d.signedUrl).filter(Boolean));
-        }
-      } catch (err) {
-        console.error('Error loading gym photos:', err);
-      } finally {
-        setPhotosLoading(false);
-      }
+      await loadPhotos();
     }
   };
 
@@ -102,6 +109,33 @@ export default function GymSessionCard({ session, onEdit, defaultExpanded = fals
     session.max_hr ? { key: 'maxhr', colorClass: 'bg-[var(--surface-strong)] text-[var(--text-2)] border-[var(--border-glass)]', icon: <TrendingUp size={14} className="text-[var(--text-3)]" />, label: `${session.max_hr} bpm máx` } : null,
     session.exertion ? { key: 'exert', colorClass: 'bg-[var(--surface-strong)] text-[var(--text-2)] border-[var(--border-glass)]', icon: <Gauge size={14} className="text-[var(--text-3)]" />, label: `Esforço ${session.exertion}/10` } : null,
   ].filter(Boolean);
+
+  /* Design v2 (direção C · Painel): o mesmo estado e os mesmos fluxos (fotos,
+     eliminar com a mesma confirmação, Editar), outra apresentação. */
+  if (v2) {
+    return (
+      <GymSessionCardV2
+        session={session}
+        onEdit={onEdit}
+        hideActions={hideActions}
+        defaultExpanded={defaultExpanded}
+        isAula={isAula}
+        groupedSets={groupedSets}
+        totalSets={totalSets}
+        volume={volume}
+        formattedDate={formattedDate}
+        metricChips={metricChips}
+        coachCommentary={coachCommentary}
+        photos={photos}
+        photosLoading={photosLoading}
+        loadPhotos={loadPhotos}
+        isDeleting={isDeleting}
+        showDeleteConfirm={showDeleteConfirm}
+        setShowDeleteConfirm={setShowDeleteConfirm}
+        handleDeleteSession={handleDeleteSession}
+      />
+    );
+  }
 
   return (
     <div className="module-card-contrast space-y-3">

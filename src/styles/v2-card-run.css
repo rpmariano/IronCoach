@@ -1,0 +1,57 @@
+/* O cartão da corrida no Design v2 (RunCardV2). Só seletores .v2-card-run-: desligado o v2, nada
+   aqui acerta em nada. Tokens em v2.css; peças partilhadas em v2-components.css. */
+
+.v2-card-run { color: var(--v2-ink); font-family: var(--v2-font); }
+
+.v2-card-run-head { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 13.5px; color: var(--v2-ink2); }
+.v2-card-run-head .v2-dot { margin-right: 0; }
+.v2-card-run-walk { color: var(--v2-ink2); flex-shrink: 0; }
+.v2-card-run-type { font-weight: 600; color: var(--v2-ink2); }
+.v2-card-run-type.is-race { color: var(--race); }
+.v2-card-run-time { margin-left: auto; white-space: nowrap; }
+
+.v2-card-run-title { margin: 4px 0 0; font: 700 20px/1.15 var(--v2-font-num); color: var(--v2-ink); }
+.v2-card-run-race { margin: 2px 0 0; font-size: 13.5px; font-weight: 600; color: var(--race); }
+
+.v2-card-run-nums { display: flex; align-items: baseline; gap: 18px; flex-wrap: wrap; margin-top: 8px; }
+.v2-card-run-nums > div { display: flex; align-items: baseline; gap: 4px; }
+.v2-card-run-nums b { font: 800 30px/1 var(--v2-font-num); color: var(--v2-ink); }
+.v2-card-run-nums span { font-size: 13.5px; color: var(--v2-ink2); }
+.v2-card-run-nums .is-minor b { font-size: 20px; color: var(--v2-ink2); }
+
+.v2-card-run-say { margin-top: 10px; }
+.v2-card-run-carol-line { margin: 0; font-size: 14.5px !important; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.v2-card-run-carol-full { font-size: 14.5px; line-height: 1.45; color: var(--v2-ink); }
+.v2-card-run-carol-full .v2-who { display: block; color: var(--v2-acc); font-weight: 600; }
+.v2-card-run-say .v2-card-run-more { display: inline-block; min-height: 44px; line-height: 44px; padding: 0; color: var(--v2-acc); font-weight: 600; font-size: 14px; text-decoration: none; }
+
+.v2-card-run-actions { display: flex; flex-wrap: wrap; gap: 4px 16px; margin-top: 2px; }
+.v2-card-run-act {
+  appearance: none; background: none; border: 0; padding: 0 2px; cursor: pointer;
+  min-height: 44px; min-width: 44px; font: 600 14px var(--v2-font); color: var(--v2-ink2);
+}
+.v2-card-run-act:hover { color: var(--v2-ink); }
+.v2-card-run-act.is-danger:hover { color: var(--danger); }
+.v2-card-run-act:disabled { opacity: .6; cursor: default; }
+.v2-card-run-act:focus-visible, .v2-card-run-thumb:focus-visible { outline: 2px solid var(--v2-acc); outline-offset: 2px; border-radius: 4px; }
+
+.v2-card-run-more-body { display: grid; gap: 12px; padding-top: 10px; border-top: 1px solid var(--v2-rule); }
+.v2-card-run-h { margin: 0 0 4px; font-size: 13.5px; font-weight: 600; color: var(--v2-ink2); }
+.v2-card-run-note { margin: 0; font-size: 14px; line-height: 1.45; color: var(--v2-ink); display: flex; align-items: center; gap: 6px; }
+.v2-card-run-facts { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 14px; color: var(--v2-ink); }
+
+.v2-card-run-thumbs { display: flex; flex-wrap: wrap; gap: 8px; }
+.v2-card-run-thumb { display: block; width: 64px; height: 64px; }
+.v2-card-run-thumb img { width: 100%; height: 100%; object-fit: cover; border-radius: var(--v2-radius); border: 1px solid var(--v2-rule); display: block; }
+
+.v2-card-run-zone { display: grid; grid-template-columns: 28px 1fr 56px; gap: 8px; align-items: center; font-size: 13px; color: var(--v2-ink2); padding: 2px 0; }
+.v2-card-run-zone > span:last-child { text-align: right; }
+.v2-card-run-zbar { height: 4px; background: var(--v2-rule); border-radius: 2px; overflow: hidden; }
+.v2-card-run-zbar > i { display: block; height: 100%; background: var(--run); }
+
+.v2-card-run-split { display: grid; grid-template-columns: 28px 1fr 1fr 1fr; gap: 8px; padding: 5px 0; border-top: 1px solid var(--v2-rule); font-size: 14px; color: var(--v2-ink); }
+.v2-card-run-split > span:first-child { color: var(--v2-ink2); }
+.v2-card-run-split > span:last-child { text-align: right; }
+
+.v2-card-run-effort { display: flex; gap: 3px; }
+.v2-card-run-effort > i { flex: 1; height: 4px; border-radius: 2px; }

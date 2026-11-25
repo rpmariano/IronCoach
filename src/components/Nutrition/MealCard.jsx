@@ -12,6 +12,8 @@ import PremiumModal from '../shared/PremiumModal';
 import CarolQuestions, { openCarolQuestions, questionsImpactText } from './CarolQuestions';
 import CarolInterventionActions from '../shared/CarolInterventionActions';
 import SaveAsMealButton from './SaveAsMealButton';
+import { useDesignV2 } from '../../utils/designV2';
+import MealCardV2 from './MealCardV2';
 
 const MEAL_ICONS = {
   'pequeno-almoco': Sunrise,
@@ -47,6 +49,8 @@ function MacroPill({ color, icon: Icon, children, testId }) {
 }
 
 export default function MealCard({ meal, onEdit, defaultExpanded = false, hideActions = false }) {
+  // Design v2 (direção C · Painel): o mesmo cartão numa linha plana. Desligado, nada muda.
+  const v2 = useDesignV2();
   const { showToast } = useToast();
   const [expanded, setExpanded] = useState(defaultExpanded);
   const { profile, loadInitialData } = useAppStore();
@@ -104,6 +108,23 @@ export default function MealCard({ meal, onEdit, defaultExpanded = false, hideAc
       setIsDeleting(false);
     }
   };
+
+  if (v2) {
+    return (
+      <MealCardV2
+        meal={meal}
+        onEdit={onEdit}
+        defaultExpanded={defaultExpanded}
+        hideActions={hideActions}
+        n={n}
+        items={items}
+        formattedDate={formattedDate}
+        openQuestions={openQuestions}
+        isDeleting={isDeleting}
+        onConfirmDelete={handleDeleteMeal}
+      />
+    );
+  }
 
   return (
     <div className="module-card-contrast space-y-3">
