@@ -355,7 +355,10 @@ export function useCoachDailyMessages(agora = new Date()) {
     if (warning) {
       // Só o dia, sem nada a avisar, não é um aviso: vai com o rótulo "Hoje", em ciano.
       if (soODia && !doServidor && !agua) list.push({ key: 'hoje', label: 'Hoje', color: 'var(--coach)', text: warning });
-      else list.push({ key: 'warnings', label: 'Aviso de hoje', color: 'var(--warn)', text: warning, action });
+      /* `safety` e `rest` (2026-11-25): o aviso do servidor e o resto da frase (a prova ou o treino de
+         hoje, a água), à parte. A v1 só lê o `text`; o Início v2 (utils/homeV2Focus.js) mostra o
+         aviso de segurança sempre, em qualquer momento, e filtra o resto pelo momento. */
+      else list.push({ key: 'warnings', label: 'Aviso de hoje', color: 'var(--warn)', text: warning, action, ...(doServidor ? { safety: doServidor, rest: [cabeca, agua].filter(Boolean).join(' ') || null } : {}) });
     }
 
     // O prazo de inscrição numa jornada, logo a seguir ao aviso de hoje.

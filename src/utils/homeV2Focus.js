@@ -1,17 +1,18 @@
 /* O foco do Início v2 (crítica de design de 2026-11-25, P0: «o Início não tem foco e a Carol
    contradiz-se»). Só o v2 usa isto: o «Para onde vou» da v1 continua com o upcomingRaces.
 
-   1. Uma só prova manda no ecrã (heroRaceOf): a de hoje, senão a de amanhã, senão a próxima — e,
-      entre as próximas, a principal (prioridade A) se estiver na janela de afinação (os últimos 21
-      dias antes dela), como no «Para onde vou». Uma prova que já passou e está por registar NÃO é o
-      herói: vai para uma linha secundária (pendingRaceOf).
+   1. Uma só prova manda no ecrã (heroRaceOf): a de hoje, senão a de amanhã, senão a prova em foco
+      (focusRace de @formulas/mainRace.ts: a próxima principal, senão a próxima) — a mesma regra do
+      resumo da Carol, para o herói e a frase dela falarem da mesma prova. Uma prova que já passou e
+      está por registar NÃO é o herói: vai para uma linha secundária (pendingRaceOf).
    2. A Carol fala do momento do herói (carolMessagesForMoment): num dia de prova, nada de treino nem
-      de véspera de outra prova; na véspera, só a prova de amanhã; num dia normal, tudo. */
+      de véspera de outra prova; na véspera, só a prova de amanhã; num dia normal, tudo. Os avisos de
+      segurança do servidor (a dor alta e o dia em baixo do check-in, o RED-S, a perda de peso) nunca
+      se filtram: saem da frase do plano para uma mensagem própria (`safety`), sempre a primeira. */
 
 import { diasEntre, DIAS_A_ESPERAR_PELO_REGISTO } from './upcomingRaces';
-import { pickRaceOfDay } from '@formulas/mainRace.ts';
+import { pickRaceOfDay, focusRace } from '@formulas/mainRace.ts';
 
-const TAPER_DAYS = 21;
 const day = (e) => String(e?.date || '').slice(0, 10);
 
 /** A prova do herói: hoje → amanhã → a próxima (a A na janela de afinação, se houver). */
@@ -24,12 +25,9 @@ export function heroRaceOf({ raceEvents = [], today, isRegistered = () => false,
   const tomorrow = addDays(today, 1);
   const deAmanha = pickRaceOfDay(abertas.filter((e) => !(cupFixed && cupFixed(e))), tomorrow);
   if (deAmanha) return deAmanha;
-  const futuras = abertas
-    .filter((e) => day(e) > tomorrow && !(cupFixed && cupFixed(e)))
-    .sort((a, b) => day(a).localeCompare(day(b)));
-  if (!futuras.length) return null;
-  const principalPerto = futuras.find((e) => e.race_priority === 'a' && diasEntre(day(e), today) <= TAPER_DAYS);
-  return principalPerto || futuras[0];
+  // Depois de amanhã: a prova em foco, como no resumo da Carol (a próxima principal, senão a próxima).
+  const futuras = abertas.filter((e) => day(e) > tomorrow && !(cupFixed && cupFixed(e)));
+  return focusRace(futuras, today) || null;
 }
 
 /** A prova que já passou e falta registar (a mais recente, até 7 dias), para a linha secundária. */
@@ -62,14 +60,25 @@ const POR_MOMENTO = {
 };
 
 export function carolMessagesForMoment(messages = [], moment = 'normal') {
-  const list = (messages || []).filter(Boolean);
+  // O aviso de segurança à parte: tira-se da mensagem do dia (que fica com o resto da frase) e vai
+  // primeiro, em qualquer momento.
+  const safety = [];
+  const list = [];
+  for (const m of (messages || []).filter(Boolean)) {
+    if (m.safety) {
+      safety.push({ key: 'safety', label: 'Aviso', color: 'var(--warn)', text: m.safety });
+      if (m.rest) list.push({ ...m, text: m.rest, safety: null });
+    } else {
+      list.push(m);
+    }
+  }
   const keep = POR_MOMENTO[moment];
-  if (!keep) return list;
+  if (!keep) return [...safety, ...list];
   const rank = (m) => {
     const k = String(m.key || '').startsWith('cup_entry') ? 'cup_entry' : m.key;
     return keep.indexOf(k);
   };
-  return list.filter((m) => rank(m) >= 0).sort((a, b) => rank(a) - rank(b));
+  return [...safety, ...list.filter((m) => rank(m) >= 0).sort((a, b) => rank(a) - rank(b))];
 }
 
 function addDays(iso, n) {
