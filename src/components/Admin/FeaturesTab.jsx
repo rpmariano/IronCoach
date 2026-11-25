@@ -3,6 +3,7 @@ import { format, parseISO } from 'date-fns';
 import { pt } from 'date-fns/locale';
 import { useAppStore } from '../../store';
 import { FEATURES } from '../../store/featureFlagsSlice';
+import { useDesignV2, setDesignV2 } from '../../utils/designV2';
 
 /* Admin · Funcionalidades («v1 lite», aprovado pelo Rui, 2026-11-22). Um interruptor por chave de
    app_feature_flags, com o nome e o que esconde. A mudança grava logo (setFeatureFlag: upsert, a
@@ -81,6 +82,36 @@ export default function FeaturesTab({ users = [] }) {
           );
         })}
       </ul>
+      <DesignV2Row />
     </div>
+  );
+}
+
+/* O Design v2 (utils/designV2.js): à parte dos interruptores de cima, porque não é do servidor nem
+   dos atletas — grava só neste dispositivo. */
+function DesignV2Row() {
+  const on = useDesignV2();
+  return (
+    <section className="rounded-xl p-3 border border-[var(--border-glass)] mt-4" style={{ background: 'var(--surface-glass)' }} data-testid="feature-design-v2">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h3 className="text-[13px] font-bold text-[var(--text-1)] m-0">Design v2 neste dispositivo</h3>
+          <p className="text-[12px] mt-0.5 leading-relaxed text-[var(--text-3)]">
+            O ensaio do design novo (Painel). Só muda o aspeto neste telemóvel: não grava nada no servidor e os atletas não veem nada.
+          </p>
+        </div>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={on}
+          aria-label={`Design v2 neste dispositivo: ${on ? 'ligado' : 'desligado'}`}
+          onClick={() => setDesignV2(!on)}
+          data-testid="feature-design-v2-switch"
+          className={`tap-area-44 w-11 h-6 rounded-full relative shrink-0 transition-colors ${on ? 'bg-[var(--coach)]' : 'bg-[var(--surface-strong)]'}`}
+        >
+          <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full transition-transform ${on ? 'translate-x-5' : 'translate-x-0'}`} style={{ backgroundColor: 'var(--text-1)' }} />
+        </button>
+      </div>
+    </section>
   );
 }

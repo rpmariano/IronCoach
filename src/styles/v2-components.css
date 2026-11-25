@@ -1,0 +1,80 @@
+/* As peças dos ecrãs do Design v2 (HomeV2, RaceHubV2). Os tokens estão em v2.css. */
+
+/* ── As peças do v2 (HomeV2, RaceHubV2) ──────────────────────────────────── */
+.v2-screen { color: var(--v2-ink); font-family: var(--v2-font); padding-top: 4px; }
+.v2-num { font-family: var(--v2-font-num); font-variant-numeric: tabular-nums; }
+
+.v2-title { margin: 0 0 8px; font: 800 30px/1 var(--v2-font-num); letter-spacing: .005em; color: var(--v2-ink); }
+.v2-sub { margin: 0; font-size: 14.5px; color: var(--v2-ink2); }
+
+.v2-hero {
+  background: var(--v2-panel);
+  border-radius: var(--v2-radius);
+  padding: 16px;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 4px 12px;
+  align-items: end;
+}
+.v2-hero-n { font: 800 64px/.9 var(--v2-font-num); letter-spacing: -.01em; color: var(--v2-ink); }
+.v2-hero-n.is-race { color: var(--race); }
+.v2-hero-l { font-size: 14.5px; color: var(--v2-ink2); margin-top: 6px; }
+.v2-hero-r { text-align: right; }
+.v2-hero-r b { display: block; font: 700 26px/1 var(--v2-font-num); color: var(--v2-acc); }
+.v2-hero-r span { font-size: 14.5px; color: var(--v2-ink2); }
+
+.v2-say { margin-top: 12px; display: grid; grid-template-columns: 4px 1fr; gap: 12px; }
+.v2-say > i { background: var(--v2-acc); border-radius: 2px; }
+.v2-say p { margin: 0; font-size: 15.5px; line-height: 1.45; color: var(--v2-ink); }
+.v2-say .v2-who { color: var(--v2-acc); font-weight: 600; }
+.v2-say button { all: unset; cursor: pointer; display: block; min-height: 44px; }
+.v2-say button:focus-visible { outline: 2px solid var(--v2-acc); outline-offset: 2px; border-radius: 4px; }
+
+.v2-grid { margin-top: 12px; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.v2-cell { background: var(--v2-panel); border-radius: var(--v2-radius); padding: 12px; min-width: 0; }
+.v2-cell b { display: block; font: 700 30px/1 var(--v2-font-num); color: var(--v2-ink); }
+.v2-cell > span { display: block; font-size: 13px; color: var(--v2-ink2); margin-top: 4px; }
+.v2-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 6px; vertical-align: 1px; }
+.v2-bar { height: 4px; background: var(--v2-rule); border-radius: 2px; margin-top: 8px; overflow: hidden; }
+.v2-bar > i { display: block; height: 100%; background: var(--v2-acc); transform-origin: left; animation: v2-grow var(--dur-bars) var(--ease-out) both; }
+
+.v2-btn {
+  margin-top: 12px; display: block; width: 100%;
+  background: var(--v2-acc); color: var(--v2-acc-ink);
+  border: 0; border-radius: var(--v2-radius);
+  padding: 14px; min-height: 48px;
+  text-align: center; font: 700 16.5px var(--v2-font);
+  cursor: pointer;
+}
+.v2-btn.is-race { background: var(--race); color: var(--race-ink); }
+.v2-btn.is-quiet { background: transparent; color: var(--v2-ink); border: 1px solid var(--v2-rule); }
+.v2-btn:focus-visible { outline: 2px solid var(--v2-ink); outline-offset: 2px; }
+
+.v2-splits { margin-top: 12px; background: var(--v2-panel); border-radius: var(--v2-radius); padding: 6px 14px; }
+.v2-sp {
+  display: grid; grid-template-columns: 60px 1fr 64px; gap: 10px; align-items: center;
+  padding: 9px 0; border-top: 1px solid var(--v2-rule); font-size: 14.5px;
+}
+.v2-sp:first-child { border-top: 0; }
+.v2-sp .v2-km { font: 700 17px var(--v2-font-num); color: var(--v2-ink2); }
+.v2-sp .v2-pace { font: 700 19px var(--v2-font-num); color: var(--v2-ink); }
+.v2-sp .v2-w { display: block; font-size: 12.5px; color: var(--v2-ink2); }
+.v2-sp .v2-cum { text-align: right; font: 600 16px var(--v2-font-num); color: var(--v2-ink2); }
+.v2-sp.is-up .v2-pace { color: var(--v2-acc); }
+.v2-sp.is-stop { grid-template-columns: 60px 1fr; }
+
+.v2-label { margin: 16px 4px 6px; font-size: 13.5px; font-weight: 600; color: var(--v2-ink2); }
+.v2-more { margin-top: 12px; }
+
+/* A entrada: a mesma das séries dos gráficos (--dur-bars, --ease-out), em cascata curta. */
+.v2-enter > * { animation: v2-rise var(--dur-tab-content) var(--ease-out) both; }
+.v2-enter > *:nth-child(2) { animation-delay: 40ms; }
+.v2-enter > *:nth-child(3) { animation-delay: 80ms; }
+.v2-enter > *:nth-child(4) { animation-delay: 120ms; }
+.v2-enter > *:nth-child(n+5) { animation-delay: 160ms; }
+@keyframes v2-rise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+@keyframes v2-grow { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .v2-enter > *, .v2-bar > i { animation: none; }
+}

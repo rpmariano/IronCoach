@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { Suspense, lazy, useEffect, useMemo, useState } from 'react';
 import { useFeature } from '../../utils/features';
 import { Footprints, ChevronRight } from 'lucide-react';
 import { useAppStore } from '../../store';
@@ -21,6 +21,9 @@ import BadgeMoment from '../shared/BadgeMoment';
 import useBadgeMoment from '../../utils/useBadgeMoment';
 import { eventoDaVida } from '../../utils/carolVida';
 import { lisbonParts } from '../../utils/carolWelcome';
+import { useDesignV2 } from '../../utils/designV2';
+// O v2 só se descarrega a quem o liga: o bundle principal fica o de sempre.
+const HomeV2 = lazy(() => import('./HomeV2'));
 
 /* O Início (redesenho 2026-09, ponto 5 — mock "Início"): o cartão da
    Carol, "O que faço hoje" (plano do dia), "Como estou" (a órbita, só
@@ -56,6 +59,8 @@ export default function Home() {
   // As conquistas têm interruptor (v1 lite).
   const badgesOn = useFeature('badges');
   const badgeVisivel = badgeMoment.grande || badgeMoment.medio;
+  // O Design v2 (utils/designV2.js): só neste dispositivo, só com o interruptor do admin.
+  const v2 = useDesignV2();
 
   const today = todayISO();
 
@@ -199,6 +204,48 @@ export default function Home() {
     );
   }
 
+  const badges = badgesOn && badgeVisivel && (badgeMoment.grande ? (
+    <BadgeMoment
+      /* A fila: cada grande é um momento novo, por isso remonta (a
+         coreografia só toca ao montar). */
+      key={badgeMoment.grande.award.id}
+      escala="grande"
+      badge={badgeMoment.grande.badge}
+      titulo={badgeMoment.grande.award.title || badgeMoment.grande.badge?.name}
+      linha={badgeMoment.grande.award.line}
+      restantes={badgeMoment.filaRestante}
+      onClose={badgeMoment.fecharGrande}
+    />
+  ) : (
+    <BadgeMoment
+      escala="medio"
+      badge={badgeMoment.medio.badge}
+      titulo={badgeMoment.medio.titulo}
+      linha={badgeMoment.medio.linha}
+      onClose={badgeMoment.fecharMedio}
+    />
+  ));
+
+  if (v2) {
+    return (
+      <>
+        <Suspense fallback={null}>
+        <HomeV2
+          today={today}
+          gauges={gauges}
+          notices={notices}
+          onOpenRace={setEditingRaceId}
+          onRegisterRace={registerRace}
+          onCreateRace={createRace}
+          onCompleteItem={handleCompleteItem}
+        />
+        </Suspense>
+        <CarolNoticesDock notices={notices} />
+        {badges}
+      </>
+    );
+  }
+
   return (
     <div className="flex flex-col gap-2 fade-in pb-2">
       <CarolCard onOpenRace={setEditingRaceId} onOpenCoach={notices.openCoach} />
@@ -218,27 +265,7 @@ export default function Home() {
       {mealDay && <MealSheet day={mealDay} onClose={() => setMealDay(null)} />}
 
       <CarolNoticesDock notices={notices} />
-      {badgesOn && badgeVisivel && (badgeMoment.grande ? (
-        <BadgeMoment
-          /* A fila: cada grande é um momento novo, por isso remonta (a
-             coreografia só toca ao montar). */
-          key={badgeMoment.grande.award.id}
-          escala="grande"
-          badge={badgeMoment.grande.badge}
-          titulo={badgeMoment.grande.award.title || badgeMoment.grande.badge?.name}
-          linha={badgeMoment.grande.award.line}
-          restantes={badgeMoment.filaRestante}
-          onClose={badgeMoment.fecharGrande}
-        />
-      ) : (
-        <BadgeMoment
-          escala="medio"
-          badge={badgeMoment.medio.badge}
-          titulo={badgeMoment.medio.titulo}
-          linha={badgeMoment.medio.linha}
-          onClose={badgeMoment.fecharMedio}
-        />
-      ))}
+      {badges}
     </div>
   );
 }
