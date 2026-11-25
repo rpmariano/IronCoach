@@ -22,8 +22,10 @@ import useBadgeMoment from '../../utils/useBadgeMoment';
 import { eventoDaVida } from '../../utils/carolVida';
 import { lisbonParts } from '../../utils/carolWelcome';
 import { useDesignV2 } from '../../utils/designV2';
+import { retryOnce } from '../../lib/retryOnce';
 // O v2 só se descarrega a quem o liga: o bundle principal fica o de sempre.
-const HomeV2 = lazy(() => import('./HomeV2'));
+// Com o retryOnce: um chunk velho depois de um deploy não pode partir o Início.
+const HomeV2 = lazy(retryOnce(() => import('./HomeV2')));
 
 /* O Início (redesenho 2026-09, ponto 5 — mock "Início"): o cartão da
    Carol, "O que faço hoje" (plano do dia), "Como estou" (a órbita, só
@@ -238,8 +240,11 @@ export default function Home() {
           onRegisterRace={registerRace}
           onCreateRace={createRace}
           onCompleteItem={handleCompleteItem}
+          onOpenMeals={() => setMealDay({ dateISO: today, items: todayPlanItems })}
+          onGettingStarted={handleGettingStarted}
         />
         </Suspense>
+        {mealDay && <MealSheet day={mealDay} onClose={() => setMealDay(null)} />}
         <CarolNoticesDock notices={notices} />
         {badges}
       </>

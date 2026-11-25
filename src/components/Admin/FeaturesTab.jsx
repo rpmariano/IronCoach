@@ -104,7 +104,7 @@ function DesignV2Row() {
           type="button"
           role="switch"
           aria-checked={on}
-          aria-label={`Design v2 neste dispositivo: ${on ? 'ligado' : 'desligado'}`}
+          aria-label="Design v2 neste dispositivo"
           onClick={() => setDesignV2(!on)}
           data-testid="feature-design-v2-switch"
           className={`tap-area-44 w-11 h-6 rounded-full relative shrink-0 transition-colors ${on ? 'bg-[var(--coach)]' : 'bg-[var(--surface-strong)]'}`}

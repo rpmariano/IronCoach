@@ -2,11 +2,12 @@ import React, { lazy, Suspense, useCallback, useEffect, useRef, useState } from 
 import { supabase, logAppEvent, sendPendingAppLogs } from './lib/supabase';
 import { bootInfoOnce, bootMessage, trackHiddenAt } from './utils/bootTelemetry';
 import { bootPhase, bootExit, currentBootTrace, previousUnfinishedTrace, markTraceReported } from './utils/bootTrace';
-import { BOOT_SESSION_TIMEOUT_MS, BOOT_DEADLINE_MS, LAZY_IMPORT_TIMEOUT_MS, withVisibleDeadline } from './utils/bootDeadline';
+import { BOOT_SESSION_TIMEOUT_MS, BOOT_DEADLINE_MS } from './utils/bootDeadline';
+import { retryOnce } from './lib/retryOnce';
 import { announceBuildToServiceWorker } from './lib/assetCache';
 import { registerServiceWorker, maybeSyncPushSubscription, pushWantedFor, forgetPushSubscriptionOnThisDevice } from './lib/push';
 import { cenasPreviewAtiva } from './utils/cenasPreview';
-import { reloadFresh, isBusy, resumeParams, entryTabFromSearch, stripResumeParam, markEntryApplied, markEntryWelcomeHandled } from './lib/appUpdate';
+import { isBusy, entryTabFromSearch, stripResumeParam, markEntryApplied, markEntryWelcomeHandled } from './lib/appUpdate';
 import { prefetchScreensWhenIdle, rememberDefaultExport } from './utils/prefetchScreens';
 import { isScreenOpen, startNavigationPersistence, readRecentNavigation, applyNavigation, clearNavigation, dropMissingScreen, shouldRestoreNavigation } from './utils/navigationRestore';
 import { useAppStore, whenDataReady } from './store';
@@ -48,34 +49,7 @@ import { DASHBOARD_TABS } from './utils/scrollToTop';
    para poderem ser reutilizadas no pré-carregamento por gesto, mais abaixo:
    tocar num separador da barra começa a descarregar o chunk antes de o
    React o pedir, e o esqueleto quase nunca chega a aparecer. */
-/* Depois de um deploy do GitHub Pages os ficheiros antigos (com hash) deixam
-   de existir: numa sessão que ficou aberta, o primeiro separador ainda não
-   visitado falhava o import() e caía no AppErrorBoundary — um ecrã de erro
-   por causa de uma atualização. Uma recarga única resolve; a marca em
-   sessionStorage evita um ciclo se a recarga não resolver. */
-const CHUNK_RELOAD_KEY = 'ironcoach:chunk-reload';
-function retryOnce(load) {
-  // Um import() que nunca responde (a rede pendurada) conta como falhado: senão o esqueleto do
-  // ecrã ficava para sempre (bug de 2026-11-17).
-  return () => withVisibleDeadline(load(), LAZY_IMPORT_TIMEOUT_MS, 'import').then((mod) => {
-    try { sessionStorage.removeItem(CHUNK_RELOAD_KEY); } catch { /* sem storage */ }
-    return mod;
-  }).catch((err) => {
-    let already = false;
-    try {
-      already = sessionStorage.getItem(CHUNK_RELOAD_KEY) === '1';
-      if (!already) sessionStorage.setItem(CHUNK_RELOAD_KEY, '1');
-    } catch { already = true; }
-    if (!already && typeof window !== 'undefined') {
-      // Sem passar pela cache do index.html (max-age=600 no GitHub Pages),
-      // que ainda apontaria para os chunks que acabaram de desaparecer — e
-      // de volta ao separador que se estava a abrir, não ao Início.
-      reloadFresh(undefined, window.location, resumeParams(useAppStore.getState().activeTab));
-      return new Promise(() => {});
-    }
-    throw err;
-  });
-}
+// O retryOnce (a recarga única quando um chunk desapareceu com um deploy) vive em lib/retryOnce.js.
 // Os import() crus: o pré-carregamento em tempo morto (PREFETCH_WHEN_IDLE)
 // usa-os diretamente — uma falha aí não deve recarregar a app.
 /* O Dashboard, depois de carregado (2026-10-04). O `React.lazy` suspende

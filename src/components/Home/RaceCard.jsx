@@ -21,6 +21,7 @@ import { triggerCarouselTick } from '../../utils/haptics';
 import { useCupListing } from '../../utils/useCup';
 import { nextRoundApart } from '../../utils/cupCalendar';
 import CupNextLine, { CupNextCard } from './CupNextLine';
+import { upcomingRaces, diasEntre, DIAS_A_ESPERAR_PELO_REGISTO } from '../../utils/upcomingRaces';
 
 /* "Para onde vou" — o cartão da prova (mock "Início"): nome em âmbar, a
    fase atual, "semana 6 de 18", os dias em número grande, o trilho do
@@ -46,17 +47,13 @@ function DaysCount({ days, animate }) {
 /* A partir do dia da prova, o cartão deixa de ser "para onde vou" e passa a
    ser "o que ficou por registar": a prova mantém-se aqui até 7 dias depois
    enquanto não houver uma corrida ligada a ela (specs/prova-concluida.md §3).
-   Depois disso sai — o sítio dela passa a ser o hub. */
-const DIAS_A_ESPERAR_PELO_REGISTO = 7;
+   Depois disso sai — o sítio dela passa a ser o hub. A regra vive em
+   utils/upcomingRaces.js, partilhada com o Início v2. */
 
 /* Deslocamento horizontal mínimo para um toque contar como swipe entre
    provas — e tem de ser claramente mais horizontal do que vertical, para
    não roubar o scroll da página. */
 const SWIPE_MIN_PX = 40;
-
-function diasEntre(a, b) {
-  return Math.round((Date.parse(`${a}T00:00:00Z`) - Date.parse(`${b}T00:00:00Z`)) / 86400000);
-}
 
 function rotuloDoDia(dias) {
   if (dias <= 0) return 'hoje';
@@ -201,17 +198,10 @@ export default function RaceCard({ raceEvents = [], runs = [], profile = {}, onO
     const registadas = new Set((raceEvents || []).filter((e) => findRaceRun(runs, e)).map((e) => e.id));
     return (id) => registadas.has(id);
   }, [raceEvents, runs]);
+  // A jornada de hoje fica: é o dia do "Registar a prova" (só as futuras
+  // saem para a linha do Troféu). A regra: utils/upcomingRaces.js.
   const upcoming = useMemo(
-    () => (raceEvents || [])
-      .filter((e) => {
-        if (!e?.date) return false;
-        // A jornada de hoje fica: é o dia do "Registar a prova" (só as
-        // futuras saem para a linha do Troféu).
-        if (e.date >= today) return e.status !== 'concluida' && !(e.date > today && cupFixed?.(e));
-        return diasEntre(today, e.date) <= DIAS_A_ESPERAR_PELO_REGISTO && !estaRegistada(e.id);
-      })
-      .sort((a, b) => a.date.localeCompare(b.date))
-      .slice(0, 5),
+    () => upcomingRaces({ raceEvents, today, isRegistered: estaRegistada, cupFixed }),
     [raceEvents, today, estaRegistada, cupFixed],
   );
   const [index, setIndex] = useState(0);

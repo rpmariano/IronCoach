@@ -2,7 +2,8 @@ import React, { useState } from 'react';
 import { Info } from 'lucide-react';
 import '../../styles/v2-components.css';
 import { formatDuration, formatPace } from '../../utils/run';
-import { FUEL_LABEL } from '../../utils/racePlanImage';
+import { FUEL_LABEL, renderRacePlanFile, downloadFile, shareOrDownload, canShareFiles } from '../../utils/racePlanImage';
+import { normalizeStartTime } from '../../utils/startTime';
 
 /* O hub da prova no Design v2 (direção C · Painel, 2026-11-24; utils/designV2.js), antes da prova.
    Só a forma: o RaceHubView continua a calcular tudo (o momento, o plano, a previsão, o plano para
@@ -79,9 +80,80 @@ function Splits({ plan }) {
   );
 }
 
+/* O resto do Plano para o dia (revisão de 2026-11-25): o que o cartão de sempre tinha além dos
+   troços e o v2 tinha perdido. A hora de partida (ou o atalho para a marcar), a indicação «por
+   esforço» no trail, as notas do plano além da primeira, «Buscar o percurso» e guardar ou partilhar
+   o plano como imagem, que é o que serve na manhã da prova sem rede. */
+function PlanTools({ plan, race, onGoToEdit, onFetchWebInfo, fetchingWebInfo }) {
+  const [busy, setBusy] = useState(false);
+  const [erro, setErro] = useState('');
+  const startTime = normalizeStartTime(race?.start_time);
+  const canFetchRoute = !!onFetchWebInfo && !race?.web_info && !!race?.website?.toString().trim();
+  const notas = plan ? (plan.ambitious ? plan.notes.slice(1) : plan.notes) : [];
+  const guardar = async ({ viaShare = false } = {}) => {
+    setErro('');
+    setBusy(true);
+    try {
+      const file = await renderRacePlanFile(plan, race);
+      if (viaShare) await shareOrDownload(file, race?.name ? `Plano · ${race.name}` : 'O meu plano de prova');
+      else downloadFile(file);
+    } catch (err) {
+      if (err?.name !== 'AbortError') {
+        setErro(viaShare
+          ? 'Não consegui abrir a partilha. Guarda a imagem e abre-a a partir da galeria.'
+          : 'Não consegui guardar a imagem. Tenta outra vez.');
+      }
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="v2-plan-tools" data-testid="race-hub-v2-plan-tools">
+      {startTime ? (
+        <p className="v2-sub" data-testid="race-pacing-start-time">Partida às {startTime}</p>
+      ) : (
+        <div className="v2-plan-row">
+          <p className="v2-sub" data-testid="race-pacing-start-time-missing">Sem hora de partida: marca-a para a Carol planear a véspera.</p>
+          {onGoToEdit && <button type="button" className="v2-link v2-link-inline" data-testid="race-pacing-edit" onClick={onGoToEdit}>Marcar a hora</button>}
+        </div>
+      )}
+      {plan?.effortMode && (
+        <p className="v2-sub" data-testid="race-pacing-effort">Por esforço: no trail o ritmo é só referência, o que manda é o esforço.</p>
+      )}
+      {notas.length > 0 && (
+        <div data-testid="race-pacing-notes">
+          {notas.map((n) => <p key={n} className="v2-sub v2-plan-note">{semTravessao(n)}</p>)}
+        </div>
+      )}
+      {canFetchRoute && (
+        <>
+          <p className="v2-sub v2-plan-note">Sem o percurso o plano não ajusta subidas e descidas.</p>
+          <button type="button" className="v2-btn is-quiet" data-testid="race-pacing-fetch-route" disabled={fetchingWebInfo} onClick={onFetchWebInfo}>
+            {fetchingWebInfo ? 'A buscar o percurso…' : 'Buscar o percurso'}
+          </button>
+        </>
+      )}
+      {plan && (
+        <div className="v2-plan-img">
+          <button type="button" className="v2-btn is-quiet" data-testid="race-pacing-save-image" disabled={busy} onClick={() => guardar()}>
+            {busy ? 'A preparar a imagem…' : 'Guardar como imagem'}
+          </button>
+          {canShareFiles() && (
+            <button type="button" className="v2-btn is-quiet" data-testid="race-pacing-share-image" disabled={busy} onClick={() => guardar({ viaShare: true })}>
+              Partilhar
+            </button>
+          )}
+        </div>
+      )}
+      {erro && <p role="alert" className="v2-sub" style={{ color: 'var(--warn)' }}>{erro}</p>}
+    </div>
+  );
+}
+
 export default function RaceHubV2({
   race, moment, dateLine, meta, countdown, phaseLine, forecast, plan, daysToRace,
-  overviewText, canRegister, onRegister, onGoToEdit, extras, carolSection, macro, course, site, modal,
+  overviewText, canRegister, onRegister, onGoToEdit, onFetchWebInfo = null, fetchingWebInfo = false,
+  extras, carolSection, macro, course, site, modal,
 }) {
   const target = forecast?.target || null;
   const predicted = forecast?.predicted || null;
@@ -102,7 +174,7 @@ export default function RaceHubV2({
       : (predicted ? { v: predicted.timeLabel, l: 'o treino aponta' } : null);
     hero = {
       n: finish,
-      l: moment === 'dia' ? 'chegada planeada' : `chegada planeada, ${daysToRace === 1 ? 'amanhã' : `daqui a ${daysToRace} dias`}`,
+      l: `${moment === 'dia' ? 'chegada planeada' : `chegada planeada, ${daysToRace === 1 ? 'amanhã' : `daqui a ${daysToRace} dias`}`}${plan.effortMode ? ', por esforço' : ''}`,
       right,
       race: false,
     };
@@ -173,6 +245,7 @@ export default function RaceHubV2({
             {onGoToEdit && <button type="button" className="v2-btn is-quiet" style={{ marginBottom: 8 }} onClick={onGoToEdit}>Marcar o objetivo de tempo</button>}
           </div>
         ))}
+        {moment !== 'longe' && <PlanTools plan={plan} race={race} onGoToEdit={onGoToEdit} onFetchWebInfo={onFetchWebInfo} fetchingWebInfo={fetchingWebInfo} />}
 
         <Say text={overviewText} testId={moment === 'dia' ? 'race-hub-day-line' : 'race-hub-v2-carol'} />
       </div>
@@ -185,6 +258,114 @@ export default function RaceHubV2({
         {course}
         {site}
       </div>
+    </div>
+  );
+}
+
+/* ── Depois da prova (fase 2, 2026-11-25) ─────────────────────────────────────────────────────
+   O tempo oficial gigante; a comparação numa frase; a posição numa linha de três (geral, escalão,
+   ritmo). Um só ritmo: o OFICIAL, o tempo oficial a dividir pela distância da PROVA (o hub de
+   sempre mostrava o da corrida no topo e o da prova na comparação, e não batiam). O balanço da
+   Carol numa linha com o traço ciano, que expande. «E agora?» e o «Editar o registo» discreto. */
+
+const curto = (s) => {
+  const a = Math.abs(Math.round(Number(s) || 0));
+  if (a < 60) return `${a} s`;
+  return formatDuration(a);
+};
+const ordinal = (n) => `${n}.º`;
+
+/** A comparação numa frase: com a previsão do treino e com o objetivo. '' sem nada a comparar. */
+export function doneSentence(breakdown) {
+  if (!breakdown?.rows?.length) return '';
+  const prev = breakdown.rows.find((r) => r.key === 'previsao');
+  const obj = breakdown.rows.find((r) => r.key === 'objetivo');
+  const partes = [];
+  if (prev) {
+    partes.push(prev.delta === 0
+      ? 'Exatamente o que o treino apontava'
+      : `${curto(prev.delta)} ${prev.delta < 0 ? 'abaixo' : 'acima'} do que o treino apontava`);
+  }
+  if (obj) {
+    const o = obj.delta <= 0
+      ? `o objetivo de ${obj.timeLabel} ficou cumprido${obj.delta < 0 ? `, com ${curto(obj.delta)} de margem` : ''}`
+      : `o objetivo de ${obj.timeLabel} ficou a ${curto(obj.delta)}`;
+    partes.push(partes.length ? o : o.charAt(0).toUpperCase() + o.slice(1));
+  }
+  return `${partes.join('; ')}.`;
+}
+
+export function RaceDoneV2({
+  race, finalSeconds, breakdown, details, carolText, onEditRun, onRegister, onNext, onTalk,
+  markCompleted, extras, sections, sheets,
+}) {
+  const [aberto, setAberto] = useState(false);
+  const km = Number(race?.distance_km) || null;
+  const pace = finalSeconds > 0 && km ? formatPace(Math.round(finalSeconds / km)) : null;
+  const n = (v) => { const x = Number(v); return Number.isFinite(x) && x > 0 ? x : null; };
+  const pos = n(details?.position);
+  const participantes = n(details?.participants);
+  const escalaoPos = n(details?.age_group_position);
+  const escalao = typeof details?.age_group === 'string' ? details.age_group.trim() : '';
+  const frase = doneSentence(breakdown);
+  const texto = carolText ? semTravessao(carolText) : null;
+
+  return (
+    <div className="v2-screen" data-testid="race-hub-completed" data-design="v2">
+      <div className="v2-enter" data-testid="race-done-v2-main">
+        <header style={{ padding: '2px 4px 10px' }}>
+          <h1 className="v2-title">{race?.name || 'Prova'}</h1>
+          <p className="v2-sub">Concluída</p>
+        </header>
+
+        {finalSeconds > 0 ? (
+          <section className="v2-res" data-testid="race-done-v2-hero">
+            <div className="v2-res-n v2-num" data-testid="race-final-time">{formatDuration(Math.round(finalSeconds))}</div>
+            <p className="v2-res-d" data-testid="race-done-v2-sentence">
+              Tempo oficial.{frase ? ` ${frase}` : ''}
+            </p>
+            <div className="v2-row3">
+              <div><b className="v2-num">{pos ? ordinal(pos) : '–'}</b><span>{pos && participantes ? `geral, de ${new Intl.NumberFormat('pt-PT', { useGrouping: 'always' }).format(participantes)}` : 'geral'}</span></div>
+              <div><b className="v2-num">{escalaoPos ? ordinal(escalaoPos) : '–'}</b><span>{escalao ? `escalão ${escalao}` : 'escalão'}</span></div>
+              <div data-testid="race-done-v2-pace"><b className="v2-num">{pace || '–'}</b><span>ritmo oficial/km</span></div>
+            </div>
+            {pace && km && (
+              <p className="v2-res-note">O ritmo oficial é o tempo oficial a dividir pelos {kmN(km)} km da prova.</p>
+            )}
+          </section>
+        ) : (
+          <section className="v2-res" data-testid="race-done-v2-hero">
+            <div className="v2-res-n v2-num is-race">Por registar</div>
+            <p className="v2-res-d">Não tenho a corrida desta prova. Regista-a e mostro-te o tempo final ao lado do objetivo.</p>
+            <button type="button" className="v2-btn is-race" onClick={onRegister}>Registar a prova</button>
+            {markCompleted}
+          </section>
+        )}
+
+        {texto && (
+          <div className="v2-say" data-testid="race-done-v2-carol">
+            <i aria-hidden="true" />
+            <button type="button" aria-expanded={aberto} onClick={() => setAberto((a) => !a)}>
+              <p style={aberto ? undefined : { display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                <span className="v2-who">Carol.</span> {texto}
+              </p>
+            </button>
+          </div>
+        )}
+
+        <h2 className="v2-label">E agora?</h2>
+        <button type="button" className="v2-btn is-race" onClick={onNext}>Marcar a próxima prova</button>
+        <button type="button" className="v2-btn is-quiet" data-testid="race-done-talk" onClick={onTalk}>Falar com a Carol</button>
+        {onEditRun && (
+          <button type="button" className="v2-link" data-testid="race-hub-edit-run" onClick={onEditRun}>Editar o registo</button>
+        )}
+      </div>
+
+      <div className="v2-more">
+        {extras}
+        {sections}
+      </div>
+      {sheets}
     </div>
   );
 }

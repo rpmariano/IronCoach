@@ -56,6 +56,8 @@ import { useClientRequestId, } from '../../utils/clientRequestId';
 import { saveError, saveRefusal, reportSaveFailure, saveFailureMessage, isNoRetryError } from '../../utils/saveFailure';
 import { printsNeedRead, AwaitingReadAction } from '../shared/registration/printsGate';
 import { PrintQuestions, questionsPayload, readQuestions } from '../shared/CarolQuestionsForm';
+import { useDesignV2 } from '../../utils/designV2';
+import { RunShotV2, RunReadOutV2, readOutRows } from './RunRegistrationV2Parts';
 
 // -------------------------------------
 // ICONS & UTILS
@@ -456,6 +458,13 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
      com o registo em carol_questions ao gravar. Uma leitura nova substitui-as. */
   const [printQuestions, setPrintQuestions] = useState([]);
   const [printAnswers, setPrintAnswers] = useState({});
+  /* O Design v2 (utils/designV2.js): o print primeiro e, por baixo, o que a Carol leu (readOut,
+     o que a última leitura devolveu; só para mostrar, não vai no rascunho). A lógica é esta. */
+  const v2 = useDesignV2();
+  const [readOut, setReadOut] = useState(null);
+  // O tipo e a data que o atleta escolheu à mão não se trocam pelo que a leitura trouxer.
+  const typeTouchedRef = useRef(false);
+  const dateTouchedRef = useRef(false);
   /* "Do plano": o treino de corrida que a Carol marcou para o dia, escolhido
      no banner — { id, mode: 'plano' | 'livre' } | null. O "Registar sessão"
      do Início já vem com ele (planItem) e não mostra o banner. */
@@ -2289,6 +2298,27 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
         setHrZones(read.hr_zones.map((z) => ({ zone: z.zone || '', minutes: z.minutes || '' })));
         filled += 1;
       }
+      /* O tipo de treino, a data e a hora, quando a leitura os trouxer: só os que o atleta não
+         escolheu (nem o plano, nem a prova). Hoje a analyze-run ainda não os devolve no preview. */
+      const readExtra = {};
+      // Só no Design v2: com ele desligado, a leitura faz exatamente o que fazia.
+      if (v2 && typeof read.training_type === 'string' && runKind === 'treino' && read.training_type !== WALK_TRAINING_TYPE
+        && runTrainingType !== WALK_TRAINING_TYPE && !typeTouchedRef.current && !planChoice && !cameFromHomePlan
+        && RUN_TRAINING_TYPES.some((t) => t.key === read.training_type)) {
+        setRunTrainingType(read.training_type);
+        readExtra.training_type = read.training_type;
+      }
+      if (v2 && typeof read.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(read.date) && read.date <= todayISO()
+        && !dateTouchedRef.current && !planChoice && !cameFromHomePlan && !raceId && !runIdToEdit) {
+        setRunDate(read.date);
+        readExtra.date = read.date;
+      }
+      const readTime = normalizeStartTime(read.start_time);
+      if (v2 && readTime && isBlankValue(runStartTime)) {
+        setRunStartTime(readTime);
+        readExtra.start_time = readTime;
+      }
+      setReadOut({ ...read, training_type: readExtra.training_type || null, date: readExtra.date || null, start_time: readExtra.start_time || null });
       // O que só os prints sabem segue com o registo revisto.
       const details = Object.fromEntries(READ_ONLY_KEYS.filter((k) => read[k] !== null && read[k] !== undefined).map((k) => [k, read[k]]));
       setReadState({ count: runPhotos.length, details });
@@ -2306,6 +2336,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
       setIsFormDirty(true);
     } catch (err) {
       setPrintQuestions([]); setPrintAnswers({});
+      setReadOut(null);
       setReadNote({ text: err.message || 'Não consegui ler os prints. Tenta outra vez.', tone: 'warn' });
     } finally {
       setReadAttempt(runPhotos.length);
@@ -2723,6 +2754,8 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
             aria-busy={showAnalysis || undefined}
             style={showAnalysis ? { opacity: 0.45, pointerEvents: 'none' } : undefined}
           >
+            {/* Design v2: também na prova, o print primeiro (e o que a Carol leu dele). */}
+            {v2 && showToggle && <div className="v2-screen v2-reg v2-reg-race">{renderPhotoBlockV2()}</div>}
             <div className="grid grid-cols-2 gap-2.5 mb-4">
               <div>
                 <label htmlFor="rr-tempo-oficial" className="text-[11px] text-[var(--text-3)] block mb-1.5">
@@ -2806,7 +2839,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
               </div>
             </div>
 
-            {showToggle && renderPhotoBlock()}
+            {showToggle && !v2 && renderPhotoBlock()}
             {renderCoreMetrics()}
             {renderManualDetails()}
 
@@ -2910,9 +2943,8 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
     // do RegistrationShell; aqui ficam os campos do treino, um cartão por
     // passo (RegistrationSection — soluções A + B, 2026-10-20). O que separa
     // os blocos é o cartão e o espaço, não uma linha.
-    return (
-      <>
-          {pendingRunItems.length > 0 && (
+    // As peças em constantes: o v2 muda a ordem (o print primeiro), não os campos.
+    const planBanner = pendingRunItems.length > 0 && (
             <PlanPrefillBanner
               items={pendingRunItems}
               describe={describeRunItem}
@@ -2927,8 +2959,9 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
               // (runMatchesPlanItem): uma caminhada não é o contínuo de 8 km.
               labels={{ freeMode: () => 'Treino livre — se for do tipo do plano, conto-o como o treino do dia.' }}
             />
-          )}
+    );
 
+    const kindSection = (
           <RegistrationSection step={1} title="Que corrida foi" done={Boolean(runDate)}>
             <div className="flex flex-wrap gap-1.5">
               {/* Cor via style, não pela classe: nestes botões o fundo é escuro ou
@@ -2978,7 +3011,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
                   <FieldSelect
                     id="rr-tipo-de-treino"
                     value={runTrainingType}
-                    onChange={e => { setRunTrainingType(e.target.value); setIsFormDirty(true); }}
+                    onChange={e => { typeTouchedRef.current = true; setRunTrainingType(e.target.value); setIsFormDirty(true); }}
                   >
                     <optgroup label="Corrida solta">
                       <option value="continuo">Contínuo</option>
@@ -3044,7 +3077,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
                   type="date"
                   value={runDate}
                   max={todayISO()}
-                  onChange={e => { setRunDate(e.target.value); if (planChoice) handleChangeRunPlan(); setIsFormDirty(true); }}
+                  onChange={e => { dateTouchedRef.current = true; setRunDate(e.target.value); if (planChoice) handleChangeRunPlan(); setIsFormDirty(true); }}
                 />
               </div>
               <div className="min-w-0">
@@ -3057,11 +3090,14 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
               </div>
             </div>
           </RegistrationSection>
+    );
 
-          {/* Os números: os prints (opcionais) e logo a seguir os campos,
-              sempre à vista — "Ler os prints" enche os que estiverem vazios. */}
+    const numbersSection = (
+          /* Os números: os prints (opcionais) e logo a seguir os campos,
+              sempre à vista — "Ler os prints" enche os que estiverem vazios.
+              No v2 os prints saem daqui: vão para o topo do ecrã. */
           <RegistrationSection step={2} title="Os números" done={Boolean(runDistance && runDuration)}>
-            {showToggle && renderPhotoBlock()}
+            {showToggle && !v2 && renderPhotoBlock()}
             {renderEditPhotos(false)}
             {renderCoreMetrics(false)}
             {/* Competition Specifics */}
@@ -3088,7 +3124,10 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
               <p className="text-[11px] text-[var(--text-3)] mt-1.5">Sugestão automática — muda se quiseres.</p>
             </div>
           </RegistrationSection>
+    );
 
+    const restSections = (
+      <>
           <RegistrationSection step={3} title="Como te sentiste" optional>
             {renderEffortField(false)}
             {renderShoesField(false)}
@@ -3112,7 +3151,56 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
           <SaveErrorLine message={errorMsg} center={false} onRetry={failedSave && failedSave.message === errorMsg ? failedSave.retry : null} retrying={isSubmitting} />
       </>
     );
+
+    // Design v2: o print do relógio primeiro (o atalho), o que a Carol leu, e só depois o
+    // tipo, a data e a hora (já preenchidos pela leitura) e o resto do formulário de sempre.
+    if (v2) {
+      return (
+        <div className="v2-screen v2-reg" data-testid="run-registration-v2">
+          {showToggle && renderPhotoBlockV2()}
+          {planBanner}
+          {kindSection}
+          {numbersSection}
+          {restSections}
+        </div>
+      );
+    }
+
+    return (
+      <>
+        {planBanner}
+        {kindSection}
+        {numbersSection}
+        {restSections}
+      </>
+    );
   };
+
+  /* Design v2: o print grande, as perguntas da Carol e o painel com o que ela leu. As mesmas
+     fotos, o mesmo handler de leitura e o mesmo input (addPhotoInputRef) do renderPhotoBlock. */
+  function renderPhotoBlockV2() {
+    const showReadOut = readOut && readState && readState.count === runPhotos.length;
+    const typeLabel = readOut?.training_type
+      ? RUN_TRAINING_TYPES.find((t) => t.key === readOut.training_type)?.label || null
+      : null;
+    return (
+      <div className="v2-reg-lead" data-testid="v2-reg-lead">
+        <RunShotV2
+          photos={runPhotos}
+          maxPhotos={MAX_PHOTOS}
+          onSelect={handlePhotoSelected}
+          onRemove={removePhoto}
+          onRead={handleReadRunPrints}
+          reading={reading}
+          note={readNote}
+          inputRef={addPhotoInputRef}
+          race={isRaceMode}
+        />
+        <PrintQuestions questions={printQuestions} answers={printAnswers} onChange={setPrintAnswers} />
+        {showReadOut && <RunReadOutV2 rows={readOutRows(readOut, { trainingTypeLabel: typeLabel })} />}
+      </div>
+    );
+  }
 
   /* Os prints do relógio (foto/IA) — a matéria-prima da análise da Carol.
      Não confundir com as memórias da prova, que não passam pela IA. */

@@ -1,0 +1,105 @@
+/* O chat da Carol no Design v2 (Coach/CoachV2Parts.jsx). Só seletores .v2-chat-*: desligado o
+   v2, nenhum elemento os tem e este ficheiro não muda nada. Tokens em v2.css. */
+
+/* Uma mensagem: as bolhas dela à esquerda, as do atleta à direita. */
+.v2-chat-turn { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.v2-chat-turn.is-her { align-items: flex-start; }
+.v2-chat-turn.is-me { align-items: flex-end; }
+
+.v2-chat-msg {
+  max-width: 86%;
+  padding: 11px 13px;
+  border-radius: var(--v2-radius, 8px);
+  font-size: 15px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+.v2-chat-msg.is-her { background: var(--v2-panel, #152031); color: var(--v2-ink, #eef3f8); }
+.v2-chat-msg.is-me { background: var(--coach); color: var(--coach-ink); font-weight: 500; }
+.v2-chat-msg.is-her :where(p, li) { color: inherit; }
+
+/* O nome dela, uma vez por grupo. */
+.v2-chat-who { display: block; margin-bottom: 3px; font-size: 12.5px; font-weight: 600; color: var(--coach); }
+
+.v2-chat-time { margin: 0 4px; font-size: 12px; color: var(--v2-ink2, #b8c4d3); }
+
+.v2-chat-typing-row { display: inline-flex; align-items: center; gap: 8px; font-size: 13.5px; color: var(--v2-ink2, #b8c4d3); }
+.v2-chat-dots { display: inline-flex; align-items: center; gap: 4px; }
+
+/* Respostas rápidas e botões na conversa: retângulos com filete, sem pílulas nem degradês. */
+.v2-chat-chips { display: flex; flex-wrap: wrap; gap: 8px; padding-top: 4px; }
+.v2-chat-chips.is-stack { flex-direction: column; }
+.v2-chat-chip {
+  display: inline-flex; align-items: center; gap: 8px;
+  min-height: 44px;
+  padding: 8px 12px;
+  background: transparent;
+  color: var(--v2-ink, #eef3f8);
+  border: 1px solid var(--v2-rule, #223149);
+  border-radius: 6px;
+  font: 500 14px/1.3 var(--v2-font);
+  text-align: left;
+  cursor: pointer;
+}
+.v2-chat-chips.is-stack .v2-chat-chip { width: 100%; }
+.v2-chat-chip:hover { border-color: var(--coach); }
+.v2-chat-chip:focus-visible { outline: 2px solid var(--coach); outline-offset: 2px; }
+.v2-chat-chip:disabled { opacity: .5; cursor: not-allowed; }
+
+/* A escolha do perfil de carga (LoadProfileChoice, em Run/): os mesmos botões, em retângulo.
+   As cores vêm em style inline do componente, por isso o !important. */
+.v2-chat-load [role="group"] { background: transparent !important; border: 0 !important; border-radius: 0 !important; padding: 0 !important; }
+.v2-chat-load button {
+  min-height: 44px;
+  background: transparent !important;
+  border: 1px solid var(--v2-rule, #223149) !important;
+  border-radius: 8px !important;
+  color: var(--v2-ink, #eef3f8);
+}
+.v2-chat-load button[aria-pressed="true"] { border-color: var(--coach) !important; }
+.v2-chat-load button:focus-visible { outline: 2px solid var(--coach); outline-offset: 2px; }
+
+/* As propostas por rever: um botão ciano plano, sem sombra. */
+.v2-chat-nudge {
+  display: flex; align-items: center; gap: 8px;
+  min-height: 44px; padding: 10px 16px;
+  background: var(--coach); color: var(--coach-ink);
+  border: 0; border-radius: var(--v2-radius, 8px);
+  font: 700 14px var(--v2-font);
+  cursor: pointer;
+}
+.v2-chat-nudge:focus-visible { outline: 2px solid var(--v2-ink, #eef3f8); outline-offset: 2px; }
+.v2-chat-nudge:disabled { opacity: .5; cursor: not-allowed; }
+
+/* O campo de escrita: painel + botão quadrado ciano. */
+.v2-chat-composer { display: flex; gap: 8px; align-items: flex-end; }
+.v2-chat-attach {
+  flex-shrink: 0; width: 46px; height: 46px;
+  display: grid; place-items: center;
+  background: var(--v2-panel, #152031); color: var(--v2-ink2, #b8c4d3);
+  border-radius: var(--v2-radius, 8px);
+  cursor: pointer;
+}
+.v2-chat-attach.is-off { opacity: .5; cursor: default; }
+.v2-chat-attach:focus-within { outline: 2px solid var(--coach); outline-offset: 2px; }
+.v2-chat-field {
+  flex: 1; min-height: 46px;
+  padding: 12px;
+  background: var(--v2-panel, #152031); color: var(--v2-ink, #eef3f8);
+  border: 1px solid transparent;
+  border-radius: var(--v2-radius, 8px);
+  /* 16 px: abaixo disto o Safari iOS aproxima a página ao focar o campo. */
+  font: 400 16px/1.3 var(--v2-font);
+  resize: none; outline: none;
+}
+.v2-chat-field::placeholder { color: var(--v2-ink2, #b8c4d3); }
+.v2-chat-field:focus-visible { border-color: var(--coach); }
+.v2-chat-send {
+  flex-shrink: 0; width: 46px; height: 46px;
+  display: grid; place-items: center;
+  background: var(--coach); color: var(--coach-ink);
+  border: 0; border-radius: var(--v2-radius, 8px);
+  cursor: pointer;
+}
+.v2-chat-send:disabled { background: var(--v2-panel, #152031); color: var(--v2-ink2, #b8c4d3); cursor: not-allowed; }
+.v2-chat-send:focus-visible { outline: 2px solid var(--v2-ink, #eef3f8); outline-offset: 2px; }

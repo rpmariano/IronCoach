@@ -13,6 +13,7 @@ import PaceCalculatorSheet from '../shared/PaceCalculatorSheet';
 import { useElasticPillIndicator } from '../../utils/useElasticPillIndicator';
 import { useTabEnter } from '../../utils/useTabEnter';
 import { installSoftKeyboardWatcher } from '../../utils/softKeyboard';
+import { useDesignV2 } from '../../utils/designV2';
 
 /* Os separadores do Dashboard: qualquer um deles acende a coluna "Dashboard"
    da barra inferior. */
@@ -57,6 +58,8 @@ export default function Layout({ children }) {
   const waterOn = useFeature('water');
   const editingRunId = useAppStore((s) => s.editingRunId);
   const editingRaceId = useAppStore((s) => s.editingRaceId);
+  // O Design v2: só marca o cabeçalho da app (data-app-header) para o v2.css o estilizar.
+  const v2 = useDesignV2();
   const [fabOpen, setFabOpen] = useState(false);
   const fabRef = useRef(null);
   const fabBtnRef = useRef(null);
@@ -213,7 +216,9 @@ export default function Layout({ children }) {
           boxShadow: '0 6px 18px rgba(0,0,0,.45)',
         }}
       >
-        <header className="px-4 pb-3 flex items-center justify-between" style={{ paddingTop: 'max(16px, env(safe-area-inset-top, 0px))' }}>
+        {/* data-app-header só com o v2 (o v2.css estiliza ESTE cabeçalho, não os <header> dos ecrãs);
+            desligado, o atributo não existe e o DOM é o de sempre. */}
+        <header data-app-header={v2 ? '' : undefined} className="px-4 pb-3 flex items-center justify-between" style={{ paddingTop: 'max(16px, env(safe-area-inset-top, 0px))' }}>
           <div className="flex items-center gap-2">
             <button type="button" aria-label="IronCoach, ir para o Início" onClick={handleLogoClick} className="tap-44 flex items-center justify-center -ml-1 rounded-xl active:scale-95 transition">
               <BrandMark variant="icon" playOnce={logoPlays} size={36} className="rounded-xl" />

@@ -1,4 +1,4 @@
-import React, { useRef, useCallback, useEffect, useLayoutEffect, useMemo } from 'react';
+import React, { Suspense, lazy, useRef, useCallback, useEffect, useLayoutEffect, useMemo } from 'react';
 import { useAppStore, sliceReady, EVOLUTION_TAB_SLICES } from '../../store';
 import { Utensils, Dumbbell, User, LayoutDashboard } from 'lucide-react';
 import RunIcon from '../shared/RunIcon';
@@ -23,6 +23,9 @@ import Nutrition from '../Nutrition/Nutrition';
 import Body from '../Body/Body';
 import OverviewDashboard from './OverviewDashboard';
 import CoachInsightsDock from '../BI/CoachInsightsDock';
+import { useDesignV2 } from '../../utils/designV2';
+// O v2 só se descarrega a quem o liga: o bundle principal fica o de sempre.
+const DashboardV2 = lazy(() => import('./DashboardV2'));
 
 /* Cinco separadores em 390px não cabem com "Visão Geral" por extenso a 11px
    (auditoria, achado 1) — o mock "Dashboard · Visão Geral" resolve-o a
@@ -70,7 +73,15 @@ function TabPage({ index, ready, pageRef, children }) {
   );
 }
 
+/* O Design v2 (utils/designV2.js): só neste dispositivo, só com o interruptor do admin. Desligado,
+   o carrossel de sempre, sem mudar nada. */
 export default function Dashboard({ activeModule }) {
+  const v2 = useDesignV2();
+  if (v2) return <Suspense fallback={null}><DashboardV2 activeModule={activeModule} /></Suspense>;
+  return <DashboardCarousel activeModule={activeModule} />;
+}
+
+function DashboardCarousel({ activeModule }) {
   // Seletores, não o store inteiro (2026-10-04): o Dashboard redesenhava a
   // cada mudança do store, e com ele os elementos dos cinco separadores.
   const setActiveTab = useAppStore((s) => s.setActiveTab);
