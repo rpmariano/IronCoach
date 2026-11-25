@@ -10,6 +10,8 @@ import ConfirmDeleteModal from '../shared/ConfirmDeleteModal';
 import Button from '../shared/Button';
 import CoachText from '../shared/CoachText';
 import CarolInterventionActions from '../shared/CarolInterventionActions';
+import { useDesignV2 } from '../../utils/designV2';
+import BodyAssessmentCardV2 from './BodyAssessmentCardV2';
 
 /* O cartão é só de consulta e de eliminar. Qualquer alteração ao conteúdo
    passa pelo botão "Editar" → BodyRegistration, porque mexer nas métricas ou
@@ -17,6 +19,7 @@ import CarolInterventionActions from '../shared/CarolInterventionActions';
    mão deixava a "Análise do Coach" a descrever uma avaliação que já não
    existe. Mesmo padrão da Nutrição/Ginásio (ver PRD 3.2/3.3/3.5). */
 export default function BodyAssessmentCard({ assessment, onEdit, defaultExpanded = false, hideActions = false }) {
+  const v2 = useDesignV2();
   const [expanded, setExpanded] = useState(defaultExpanded);
   const { profile, loadInitialData } = useAppStore();
   const { showToast } = useToast();
@@ -45,6 +48,25 @@ export default function BodyAssessmentCard({ assessment, onEdit, defaultExpanded
   };
 
   const coachCommentary = assessment.ai_summary;
+
+  /* Design v2: a mesma avaliação, o mesmo fluxo de eliminar e o mesmo diálogo, noutra forma. */
+  if (v2) {
+    return (
+      <BodyAssessmentCardV2
+        assessment={assessment}
+        onEdit={onEdit}
+        defaultExpanded={defaultExpanded}
+        hideActions={hideActions}
+        dateLabel={[formattedDate, normalizeStartTime(assessment.assessment_time)].filter(Boolean).join(' · ')}
+        coachCommentary={coachCommentary}
+        isDeleting={isDeleting}
+        showDeleteConfirm={showDeleteConfirm}
+        onAskDelete={() => setShowDeleteConfirm(true)}
+        onCloseDelete={() => setShowDeleteConfirm(false)}
+        onConfirmDelete={handleDelete}
+      />
+    );
+  }
 
   const weight = assessment.weight_kg ? `${assessment.weight_kg} kg` : null;
   const bodyFat = assessment.body_fat_pct ? `${assessment.body_fat_pct}% Gordura` : null;

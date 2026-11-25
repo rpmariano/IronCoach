@@ -1,0 +1,82 @@
+/* O cartão da refeição no Design v2 (MealCardV2). Os tokens estão em v2.css; as peças comuns
+   (.v2-say, .v2-dot, .v2-num) em v2-components.css. Só selectores .v2-card-meal-. */
+
+.v2-card-meal {
+  background: var(--v2-panel);
+  border-radius: var(--v2-radius);
+  padding: 12px 14px 4px;
+  color: var(--v2-ink);
+  font-family: var(--v2-font);
+}
+
+.v2-card-meal-head { display: flex; align-items: center; gap: 6px; font-size: 13.5px; color: var(--v2-ink2); }
+.v2-card-meal-head .v2-dot { margin-right: 0; }
+.v2-card-meal-type { font-weight: 600; }
+.v2-card-meal-time { margin-left: auto; font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+.v2-card-meal-title { margin: 4px 0 0; font: 700 21px/1.15 var(--v2-font-num); color: var(--v2-ink); }
+
+.v2-card-meal-nums { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 16px; margin-top: 6px; font-size: 14px; color: var(--v2-ink2); }
+.v2-card-meal-nums b { font-size: 28px; font-weight: 700; line-height: 1; color: var(--v2-ink); margin-right: 2px; }
+.v2-card-meal-count { margin-left: auto; font-size: 13px; }
+
+.v2-card-meal-questions {
+  all: unset; box-sizing: border-box; cursor: pointer;
+  display: flex; align-items: center; gap: 6px; width: 100%; min-height: 44px; margin-top: 8px;
+  border-top: 1px solid var(--v2-rule);
+  font-size: 14.5px; font-weight: 600; color: var(--v2-acc);
+}
+.v2-card-meal-questions .v2-dot { margin-right: 0; }
+.v2-card-meal-questions-impact { margin-left: auto; font-weight: 500; font-size: 13px; color: var(--v2-ink2); }
+.v2-card-meal-questions:focus-visible { outline: 2px solid var(--v2-acc); outline-offset: 2px; border-radius: 4px; }
+
+.v2-card-meal-say { margin-top: 10px; }
+.v2-card-meal-say-body { min-width: 0; }
+.v2-card-meal-say-text { font-size: 15px; line-height: 1.45; color: var(--v2-ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.v2-card-meal-say-text.is-open { white-space: normal; overflow: visible; }
+.v2-card-meal-say-text.is-open .coach-text { display: inline; }
+.v2-card-meal-say-text.is-open .coach-text > :first-child { display: inline; }
+
+/* Os links discretos (Ler mais, Ver tudo, Editar, Eliminar): texto pequeno, alvo de 44 px. Com dois
+   selectores para ganhar ao `.v2-say button { all: unset }`. */
+.v2-card-meal .v2-card-meal-link {
+  all: unset; box-sizing: border-box; cursor: pointer;
+  display: inline-flex; align-items: center; min-height: 44px; padding: 0 2px;
+  font: 600 14px var(--v2-font); color: var(--v2-ink2);
+}
+.v2-card-meal .v2-card-meal-link.is-acc { color: var(--v2-acc); }
+.v2-card-meal .v2-card-meal-link.is-danger { color: var(--danger, #f87171); }
+.v2-card-meal .v2-card-meal-link:disabled { opacity: .6; cursor: default; }
+.v2-card-meal .v2-card-meal-link:focus-visible { outline: 2px solid var(--v2-acc); outline-offset: 2px; border-radius: 4px; }
+
+.v2-card-meal-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 4px; border-top: 1px solid var(--v2-rule); }
+.v2-card-meal-actions { display: inline-flex; gap: 18px; }
+
+.v2-card-meal-more { padding: 4px 0 12px; border-top: 1px solid var(--v2-rule); }
+
+.v2-card-meal-macros { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 8px 0 0; }
+.v2-card-meal-macros div { min-width: 0; }
+.v2-card-meal-macros dt { font-size: 13px; color: var(--v2-ink2); }
+.v2-card-meal-macros dd { margin: 2px 0 0; font-size: 20px; font-weight: 700; color: var(--v2-ink); }
+
+.v2-card-meal-photos { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.v2-card-meal-thumb { display: block; width: 56px; height: 56px; border-radius: 6px; overflow: hidden; }
+.v2-card-meal-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.v2-card-meal-thumb:focus-visible { outline: 2px solid var(--v2-acc); outline-offset: 2px; }
+
+.v2-card-meal-muted { margin: 0; font-size: 13.5px; color: var(--v2-ink2); }
+.v2-card-meal-notes { margin: 12px 0 0; font-size: 14px; line-height: 1.45; color: var(--v2-ink); }
+.v2-card-meal-sub { color: var(--v2-ink2); font-weight: 600; }
+
+.v2-card-meal-items { list-style: none; margin: 12px 0 0; padding: 0; }
+.v2-card-meal-items li {
+  display: grid; grid-template-columns: 1fr auto; gap: 2px 8px;
+  padding: 8px 0; border-top: 1px solid var(--v2-rule); font-size: 14px;
+}
+.v2-card-meal-item-name { min-width: 0; color: var(--v2-ink); }
+.v2-card-meal-item-name::first-letter { text-transform: uppercase; }
+.v2-card-meal-item-g { color: var(--v2-ink2); white-space: nowrap; }
+.v2-card-meal-item-g b { font-size: 16px; font-weight: 700; color: var(--v2-ink); }
+.v2-card-meal-item-n { grid-column: 1 / -1; font-size: 12.5px; color: var(--v2-ink2); }
+
+.v2-card-meal-save { margin-top: 12px; }

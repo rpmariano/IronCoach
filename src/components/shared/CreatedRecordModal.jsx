@@ -10,6 +10,7 @@ import { useAppStore } from '../../store';
 import { supabase } from '../../lib/supabase';
 import { useToast } from './ToastProvider';
 import { CheckCircle2, Trash2 } from 'lucide-react';
+import { useDesignV2 } from '../../utils/designV2';
 
 import RunCard from '../Run/RunCard';
 import GymSessionCard from '../Gym/GymSessionCard';
@@ -45,6 +46,9 @@ export default function CreatedRecordModal() {
     loadInitialData,
   } = useAppStore();
   const { showToast } = useToast();
+  // O Design v2 (utils/designV2.js): as mensagens em linhas planas e o «Eliminar» discreto; os
+  // cartões do registo escolhem a forma deles sozinhos.
+  const v2 = useDesignV2();
 
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -130,14 +134,30 @@ export default function CreatedRecordModal() {
     <PremiumModal isOpen={true} onClose={handleClose} title="Registo Guardado">
       <div className="space-y-5 px-1 pb-6 pt-2">
         
+        {v2 ? (
+          <p className="v2-crm-ok" data-testid="created-record-ok">
+            <CheckCircle2 size={18} className="shrink-0" aria-hidden="true" />
+            O teu registo foi analisado e guardado com sucesso.
+          </p>
+        ) : (
         <div className="flex items-center gap-3 text-[var(--green)] bg-[var(--green)]/10 px-4 py-3 rounded-2xl">
           <CheckCircle2 size={24} className="shrink-0" />
           <p className="text-sm font-bold">O teu registo foi analisado e guardado com sucesso.</p>
         </div>
+        )}
 
         {/* Bug #48 (fase C): um rótulo lido nas fotos entrou já na despensa —
             não espera pela segunda vez (mockup, ecrã 5). */}
-        {newlyCreatedRecord.pantryAdded?.length > 0 && (
+        {newlyCreatedRecord.pantryAdded?.length > 0 && v2 && (
+          <div data-testid="pantry-added" className="v2-say">
+            <i aria-hidden="true" />
+            <p>
+              <span className="v2-who">Carol.</span> Li o rótulo e guardei já na tua despensa: <b>{newlyCreatedRecord.pantryAdded.join(', ')}</b>.
+              Da próxima, escreve o nome e já não preciso de analisar. Podes ajustá-lo no Perfil, no Armário.
+            </p>
+          </div>
+        )}
+        {newlyCreatedRecord.pantryAdded?.length > 0 && !v2 && (
           <div data-testid="pantry-added" className="flex gap-2.5 items-start rounded-2xl p-3.5" style={{ background: 'var(--tint-nutrition-bg)', border: '1px solid var(--tint-nutrition-bd)' }}>
             <CoachAvatar size={32} mood="happy" />
             <p className="text-[13px] leading-[1.5]" style={{ color: 'var(--text-2)' }}>
@@ -151,7 +171,7 @@ export default function CreatedRecordModal() {
             falhou). As perguntas ficaram por responder e estão logo abaixo, pelo modo answer. Sai
             quando já não há nenhuma delas aberta. */}
         {unappliedOpen > 0 && (
-          <p data-testid="unapplied-questions" role="status" className="text-[13px] leading-[1.5] rounded-2xl px-3.5 py-3" style={{ background: 'var(--tint-coach-bg)', border: '1px solid var(--tint-coach-bd)', color: 'var(--text-2)' }}>
+          <p data-testid="unapplied-questions" role="status" className={v2 ? 'v2-crm-note' : 'text-[13px] leading-[1.5] rounded-2xl px-3.5 py-3'} style={v2 ? undefined : { background: 'var(--tint-coach-bg)', border: '1px solid var(--tint-coach-bd)', color: 'var(--text-2)' }}>
             {unappliedText(unappliedOpen)}{questionsLater ? ' Ficam no cartão da refeição.' : ''}
           </p>
         )}
@@ -189,6 +209,12 @@ export default function CreatedRecordModal() {
             "Fechar" por haver dois caminhos; agora os botões do rodapé são
             "Fechar" e "Eliminar", cada um com o seu peso.) */}
         {type === 'meal' && <SaveAsMealButton meal={record} />}
+        {v2 ? (
+          <div className="pt-1">
+            <button type="button" onClick={handleClose} className="v2-btn" data-testid="created-record-close">Fechar</button>
+            <button type="button" onClick={() => setShowDeleteConfirm(true)} className="v2-link v2-crm-delete">Eliminar</button>
+          </div>
+        ) : (
         <div className="pt-1 space-y-1">
           <Button onClick={handleClose} variant="secondary" className="w-full" data-testid="created-record-close">
             Fechar
@@ -204,6 +230,7 @@ export default function CreatedRecordModal() {
             </div>
           </Button>
         </div>
+        )}
       </div>
 
       <ConfirmDeleteModal
