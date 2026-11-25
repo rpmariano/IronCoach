@@ -686,3 +686,20 @@ Deno.test("o contexto: no dia da prova, o plano de hoje é a prova; sem check-in
   assertStringIncludes(src, "recap: guardRecap(generated.recap || null, { hasCheckin: !!checkinHoje, raceToday: raceEveDays === 0 }),");
   assertStringIncludes(src, 'raceTodayName: raceEveDays === 0 ? (nearestRace?.name ?? "a prova") : null,');
 });
+
+Deno.test("guardRecap (revisão do 1eb00de1): o alarme de sono de vários dias fica; só sai o que é sobre hoje", () => {
+  const recap = "Há dias que dormiste mal: vai com calma e fala comigo no chat. Esta noite dormiste lindamente. Hoje acordaste cheio de energia. O treino de hoje é fácil.";
+  assertEquals(
+    guardRecap(recap, { hasCheckin: false, raceToday: false }),
+    "Há dias que dormiste mal: vai com calma e fala comigo no chat. O treino de hoje é fácil.",
+  );
+  // Outros alarmes persistentes, sem check-in hoje: ficam todos.
+  for (const alarme of [
+    "Nas últimas noites o sono tem estado baixo — conta-me o que se passa.",
+    "Há 3 dias seguidos que dormes mal; hoje vai com calma.",
+    "Esta semana a energia tem andado em baixo.",
+  ]) assertEquals(guardRecap(alarme, { hasCheckin: false, raceToday: false }), alarme, alarme);
+  // E o caso do Rui continua a sair.
+  assertEquals(guardRecap("Acordaste com o sono e a energia no máximo.", { hasCheckin: false, raceToday: false }), null);
+  assertEquals(guardRecap("Hoje dormiste bem.", { hasCheckin: false, raceToday: false }), null);
+});

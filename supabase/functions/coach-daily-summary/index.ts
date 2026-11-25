@@ -811,17 +811,29 @@ export function computeTDEE(profile: any, weeklyVolumeKm: number | null = null):
 /* A rede de segurança do recap (P0 da crítica de design, 2026-11-25): o
    resumo escreveu «Acordaste com o sono e a energia no máximo» num dia sem
    check-in. O prompt já o proíbe; isto tira a frase se ainda assim vier.
-   - Sem check-in hoje: as frases que dizem como dormiu ou acordou.
+   - Sem check-in hoje: as frases que dizem como dormiu ou acordou HOJE —
+     não um alarme de vários dias do bloco de memória («há dias que dormes
+     mal»), que o prompt manda manter (revisão do 1eb00de1).
    - Prova hoje: as frases sobre treinos do plano (rodagem, séries…).
    Devolve null se não sobrar nada. */
-const SLEEP_CLAIM = /\b(acordaste|acordou|dormiste|dormiu|noite (?:bem|mal) dormida|sono e (?:a )?energia|energia no máximo|cheio de energia|descansad[oa] hoje)\b/i;
+const SLEEP_WORDS = /\b(dorm\w*|acord\w*|sono|energia|descansad[oa]|noite)\b/i;
+// Marcas fortes de hoje: «acordaste», «esta noite», «esta manhã», a energia no presente.
+const SLEEP_TODAY_STRONG = /\b(acordaste|acordas|esta noite|esta manhã|energia no máximo|cheio de energia)\b/i;
+const TODAY_WORD = /\bhoje\b/i;
+// Um alarme de vários dias não é uma afirmação sobre hoje.
+const MULTI_DAY = /\b(há (?:\d+ |uns |alguns )?dias|dias seguidos|noites seguidas|últimas noites|nos últimos|esta semana|há uma semana)\b/i;
+function isSleepClaimToday(s: string): boolean {
+  if (!SLEEP_WORDS.test(s)) return false;
+  if (SLEEP_TODAY_STRONG.test(s)) return true;
+  return TODAY_WORD.test(s) && !MULTI_DAY.test(s);
+}
 const PLAN_TRAINING_TODAY = /\b(rodagem|rodagens|séries|intervalos|treino (?:previsto )?(?:de|para) hoje|plano (?:de|para) hoje)\b/i;
 
 export function guardRecap(text: string | null, opts: { hasCheckin: boolean; raceToday: boolean }): string | null {
   if (!text) return text;
   const sentences = text.split(/(?<=[.!?…])\s+/);
   const kept = sentences.filter((s) =>
-    !(!opts.hasCheckin && SLEEP_CLAIM.test(s)) && !(opts.raceToday && PLAN_TRAINING_TODAY.test(s))
+    !(!opts.hasCheckin && isSleepClaimToday(s)) && !(opts.raceToday && PLAN_TRAINING_TODAY.test(s))
   );
   if (kept.length === sentences.length) return text;
   const out = kept.join(" ").trim();
