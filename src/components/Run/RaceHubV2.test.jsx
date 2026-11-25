@@ -135,6 +135,15 @@ describe('RaceHubView — Design v2', () => {
     expect(onFetchWebInfo).toHaveBeenCalled();
   });
 
+  it('com o GPX carregado, «Buscar o percurso» não aparece (o percurso já é conhecido)', async () => {
+    const { sanitizeCourseProfile, COURSE_PROFILE_VERSION } = await import('@formulas/courseProfile.ts');
+    const course_profile = { v: COURSE_PROFILE_VERSION, source: 'gpx', distance_km: 21.1, gain_m: 120, loss_m: 120, min_alt_m: 20, max_alt_m: 25, km: [], climbs: [], track: [], start: [41.15, -8.61], finish: [41.16, -8.62] };
+    expect(sanitizeCourseProfile(course_profile)).toBeTruthy();
+    render(<RaceHubView race={race(4, { website: 'https://prova.pt', course_profile })} runs={TREINO} profile={PROFILE} onFetchWebInfo={vi.fn()} />);
+    await screen.findByTestId('race-hub-v2-main');
+    expect(screen.queryByTestId('race-pacing-fetch-route')).toBeNull();
+  });
+
   it('no trail: «por esforço» no herói e na nota', async () => {
     render(<RaceHubView race={race(4, { race_type: 'trail', distance_km: 21, elevation_gain_m: 900 })} runs={TREINO} profile={PROFILE} />);
     await screen.findByTestId('race-hub-v2-main');

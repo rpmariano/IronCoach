@@ -4,6 +4,7 @@ import '../../styles/v2-components.css';
 import { formatDuration, formatPace } from '../../utils/run';
 import { FUEL_LABEL, renderRacePlanFile, downloadFile, shareOrDownload, canShareFiles } from '../../utils/racePlanImage';
 import { normalizeStartTime } from '../../utils/startTime';
+import { pacingRouteInput } from '../../utils/coursePacing';
 
 /* O hub da prova no Design v2 (direção C · Painel, 2026-11-24; utils/designV2.js), antes da prova.
    Só a forma: o RaceHubView continua a calcular tudo (o momento, o plano, a previsão, o plano para
@@ -88,7 +89,8 @@ function PlanTools({ plan, race, onGoToEdit, onFetchWebInfo, fetchingWebInfo }) 
   const [busy, setBusy] = useState(false);
   const [erro, setErro] = useState('');
   const startTime = normalizeStartTime(race?.start_time);
-  const canFetchRoute = !!onFetchWebInfo && !race?.web_info && !!race?.website?.toString().trim();
+  // Como a v1: com o GPX carregado o percurso já é conhecido, e «Buscar o percurso» não aparece.
+  const canFetchRoute = !!onFetchWebInfo && !race?.web_info && !pacingRouteInput(race).hasCourse && !!race?.website?.toString().trim();
   const notas = plan ? (plan.ambitious ? plan.notes.slice(1) : plan.notes) : [];
   const guardar = async ({ viaShare = false } = {}) => {
     setErro('');
