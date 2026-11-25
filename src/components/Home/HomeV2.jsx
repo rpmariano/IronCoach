@@ -340,7 +340,7 @@ export default function HomeV2({ today, gauges, notices, onOpenRace, onRegisterR
                   {carolAberta ? 'Ler menos' : 'Ler mais'}
                 </button>
               )}
-              <button type="button" className="v2-link v2-link-inline" data-testid="home-v2-carol-chat" onClick={notices?.openCoach}>Falar com a Carol</button>
+              {/* Sem «Falar com a Carol» aqui (pedido do Rui, 2026-11-25): o chat está no menu. */}
             </div>
           </div>
         </div>

@@ -172,7 +172,7 @@ describe('Início — Design v2', () => {
     expect(await screen.findByRole('dialog')).toBeInTheDocument();
   });
 
-  it('ligado: a Carol numa linha que expande ali mesmo («Ler mais»); «Falar com a Carol» à parte', async () => {
+  it('ligado: a Carol numa linha que expande ali mesmo («Ler mais»); sem «Falar com a Carol» (o chat está no menu)', async () => {
     act(() => setDesignV2(true));
     const setActiveTab2 = vi.fn(() => true);
     useAppStore.setState({ setActiveTab: setActiveTab2, dailySummary: { date: today, recap: 'Ontem correste bem. '.repeat(10).trim(), meal_suggestion: 'Almoço com hidratos.' } });
@@ -186,9 +186,9 @@ describe('Início — Design v2', () => {
     expect(ler).toHaveAttribute('aria-expanded', 'true');
     expect(ler).toHaveTextContent('Ler menos');
     expect(screen.getByTestId('home-v2-carol-more')).toHaveTextContent('Almoço com hidratos.');
-    // Expandir não muda de separador; o chat é a ação à parte.
+    // Expandir não muda de separador, e o link para o chat saiu (pedido do Rui, 2026-11-25).
     expect(setActiveTab2).not.toHaveBeenCalledWith('coach');
-    expect(screen.getByTestId('home-v2-carol-chat')).toHaveTextContent('Falar com a Carol');
+    expect(screen.queryByTestId('home-v2-carol-chat')).toBeNull();
   });
 });
 
