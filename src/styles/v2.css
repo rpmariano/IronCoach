@@ -1,0 +1,135 @@
+/* Design v2 · direção C, Painel (aprovado pelo Rui, 2026-11-24).
+   Tudo aqui está sob html.design-v2: sem a classe (o defeito), este ficheiro não muda nada.
+   Ligar: Admin › Funcionalidades › «Design v2 neste dispositivo» (utils/designV2.js).
+
+   Princípios: fundo azul-noite, painéis lisos com raio de 8 px, filetes em vez de sombras, sem vidro,
+   brilho nem gradientes. Barlow Condensed para números e títulos, Barlow para texto. Um número herói
+   por ecrã. O acento é o ciano da Carol; o âmbar só para o que é prova. As cores dos módulos só
+   como marca pequena (um ponto, o traço de um gráfico). */
+
+/* A letra, auto-alojada (@fontsource, woff2, font-display: swap), só o subconjunto latino e os pesos
+   usados. O @font-face sozinho não descarrega nada: o browser só vai buscar o woff2 quando alguma
+   regra o usa — e só as regras de html.design-v2 o usam. */
+@import '@fontsource/barlow/latin-400.css';
+@import '@fontsource/barlow/latin-500.css';
+@import '@fontsource/barlow/latin-600.css';
+@import '@fontsource/barlow/latin-700.css';
+@import '@fontsource/barlow-condensed/latin-600.css';
+@import '@fontsource/barlow-condensed/latin-700.css';
+@import '@fontsource/barlow-condensed/latin-800.css';
+
+html.design-v2 {
+  /* Os tokens próprios do v2. */
+  --v2-bg: #0d1420;
+  --v2-panel: #152031;
+  --v2-rule: #223149;
+  --v2-ink: #eef3f8;
+  --v2-ink2: #b8c4d3;
+  --v2-acc: var(--coach);
+  --v2-acc-ink: var(--coach-ink);
+  --v2-radius: 8px;
+  --v2-font: "Barlow", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --v2-font-num: "Barlow Condensed", "Arial Narrow", ui-sans-serif, system-ui, sans-serif;
+
+  /* Os tokens globais, redefinidos só aqui: os ecrãs ainda por fazer (fase 2) herdam o fundo, os
+     painéis, os filetes e o texto do v2 sem mudarem uma linha. Contraste (AA) medido contra o
+     painel #152031: --text-1 14,7:1, --text-2 12,6:1, --text-3 9,3:1, --text-4 6,8:1,
+     --text-muted 5,8:1, --text-placeholder 4,7:1; o ciano 9,1:1, o âmbar 9,8:1. */
+  --font-sans: var(--v2-font);
+  --bg-app: var(--v2-bg);
+  --bg-header: var(--v2-bg);
+  --bg-nav: var(--v2-bg);
+  --bg-sheet: var(--v2-panel);
+  --surface-glass: var(--v2-panel);
+  --surface-glass-hover: #1a283c;
+  --surface-raised: var(--v2-panel);
+  --surface-card: var(--v2-panel);
+  --surface-card-quiet: #111b2b;
+  --border-glass: var(--v2-rule);
+  --border-glass-strong: var(--v2-rule);
+  --border-hairline: var(--v2-rule);
+  --border-card: var(--v2-rule);
+  --text-1: var(--v2-ink);
+  --text-2: #dbe3ec;
+  --text-3: var(--v2-ink2);
+  --text-4: #9aa8ba;
+  --text-muted: #8d9bae;
+  --text-placeholder: #7d8b9e;
+  --brand: var(--v2-ink2);
+
+  /* Sem gradientes, sem brilho, sem sombras: os tokens que os davam passam a cor lisa ou nada. */
+  --grad-race: var(--race);
+  --grad-coach: var(--coach);
+  --grad-coach-legible: var(--coach);
+  --grad-brand: var(--v2-panel);
+  --grad-nav-pill: var(--coach);
+  --grad-ambient: none;
+  --grad-fade: none;
+  --shadow-card: none;
+  --shadow-fab: none;
+  --glow-pill: none;
+  --blur-chrome: 0px;
+
+  /* Raio de 8 px em tudo o que é cartão. */
+  --radius-md: 8px;
+  --radius-lg: 8px;
+  --radius-xl: 8px;
+  --radius-2xl: 8px;
+
+  background: var(--v2-bg);
+}
+html.design-v2 body {
+  background: var(--v2-bg);
+  font-family: var(--v2-font);
+}
+
+/* O fundo animado (gradiente ambiente, curvas de nível) sai: o fundo é liso. */
+html.design-v2 .app-bg { display: none; }
+
+/* ── O cabeçalho ─────────────────────────────────────────────────────────── */
+html.design-v2 div:has(> header) {
+  background: var(--v2-bg) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  border-color: var(--v2-rule) !important;
+  box-shadow: none !important;
+}
+html.design-v2 header h1 {
+  font: 800 19px/1 var(--v2-font-num);
+  letter-spacing: .01em;
+  color: var(--v2-ink) !important;
+}
+html.design-v2 header h1 + p {
+  font-size: 13.5px;
+  color: var(--v2-ink2) !important;
+}
+html.design-v2 header button[aria-label]:not([aria-label^="IronCoach"]) {
+  background: transparent !important;
+  border-color: var(--v2-rule) !important;
+  border-radius: var(--v2-radius) !important;
+  color: var(--v2-ink2) !important;
+}
+html.design-v2 header button[aria-current="page"] { color: var(--v2-acc) !important; border-color: var(--v2-acc) !important; }
+
+/* ── A barra inferior ────────────────────────────────────────────────────── */
+html.design-v2 [data-testid="bottom-nav"] {
+  background: var(--v2-bg) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  border-color: var(--v2-rule) !important;
+  box-shadow: none !important;
+}
+html.design-v2 [data-testid="bottom-nav"] .vbar-btn { color: var(--v2-ink2) !important; }
+html.design-v2 [data-testid="bottom-nav"] .vbar-btn[aria-current="page"] { color: var(--v2-acc) !important; font-weight: 600 !important; }
+html.design-v2 [data-testid="bottom-nav"] .vbar-btn span { font-family: var(--v2-font); font-size: 12px; }
+/* A minhoca fica (a mesma animação), lisa e sem brilho; 3 px. */
+html.design-v2 [data-testid="nav-pill"] { background: var(--v2-acc) !important; box-shadow: none !important; height: 3px !important; }
+/* O «+»: o âmbar da prova, liso, com o anel na cor do fundo. */
+html.design-v2 [data-testid="bottom-nav"] > button[aria-expanded] {
+  background: var(--race) !important;
+  border-color: var(--v2-bg) !important;
+  box-shadow: none !important;
+}
+
+/* As peças dos ecrãs v2 (.v2-hero, .v2-say, .v2-grid…) vivem em v2-components.css, importado pelo
+   HomeV2 e pelo RaceHubV2: chegam com eles, no chunk deles, e não pesam a quem não liga o v2. */

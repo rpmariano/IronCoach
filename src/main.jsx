@@ -8,12 +8,19 @@ import { startAppUpdateWatcher, reloadFresh, resumeParams, isBusy } from './lib/
 import { isScreenOpen } from './utils/navigationRestore';
 import { startDailySummaryRefresh } from './utils/dailySummaryRefresh';
 import './styles/globals.css';
+import './styles/v2.css';
 import { bootPhase } from './utils/bootTrace';
+import { applyDesignV2Class } from './utils/designV2';
 
 // O JavaScript da app chegou e corre (utils/bootTrace.js).
 bootPhase('main');
 
 window.useAppStore = useAppStore;
+
+// O Design v2 (utils/designV2.js): a classe no <html> antes do primeiro render, para não piscar o
+// design antigo. Uma leitura do localStorage e um classList — não espera por nada, não toca no
+// logo do index.html (#boot-splash tem o seu próprio CSS, que o v2.css não mexe).
+applyDesignV2Class();
 
 // Marca `data-page-hidden` no <html> — o CSS pára os loops enquanto a
 // página está em segundo plano (ver globals.css).

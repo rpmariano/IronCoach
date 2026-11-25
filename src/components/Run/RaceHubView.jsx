@@ -39,6 +39,8 @@ import RacePacingPlanCard from './RacePacingPlanCard';
 import RaceMemoriesSheet from './RaceMemoriesSheet';
 import RaceBalanceCard from './RaceBalanceCard';
 import RaceForecastCard from './RaceForecastCard';
+import RaceHubV2 from './RaceHubV2';
+import { useDesignV2 } from '../../utils/designV2';
 import RaceTimesBreakdown from './RaceTimesBreakdown';
 import { raceForecast, raceTimesBreakdown, targetLine } from '../../utils/raceTimes';
 import RaceMuralSheet from './RaceMuralSheet';
@@ -120,6 +122,8 @@ export default function RaceHubView({
   course = null,
 }) {
   const [expandedPhaseId, setExpandedPhaseId] = useState(null);
+  // O Design v2 (utils/designV2.js): antes da prova, a forma do RaceHubV2; a lógica é esta.
+  const v2 = useDesignV2();
   const [confirmCompleted, setConfirmCompleted] = useState(false);
 
   // Os planos aceites com a Carol: antes do ciclo, o parecer manda seguir
@@ -1117,6 +1121,37 @@ export default function RaceHubView({
       )}
     </HubCollapsible>
   );
+
+  if (v2) {
+    return (
+      <RaceHubV2
+        race={race}
+        moment={moment}
+        dateLine={raceDateLine}
+        meta={metaRest}
+        countdown={countdown}
+        // Sem travessões no v2 (direção C): «Base Aeróbica, semana 1 de 10».
+        phaseLine={phaseLine.replace(' — ', ', ')}
+        forecast={forecast}
+        plan={showPacingPlan ? pacingPlan : null}
+        daysToRace={daysToRace}
+        overviewText={carolAnalysis.overviewText}
+        canRegister={canRegisterRace}
+        onRegister={openRaceRegistration}
+        onGoToEdit={onGoToEdit}
+        extras={extras}
+        carolSection={(
+          <HubCollapsible id="carol" title="Como chegaste aqui" summary={calibrating ? 'Prontidão a calibrar' : `Prontidão ${readinessTitle} (${readiness.score}%)`} testId="race-hub-carol-section">
+            {carol}
+          </HubCollapsible>
+        )}
+        macro={macro}
+        course={course_}
+        site={site}
+        modal={confirmCompletedModal}
+      />
+    );
+  }
 
   return (
     <div className="race-hub-container" data-testid="race-hub-prerace" data-moment={moment}>
