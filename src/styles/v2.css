@@ -208,3 +208,36 @@ html.design-v2 [data-testid="action-bar"] { --mod-prova: var(--v2-ink); backgrou
 .v2-btn-danger { background: #dc2626; color: #fff; }
 .v2-btn-danger:hover { background: #b91c1c; }
 .v2-btn-danger:focus-visible { outline: 2px solid var(--v2-ink); outline-offset: 2px; }
+
+/* ── Os flutuantes e a barra de ações (P2b da crítica de design, 2026-11-25) ─────────────────────
+   O + da barra inferior sobe ~22 px acima da nav e tapava o botão da barra de ações: no v2 a barra
+   continua assente na nav, mas o botão sobe 24 px (o fundo da barra tapa o vão; o + fica por cima). O botão de reportar e a bolha da Carol tapavam o botão da barra: com uma barra no ecrã,
+   sobem por cima dela. E o padding do fundo deixa o último elemento acima dos flutuantes. Com o
+   teclado aberto fica tudo como estava (a barra cola ao teclado, a nav e o reportar saem). */
+html.design-v2:not([data-keyboard="open"]) { --v2-bar-lift: 24px; }
+html.design-v2:not([data-keyboard="open"]) body:has([data-testid="bottom-nav"]) [data-testid="action-bar"] {
+  padding-bottom: calc(12px + var(--v2-bar-lift)) !important;
+}
+/* A barra é fixa, mas num contentor space-y-* (o Perfil) apanhava a margem de baixo dos irmãos e
+   ficava 16 px acima da nav, com o conteúdo a ver-se pelo vão. */
+html.design-v2 [data-testid="action-bar"] { margin: 0 !important; }
+html.design-v2:not([data-keyboard="open"]) body:has([data-testid="action-bar"]) :is([data-testid="report-issue-button"]:not([style*="top"]), [data-testid="coach-insight-button"]) {
+  bottom: calc(var(--actionbar-bottom) + var(--v2-bar-lift) + 80px + env(safe-area-inset-bottom, 0px)) !important;
+}
+/* O padding do fundo: sem barra, acima dos flutuantes (topo a ~148 px do fundo); com barra, acima da
+   barra e dos flutuantes que subiram (topo a ~228 px). O ACTION_BAR_SCROLL_PAD é a diferença dos dois. */
+html.design-v2:not([data-keyboard="open"]) body:has([data-testid="coach-insight-button"], [data-testid="report-issue-button"]) {
+  --scroll-pad-bottom: 164px;
+}
+html.design-v2:not([data-keyboard="open"]) body {
+  --scroll-pad-bottom-actionbar: calc(var(--actionbar-bottom) + var(--v2-bar-lift) + 72px + 16px);
+}
+html.design-v2:not([data-keyboard="open"]) body:has([data-testid="action-bar"]):has([data-testid="coach-insight-button"], [data-testid="report-issue-button"]) {
+  --scroll-pad-bottom-actionbar: calc(var(--actionbar-bottom) + var(--v2-bar-lift) + 80px + 48px + 16px);
+}
+
+/* O título com voltar dos ecrãs abertos pelo cabeçalho (Calendário, Perfil). */
+.v2-screen-title { display: flex; align-items: center; gap: 2px; margin: 0 0 8px; }
+.v2-screen-title .v2-title { margin: 0; }
+.v2-screen-back { all: unset; box-sizing: border-box; cursor: pointer; width: 44px; height: 44px; margin-left: -12px; display: grid; place-items: center; border-radius: 6px; color: var(--v2-ink2); }
+.v2-screen-back:hover { color: var(--v2-ink); }

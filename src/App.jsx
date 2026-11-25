@@ -4,6 +4,8 @@ import { bootInfoOnce, bootMessage, trackHiddenAt } from './utils/bootTelemetry'
 import { bootPhase, bootExit, currentBootTrace, previousUnfinishedTrace, markTraceReported } from './utils/bootTrace';
 import { BOOT_SESSION_TIMEOUT_MS, BOOT_DEADLINE_MS } from './utils/bootDeadline';
 import { retryOnce } from './lib/retryOnce';
+import { useDesignV2 } from './utils/designV2';
+import ScreenTitleV2 from './components/shared/ScreenTitleV2';
 import { announceBuildToServiceWorker } from './lib/assetCache';
 import { registerServiceWorker, maybeSyncPushSubscription, pushWantedFor, forgetPushSubscriptionOnThisDevice } from './lib/push';
 import { cenasPreviewAtiva } from './utils/cenasPreview';
@@ -607,6 +609,14 @@ export default function App() {
   const setEditingRaceId = useAppStore((s) => s.setEditingRaceId);
   const editingRunId = useAppStore((s) => s.editingRunId);
   const setEditingRunId = useAppStore((s) => s.setEditingRunId);
+  /* Design v2 (P2b, 2026-11-25): o Calendário e o Perfil abrem-se pelo cabeçalho e não acendem
+     separador nenhum; levam título e um voltar para o último ecrã da barra onde se estava. */
+  const v2 = useDesignV2();
+  const lastMainTabRef = useRef('home');
+  useEffect(() => {
+    if (activeTab !== 'calendario' && activeTab !== 'perfil' && activeTab !== 'admin') lastMainTabRef.current = activeTab;
+  }, [activeTab]);
+  const backToMainTab = useCallback(() => setActiveTab(lastMainTabRef.current || 'home'), [setActiveTab]);
   const profile = useAppStore((s) => s.profile);
   const runs = useAppStore((s) => s.runs);
   const meals = useAppStore((s) => s.meals);
@@ -1459,11 +1469,21 @@ export default function App() {
           {!isCreatingOrEditing && (
             <>
               {activeTab === 'home' && <Home />}
-              {activeTab === 'calendario' && <Calendar />}
+              {activeTab === 'calendario' && (v2 ? (
+                <>
+                  <ScreenTitleV2 title="Calendário" onBack={backToMainTab} testId="screen-title-calendario" />
+                  <Calendar />
+                </>
+              ) : <Calendar />)}
               {activeTab === 'provas' && <RacesScreen />}
               {DASHBOARD_TABS.includes(activeTab) && <DashboardScreen activeModule={activeTab} />}
               {activeTab === 'coach' && <Coach />}
-              {activeTab === 'perfil' && <Perfil />}
+              {activeTab === 'perfil' && (v2 ? (
+                <>
+                  <ScreenTitleV2 title="Perfil" onBack={backToMainTab} testId="screen-title-perfil" />
+                  <Perfil />
+                </>
+              ) : <Perfil />)}
               {activeTab === 'admin' && <Admin />}
             </>
           )}

@@ -77,6 +77,7 @@ describe('Registar a prova · Design v2 (P1)', () => {
   it('os títulos das secções são texto simples (sem a etiqueta em maiúsculas), pela ordem de sempre', () => {
     entrarPeloPrefill();
     render(<RunRegistration onClose={vi.fn()} />);
+    fireEvent.click(screen.getByTestId('v2-reg-manual')); // P2a: o manual abre por «Preencher à mão»
     const titulos = screen.getAllByRole('heading', { level: 3 }).map((h) => h.textContent)
       .filter((t) => /^(A prova|O resultado|Como correu|Memórias|Diploma)$/.test(t));
     expect(titulos).toEqual(['A prova', 'O resultado', 'Como correu', 'Memórias']);
@@ -88,9 +89,10 @@ describe('Registar a prova · Design v2 (P1)', () => {
   it('o resultado não tem caixas dentro: os grupos do relógio só com o título', () => {
     entrarPeloPrefill();
     render(<RunRegistration onClose={vi.fn()} />);
+    fireEvent.click(screen.getByTestId('v2-reg-manual')); // P2a: o manual abre por «Preencher à mão»
     expect(screen.getByText('Fisiologia e relógio')).toBeInTheDocument();
     expect(screen.queryByText('Fisiologia & Relógio')).not.toBeInTheDocument();
-    const zonas = screen.getByRole('group', { name: /Zonas de FC/ });
+    const zonas = screen.getByRole('group', { name: /Zonas de frequência cardíaca/ });
     expect(zonas.className).toBe('');
     const parciais = screen.getByRole('group', { name: /Parciais/ });
     expect(parciais.className).toBe('');
@@ -106,6 +108,7 @@ describe('Registar a prova · Design v2 (P1)', () => {
   it('depois de gravar, diz o que acontece a seguir', async () => {
     entrarPeloPrefill();
     render(<RunRegistration onClose={vi.fn()} />);
+    fireEvent.click(screen.getByTestId('v2-reg-manual')); // P2a: o manual abre por «Preencher à mão»
     fireEvent.change(screen.getByLabelText(/Tempo oficial/), { target: { value: '1:53:42' } });
     fireEvent.change(screen.getByPlaceholderText('00:00'), { target: { value: '1:53:50' } });
     fireEvent.click(screen.getByRole('button', { name: /Registar a prova/i }));
@@ -118,6 +121,7 @@ describe('Registar a prova · Design v2 (P1)', () => {
   it('na corrida normal, o v2 não leva o invólucro âmbar', () => {
     useAppStore.setState({ profile: PROFILE, runs: [], raceEvents: [], shoes: [], runRacePrefill: null });
     render(<RunRegistration onClose={vi.fn()} />);
+    fireEvent.click(screen.getByTestId('v2-reg-manual')); // P2a: o manual abre por «Preencher à mão»
     expect(screen.queryByTestId('v2-runreg-go')).not.toBeInTheDocument();
     // «Adicionar parcial» e «Adicionar zona» em texto normal (o AddButton punha-os em maiúsculas).
     for (const nome of [/Adicionar parcial/, /Adicionar zona/]) {

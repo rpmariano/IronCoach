@@ -25,6 +25,17 @@ const DASHBOARD_TABS = ['hub', 'corrida', 'ginasio', 'nutricao', 'corpo', 'holis
    não está. A barra é Início · Provas · Evolução · Carol (nomes desde 2026-09-24)
    (opção A de "Onde vivem as provas"): a prova é o grande objetivo da app e
    ganhou coluna; o Calendário passou para o cabeçalho. */
+/* Design v2 (P2b, 2026-11-25): o separador aceso é o do ecrã à frente, não o separador por baixo.
+   Um registo aberto por cima (openCreationMode) não pertence à Evolução por estar debaixo de
+   'corrida': o registo da prova e a ficha da prova são das Provas; os outros registos não acendem
+   nenhum. Devolve null quando não há separador certo. */
+export function navTabV2(activeTab, openCreationMode, runFromRace) {
+  if (openCreationMode === 'race') return 'provas';
+  if (openCreationMode === 'run' && runFromRace) return 'provas';
+  if (openCreationMode) return null;
+  return activeTab;
+}
+
 function navIndexFor(activeTab) {
   if (activeTab === 'home') return 0;
   if (activeTab === 'provas') return 1;
@@ -65,8 +76,16 @@ export default function Layout({ children }) {
   const waterOn = useFeature('water');
   const editingRunId = useAppStore((s) => s.editingRunId);
   const editingRaceId = useAppStore((s) => s.editingRaceId);
+  const runRacePrefill = useAppStore((s) => s.runRacePrefill);
   // O Design v2: só marca o cabeçalho da app (data-app-header) para o v2.css o estilizar.
   const v2 = useDesignV2();
+  /* O registo em modo prova consome o runRacePrefill ao montar (RunRegistration), por isso lembra-se
+     aqui, enquanto o mesmo registo estiver aberto, que veio de uma prova. */
+  const runFromRaceRef = useRef(false);
+  if (openCreationMode !== 'run') runFromRaceRef.current = false;
+  else if (runRacePrefill?.raceId) runFromRaceRef.current = true;
+  // O separador que a barra mostra aceso: na v1 o activeTab, como sempre; no v2 o do ecrã à frente.
+  const navTab = v2 ? navTabV2(activeTab, openCreationMode, runFromRaceRef.current) : activeTab;
   const [fabOpen, setFabOpen] = useState(false);
   const fabRef = useRef(null);
   const fabBtnRef = useRef(null);
@@ -87,7 +106,7 @@ export default function Layout({ children }) {
   // de si. A duração é a da nav: min(1300, 650 + 170·distância) ms, o valor
   // por omissão do hook.
   const navRef = useRef(null);
-  const navIndex = navIndexFor(activeTab);
+  const navIndex = navIndexFor(navTab);
   const { indicatorStyle: navPill, setItemRef: setNavItemRef } =
     useElasticPillIndicator(navRef, navIndex);
 
@@ -439,16 +458,16 @@ export default function Layout({ children }) {
         {/* Os nomes em português (2026-09-24): Início, Provas, Evolução e Carol
             — o separador dela tem o nome e o rosto dela (CarolIcon), não um
             robô. As chaves internas (home, dashboard, coach) não mudam. */}
-        <VBarBtn tab="home" icon={<House size={20} />} label="Início" activeTab={activeTab} setTab={goTab} pillRef={setNavItemRef(0)} />
-        <VBarBtn tab="provas" icon={<Trophy size={20} />} label="Provas" activeTab={activeTab} setTab={goTab} pillRef={setNavItemRef(1)} />
+        <VBarBtn tab="home" icon={<House size={20} />} label="Início" activeTab={navTab} setTab={goTab} pillRef={setNavItemRef(0)} />
+        <VBarBtn tab="provas" icon={<Trophy size={20} />} label="Provas" activeTab={navTab} setTab={goTab} pillRef={setNavItemRef(1)} />
 
         {/* Espaço central reservado na grelha */}
         <div aria-hidden="true" className="h-full" />
 
-        <DashboardVBarBtn activeTab={activeTab} setTab={goTab} lastDashboardTab={lastDashboardTab} pillRef={setNavItemRef(2)} />
+        <DashboardVBarBtn activeTab={navTab} setTab={goTab} lastDashboardTab={lastDashboardTab} pillRef={setNavItemRef(2)} />
         {/* No v2 (pedido do Rui, 25/11) o separador da Carol leva o balão do Lucide, como os outros
             ícones da barra; o nome fica «Carol». Na v1, a cara dela (CarolIcon). */}
-        <VBarBtn tab="coach" icon={v2 ? <MessageCircle size={20} data-testid="nav-carol-icon-v2" /> : <CarolIcon size={20} />} label="Carol" activeTab={activeTab} setTab={goTab} pillRef={setNavItemRef(3)} />
+        <VBarBtn tab="coach" icon={v2 ? <MessageCircle size={20} data-testid="nav-carol-icon-v2" /> : <CarolIcon size={20} />} label="Carol" activeTab={navTab} setTab={goTab} pillRef={setNavItemRef(3)} />
 
         {/* Botão "+" flutuante — filho direto do nav para top: -22px ser relativo ao topo da barra */}
         <button
