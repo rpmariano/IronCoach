@@ -116,7 +116,7 @@ export default function AssistantAccessCard() {
           style={v2 ? undefined : { background: 'var(--surface-soft)', border: '1px solid var(--border-glass)' }}>
           <p id={freshTitleId} className="text-[12px] font-bold" style={{ color: 'var(--text-1)' }}>Este código só aparece agora</p>
           <p className="text-[11px] mt-0.5 leading-relaxed" style={{ color: 'var(--text-2)' }}>
-            Copia-o e entrega-o à assistente. Depois de fechares isto, não o voltas a ver — se o perderes, revoga e gera outro.
+            Copia-o e entrega-o à assistente. Depois de fechares isto, não o voltas a ver. Se o perderes, revoga e gera outro.
           </p>
           <code ref={freshRef} tabIndex={-1} data-testid="perfil-assistente-token"
             className="block mt-2 px-3 py-2 rounded-lg text-[12px] break-all select-all"

@@ -1102,6 +1102,12 @@ export default function RunAgenda({ onClose }) {
     />
   ));
 
+  // O motivo de um «Guardar prova» desativado (a submeter, não precisa: o botão já mostra o spinner).
+  const raceSaveHint = isSubmitting ? null
+    : !draft.name.trim() ? 'Falta o nome da prova'
+    : !isDirty ? 'Sem alterações para guardar'
+    : null;
+
   return (
     // --focus-ring: anel de teclado na cor do contexto (handoff, "Fidelity").
     // A prova é dourada; paddingBottom abre espaço para a ActionBar fixa.
@@ -1581,6 +1587,7 @@ export default function RunAgenda({ onClose }) {
           (showSaveBar). */}
       {showSaveBar && (
       <ActionBar>
+        <div className="w-full flex flex-col gap-1">
         {/* Só há o que guardar quando algo mudou (isDirty): a barra também
             está por cima do Hub, que é só de leitura, e um "Guardar prova"
             aceso sem alterações convidava a gravar o nada (relatado
@@ -1590,12 +1597,16 @@ export default function RunAgenda({ onClose }) {
           moduleColor="var(--mod-prova)"
           onClick={handleSaveForm}
           disabled={isSubmitting || !draft.name.trim() || !isDirty}
+          aria-describedby={raceSaveHint ? 'race-save-hint' : undefined}
           type="button"
           className="w-full text-xs"
           icon={isSubmitting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
         >
           Guardar prova
         </Button>
+        {/* Desativado, diz porquê (revisão do P1, 2026-11-25). */}
+        {raceSaveHint && <p id="race-save-hint" data-testid="race-save-hint" className="text-[12px] leading-snug text-center text-[var(--text-3)] m-0">{raceSaveHint}</p>}
+        </div>
       </ActionBar>
       )}
     </div>

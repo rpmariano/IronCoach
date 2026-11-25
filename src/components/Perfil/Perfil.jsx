@@ -606,17 +606,21 @@ export default function Perfil() {
     />
   );
 
+  // Desativado sem estar a gravar, diz porquê (revisão do P1, 2026-11-25).
+  const saveHint = !isDirty && !isSaving ? 'Sem alterações para guardar' : null;
   const saveButton = (
+    <div className="w-full flex flex-col gap-1">
     <Button
       variant="module"
       // Sem moduleColor, "module" (Button.jsx) fica só com text-white
       // shadow-sm — sem fundo nenhum, por isso "Guardar alterações"
       // aparecia como texto solto em vez de botão. --mod-prova é a cor de
       // identidade do Perfil (já usada no indicador dos separadores acima).
-      // Design v2: o âmbar é só da prova; guardar o perfil é neutro (ciano, tinta da Carol).
+      // Design v2: o âmbar é só da prova; guardar o perfil é neutro (a tinta, com o texto escuro).
       moduleColor={v2 ? 'var(--v2-ink)' : 'var(--mod-prova)'}
       onClick={handleSave}
       disabled={!isDirty || isSaving}
+      aria-describedby={saveHint ? 'perfil-save-hint' : undefined}
       isLoading={isSaving}
       // A tinta vem do próprio Button (resolveModuleInk, a partir do
       // moduleColor) — dourado (#fbbf24) é claro demais para branco em cima.
@@ -624,6 +628,8 @@ export default function Perfil() {
     >
       Guardar alterações
     </Button>
+    {saveHint && <p id="perfil-save-hint" data-testid="perfil-save-hint" className="text-[12px] leading-snug text-center text-[var(--text-3)] m-0">{saveHint}</p>}
+    </div>
   );
 
   return (
@@ -730,7 +736,7 @@ export default function Perfil() {
                     ? experienceLevelDescription(draft.experience_level)
                     : 'Calibra a linguagem e os limiares de treino da Carol.'}
                   {' '}Ao registares uma prova, podes indicar um nível diferente só
-                  para essa prova — por exemplo, avançado em estrada mas iniciante
+                  para essa prova: por exemplo, avançado em estrada mas iniciante
                   na primeira trail.
                 </p>
               </ExperienceLevelHelp>
@@ -765,7 +771,7 @@ export default function Perfil() {
                 <p className="text-[11px] text-[var(--text-3)] mt-1">
                   Mede ao acordar, antes de te levantares. Torna as zonas de
                   frequência cardíaca mais precisas e permite à Carol detetar
-                  fadiga acumulada — uma subida sustentada face ao teu normal é
+                  fadiga acumulada. Uma subida sustentada face ao teu normal é
                   dos primeiros sinais de sobretreino.
                 </p>
               </div>
@@ -849,7 +855,7 @@ export default function Perfil() {
                   {placeChoices && placeChoices.length > 0 && (
                     <div className="mt-2 space-y-1.5" data-testid="perfil-onde-treinas-escolhas">
                       <p className="text-[11px] text-[var(--text-3)]">
-                        {placeChoices.length === 1 ? 'Encontrei — é aqui?' : 'Encontrei vários — qual é o teu?'}
+                        {placeChoices.length === 1 ? 'Encontrei. É aqui?' : 'Encontrei vários. Qual é o teu?'}
                       </p>
                       {placeChoices.map((p) => (
                         <button
@@ -899,7 +905,7 @@ export default function Perfil() {
             </div>
             )}
             <p className="text-[11.5px] text-[var(--text-3)] leading-relaxed">
-              Tudo o que está aqui são objetivos teus — o corpo e a nutrição que queres
+              Tudo o que está aqui são objetivos teus: o corpo e a nutrição que queres
               atingir, não medições. Afina-os com a Carol: ela olha para as tuas
               avaliações corporais e para o teu treino e propõe valores, que aceitas ou recusas.
             </p>
@@ -1031,7 +1037,7 @@ export default function Perfil() {
               <CarolIcon size={14} className="shrink-0 mt-px" style={{ color: 'var(--mod-coach-to)' }} />
               <span>
                 A Carol pode propor-te metas no chat; só mudam aqui se aceitares. As que vierem dela ficam
-                marcadas com "Carol" — editá-las à mão devolve-te o controlo.
+                marcadas com "Carol"; editá-las à mão devolve-te o controlo.
               </span>
             </p>
 
@@ -1081,7 +1087,7 @@ export default function Perfil() {
                   ? 'Na média e nas tabelas com o nome abreviado'
                   : profile?.stats_pool_consent_at
                     ? 'Na média do escalão, sem nome nenhum'
-                    : 'Fora da média — duas decisões, ambas tuas'}
+                    : 'Fora da média: duas decisões, ambas tuas'}
               </span>
             </span>
             <ChevronRight size={18} className="shrink-0" style={{ color: 'var(--text-4)' }} />
@@ -1322,7 +1328,7 @@ export default function Perfil() {
                 <p className="text-[11px] text-[var(--text-3)] leading-relaxed">
                   {carolTypes.length === 0
                     ? (cupNoticesOn
-                      ? 'Sem nenhum momento escolhido, a Carol não te chama — só os avisos do Troféu que ligaste abaixo.'
+                      ? 'Sem nenhum momento escolhido, a Carol não te chama. Ficam só os avisos do Troféu que ligaste abaixo.'
                       : 'Sem nenhum momento escolhido, a Carol não te chama.')
                     : carolStartHour === carolEndHour
                       ? 'Início igual ao fim: a Carol usa a janela das 09:00 às 21:00.'
@@ -1378,7 +1384,7 @@ export default function Perfil() {
             </div>
             )}
             <p className="text-[11px] text-[var(--text-3)] mb-3 leading-relaxed">
-              Regra absoluta que a Carol nunca contraria — ao contrário da Memória, aqui é a
+              Regra absoluta que a Carol nunca contraria. Ao contrário da Memória, aqui é a
               Carol que calcula por trás as metas de nutrientes certas para cada restrição.
             </p>
             <div className="flex flex-wrap gap-1.5">
@@ -1405,7 +1411,7 @@ export default function Perfil() {
               })}
             </div>
             <p className="text-[11px] text-[var(--text-3)] mt-1">
-              Podes escolher mais que uma. Vegetariano e vegano excluem-se —
+              Podes escolher mais que uma. Vegetariano e vegano excluem-se:
               escolher um desliga o outro. Sem nada selecionado, a Carol
               assume que comes de tudo.
             </p>
