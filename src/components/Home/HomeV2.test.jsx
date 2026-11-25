@@ -249,6 +249,21 @@ describe('Início — Design v2, o foco (crítica de 2026-11-25)', () => {
     expect(carol.textContent).toMatch(/prova/i);
   });
 
+  it('na véspera com dor alta: o aviso do servidor aparece primeiro, e a rodagem de hoje não', async () => {
+    act(() => setDesignV2(true));
+    useAppStore.setState({
+      ...PLANO,
+      raceEvents: [{ id: 'sil', name: 'São Silvestre', date: tomorrow, start_time: '09:00:00', status: 'agendada', distance_km: 10 }],
+      coachPlanItems: [{ id: 'i1', plan_id: 'p1', planned_date: today, kind: 'corrida', training_type: 'continuo', target_distance_km: 5, status: 'pendente' }],
+      dailySummary: { date: today, warnings: 'Marcaste dor 8 no joelho no check-in: hoje não corras e fala comigo antes da prova.' },
+    });
+    renderHome();
+    await screen.findByTestId('home-v2');
+    const carol = screen.getByTestId('home-v2-carol');
+    expect(carol).toHaveTextContent(/^Carol\. Marcaste dor 8 no joelho/);
+    expect(carol).not.toHaveTextContent(/corrida contínua de 5 km/i);
+  });
+
   it('na véspera: o herói é a prova de amanhã e a Carol fala dela', async () => {
     act(() => setDesignV2(true));
     useAppStore.setState({

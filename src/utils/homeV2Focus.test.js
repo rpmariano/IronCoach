@@ -16,12 +16,14 @@ describe('heroRaceOf', () => {
     expect(heroRaceOf({ raceEvents: [r('tejo', '2026-12-20'), r('amanha', '2026-11-26')], today: T }).id).toBe('amanha');
     expect(heroRaceOf({ raceEvents: [r('tejo', '2026-12-20'), r('porto', '2027-01-31')], today: T }).id).toBe('tejo');
   });
-  it('a principal (A) na janela de afinação passa à frente de uma B mais perto', () => {
+  it('depois de amanhã, a prova em foco do resumo da Carol (focusRace): a próxima principal, sem limite de dias', () => {
     const races = [r('b', '2026-12-01', { race_priority: 'b' }), r('meia', '2026-12-10', { race_priority: 'a' })];
     expect(heroRaceOf({ raceEvents: races, today: T }).id).toBe('meia');
-    // Fora da janela (mais de 21 dias), fica a mais perto.
     const longe = [r('b', '2026-12-01', { race_priority: 'b' }), r('maratona', '2027-02-01', { race_priority: 'a' })];
-    expect(heroRaceOf({ raceEvents: longe, today: T }).id).toBe('b');
+    expect(heroRaceOf({ raceEvents: longe, today: T }).id).toBe('maratona');
+    // Sem principal nenhuma, a próxima.
+    const semA = [r('c', '2026-12-20', { race_priority: 'c' }), r('b', '2026-12-01', { race_priority: 'b' })];
+    expect(heroRaceOf({ raceEvents: semA, today: T }).id).toBe('b');
   });
   it('uma prova que já passou nunca é o herói; as registadas e as concluídas também não', () => {
     expect(heroRaceOf({ raceEvents: [r('trail', '2026-11-23')], today: T })).toBeNull();
@@ -85,5 +87,41 @@ describe('heroRaceOf — duas provas no mesmo dia', () => {
   it('a principal, pela mesma regra da Carol (pickRaceOfDay)', () => {
     const races = [r('tejo', '2026-11-26', { race_priority: 'b' }), r('silvestre', '2026-11-26', { race_priority: 'a' })];
     expect(heroRaceOf({ raceEvents: races, today: T }).id).toBe('silvestre');
+  });
+});
+
+describe('carolMessagesForMoment — os avisos de segurança nunca se filtram', () => {
+  it('véspera com dor alta: o aviso aparece (primeiro) e a rodagem de hoje não', () => {
+    const vespera = [
+      { key: 'warnings', text: 'Para hoje, o plano pede uma rodagem de 5 km. Disseste dor 8 no joelho: hoje não corras.', safety: 'Disseste dor 8 no joelho: hoje não corras.', rest: 'Para hoje, o plano pede uma rodagem de 5 km.' },
+      { key: 'tomorrow_prep', text: 'Amanhã é a São Silvestre.' },
+    ];
+    const out = carolMessagesForMoment(vespera, 'vespera');
+    expect(out.map((m) => m.key)).toEqual(['safety', 'tomorrow_prep']);
+    expect(out[0].text).toBe('Disseste dor 8 no joelho: hoje não corras.');
+    expect(out.map((m) => m.text).join(' ')).not.toMatch(/rodagem de 5 km/);
+  });
+
+  it('dia de prova com RED-S: o aviso aparece primeiro, e a frase da prova a seguir, sem o aviso repetido', () => {
+    const prova = [
+      { key: 'recap', text: 'Ontem, rodagem.' },
+      { key: 'warnings', text: 'A prova é hoje. Sinais de energia baixa (RED-S): fala com a Carol.', safety: 'Sinais de energia baixa (RED-S): fala com a Carol.', rest: 'A prova é hoje.' },
+    ];
+    const out = carolMessagesForMoment(prova, 'prova');
+    expect(out.map((m) => m.key)).toEqual(['safety', 'warnings']);
+    expect(out[1].text).toBe('A prova é hoje.');
+  });
+
+  it('num dia normal, o aviso também vai primeiro', () => {
+    const normal = [
+      { key: 'recap', text: 'Ontem.' },
+      { key: 'warnings', text: 'Treino. Perda de peso rápida.', safety: 'Perda de peso rápida.', rest: 'Treino.' },
+    ];
+    expect(carolMessagesForMoment(normal, 'normal').map((m) => m.key)).toEqual(['safety', 'recap', 'warnings']);
+  });
+
+  it('só o aviso, sem frase do dia: fica só o aviso', () => {
+    const so = [{ key: 'warnings', text: 'Dor alta.', safety: 'Dor alta.', rest: null }];
+    expect(carolMessagesForMoment(so, 'vespera').map((m) => m.key)).toEqual(['safety']);
   });
 });
