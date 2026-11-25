@@ -1,4 +1,4 @@
-import React, { useEffect, useId, useMemo, useSyncExternalStore } from 'react';
+import React, { useEffect, useId, useMemo, useState, useSyncExternalStore } from 'react';
 import { detectCoachInsights } from '../../utils/biEngine';
 import { useAppStore } from '../../store';
 import { todayISO } from '../../lib/utils';
@@ -8,6 +8,9 @@ import Warning from '../shared/Warning';
 import CarolActions from '../shared/CarolActions';
 import { noticeSeverity, noticeTone } from './noticeTones';
 import useInsightActions from './useInsightActions';
+import CarolLineV2 from '../shared/CarolLineV2';
+import { useDesignV2 } from '../../utils/designV2';
+import '../../styles/v2-geral.css';
 
 /* Ponto 3 do redesenho: o aviso era âmbar (bg-amber-100) — o âmbar é da
    prova. Coral para aviso, vermelho para crítico, ciano da Carol para o
@@ -53,6 +56,49 @@ function InsightWarning({ insight, actions }) {
   );
 }
 
+/* Design v2 (direção C · Painel): cada insight é uma secção plana (painel, régua, raio 8, sem a
+   tinta do tom nem a etiqueta em maiúsculas). O título em texto simples com o símbolo do código
+   único na cor do significado; a mensagem é a da Carol, por isso vai na linha da Carol (o traço
+   ciano, «Carol.», «Ler mais» quando não cabe); os botões são os mesmos (CarolActions). */
+const V2_ICON_COLOR = { critical: 'var(--danger)', warning: 'var(--warn)', info: 'var(--coach)' };
+const V2_ROLE = { critical: 'alert', warning: 'status', info: 'status' };
+
+function InsightV2({ insight, actions }) {
+  const severity = noticeSeverity(insight.severity);
+  const { Icon } = noticeTone(severity);
+  const titleId = useId();
+  const sayId = useId();
+  const [open, setOpen] = useState(false);
+  return (
+    <section
+      role={V2_ROLE[severity] || 'status'}
+      aria-labelledby={titleId}
+      className="v2-geral-panel v2-geral-insight"
+      data-testid={`banner-insight-${insight.id}`}
+    >
+      <h3 className="v2-geral-insight-t">
+        <span aria-hidden="true" style={{ color: V2_ICON_COLOR[severity] || 'var(--coach)' }}><Icon size={15} /></span>
+        <span id={titleId}>{insight.title}</span>
+      </h3>
+      <CarolLineV2
+        text={insight.message}
+        id={sayId}
+        open={open}
+        onToggle={() => setOpen((o) => !o)}
+        testId={`banner-insight-say-${insight.id}`}
+      />
+      <CarolActions
+        className="w-full mt-3"
+        labelledBy={titleId}
+        severity={severity}
+        talk={{ testId: `banner-insight-talk-${insight.id}`, onClick: () => actions.talk(insight) }}
+        understood={{ testId: `banner-insight-understood-${insight.id}`, onClick: () => actions.understand(insight) }}
+        snooze={{ testId: `banner-insight-snooze-${insight.id}`, onClick: () => actions.snooze(insight) }}
+      />
+    </section>
+  );
+}
+
 /* O que o banner está a mostrar, para o botão da Carol não o repetir
    (2026-10-04, Geral): o banner mostrava os insights à cabeça do Geral e o botão
    flutuante — montado no Dashboard, em todos os separadores — contava e listava
@@ -91,6 +137,7 @@ export default function SmartInsightsBanner({ data, profile, excludeIds = [], ma
   const { insightStates, insightSnoozes } = useAppStore();
   const actions = useInsightActions();
   const page = useTabPage();
+  const v2 = useDesignV2();
   const today = todayISO();
   const insights = useMemo(() => {
     // Retorna todos os insights cruzados (RED-S, ACWR, etc) ordenados por severidade,
@@ -115,6 +162,14 @@ export default function SmartInsightsBanner({ data, profile, excludeIds = [], ma
 
   if (topInsights.length === 0) {
     return null; // Nenhum insight, não mostra nada
+  }
+
+  if (v2) {
+    return (
+      <div className="v2-geral-insights" data-testid="banner-insights-v2">
+        {topInsights.map((insight) => <InsightV2 key={insight.id} insight={insight} actions={actions} />)}
+      </div>
+    );
   }
 
   return (

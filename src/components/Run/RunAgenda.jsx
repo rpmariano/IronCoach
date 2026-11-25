@@ -50,6 +50,9 @@ import { todayISO } from '../../lib/utils';
 import { FieldInput, FieldSelect, FieldTextarea } from '../shared/registration/Field';
 import { enrichErrorText } from '../../utils/enrichErrorText';
 import CourseProfilePanel from './CourseProfilePanel';
+import CarolLineV2 from '../shared/CarolLineV2';
+import '../../styles/v2-components.css';
+import '../../styles/v2-details.css';
 import { courseProfileFromFile, saveCourseProfile, readCourseProfile, COURSE_BUILD_ERRORS } from '../../utils/courseProfileUpload';
 
 function formatDatePT(isoStr) {
@@ -128,7 +131,9 @@ const PROVA_CARD_BG = {
 /* A moldura da página "Detalhes da prova": no hub, um cartão de vidro — é a
    única página que é um formulário, e sem ele os campos ficavam soltos no
    fundo do ecrã. Na prova nova, nada: o cartão do ecrã já a envolve. */
-function DetailsFrame({ card, children }) {
+function DetailsFrame({ card, v2, children }) {
+  // Design v2: a página é plana, sem o cartão de vidro à volta dos campos.
+  if (v2) return <div className="space-y-4 v2-details-page" data-testid="race-details-v2">{children}</div>;
   if (!card) return <div className="space-y-4">{children}</div>;
   return (
     <GlassCard tone="race" radius={20}>
@@ -156,6 +161,8 @@ export default function RunAgenda({ onClose }) {
   const [activePage, setActivePage] = useState('hub'); // 'hub' | 'details'
   // O Design v2 (utils/designV2.js): o cabeçalho do hub com o seletor plano de dois.
   const v2 = useDesignV2();
+  // A avaliação da Carol nos Detalhes (v2): uma linha com o traço ciano, «Ler mais» abre o resto.
+  const [carolDetailsOpen, setCarolDetailsOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [draft, setDraft] = useState(EMPTY_DRAFT);
   const [isDirty, setIsDirty] = useState(false);
@@ -1120,8 +1127,8 @@ export default function RunAgenda({ onClose }) {
             campos, o que dava dois vidros foscos empilhados em vez de um só
             ecrã coeso. O hub é um ecrã sem cartão à volta (ver isHubScreen). */}
         <div
-          className={isHubScreen ? 'flex flex-col gap-3' : 'space-y-4 fade-in module-card-contrast'}
-          style={isHubScreen ? undefined : PROVA_CARD_BG}
+          className={isHubScreen ? 'flex flex-col gap-3' : (v2 ? 'space-y-4 fade-in v2-details-screen' : 'space-y-4 fade-in module-card-contrast')}
+          style={isHubScreen || v2 ? undefined : PROVA_CARD_BG}
         >
           {isHubScreen ? (
             <div className="flex items-center gap-2.5" style={{ minHeight: 44 }}>
@@ -1223,7 +1230,7 @@ export default function RunAgenda({ onClose }) {
                 inteiro, e a página fica sem moldura própria. */}
             {!detailsLocked && (
             <div ref={(el) => { pageRefs.current[1] = el; }} className="tab-swipe-page">
-            <DetailsFrame card={isHubScreen}>
+            <DetailsFrame card={isHubScreen} v2={v2}>
               {/* 1.1 Data · 1.2 Hora de partida — a hora fica ao lado da data
                   porque é a mesma pergunta ("quando é?"), e é opcional: a
                   maioria das provas só a publica mais tarde
@@ -1332,7 +1339,7 @@ export default function RunAgenda({ onClose }) {
                         key={opt.km}
                         type="button"
                         onClick={() => { updateDistance(String(opt.km)) }}
-                        className="inline-flex items-center min-h-[44px] px-3 rounded-full text-xs font-medium border border-[var(--border-glass)] text-[var(--text-3)] bg-[var(--surface-soft)] hover:border-[var(--mod-prova)] hover:text-[var(--text-1)] transition-colors"
+                        className={v2 ? 'v2-details-chip' : 'inline-flex items-center min-h-[44px] px-3 rounded-full text-xs font-medium border border-[var(--border-glass)] text-[var(--text-3)] bg-[var(--surface-soft)] hover:border-[var(--mod-prova)] hover:text-[var(--text-1)] transition-colors'}
                       >
                         {opt.label}
                       </button>
@@ -1489,7 +1496,25 @@ export default function RunAgenda({ onClose }) {
                 />
               </div>
 
-              {draft.distance_km && draft.date && new Date(draft.date) >= new Date(todayIso) && (
+              {v2 && draft.distance_km && draft.date && new Date(draft.date) >= new Date(todayIso) && (
+                <div className="v2-details-carol">
+                  <CarolLineV2
+                    text={[volumeLine, volumeNote, otherFlags.length === 0 ? 'Preparação adequada para a prova.' : null].filter(Boolean).join(' ')}
+                    id="race-details-carol-text"
+                    open={carolDetailsOpen}
+                    onToggle={() => setCarolDetailsOpen((o) => !o)}
+                    testId="race-details-carol-line"
+                  />
+                  {/* Os avisos não se escondem atrás do «Ler mais»: ficam à vista, por baixo da linha. */}
+                  {otherFlags.map(flag => (
+                    <p key={flag} className="v2-details-flag" data-testid="race-details-flag">
+                      <AlertTriangle size={14} aria-hidden="true" />
+                      {FLAG_LABELS[flag] || flag}
+                    </p>
+                  ))}
+                </div>
+              )}
+              {!v2 && draft.distance_km && draft.date && new Date(draft.date) >= new Date(todayIso) && (
                 <div className="p-2.5 rounded-xl bg-[var(--surface-soft)] border border-[var(--border-faint)] flex flex-col gap-1.5 mt-1">
                   <span className="text-[11px] font-bold text-[var(--text-3)] uppercase tracking-wider flex items-center gap-1.5">
                     Avaliação da Carol
@@ -1534,8 +1559,8 @@ export default function RunAgenda({ onClose }) {
                     data-testid="race-remove-button"
                     onClick={() => setShowDeleteConfirm(true)}
                     disabled={isSubmitting}
-                    className="inline-flex items-center gap-1.5 text-[12.5px] font-bold disabled:opacity-50"
-                    style={{ minHeight: 'var(--tap)', color: 'var(--danger)', background: 'none', border: 'none', padding: '0 4px' }}
+                    className={v2 ? 'v2-act is-danger v2-details-remove' : 'inline-flex items-center gap-1.5 text-[12.5px] font-bold disabled:opacity-50'}
+                    style={v2 ? undefined : { minHeight: 'var(--tap)', color: 'var(--danger)', background: 'none', border: 'none', padding: '0 4px' }}
                   >
                     <Trash2 size={13} /> Eliminar prova
                   </button>

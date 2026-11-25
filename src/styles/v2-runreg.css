@@ -1,0 +1,34 @@
+/* «Registar a prova» (RunRegistration em modo prova) no Design v2. Só seletores .v2-runreg: com o
+   v2 desligado nenhum destes elementos existe. Tokens em v2.css; peças em v2-components.css. */
+
+.v2-runreg { display: flex; flex-direction: column; gap: 4px; }
+.v2-runreg-t { margin: 16px 4px 6px; }
+
+/* A prova: um bloco liso, sem brilho, sem pílulas e sem caixa dentro de caixa. */
+.v2-runreg-sum {
+  padding: 4px 16px 14px; background: var(--v2-panel);
+  border: 1px solid var(--v2-rule); border-radius: var(--v2-radius);
+}
+.v2-runreg-sum > .v2-runreg-t { margin: 12px 0 8px; }
+.v2-runreg-name { margin: 0; color: var(--v2-ink); font: 700 18px/1.2 var(--v2-font); }
+.v2-runreg-meta { margin: 4px 0 0; color: var(--v2-ink2); font-size: 14px; }
+.v2-runreg-facts {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px 16px;
+  margin: 12px 0 0; padding-top: 12px; border-top: 1px solid var(--v2-rule);
+}
+.v2-runreg-facts dt { color: var(--v2-ink2); font-size: 13px; }
+.v2-runreg-facts dd { margin: 2px 0 0; color: var(--v2-ink); font-size: 15px; font-weight: 600; }
+.v2-runreg-facts dd.v2-num { font-size: 18px; }
+.v2-runreg-hint { margin: 12px 0 0; color: var(--v2-ink2); font-size: 13px; }
+
+/* Subtítulo dentro de uma secção (o «Do diploma (opcional)»). */
+.v2-runreg-sub { margin: 0 0 8px; color: var(--v2-ink2); font-size: 13.5px; font-weight: 600; }
+
+/* Os grupos do resultado sem caixa: o espaço separa-os. */
+.v2-runreg [role="group"] { margin-bottom: 16px; }
+
+/* O «Registar a prova» na ActionBar: âmbar, a única ação da prova (o v2 põe o --mod-prova da barra
+   a neutro). O invólucro não ocupa espaço. */
+.v2-runreg-go { display: contents; }
+html.design-v2 .v2-runreg-go button { background: var(--race) !important; color: var(--race-ink) !important; }
+html.design-v2 .v2-runreg-go button:focus-visible { outline: 2px solid var(--race); outline-offset: 2px; }

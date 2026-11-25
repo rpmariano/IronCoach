@@ -58,6 +58,7 @@ import { printsNeedRead, AwaitingReadAction } from '../shared/registration/print
 import { PrintQuestions, questionsPayload, readQuestions } from '../shared/CarolQuestionsForm';
 import { useDesignV2 } from '../../utils/designV2';
 import { RunShotV2, RunReadOutV2, readOutRows } from './RunRegistrationV2Parts';
+import '../../styles/v2-runreg.css';
 
 // -------------------------------------
 // ICONS & UTILS
@@ -94,6 +95,8 @@ const RUN_TRAINING_TYPES = [
 
 const DEFAULT_RUN_NAME = 'Corrida de Hoje';
 const DEFAULT_WALK_NAME = 'Caminhada de Hoje';
+/* Design v2: depois de registar a prova, o que acontece a seguir (na confirmação). */
+const RACE_NEXT_STEP_V2 = 'A Carol analisa a prova e escreve o balanço.';
 
 const RUN_REPEAT_TRAINING_TYPES = new Set(['intervalos', 'subidas']);
 
@@ -1531,8 +1534,9 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
     // se o Android matasse a app com ela à vista, o registo reabria cheio e
     // gravar outra vez duplicava-o (revisão pré-deploy de 5ce5f31).
     clearPersistedFormDraft(draftStorageKey);
+    // Design v2: a confirmação diz também o que acontece a seguir.
     setConfirmation({
-      label: `${raceEvent?.name || 'Prova'} concluída${finalSeconds ? ` · ${formatDuration(finalSeconds)}` : ''}`,
+      label: `${raceEvent?.name || 'Prova'} concluída${finalSeconds ? ` · ${formatDuration(finalSeconds)}` : ''}${v2 ? `. ${RACE_NEXT_STEP_V2}` : ''}`,
       tone: 'race',
       achievement: novaConquistaDaProva(),
       done: () => {
@@ -2477,7 +2481,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
      sempre abaixo da dobra. O rótulo é o mesmo de antes (os testes e o
      atleta conhecem-no): "Analisar corrida" a criar, "Guardar alterações"
      (ou "Guardar e reanalisar") a editar. */
-  const primaryAction = runIdToEdit ? (
+  const primaryActionBase = runIdToEdit ? (
     <CoachAnalyzeButton
       onClick={() => handleSaveCorrida(false, needsReanalysis)}
       disabled={isSubmitting}
@@ -2496,6 +2500,11 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
       label={isRaceMode ? 'Registar a prova' : 'Analisar corrida'}
     />
   );
+  /* Design v2: na ActionBar o --mod-prova passa a neutro; o «Registar a prova» é a ação da prova e
+     fica âmbar (o invólucro é display: contents, só serve para o CSS lhe acertar). */
+  const primaryAction = v2 && isRaceMode && !runIdToEdit
+    ? <div className="v2-runreg-go" data-testid="v2-runreg-go">{primaryActionBase}</div>
+    : primaryActionBase;
 
   const isRepeatType = runKind === 'treino' && RUN_REPEAT_TRAINING_TYPES.has(runTrainingType);
   const isWalkSelected = runKind === 'treino' && runTrainingType === WALK_TRAINING_TYPE;
@@ -2708,8 +2717,13 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
       color: 'var(--race)',
     };
 
+    /* Design v2: títulos em texto simples (não a etiqueta em maiúsculas) e secções lisas. */
+    const sectionTitle = (text) => (v2
+      ? <h3 className="v2-label v2-runreg-t">{text}</h3>
+      : <SectionLabel tone="race">{text}</SectionLabel>);
+
     return (
-      <div className="space-y-2.5 fade-in pb-10" data-testid="run-race-mode">
+      <div className={v2 ? 'v2-screen v2-reg v2-runreg fade-in pb-10' : 'space-y-2.5 fade-in pb-10'} data-testid="run-race-mode">
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2 min-w-0">
             <Trophy size={16} style={{ color: 'var(--race)' }} className="shrink-0" />
@@ -2722,7 +2736,21 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
 
         {/* ── 1. A PROVA — o que a agenda já sabe. Não se edita aqui: a prova
             vive em race_events e o sítio de lhe mexer é a Agenda. ───────── */}
-        <SectionLabel tone="race">A prova</SectionLabel>
+        {!v2 && <SectionLabel tone="race">A prova</SectionLabel>}
+        {v2 ? (
+          <section className="v2-runreg-sum" data-testid="race-mode-header" aria-labelledby="v2-runreg-prova-t">
+            <h3 id="v2-runreg-prova-t" className="v2-label v2-runreg-t">A prova</h3>
+            <p className="v2-runreg-name">{raceEvent.name}</p>
+            <p className="v2-runreg-meta">{[formatDatePTShort(raceEvent.date), raceEvent.location].filter(Boolean).join(' · ')}</p>
+            <dl className="v2-runreg-facts">
+              <div><dt>Distância</dt><dd className="v2-num">{raceDistanceLabel(raceEvent.distance_km)}</dd></div>
+              <div><dt>Terreno</dt><dd>{raceTerrainLabel(raceEvent.race_type)}</dd></div>
+              {raceEvent.elevation_gain_m ? <div><dt>Desnível</dt><dd className="v2-num">{`${raceEvent.elevation_gain_m} m D+`}</dd></div> : null}
+              {objetivo && <div data-testid="v2-runreg-objetivo"><dt>Objetivo</dt><dd className="v2-num">{objetivo}</dd></div>}
+            </dl>
+            <p className="v2-runreg-hint">Estes dados vêm da agenda, e é lá que se mudam.</p>
+          </section>
+        ) : (
         <GlassCard tone="race" glow data-testid="race-mode-header">
           <div className="text-[17px] font-black leading-[1.15]" style={{ color: 'var(--race)', letterSpacing: 'var(--tracking-tight)' }}>
             {raceEvent.name}
@@ -2748,9 +2776,10 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
             Estes dados vêm da agenda — é lá que se mudam.
           </p>
         </GlassCard>
+        )}
 
         {/* ── 2. O RESULTADO ─────────────────────────────────────────────── */}
-        <SectionLabel tone="race">O resultado</SectionLabel>
+        {sectionTitle('O resultado')}
         <section className="reg-section">
           {renderAnalysisStates()}
           <div
@@ -2815,7 +2844,9 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
                 nas Memórias ou, com elas desligadas (v1 lite), na secção
                 «Diploma». */}
             <div data-testid="race-result-fields" className="mb-4">
-              <p className="text-[11px] font-extrabold uppercase mb-2" style={{ letterSpacing: 'var(--tracking-label)', color: 'var(--text-3)' }}>Do diploma (opcional)</p>
+              {v2
+                ? <h4 className="v2-runreg-sub">Do diploma (opcional)</h4>
+                : <p className="text-[11px] font-extrabold uppercase mb-2" style={{ letterSpacing: 'var(--tracking-label)', color: 'var(--text-3)' }}>Do diploma (opcional)</p>}
               <div className="grid grid-cols-2 gap-2.5">
                 <div>
                   <label htmlFor="rr-dorsal" className="text-[11px] text-[var(--text-3)] block mb-1.5">Dorsal</label>
@@ -2851,7 +2882,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
         </section>
 
         {/* ── 3. COMO CORREU ─────────────────────────────────────────────── */}
-        <SectionLabel tone="race">Como correu</SectionLabel>
+        {sectionTitle('Como correu')}
         <section className="reg-section">
           {renderEffortField()}
           {renderNotesField()}
@@ -2865,7 +2896,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
         {/* As memórias têm interruptor (v1 lite): desligadas, a secção passa a «Diploma» — só o
             diploma e a leitura da Carol, que é resultado (preenche «O resultado», lá em cima); a
             medalha e as fotos saem. */}
-        <SectionLabel tone="race">{memoriesOn ? 'Memórias' : 'Diploma'}</SectionLabel>
+        {sectionTitle(memoriesOn ? 'Memórias' : 'Diploma')}
         <section className="reg-section" data-testid={memoriesOn ? 'race-memories' : 'race-diploma'}>
           <p className="text-[12px] leading-[1.5] mb-4" style={{ color: 'var(--text-3)' }}>
             {memoriesOn
@@ -3251,12 +3282,13 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
     return (
       <>
         {renderEditPhotos()}
+        {/* Design v2: sem caixas dentro do cartão do resultado; cada grupo só com o título. */}
         <div className="space-y-3 mb-4">
-          {renderWatchMetrics(true)}
+          {renderWatchMetrics(!v2, v2)}
         </div>
-        {renderHrZones(true)}
-        {renderRepeatStructure(true)}
-        {renderSplits(true)}
+        {renderHrZones(!v2)}
+        {renderRepeatStructure(!v2)}
+        {renderSplits(!v2)}
         {renderCarolIntervention()}
       </>
     );
@@ -3324,10 +3356,10 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
     );
   }
 
-  function renderWatchMetrics(boxed) {
+  function renderWatchMetrics(boxed, flatTitled = false) {
     return (
       <>
-        {metricGroup(boxed ? 'Fisiologia & Relógio' : null, (
+        {metricGroup(boxed ? 'Fisiologia & Relógio' : (flatTitled ? 'Fisiologia e relógio' : null), (
               <div className="grid grid-cols-2 gap-2.5">
                 <div>
                   <label htmlFor="rr-desnivel-subida-m" className="text-[11px] font-semibold text-[var(--text-3)] block mb-1">Desnível subida (m)</label>
@@ -3478,6 +3510,8 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
                   onClick={() => { setHrZones([...hrZones, { zone: '', minutes: '' }]); setIsFormDirty(true); }}
                   variant="run"
                   type="button"
+                  // Design v2: em texto normal, não em maiúsculas.
+                  className={v2 ? 'normal-case tracking-normal' : undefined}
                 >
                   Adicionar zona
                 </AddButton>
@@ -3549,6 +3583,8 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
                 onClick={() => { setSplits([...splits, { distance_km: '', minutes: '' }]); setIsFormDirty(true); }}
                 variant="run"
                 type="button"
+                // Design v2: em texto normal, não em maiúsculas.
+                className={v2 ? 'normal-case tracking-normal' : undefined}
               >
                 Adicionar parcial
               </AddButton>

@@ -1,4 +1,5 @@
 import React, { useId, useState } from 'react';
+import { useDesignV2 } from '../../utils/designV2';
 import { Trophy } from 'lucide-react';
 import { useAppStore } from '../../store';
 import { useCupForHome } from '../../utils/useCup';
@@ -33,15 +34,16 @@ export const CUP_NOTICE_SAVE_ERROR = 'Não consegui gravar o aviso. Tenta outra 
 const NOTA = 'text-[11px] leading-relaxed rounded-xl px-3 py-2 mt-2';
 
 function Interruptor({ field, label, hint, checked, disabled, busy, onToggle }) {
+  const v2 = useDesignV2();
   const base = useId();
   const labelId = `${base}-nome`;
   const hintId = `${base}-dica`;
   return (
     <label
       htmlFor={`${base}-input`}
-      className="flex items-start gap-3"
+      className={v2 ? 'v2-perfil-switch' : 'flex items-start gap-3'}
       data-testid={`perfil-cup-aviso-${field}`}
-      style={{
+      style={v2 ? { cursor: disabled ? 'default' : 'pointer', opacity: disabled && !busy ? 0.6 : 1 } : {
         minHeight: 44, padding: '10px 12px', borderRadius: 14,
         background: 'var(--surface-soft)', border: '1px solid var(--border-glass)',
         cursor: disabled ? 'default' : 'pointer', opacity: disabled && !busy ? 0.6 : 1,
@@ -68,6 +70,7 @@ function Interruptor({ field, label, hint, checked, disabled, busy, onToggle }) 
 }
 
 export default function CupNoticePrefs({ pushEnabled = false }) {
+  const v2 = useDesignV2();
   const view = useCupForHome();
   const updateEnrollment = useAppStore((s) => s.updateEnrollment);
   const { showToast } = useToast();
@@ -146,16 +149,16 @@ export default function CupNoticePrefs({ pushEnabled = false }) {
       </p>
       <p className="text-[11px] text-[var(--text-3)] mt-1 leading-relaxed">{TEXTO}</p>
       {!pushEnabled && (
-        <p role="note" data-testid="perfil-cup-avisos-sem-push" className={NOTA} style={{ background: 'var(--surface-soft)', color: 'var(--text-2)' }}>
+        <p role="note" data-testid="perfil-cup-avisos-sem-push" className={v2 ? 'text-[11px] leading-relaxed mt-2' : NOTA} style={v2 ? { color: 'var(--text-2)' } : { background: 'var(--surface-soft)', color: 'var(--text-2)' }}>
           As Notificações da Carol estão desligadas: estes avisos só chegam com elas ligadas.
         </p>
       )}
       {edition.notifications_enabled === false && (
-        <p role="note" data-testid="perfil-cup-avisos-edicao-desligada" className={NOTA} style={{ background: 'var(--surface-soft)', color: 'var(--text-2)' }}>
+        <p role="note" data-testid="perfil-cup-avisos-edicao-desligada" className={v2 ? 'text-[11px] leading-relaxed mt-2' : NOTA} style={v2 ? { color: 'var(--text-2)' } : { background: 'var(--surface-soft)', color: 'var(--text-2)' }}>
           A app ainda não está a enviar os avisos desta edição. O que escolheres fica guardado.
         </p>
       )}
-      <div className="mt-3 space-y-2">
+      <div className={v2 ? 'mt-3' : 'mt-3 space-y-2'}>
         {itens.map(({ field, label, hint, locked }) => (
           <Interruptor
             key={field}

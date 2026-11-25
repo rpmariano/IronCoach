@@ -1,4 +1,5 @@
 import React from 'react';
+import { useDesignV2 } from '../../utils/designV2';
 
 /* O cartão de vidro do redesenho 2026-09 (design-system/components/core/
    GlassCard): 5% de branco, borda a 10%, raio 24, sombra — sem moldura
@@ -20,7 +21,23 @@ const BORDER = {
   gym: '1px solid rgba(127,179,199,.28)',
 };
 
+/* No Design v2 (utils/designV2.js) o cartão é um painel liso: sem vidro, sem brilho, sem sombra,
+   raio de 8, o filete do v2 (na Carol, o filete ciano). O resto é igual. */
+const V2_STYLE = { backdropFilter: 'none', WebkitBackdropFilter: 'none', boxShadow: 'none', borderRadius: 8, background: 'var(--v2-panel)' };
+
 export default function GlassCard({ tone, glow = false, radius = 24, padding = 16, className = '', style, children, ...rest }) {
+  const v2 = useDesignV2();
+  if (v2) {
+    return (
+      <div
+        className={`relative overflow-hidden shrink-0 ${className}`}
+        style={{ border: tone === 'coach' ? '1px solid var(--tint-coach-bd)' : '1px solid var(--v2-rule)', padding, color: 'var(--text-1)', ...style, ...V2_STYLE }}
+        {...rest}
+      >
+        <div className="relative">{children}</div>
+      </div>
+    );
+  }
   return (
     <div
       className={`relative overflow-hidden shrink-0 ${className}`}

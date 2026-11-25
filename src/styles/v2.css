@@ -124,11 +124,13 @@ html.design-v2 [data-testid="bottom-nav"] .vbar-btn[aria-current="page"] { color
 html.design-v2 [data-testid="bottom-nav"] .vbar-btn span { font-family: var(--v2-font); font-size: 12px; }
 /* A minhoca fica (a mesma animação), lisa e sem brilho; 3 px. */
 html.design-v2 [data-testid="nav-pill"] { background: var(--v2-acc) !important; box-shadow: none !important; height: 3px !important; }
-/* O «+»: o âmbar da prova, liso, com o anel na cor do fundo. */
+/* O «+»: neutro (âmbar só na prova, decisão do Rui): a tinta clara sobre o painel, com o filete e
+   o anel na cor do fundo; sem gradiente. */
 html.design-v2 [data-testid="bottom-nav"] > button[aria-expanded] {
-  background: var(--race) !important;
+  background: var(--v2-panel) !important;
+  color: var(--v2-ink) !important;
   border-color: var(--v2-bg) !important;
-  box-shadow: none !important;
+  box-shadow: 0 0 0 1px var(--v2-rule) !important;
 }
 
 /* As peças dos ecrãs v2 (.v2-hero, .v2-say, .v2-grid…) vivem em v2-components.css, importado pelo
@@ -168,3 +170,35 @@ html.design-v2 [data-testid="bottom-nav"] > button.fab-open { background: var(--
 .v2-crm-ok { display: flex; align-items: center; gap: 8px; margin: 0; font: 600 15px var(--v2-font); color: var(--ok); }
 .v2-crm-note { margin: 0; padding-left: 12px; border-left: 3px solid var(--v2-acc); font-size: 14px; line-height: 1.45; color: var(--v2-ink); }
 .v2-crm-delete { color: var(--danger) !important; }
+
+/* ── A regra global do v2 (P1 da crítica de design, 2026-11-25) ───────────────────────────────
+   O que ainda não foi migrado apanha as regras da direção C: sem etiquetas em maiúsculas espaçadas
+   (a maiúscula que é conteúdo, uma sigla escrita assim, fica: só se tira a transformação do CSS),
+   raio de 8 nos cartões grandes, e sem vidro. Antes só valia dentro do .v2-embed. */
+html.design-v2 .uppercase,
+html.design-v2 [style*="text-transform: uppercase"] { text-transform: none !important; letter-spacing: 0 !important; }
+html.design-v2 [class*="tracking-"]:not(.v2-num),
+html.design-v2 [style*="letter-spacing"]:not(.v2-num) { letter-spacing: 0 !important; }
+html.design-v2 .rounded-xl, html.design-v2 .rounded-2xl, html.design-v2 .rounded-3xl,
+html.design-v2 [class*="rounded-[1"], html.design-v2 [class*="rounded-[2"] { border-radius: var(--v2-radius) !important; }
+html.design-v2 [class*="backdrop-blur"] { backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
+html.design-v2 [class*="shadow-["], html.design-v2 .shadow-lg, html.design-v2 .shadow-md, html.design-v2 .shadow-sm { box-shadow: none !important; }
+/* Uma caixa com borda dentro de outra com borda: a de dentro perde a borda e o fundo (o filete do
+   painel de fora chega). */
+html.design-v2 .module-card-contrast .module-card-contrast,
+html.design-v2 [class*="rounded-"][class*="border"] [class*="rounded-"][class*="border"]:not(button):not(input):not(select):not(textarea) { border-color: transparent !important; background: transparent !important; }
+
+/* Âmbar só na prova (decisão do Rui): na barra fixa das ações, o «Guardar …» que vinha a âmbar
+   (--mod-prova) passa a neutro; o «Registar a prova» repõe o âmbar no próprio botão. */
+html.design-v2 [data-testid="action-bar"] { --mod-prova: var(--v2-ink); background: var(--v2-bg) !important; backdrop-filter: none !important; -webkit-backdrop-filter: none !important; border-top-color: var(--v2-rule) !important; }
+
+/* Os diálogos e as folhas (PremiumModal) no v2: o painel, o filete, raio de 8, sem vidro nem sombra.
+   O botão destrutivo (Button variant="danger") em vermelho liso #dc2626: o texto branco a 4,8:1 (AA)
+   e o botão contra o painel a 3,4:1 (o mínimo de 3:1 de um controlo). */
+.v2-modal { background: var(--v2-panel); border: 1px solid var(--v2-rule); }
+.v2-modal.is-dialog { border-radius: var(--v2-radius); }
+.v2-modal.is-sheet { border-radius: var(--v2-radius) var(--v2-radius) 0 0; }
+.v2-modal .data-form { background: var(--v2-panel) !important; }
+.v2-btn-danger { background: #dc2626; color: #fff; }
+.v2-btn-danger:hover { background: #b91c1c; }
+.v2-btn-danger:focus-visible { outline: 2px solid var(--v2-ink); outline-offset: 2px; }

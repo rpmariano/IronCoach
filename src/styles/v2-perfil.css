@@ -1,0 +1,80 @@
+/* O Perfil no Design v2 (Perfil.jsx e os cartões dele). As classes só são postas com o v2 ligado;
+   sem ele, o Perfil desenha-se como sempre. Tokens em v2.css; peças partilhadas em v2-components.css.
+   Regra: secções planas (um painel, nunca um cartão dentro de outro), títulos em texto simples,
+   raio 8, sem vidro, brilho nem gradiente. */
+
+/* ── A secção: um painel plano ───────────────────────────────────────────── */
+.v2-perfil-sec {
+  background: var(--v2-panel);
+  border: 0;
+  border-radius: var(--v2-radius);
+  padding: 14px 16px;
+  color: var(--v2-ink);
+}
+.v2-perfil-h {
+  margin: 0 0 12px;
+  font: 600 15px/1.3 var(--v2-font);
+  color: var(--v2-ink);
+}
+.v2-perfil-count { font-size: 13px; font-weight: 600; color: var(--v2-ink2); }
+
+/* ── Uma linha que leva a outro sítio (dentro ou fora de uma secção) ─────── */
+.v2-perfil-row {
+  width: 100%; min-height: 44px;
+  display: flex; align-items: center; gap: 12px;
+  padding: 12px 16px; text-align: left; cursor: pointer;
+  background: var(--v2-panel); color: var(--v2-ink);
+  border: 0; border-radius: var(--v2-radius);
+}
+.v2-perfil-row-t { display: block; font-size: 15px; font-weight: 600; color: var(--v2-ink); }
+.v2-perfil-row-s { display: block; font-size: 13px; color: var(--v2-ink2); margin-top: 2px; }
+.v2-perfil-row:focus-visible,
+.v2-perfil-line:focus-visible,
+.v2-perfil-link:focus-visible,
+.v2-perfil-choice:focus-visible { outline: 2px solid var(--v2-acc); outline-offset: 2px; }
+
+/* Dentro de uma secção: sem caixa, só o filete por cima. */
+.v2-perfil-line {
+  width: 100%; min-height: 44px;
+  display: flex; align-items: center; gap: 10px;
+  margin-top: 8px; padding: 10px 0; text-align: left; cursor: pointer;
+  background: transparent; color: var(--v2-ink);
+  border: 0; border-top: 1px solid var(--v2-rule); border-radius: 0;
+}
+.v2-perfil-link {
+  width: 100%; min-height: 44px;
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 8px 0; text-align: left; cursor: pointer;
+  background: transparent; border: 0; border-radius: 0; color: var(--v2-ink2);
+}
+.v2-perfil-choice {
+  width: 100%; min-height: 44px;
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 0; text-align: left; font-size: 14px; cursor: pointer;
+  background: transparent; color: var(--v2-ink);
+  border: 0; border-top: 1px solid var(--v2-rule); border-radius: 0;
+}
+.v2-perfil-place {
+  display: flex; align-items: center; gap: 4px;
+  border-bottom: 1px solid var(--v2-rule);
+}
+
+/* A meta escrita pela Carol: o nome dela em texto, sem pílula. */
+.v2-perfil-carol-tag { font-size: 12px; font-weight: 600; color: var(--v2-acc); }
+
+/* ── Itens de uma lista dentro de uma secção (notas, acessos, avisos) ───── */
+.v2-perfil-item {
+  padding: 10px 0;
+  border-top: 1px solid var(--v2-rule);
+  background: transparent;
+}
+.v2-perfil-item:first-child { border-top: 0; }
+.v2-perfil-item.is-carol { box-shadow: inset 3px 0 0 var(--v2-acc); padding-left: 10px; }
+.v2-perfil-cat { font-size: 12.5px; font-weight: 600; color: var(--v2-ink2); }
+.v2-perfil-cat.is-carol { color: var(--v2-acc); }
+.v2-perfil-note { margin: 8px 0 0; font-size: 13px; line-height: 1.45; color: var(--v2-ink2); }
+.v2-perfil-add { padding-top: 10px; border-top: 1px solid var(--v2-rule); display: flex; flex-direction: column; gap: 8px; }
+.v2-perfil-switch {
+  min-height: 44px; display: flex; align-items: flex-start; gap: 12px;
+  padding: 10px 0; border-top: 1px solid var(--v2-rule); cursor: pointer;
+}

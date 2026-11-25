@@ -12,6 +12,7 @@ import BadgesPorGanharSheet from './BadgesPorGanharSheet';
 import OndeEstasScreen from './OndeEstasScreen';
 import TabelasConsentScreen from './TabelasConsentScreen';
 import TabelasScreen from './TabelasScreen';
+import { useDesignV2 } from '../../utils/designV2';
 
 /* A Vitrina dos badges de treino (reforma da gamificação, fase 2).
 
@@ -77,6 +78,7 @@ const LINHA = {
 };
 
 export default function BadgesCard() {
+  const v2 = useDesignV2();
   const { badges, pending, marcarVistos } = useBadges();
   const [abertoKey, setAbertoKey] = useState(null);
   const [porGanharAberto, setPorGanharAberto] = useState(false);
@@ -133,15 +135,29 @@ export default function BadgesCard() {
     .filter((b) => b.linha && b.familia !== 'amuletos')
     .reduce((m, b) => (!m || (b.ring || 0) > (m.ring || 0) ? b : m), null);
 
+  /* Design v2: um painel plano (sem vidro), o título e o contador em texto simples, e as linhas
+     de rodapé sem caixa: só o filete por cima, porque já estão dentro do painel. */
+  const Card = v2 ? 'div' : GlassCard;
+  const cardProps = v2 ? { className: 'v2-perfil-sec' } : { radius: 22, padding: 14 };
+  const linha = v2 ? { className: 'v2-perfil-line' } : { className: 'w-full flex items-center gap-2.5 text-left', style: LINHA };
+  const sep = v2 ? ': ' : ' — ';
+
   return (
     <div className="flex flex-col gap-2" data-testid="badges-card">
-      <GlassCard radius={22} padding={14}>
+      <Card {...cardProps}>
+        {v2 ? (
+          <div className="flex items-baseline justify-between gap-2">
+            <h3 className="v2-perfil-h" style={{ marginBottom: 0 }}>Badges de treino</h3>
+            <span className="v2-perfil-count v2-num" data-testid="badges-contador">{ganhos.length} de {lista.length}</span>
+          </div>
+        ) : (
         <div className="flex items-baseline justify-between gap-2">
           <h3 className="m-0 text-[15px] font-black" style={{ letterSpacing: '-.02em', color: 'var(--text-1)' }}>Badges de treino</h3>
           <span className="text-[11px] font-extrabold uppercase" style={{ letterSpacing: 'var(--tracking-label)', color: 'var(--run)' }}>
             {ganhos.length} de {lista.length}
           </span>
         </div>
+        )}
 
         {ganhos.length > 0 ? (
           <div className="mt-3">
@@ -170,12 +186,11 @@ export default function BadgesCard() {
             type="button"
             data-testid="badges-progresso"
             onClick={() => setAbertoKey(maisPerto.key)}
-            className="w-full flex items-center gap-2.5 text-left"
-            style={LINHA}
+            {...linha}
           >
             <span className="flex-1 text-[12px] leading-[1.45]" style={{ color: 'var(--text-3)' }}>
               <span className="font-extrabold" style={{ color: 'var(--text-2)' }}>{maisPerto.name}</span>
-              {` — ${maisPerto.linha}`}
+              {`${sep}${maisPerto.linha}`}
             </span>
             <ChevronRight size={15} className="shrink-0" style={{ color: 'var(--text-4)' }} />
           </button>
@@ -186,12 +201,11 @@ export default function BadgesCard() {
             type="button"
             data-testid="badges-por-ganhar"
             onClick={() => setPorGanharAberto(true)}
-            className="w-full flex items-center gap-2.5 text-left"
-            style={LINHA}
+            {...linha}
           >
             <span className="flex-1 text-[12px] leading-[1.45]" style={{ color: 'var(--text-3)' }}>
               <span className="font-extrabold" style={{ color: 'var(--text-2)' }}>O que há para ganhar</span>
-              {` — ${porGanhar.length} por ganhar`}
+              {`${sep}${porGanhar.length} por ganhar`}
             </span>
             <ChevronRight size={15} className="shrink-0" style={{ color: 'var(--text-4)' }} />
           </button>
@@ -202,17 +216,16 @@ export default function BadgesCard() {
             type="button"
             data-testid="badges-onde-estas"
             onClick={() => setOndeEstasAberto(true)}
-            className="w-full flex items-center gap-2.5 text-left"
-            style={LINHA}
+            {...linha}
           >
             <span className="flex-1 text-[12px] leading-[1.45]" style={{ color: 'var(--text-3)' }}>
               <span className="font-extrabold" style={{ color: 'var(--text-2)' }}>Onde estás</span>
-              {' — o teu percentil no escalão'}
+              {`${sep}o teu percentil no escalão`}
             </span>
             <ChevronRight size={15} className="shrink-0" style={{ color: 'var(--text-4)' }} />
           </button>
         )}
-      </GlassCard>
+      </Card>
 
       {aberto && (
         <BadgeDetailSheet

@@ -17,6 +17,8 @@ import { useCalendarPeriod } from '../../utils/useCalendarPeriod';
 import { useTodayISO } from '../../utils/useTodayISO';
 import { usePeriodStore } from '../../store/periodStore';
 import { useEvolutionView } from '../../store/evolution/useEvolutionView';
+import { useDesignV2 } from '../../utils/designV2';
+import '../../styles/v2-geral.css';
 // Regista a vista do Geral na cache (F6): sem este import só a preparação em
 // tempo morto a carregaria.
 import '../../store/evolution/views/hub';
@@ -318,6 +320,8 @@ function pillarsOf(view) {
 function OverviewDashboard({ scrollToTab }) {
   // As análises cruzadas são gráficos avançados (v1 lite, advanced_charts).
   const advancedCharts = useFeature('advanced_charts');
+  // Design v2 (direção C · Painel): secções planas e títulos em texto simples. Desligado, como era.
+  const v2 = useDesignV2();
   /* Seletor com useShallow em vez de `useAppStore()` inteiro (2026-10-04): sem
      seletor, qualquer alteração ao store — um deslize entre separadores
      mexe em `lastDashboardTab` — redesenhava este separador (e recalculava os
@@ -393,7 +397,7 @@ function OverviewDashboard({ scrollToTab }) {
 
   if (hasNoRecords) {
     return (
-      <div className="space-y-3 fade-in pb-8 pt-2" data-testid="overview-empty">
+      <div className={v2 ? "v2-geral fade-in pb-8 pt-2" : "space-y-3 fade-in pb-8 pt-2"} data-testid="overview-empty">
         {(raceEvents?.length || 0) > 0 && (
           <RaceReadinessCard
             runs={runs}
@@ -412,25 +416,31 @@ function OverviewDashboard({ scrollToTab }) {
           A prontidão precisa de duas semanas de registos para dizer alguma coisa útil. Até lá mostro-te o que já tenho.
         </EmptyModuleState>
 
-        <SectionLabel style={{ margin: '6px 2px 0' }}>O que falta para começar</SectionLabel>
+        {v2
+          ? <h3 className="v2-label">O que falta para começar</h3>
+          : <SectionLabel style={{ margin: '6px 2px 0' }}>O que falta para começar</SectionLabel>}
 
         <div
-          style={{
-            borderRadius: 'var(--radius-xl)',
-            background: 'var(--surface-glass)',
-            border: '1px solid var(--border-glass)',
-            padding: '6px 16px',
-          }}
+          {...(v2 ? { className: 'v2-geral-panel v2-geral-checklist', 'data-testid': 'overview-checklist-v2' } : {
+            style: {
+              borderRadius: 'var(--radius-xl)',
+              background: 'var(--surface-glass)',
+              border: '1px solid var(--border-glass)',
+              padding: '6px 16px',
+            },
+          })}
         >
           {checklist.map((item, i) => (
             <div
               key={item.key}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 12,
-                borderBottom: i < checklist.length - 1 ? '1px solid rgba(255,255,255,.08)' : 'none',
-              }}
+              {...(v2 ? { className: 'v2-geral-check-row' } : {
+                style: {
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 12,
+                  borderBottom: i < checklist.length - 1 ? '1px solid rgba(255,255,255,.08)' : 'none',
+                },
+              })}
             >
               <span
                 aria-hidden="true"
@@ -453,6 +463,7 @@ function OverviewDashboard({ scrollToTab }) {
                 <button
                   type="button"
                   onClick={item.onClick}
+                  {...(v2 ? { className: 'v2-geral-check-btn' } : {})}
                   style={{
                     flex: 1, display: 'flex', alignItems: 'center', gap: 8, textAlign: 'left',
                     minHeight: 'var(--tap)', background: 'none', border: 'none', cursor: 'pointer',
@@ -476,11 +487,13 @@ function OverviewDashboard({ scrollToTab }) {
   if (!view || !pillars) return null;
 
   return (
-    <div className="space-y-4 fade-in pb-8 pt-2">
+    <div className={v2 ? "v2-geral fade-in pb-8 pt-2" : "space-y-4 fade-in pb-8 pt-2"}>
       {/* ─── Secção 1: Visão Estratégica ──────────────── */}
+      {v2 ? <h3 className="v2-label">Visão Estratégica</h3> : (
       <div className="px-1">
         <p className="text-[11px] font-bold text-[var(--text-3)] uppercase tracking-widest mb-2">Visão Estratégica</p>
       </div>
+      )}
 
       <RaceReadinessCard
         runs={runs}
@@ -497,21 +510,25 @@ function OverviewDashboard({ scrollToTab }) {
       <SmartInsightsBanner data={data} profile={profile} maxItems={3} />
 
       {/* ─── Secção 2: os 4 pilares, por semana de calendário ──────── */}
+      {v2 ? <h3 className="v2-label">Os 4 pilares</h3> : (
       <div className="px-1 mt-2">
         <p className="text-[11px] font-bold text-[var(--text-3)] uppercase tracking-widest mb-2">Os 4 pilares</p>
       </div>
+      )}
 
       {/* Só "Semana" (D2): ‹ › andam de semana em semana; o Geral não tem seletor
           de tipo de período. Cartão de vidro como o do PeriodHeader. */}
       <section
         aria-label="Período"
-        style={{
-          borderRadius: 'var(--radius-2xl)',
-          padding: '14px 16px',
-          background: 'var(--surface-glass)',
-          border: '1px solid var(--border-glass)',
-          boxShadow: 'var(--shadow-card)',
-        }}
+        {...(v2 ? { className: 'v2-geral-panel v2-geral-period', 'data-testid': 'overview-period-v2' } : {
+          style: {
+            borderRadius: 'var(--radius-2xl)',
+            padding: '14px 16px',
+            background: 'var(--surface-glass)',
+            border: '1px solid var(--border-glass)',
+            boxShadow: 'var(--shadow-card)',
+          },
+        })}
       >
         <PeriodNav cal={cal} module="hub" />
       </section>
@@ -583,9 +600,11 @@ function OverviewDashboard({ scrollToTab }) {
 
       {/* ─── Secção 3: Análise Cruzada (colapsada) — só com os gráficos avançados (v1 lite) ───── */}
       {advancedCharts && (<>
+      {v2 ? <h3 className="v2-label">Análise Cruzada</h3> : (
       <div className="px-1 mt-2">
         <p className="text-[11px] font-bold text-[var(--text-3)] uppercase tracking-widest mb-2">Análise Cruzada</p>
       </div>
+      )}
 
       <CrossAnalysisSection
         runs={runs}

@@ -1,0 +1,21 @@
+/* «Detalhes da prova» (e a prova nova) no Design v2 (RunAgenda.jsx): página plana, sem o vidro
+   âmbar nem o cartão à volta dos campos; a avaliação da Carol numa linha com o traço ciano. */
+.v2-details-screen { background: none; border: 0; box-shadow: none; padding: 0; border-radius: 0; }
+.v2-details-page { padding: 4px 0 0; }
+
+.v2-details-chip {
+  display: inline-flex; align-items: center; min-height: 44px; padding: 0 12px;
+  border-radius: var(--v2-radius, 8px); border: 1px solid var(--v2-rule, var(--border-glass));
+  background: none; color: var(--v2-ink2, var(--text-3)); font: 500 13.5px var(--v2-font, inherit);
+  cursor: pointer;
+}
+.v2-details-chip:hover { color: var(--v2-ink, var(--text-1)); border-color: var(--v2-ink2, var(--text-3)); }
+.v2-details-chip:focus-visible { outline: 2px solid var(--v2-acc); outline-offset: 2px; }
+
+.v2-details-carol .v2-say { margin-top: 4px; }
+.v2-details-flag {
+  display: flex; align-items: center; gap: 6px; margin: 8px 0 0 16px;
+  font-size: 14px; color: var(--color-warn);
+}
+
+.v2-details-remove { display: inline-flex; align-items: center; gap: 6px; }

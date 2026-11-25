@@ -32,6 +32,8 @@ import { useCupForHome } from '../../utils/useCup';
 import { searchTrainingPlaces, trainingPlaceFields } from '../../utils/trainingPlace';
 import { CarolTalkButton } from '../shared/CarolActions';
 import { FieldInput, FieldSelect } from '../shared/registration/Field';
+import { useDesignV2 } from '../../utils/designV2';
+import '../../styles/v2-perfil.css';
 
 const TAB_KEYS = ['perfil', 'metas', 'vitrina', 'equipamento', 'coach'];
 
@@ -94,7 +96,9 @@ const coachFieldStyle = {
 const plainFieldStyle = { border: '1px solid rgba(255, 255, 255, 0.1)' };
 
 // Badge inline que assinala que um campo foi escrito pela Carol.
-function CoachBadge() {
+function CoachBadge({ v2 = false }) {
+  // Design v2: o nome dela em texto, sem pílula maiúscula nem gradiente.
+  if (v2) return <span title="Meta definida pela Carol" className="v2-perfil-carol-tag shrink-0">Carol</span>;
   return (
     <span title="Meta definida pela Carol"
       className="px-1.5 py-0.5 rounded-full text-[11px] font-bold uppercase tracking-wide shrink-0 shadow-sm text-[var(--coach-ink)]"
@@ -133,7 +137,14 @@ const CAROL_PUSH_TYPES = [
 ];
 const ALL_CAROL_PUSH_TYPES = CAROL_PUSH_TYPES.map((t) => t.key);
 
+// Design v2: só o filete na cor da Carol, sem o halo.
+const coachFieldStyleV2 = { border: '1px solid var(--coach)' };
+
 export default function Perfil() {
+  const v2 = useDesignV2();
+  // Design v2: secções planas, um painel e nunca um cartão dentro de outro.
+  const CARD = v2 ? 'v2-perfil-sec' : 'module-card-contrast';
+  const coachStyle = v2 ? coachFieldStyleV2 : coachFieldStyle;
   // Interruptores (v1 lite): o tutorial e a água podem estar desligados.
   const tutorialOn = useFeature('tutorial');
   const waterOn = useFeature('water');
@@ -602,7 +613,8 @@ export default function Perfil() {
       // shadow-sm — sem fundo nenhum, por isso "Guardar alterações"
       // aparecia como texto solto em vez de botão. --mod-prova é a cor de
       // identidade do Perfil (já usada no indicador dos separadores acima).
-      moduleColor="var(--mod-prova)"
+      // Design v2: o âmbar é só da prova; guardar o perfil é neutro (ciano, tinta da Carol).
+      moduleColor={v2 ? 'var(--v2-ink)' : 'var(--mod-prova)'}
       onClick={handleSave}
       disabled={!isDirty || isSaving}
       isLoading={isSaving}
@@ -618,7 +630,7 @@ export default function Perfil() {
     // --focus-ring: anel de teclado na cor do contexto (handoff, "Fidelity").
     // O Perfil é dourado como a prova — a mesma cor do indicador dos
     // separadores e do "Guardar alterações".
-    <div data-screen="perfil" className="data-form space-y-4 fade-in" style={{ '--focus-ring': 'var(--mod-prova)', paddingBottom: ACTION_BAR_SCROLL_PAD }}>
+    <div data-screen="perfil" className="data-form space-y-4 fade-in" style={{ '--focus-ring': v2 ? 'var(--coach)' : 'var(--mod-prova)', paddingBottom: ACTION_BAR_SCROLL_PAD }}>
       {/* Subnav — SubNav.jsx (ponto 4 do handoff): minhoca a 320ms na cor do
           separador ativo, ícone + rótulo nos quatro. */}
       <SubNav
@@ -641,11 +653,13 @@ export default function Perfil() {
       >
       <div ref={(el) => { pageRefs.current[0] = el; setPageRef(0)(el); }} className="tab-swipe-page space-y-4">
           <h2 className="sr-only">Pessoal</h2>
-          <div className="module-card-contrast">
+          <div className={CARD}>
+            {v2 ? <h3 className="v2-perfil-h">Pessoal</h3> : (
             <div className="flex items-center gap-2 mb-4">
               <User size={16} className="text-[var(--gym)]" />
               <h3 className="text-sm font-semibold">Pessoal</h3>
             </div>
+            )}
             <div className="space-y-3">
               <div>
                 <label htmlFor="perfil-nome" className="text-[11px] text-[var(--text-3)] block mb-1">Nome</label>
@@ -727,7 +741,7 @@ export default function Perfil() {
               <button
                 type="button"
                 onClick={() => requestTabChange('coach')}
-                className="w-full min-h-[44px] flex items-center justify-between gap-2 bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2.5 text-left hover:bg-[var(--surface-glass)] transition"
+                className={v2 ? 'v2-perfil-link' : 'w-full min-h-[44px] flex items-center justify-between gap-2 bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2.5 text-left hover:bg-[var(--surface-glass)] transition'}
               >
                 <span className="text-[11px] text-[var(--text-3)]">
                   Restrições alimentares e alergias agora vivem na aba{' '}
@@ -762,7 +776,7 @@ export default function Perfil() {
                 {draft.training_city && !placeEditing ? (
                   <>
                     <p className="text-[11px] text-[var(--text-3)] mb-1">Onde treinas</p>
-                    <div className="flex items-center gap-1 bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl pl-3 pr-1">
+                    <div className={v2 ? 'v2-perfil-place' : 'flex items-center gap-1 bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl pl-3 pr-1'}>
                       <MapPin size={14} className="text-[var(--gym)] shrink-0" aria-hidden="true" />
                       <span className="text-sm flex-1 min-w-0 truncate ml-1" data-testid="perfil-onde-treinas-cidade">{draft.training_city}</span>
                       <button
@@ -842,7 +856,7 @@ export default function Perfil() {
                           key={p.id}
                           type="button"
                           onClick={() => setTrainingPlace(p)}
-                          className="w-full min-h-[44px] flex items-center gap-2 bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2 text-left text-sm hover:bg-[var(--surface-glass)] transition"
+                          className={v2 ? 'v2-perfil-choice' : 'w-full min-h-[44px] flex items-center gap-2 bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2 text-left text-sm hover:bg-[var(--surface-glass)] transition'}
                         >
                           <MapPin size={14} className="text-[var(--gym)] shrink-0" aria-hidden="true" />
                           <span className="flex-1 min-w-0 truncate">{p.label}</span>
@@ -863,7 +877,7 @@ export default function Perfil() {
             </div>
           </div>
           
-          <div className="module-card-contrast">
+          <div className={CARD}>
             <p className="text-[11px] text-[var(--text-3)] mb-3">Sessão iniciada como <b className="text-[var(--text-3)]">{session?.user?.email}</b></p>
             <button onClick={handleSignOut} disabled={signingOut} aria-busy={signingOut} className="w-full min-h-[44px] border border-[var(--tint-danger-bd)] text-[var(--danger)] text-xs font-semibold rounded-xl py-2.5 flex items-center justify-center gap-1.5 hover:bg-[var(--tint-danger-bg)] transition disabled:opacity-60">
               <LogOut size={14} /> {signingOut ? 'A terminar sessão…' : 'Terminar sessão'}
@@ -877,11 +891,13 @@ export default function Perfil() {
               altura e o peso atual são medições e passaram para o Pessoal.
               Este cartão diz-o e leva à Carol, com quem os objetivos se
               afinam (update_goals, aceitar/recusar na persiana). */}
-          <div className="module-card-contrast" data-testid="perfil-metas-intro">
+          <div className={CARD} data-testid="perfil-metas-intro">
+            {v2 ? <h3 className="v2-perfil-h">As tuas metas</h3> : (
             <div className="flex items-center gap-2 mb-2">
               <Target size={16} style={{ color: 'var(--coach)' }} />
               <h3 className="text-sm font-semibold">As tuas metas</h3>
             </div>
+            )}
             <p className="text-[11.5px] text-[var(--text-3)] leading-relaxed">
               Tudo o que está aqui são objetivos teus — o corpo e a nutrição que queres
               atingir, não medições. Afina-os com a Carol: ela olha para as tuas
@@ -894,11 +910,13 @@ export default function Perfil() {
             </CarolTalkButton>
           </div>
 
-          <div className="module-card-contrast">
+          <div className={CARD}>
+            {v2 ? <h3 className="v2-perfil-h">Objetivos corporais</h3> : (
             <div className="flex items-center gap-2 mb-3">
               <Target size={16} className="text-[var(--gym)]" />
               <h3 className="text-sm font-semibold">Objetivos corporais</h3>
             </div>
+            )}
             <div className="grid grid-cols-2 gap-3">
               {BODY_METRICS.map(m => {
                 const flagKey = BODY_GOAL_COACH_FLAGS[m.key];
@@ -907,14 +925,14 @@ export default function Perfil() {
                   <div key={m.key}>
                     <label htmlFor={`perfil-goal-${m.key}`} className="text-[11px] text-[var(--text-3)] flex items-center gap-1.5 mb-1">
                       {m.label}{m.unit ? ` (${m.unit})` : ''}
-                      {isCoach && <CoachBadge />}
+                      {isCoach && <CoachBadge v2={v2} />}
                     </label>
                     <FieldInput id={`perfil-goal-${m.key}`} type="number" step="0.1" value={draft['goal_' + m.key] ?? ''}
                       onChange={e => {
                         const v = e.target.value === '' ? null : parseFloat(e.target.value);
                         updateCoachableGoal('goal_' + m.key, flagKey, v);
                       }}
-                      style={isCoach ? coachFieldStyle : plainFieldStyle} />
+                      style={isCoach ? coachStyle : plainFieldStyle} />
                   </div>
                 );
               })}
@@ -947,57 +965,59 @@ export default function Perfil() {
             </div>
           </div>
 
-          <div className="module-card-contrast">
+          <div className={CARD}>
+            {v2 ? <h3 className="v2-perfil-h">Nutrição e água</h3> : (
             <div className="flex items-center gap-2 mb-4">
               <Target size={16} className="text-[var(--gym)]" />
               <h3 className="text-sm font-semibold">Nutrição &amp; Água</h3>
             </div>
+            )}
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label htmlFor="perfil-calorias" className="text-[11px] text-[var(--text-3)] flex items-center gap-1.5 mb-1">
                   Calorias (kcal/dia)
-                  {draft.calorie_goal_set_by_coach && <CoachBadge />}
+                  {draft.calorie_goal_set_by_coach && <CoachBadge v2={v2} />}
                 </label>
                 <FieldInput id="perfil-calorias" type="number" value={draft.calorie_goal || ''}
                   onChange={e => updateCoachableGoal('calorie_goal', 'calorie_goal_set_by_coach', parseInt(e.target.value) || null)}
-                  style={draft.calorie_goal_set_by_coach ? coachFieldStyle : plainFieldStyle} />
+                  style={draft.calorie_goal_set_by_coach ? coachStyle : plainFieldStyle} />
               </div>
               <div>
                 <label htmlFor="perfil-proteina" className="text-[11px] text-[var(--text-3)] flex items-center gap-1.5 mb-1">
                   Proteína (g/dia)
-                  {draft.protein_goal_set_by_coach && <CoachBadge />}
+                  {draft.protein_goal_set_by_coach && <CoachBadge v2={v2} />}
                 </label>
                 <FieldInput id="perfil-proteina" type="number" value={draft.protein_goal || ''}
                   onChange={e => updateCoachableGoal('protein_goal', 'protein_goal_set_by_coach', parseInt(e.target.value) || null)}
-                  style={draft.protein_goal_set_by_coach ? coachFieldStyle : plainFieldStyle} />
+                  style={draft.protein_goal_set_by_coach ? coachStyle : plainFieldStyle} />
               </div>
               <div>
                 <label htmlFor="perfil-hidratos" className="text-[11px] text-[var(--text-3)] flex items-center gap-1.5 mb-1">
                   Hidratos (g/dia)
-                  {draft.carbs_goal_set_by_coach && <CoachBadge />}
+                  {draft.carbs_goal_set_by_coach && <CoachBadge v2={v2} />}
                 </label>
                 <FieldInput id="perfil-hidratos" type="number" value={draft.carbs_goal || ''}
                   onChange={e => updateCoachableGoal('carbs_goal', 'carbs_goal_set_by_coach', parseInt(e.target.value) || null)}
-                  style={draft.carbs_goal_set_by_coach ? coachFieldStyle : plainFieldStyle} />
+                  style={draft.carbs_goal_set_by_coach ? coachStyle : plainFieldStyle} />
               </div>
               <div>
                 <label htmlFor="perfil-gordura" className="text-[11px] text-[var(--text-3)] flex items-center gap-1.5 mb-1">
                   Gordura (g/dia)
-                  {draft.fat_goal_set_by_coach && <CoachBadge />}
+                  {draft.fat_goal_set_by_coach && <CoachBadge v2={v2} />}
                 </label>
                 <FieldInput id="perfil-gordura" type="number" value={draft.fat_goal || ''}
                   onChange={e => updateCoachableGoal('fat_goal', 'fat_goal_set_by_coach', parseInt(e.target.value) || null)}
-                  style={draft.fat_goal_set_by_coach ? coachFieldStyle : plainFieldStyle} />
+                  style={draft.fat_goal_set_by_coach ? coachStyle : plainFieldStyle} />
               </div>
               {waterOn && (
               <div className="col-span-2">
                 <label htmlFor="perfil-agua" className="text-[11px] text-[var(--text-3)] flex items-center gap-1.5 mb-1">
                   Meta água (ml/dia)
-                  {draft.water_goal_set_by_coach && <CoachBadge />}
+                  {draft.water_goal_set_by_coach && <CoachBadge v2={v2} />}
                 </label>
                 <FieldInput id="perfil-agua" type="number" step="50" value={draft.water_goal_ml || ''}
                   onChange={e => updateCoachableGoal('water_goal_ml', 'water_goal_set_by_coach', parseInt(e.target.value) || null)}
-                  style={draft.water_goal_set_by_coach ? coachFieldStyle : plainFieldStyle} />
+                  style={draft.water_goal_set_by_coach ? coachStyle : plainFieldStyle} />
               </div>
               )}
             </div>
@@ -1042,8 +1062,8 @@ export default function Perfil() {
             type="button"
             data-testid="perfil-privacidade-tabelas"
             onClick={() => setTabelasOpen(true)}
-            className="w-full flex items-center gap-3 text-left transition active:scale-[.99]"
-            style={{
+            className={v2 ? 'v2-perfil-row' : 'w-full flex items-center gap-3 text-left transition active:scale-[.99]'}
+            style={v2 ? undefined : {
               minHeight: 'var(--tap)',
               padding: 15,
               borderRadius: 'var(--radius-xl)',
@@ -1096,8 +1116,8 @@ export default function Perfil() {
           <button
             type="button"
             onClick={() => setOnboardingOpen(true)}
-            className="w-full flex items-center gap-3 text-left transition active:scale-[.99]"
-            style={{
+            className={v2 ? 'v2-perfil-row' : 'w-full flex items-center gap-3 text-left transition active:scale-[.99]'}
+            style={v2 ? undefined : {
               minHeight: 'var(--tap)',
               padding: 15,
               borderRadius: 'var(--radius-xl)',
@@ -1105,7 +1125,13 @@ export default function Perfil() {
               border: '1px solid var(--tint-coach-bd)',
             }}
           >
-            <CoachAvatar size={36} radius={11} />
+            <CoachAvatar size={36} radius={v2 ? 8 : 11} />
+            {v2 ? (
+              <span className="flex-1 min-w-0">
+                <span className="v2-perfil-row-t">Rever o arranque com a Carol</span>
+                <span className="v2-perfil-row-s">Os seis passos outra vez, com as respostas que já deste</span>
+              </span>
+            ) : (
             <span className="flex-1 min-w-0">
               <span className="block" style={{ fontSize: 13.5, fontWeight: 800, color: 'var(--coach-soft)' }}>
                 Rever o arranque com a Carol
@@ -1114,6 +1140,7 @@ export default function Perfil() {
                 Os seis passos outra vez, com as respostas que já deste
               </span>
             </span>
+            )}
             <ChevronRight size={18} className="shrink-0" style={{ color: 'var(--text-4)' }} />
           </button>
 
@@ -1122,8 +1149,8 @@ export default function Perfil() {
           <button
             type="button"
             onClick={() => setTutorialOpen(true)}
-            className="w-full flex items-center gap-3 text-left transition active:scale-[.99]"
-            style={{
+            className={v2 ? 'v2-perfil-row' : 'w-full flex items-center gap-3 text-left transition active:scale-[.99]'}
+            style={v2 ? undefined : {
               minHeight: 'var(--tap)',
               padding: 15,
               borderRadius: 'var(--radius-xl)',
@@ -1131,6 +1158,9 @@ export default function Perfil() {
               border: '1px solid rgba(255, 255, 255, 0.08)',
             }}
           >
+            {v2 ? (
+              <Sparkles size={18} className="shrink-0" style={{ color: 'var(--coach)' }} aria-hidden="true" />
+            ) : (
             <div
               className="flex items-center justify-center shrink-0"
               style={{
@@ -1143,6 +1173,7 @@ export default function Perfil() {
             >
               <Sparkles size={18} />
             </div>
+            )}
             <span className="flex-1 min-w-0">
               <span className="block" style={{ fontSize: 13.5, fontWeight: 800, color: 'var(--text-1)' }}>
                 Ver tutorial da app
@@ -1159,11 +1190,13 @@ export default function Perfil() {
               aqui, no separador da Carol — saíram de Metas, que ficou só com
               objetivos. A meta de água continua em Metas; o lembrete dela
               é uma notificação e mudou-se para aqui. */}
-          <div className="module-card-contrast" data-testid="perfil-notificacoes">
+          <div className={CARD} data-testid="perfil-notificacoes">
+            {v2 ? <h3 className="v2-perfil-h">Notificações</h3> : (
             <div className="flex items-center gap-2 mb-4">
               <Bell size={16} style={{ color: 'var(--coach)' }} />
               <h3 className="text-sm font-semibold">Notificações</h3>
             </div>
+            )}
             {waterOn && (<>
             <div className="flex items-center justify-between">
               <div className="pr-4">
@@ -1177,11 +1210,11 @@ export default function Perfil() {
                 aria-pressed={!!draft.water_reminder_enabled}
                 aria-busy={subscribingPush}
                 className={`tap-area-44 w-11 h-6 rounded-full relative transition-colors duration-200 shrink-0 disabled:opacity-60 ${
-                  draft.water_reminder_enabled ? 'bg-[var(--mod-prova)]' : 'bg-[var(--surface-strong)]'
+                  draft.water_reminder_enabled ? (v2 ? 'bg-[var(--coach)]' : 'bg-[var(--mod-prova)]') : 'bg-[var(--surface-strong)]'
                 }`}>
                 <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full transition-transform duration-200 ${
                   draft.water_reminder_enabled ? 'translate-x-5' : 'translate-x-0'
-                }`} style={{ backgroundColor: draft.water_reminder_enabled ? 'var(--race-ink)' : 'var(--text-1)' }}></span>
+                }`} style={{ backgroundColor: draft.water_reminder_enabled ? (v2 ? 'var(--coach-ink)' : 'var(--race-ink)') : 'var(--text-1)' }}></span>
               </button>
             </div>
 
@@ -1337,11 +1370,13 @@ export default function Perfil() {
               Vive aqui (não em "Alimentação" na Memória do Coach) porque é
               vocabulário fechado com alvos nutricionais citados por trás
               (utils/diet.js) — uma nota de texto livre não os dispara. */}
-          <div className="module-card-contrast">
+          <div className={CARD}>
+            {v2 ? <h3 className="v2-perfil-h">Restrições alimentares</h3> : (
             <div className="flex items-center gap-2 mb-3">
               <Utensils size={16} className="text-[var(--mod-coach-to)]" />
               <h3 className="text-sm font-semibold">Restrições Alimentares</h3>
             </div>
+            )}
             <p className="text-[11px] text-[var(--text-3)] mb-3 leading-relaxed">
               Regra absoluta que a Carol nunca contraria — ao contrário da Memória, aqui é a
               Carol que calcula por trás as metas de nutrientes certas para cada restrição.
