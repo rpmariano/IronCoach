@@ -21,6 +21,7 @@ import {
 import GlassCard from '../shared/GlassCard';
 import CoachAvatar from '../Coach/CoachAvatar';
 import { inferMoodFromText } from '@formulas/carolMood.ts';
+import { PAIN_ALARM_THRESHOLD } from '@formulas/checkinAlarms.ts';
 import { pickRaceOfDay } from '@formulas/mainRace.ts';
 import { useCupForHome } from '../../utils/useCup';
 import { cupEntryNotices, cupWeekLine } from '../../utils/cupWeek';
@@ -306,6 +307,7 @@ export function useCoachDailyMessages(agora = new Date()) {
        na véspera de uma prova, em que o que o dia é diz-se pela prova de
        amanhã ("Preparar amanhã"), e ela tem de ser a primeira linha. */
     let cabeca = null;
+    let cabecaDor = false;
     let action = null;
     let soODia = false;
     if (raceToday) {
@@ -316,6 +318,8 @@ export function useCoachDailyMessages(agora = new Date()) {
       action = prova.action;
     } else if (pendentes.length) {
       cabeca = linhaDoTreinoDeHoje({ pendentes, feitos, agora: instante, checkin, vida: vidaHoje });
+      // Com a dor alta do check-in, a frase do treino É o aviso (ela quer falar antes de ele treinar).
+      cabecaDor = !!cabeca && (Number(checkin?.pain) || 0) >= PAIN_ALARM_THRESHOLD;
     } else if (!recap && !raceTomorrow) {
       const propostas = (coachPlans || []).filter((p) => p.status === 'proposto').length;
       // Um plano aceite que já acabou: o cartão do plano, logo abaixo, diz «O
@@ -358,7 +362,11 @@ export function useCoachDailyMessages(agora = new Date()) {
       /* `safety` e `rest` (2026-11-25): o aviso do servidor e o resto da frase (a prova ou o treino de
          hoje, a água), à parte. A v1 só lê o `text`; o Início v2 (utils/homeV2Focus.js) mostra o
          aviso de segurança sempre, em qualquer momento, e filtra o resto pelo momento. */
-      else list.push({ key: 'warnings', label: 'Aviso de hoje', color: 'var(--warn)', text: warning, action, ...(doServidor ? { safety: doServidor, rest: [cabeca, agua].filter(Boolean).join(' ') || null } : {}) });
+      else list.push({ key: 'warnings', label: 'Aviso de hoje', color: 'var(--warn)', text: warning, action, ...((doServidor || cabecaDor) ? {
+        // A dor alta do check-in conta como aviso de segurança, como os do servidor.
+        safety: [cabecaDor ? cabeca : null, doServidor].filter(Boolean).join(' '),
+        rest: [cabecaDor ? null : cabeca, agua].filter(Boolean).join(' ') || null,
+      } : {}) });
     }
 
     // O prazo de inscrição numa jornada, logo a seguir ao aviso de hoje.

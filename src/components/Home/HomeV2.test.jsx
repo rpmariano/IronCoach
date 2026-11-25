@@ -18,7 +18,7 @@ const inDays = (n) => addDaysISO(today, n);
 const baseState = {
   profile: { id: 'user-1', display_name: 'Rui', calorie_goal: 2400, protein_goal: 160 },
   meals: [{ id: 'm1', date: today }],
-  waterLogs: [], runs: [], gymSessions: [], bodyAssessments: [], shoes: [], insightStates: {},
+  waterLogs: [], runs: [], gymSessions: [], bodyAssessments: [], shoes: [], insightStates: {}, dailyCheckins: [],
   dailySummary: null, dailySummaryLoading: false,
   raceEvents: [], coachPlans: [], coachPlanItems: [], coachGoalProposals: [],
   impressionShown: new Set(), impressionDismissed: new Set(),
@@ -262,6 +262,22 @@ describe('Início — Design v2, o foco (crítica de 2026-11-25)', () => {
     const carol = screen.getByTestId('home-v2-carol');
     expect(carol).toHaveTextContent(/^Carol\. Marcaste dor 8 no joelho/);
     expect(carol).not.toHaveTextContent(/corrida contínua de 5 km/i);
+  });
+
+  it('na véspera, com treino por fazer e dor 8 no check-in: a frase da dor aparece primeiro', async () => {
+    act(() => setDesignV2(true));
+    useAppStore.setState({
+      ...PLANO,
+      raceEvents: [{ id: 'sil', name: 'São Silvestre', date: tomorrow, start_time: '09:00:00', status: 'agendada', distance_km: 10 }],
+      coachPlanItems: [{ id: 'i1', plan_id: 'p1', planned_date: today, kind: 'corrida', training_type: 'continuo', target_distance_km: 5, status: 'pendente' }],
+      dailyCheckins: [{ date: today, pain: 8, sleep: 4, energy: 4, stress: 2 }],
+      dailySummary: null,
+    });
+    renderHome();
+    await screen.findByTestId('home-v2');
+    const carol = screen.getByTestId('home-v2-carol');
+    // A frase da dor é o primeiro que ela diz (o aviso de segurança, nunca filtrado na véspera).
+    expect(carol.querySelector('p').textContent).toMatch(/^Carol\. .*com a dor de que me falaste/);
   });
 
   it('na véspera: o herói é a prova de amanhã e a Carol fala dela', async () => {
