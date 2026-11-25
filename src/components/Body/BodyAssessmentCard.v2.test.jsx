@@ -10,7 +10,7 @@ import BodyAssessmentCard from './BodyAssessmentCard';
 
 const loadInitialData = vi.fn(() => Promise.resolve());
 const showToast = vi.fn();
-const eqMock = vi.fn(() => Promise.resolve({ error: null }));
+const eqMock = vi.fn(() => { const p = Promise.resolve({ error: null }); p.eq = eqMock; return p; });
 const deleteMock = vi.fn(() => ({ eq: eqMock }));
 const fromMock = vi.fn(() => ({ delete: deleteMock }));
 
@@ -102,6 +102,8 @@ describe('BodyAssessmentCard · Design v2', () => {
     await waitFor(() => expect(showToast).toHaveBeenCalledWith('Avaliação eliminada'));
     expect(fromMock).toHaveBeenCalledWith('body_assessments');
     expect(eqMock).toHaveBeenCalledWith('id', 'b1');
+    // Por defesa, além da RLS: o filtro do dono.
+    expect(eqMock).toHaveBeenCalledWith('user_id', expect.anything());
     expect(loadInitialData).toHaveBeenCalledWith('u1');
   });
 

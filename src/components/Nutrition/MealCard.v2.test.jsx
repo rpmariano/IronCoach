@@ -13,7 +13,7 @@ vi.setConfig({ testTimeout: 15000 });
 const mocks = vi.hoisted(() => ({ invoke: vi.fn(), del: vi.fn(), signed: vi.fn() }));
 vi.mock('../../lib/supabase', () => ({
   supabase: {
-    from: (table) => ({ delete: () => ({ eq: (col, val) => mocks.del(table, col, val) }) }),
+    from: (table) => ({ delete: () => ({ eq: (col, val) => { const p = Promise.resolve(mocks.del(table, col, val)); p.eq = (c2, v2) => { mocks.del(table, c2, v2); return p; }; return p; } }) }),
     storage: { from: () => ({ createSignedUrls: (...a) => mocks.signed(...a) }) },
   },
   invokeEdgeFunctionWithTimeout: (...args) => mocks.invoke(...args),
@@ -94,6 +94,8 @@ describe('MealCard — Design v2', () => {
     const dialogBtns = screen.getAllByRole('button', { name: 'Eliminar' });
     fireEvent.click(dialogBtns[dialogBtns.length - 1]);
     await waitFor(() => expect(mocks.del).toHaveBeenCalledWith('meals', 'id', 'm1'));
+    // Por defesa, além da RLS: o filtro do dono.
+    expect(mocks.del).toHaveBeenCalledWith('meals', 'user_id', expect.anything());
     await waitFor(() => expect(useAppStore.getState().loadInitialData).toHaveBeenCalledWith('u1'));
   });
 

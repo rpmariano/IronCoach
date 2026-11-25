@@ -83,4 +83,24 @@ describe('Calendário — Design v2', () => {
     fireEvent.click(within(card).getByRole('button', { name: 'Eliminar prova' }));
     expect(await screen.findByTestId('race-remove-race')).toHaveTextContent('«Meia de Lisboa» sai do calendário');
   });
+
+  it('o «Ver tudo» da prova diz o que o cartão de sempre dizia: o ritmo-alvo e as semanas do ciclo', () => {
+    act(() => setDesignV2(true));
+    const futura = new Date(HOJE.getFullYear(), HOJE.getMonth(), HOJE.getDate());
+    futura.setDate(futura.getDate() + 120);
+    const LONGE = { ...PROVA, id: 'race-2', name: 'Maratona do Porto', date: iso(futura), target_pace_seconds_per_km: 299 };
+    useAppStore.setState({ raceEvents: [LONGE], pendingCalendarDate: LONGE.date });
+    renderCalendario();
+    const card = screen.getByTestId('race-agenda-v2');
+    fireEvent.click(within(card).getByTestId('race-agenda-v2-more'));
+    expect(within(card).getByTestId('race-agenda-v2-target-pace')).toHaveTextContent(/Ritmo-alvo4[.:]59\/km/);
+    expect(within(card).getByTestId('race-agenda-v2-weeks')).toHaveTextContent(/semanas no total/);
+  });
+
+  it('a grelha do mês é um grupo com o nome do mês (não um grid sem linhas)', () => {
+    act(() => setDesignV2(true));
+    renderCalendario();
+    expect(screen.queryByRole('grid')).toBeNull();
+    expect(screen.getAllByRole('group').length).toBeGreaterThan(0);
+  });
 });

@@ -69,4 +69,20 @@ describe('Layout — o menu do «+» no v2', () => {
     expect(screen.queryByTestId('fab-sheet-v2')).toBeNull();
     expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Registar novo item' }));
   });
+
+  it('o separador da Carol: no v2 o balão do Lucide (20 px), com o nome «Carol»; na v1 a cara dela', () => {
+    const { unmount } = render(<Layout><div /></Layout>);
+    const v1 = screen.getByRole('button', { name: 'Carol' });
+    expect(v1.querySelector('svg.lucide-carol')).not.toBeNull();
+    expect(within(v1).queryByTestId('nav-carol-icon-v2')).toBeNull();
+    unmount();
+    act(() => setDesignV2(true));
+    render(<Layout><div /></Layout>);
+    const v2 = screen.getByRole('button', { name: 'Carol' });
+    const icon = within(v2).getByTestId('nav-carol-icon-v2');
+    expect(icon).toHaveClass('lucide-message-circle');
+    expect(icon).toHaveAttribute('width', '20');
+    expect(v2.querySelector('svg.lucide-carol')).toBeNull();
+    expect(v2).toHaveTextContent('Carol');
+  });
 });

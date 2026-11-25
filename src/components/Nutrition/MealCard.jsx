@@ -95,7 +95,7 @@ export default function MealCard({ meal, onEdit, defaultExpanded = false, hideAc
     setShowDeleteConfirm(false);
     setIsDeleting(true);
     try {
-      const { error } = await supabase.from('meals').delete().eq('id', meal.id);
+      const { error } = await supabase.from('meals').delete().eq('id', meal.id).eq('user_id', (useAppStore.getState().session?.user?.id || profile?.id));
       if (error) throw error;
       if (profile?.id) {
         await loadInitialData(profile.id);

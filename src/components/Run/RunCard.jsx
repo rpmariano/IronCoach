@@ -121,7 +121,7 @@ export default function RunCard({ run, onEdit, onDelete, defaultExpanded = false
       if (onDelete) {
         await onDelete(run.id);
       } else {
-        const { error } = await supabase.from('runs').delete().eq('id', run.id);
+        const { error } = await supabase.from('runs').delete().eq('id', run.id).eq('user_id', (useAppStore.getState().session?.user?.id || profile?.id));
         if (error) throw error;
         if (profile?.id) {
           await loadInitialData(profile.id);

@@ -87,6 +87,19 @@ export default function RaceAgendaCardV2({
         <dl>
           <div><dt>Contagem</dt><dd>{contagem}</dd></div>
           {!done && <div><dt>Preparação</dt><dd>{fase}</dd></div>}
+          {/* O que o cartão de sempre também dizia (revisão de 2026-11-25). */}
+          {!done && plan.trainingStatus === 'not_started' && plan.totalWeeks > 0 && (
+            <div data-testid="race-agenda-v2-weeks"><dt>Ciclo</dt><dd>{`${plan.totalWeeks} semanas no total`}</dd></div>
+          )}
+          {!done && plan.trainingStatus !== 'not_started' && plan.currentPhase?.weeksLabel && (
+            <div data-testid="race-agenda-v2-phase-weeks"><dt>Semanas da fase</dt><dd>{plan.currentPhase.weeksLabel}</dd></div>
+          )}
+          {!done && plan.trainingStatus !== 'not_started' && plan.carolAnalysis?.readinessLabel && (
+            <div data-testid="race-agenda-v2-readiness"><dt>Prontidão</dt><dd>{plan.carolAnalysis.readinessLabel}</dd></div>
+          )}
+          {ev.target_time && ev.target_pace_seconds_per_km && (
+            <div data-testid="race-agenda-v2-target-pace"><dt>Ritmo-alvo</dt><dd>{`${formatPace(ev.target_pace_seconds_per_km)}/km`}</dd></div>
+          )}
           {ev.elevation_gain_m != null && <div><dt>Desnível</dt><dd>{`+${ev.elevation_gain_m} m D+`}</dd></div>}
           {!done && plan.trainingStatus !== 'not_started' && plan.currentPhase?.evaluation?.gradeLabel && (
             <div><dt>A fase</dt><dd>{plan.currentPhase.evaluation.score != null ? `${plan.currentPhase.evaluation.gradeLabel}, ${plan.currentPhase.evaluation.score}%` : plan.currentPhase.evaluation.gradeLabel}</dd></div>

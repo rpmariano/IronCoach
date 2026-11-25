@@ -246,7 +246,7 @@ export default function Calendar() {
     const previous = [...runs];
     setRuns(runs.filter(r => r.id !== id));
     try {
-      const { error } = await supabase.from('runs').delete().eq('id', id);
+      const { error } = await supabase.from('runs').delete().eq('id', id).eq('user_id', useAppStore.getState().session?.user?.id || useAppStore.getState().profile?.id);
       if (error) throw error;
       showToast('Corrida eliminada');
       reloadAfterRunDelete();
@@ -260,7 +260,7 @@ export default function Calendar() {
     const previous = [...meals];
     setMeals(meals.filter(m => m.id !== id));
     try {
-      const { error } = await supabase.from('meals').delete().eq('id', id);
+      const { error } = await supabase.from('meals').delete().eq('id', id).eq('user_id', useAppStore.getState().session?.user?.id || useAppStore.getState().profile?.id);
       if (error) throw error;
       showToast('Refeição eliminada');
     } catch (err) {
@@ -273,7 +273,7 @@ export default function Calendar() {
     const previous = [...bodyAssessments];
     setBodyAssessments(bodyAssessments.filter(a => a.id !== id));
     try {
-      const { error } = await supabase.from('body_assessments').delete().eq('id', id);
+      const { error } = await supabase.from('body_assessments').delete().eq('id', id).eq('user_id', useAppStore.getState().session?.user?.id || useAppStore.getState().profile?.id);
       if (error) throw error;
       showToast('Avaliação eliminada');
     } catch (err) {

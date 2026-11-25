@@ -5,7 +5,7 @@ import { setDesignV2 } from '../../utils/designV2';
 
 const showToast = vi.fn();
 const loadInitialData = vi.fn(() => Promise.resolve());
-const eqMock = vi.fn(() => Promise.resolve({ error: null }));
+const eqMock = vi.fn(() => { const p = Promise.resolve({ error: null }); p.eq = eqMock; return p; });
 const createSignedUrls = vi.fn(() => Promise.resolve({ data: [{ signedUrl: 'https://x/p1.jpg' }], error: null }));
 
 vi.mock('../../store', () => {
@@ -126,6 +126,8 @@ describe('GymSessionCard no Design v2', () => {
     await waitFor(() => expect(showToast).toHaveBeenCalledWith('Treino eliminado'));
     expect(supabase.from).toHaveBeenCalledWith('workout_sessions');
     expect(eqMock).toHaveBeenCalledWith('id', 'g1');
+    // Por defesa, além da RLS: o filtro do dono.
+    expect(eqMock).toHaveBeenCalledWith('user_id', expect.anything());
     expect(loadInitialData).toHaveBeenCalledWith('user-1');
   });
 
