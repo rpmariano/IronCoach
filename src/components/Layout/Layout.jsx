@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useAppStore } from '../../store';
-import { House, Dumbbell, Plus, Camera, User, Calendar, LayoutDashboard, Trophy, Footprints, Droplets, Calculator, X } from 'lucide-react';
+import { House, Dumbbell, Plus, Camera, User, Calendar, LayoutDashboard, Trophy, Footprints, Droplets, Calculator, X, MessageCircle } from 'lucide-react';
 import CarolIcon from '../Coach/CarolIcon';
 import ReportIssueButton from '../shared/ReportIssueButton';
 import BugNotificationsHandler from '../shared/BugNotificationsHandler';
@@ -437,7 +437,9 @@ export default function Layout({ children }) {
         <div aria-hidden="true" className="h-full" />
 
         <DashboardVBarBtn activeTab={activeTab} setTab={goTab} lastDashboardTab={lastDashboardTab} pillRef={setNavItemRef(2)} />
-        <VBarBtn tab="coach" icon={<CarolIcon size={20} />} label="Carol" activeTab={activeTab} setTab={goTab} pillRef={setNavItemRef(3)} />
+        {/* No v2 (pedido do Rui, 25/11) o separador da Carol leva o balão do Lucide, como os outros
+            ícones da barra; o nome fica «Carol». Na v1, a cara dela (CarolIcon). */}
+        <VBarBtn tab="coach" icon={v2 ? <MessageCircle size={20} data-testid="nav-carol-icon-v2" /> : <CarolIcon size={20} />} label="Carol" activeTab={activeTab} setTab={goTab} pillRef={setNavItemRef(3)} />
 
         {/* Botão "+" flutuante — filho direto do nav para top: -22px ser relativo ao topo da barra */}
         <button

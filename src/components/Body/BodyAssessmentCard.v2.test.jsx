@@ -10,7 +10,7 @@ import BodyAssessmentCard from './BodyAssessmentCard';
 
 const loadInitialData = vi.fn(() => Promise.resolve());
 const showToast = vi.fn();
-const eqMock = vi.fn(() => Promise.resolve({ error: null }));
+const eqMock = vi.fn(() => { const p = Promise.resolve({ error: null }); p.eq = eqMock; return p; });
 const deleteMock = vi.fn(() => ({ eq: eqMock }));
 const fromMock = vi.fn(() => ({ delete: deleteMock }));
 
@@ -65,12 +65,12 @@ describe('BodyAssessmentCard · Design v2', () => {
     const toggle = screen.getByTestId('v2-card-body-carol-toggle');
     expect(toggle).toHaveAttribute('aria-expanded', 'false');
     expect(toggle).toHaveTextContent('Ler mais');
-    expect(screen.queryByTestId('v2-card-body-carol-full')).not.toBeInTheDocument();
+    expect(screen.getByTestId('v2-card-body-carol').querySelector('.v2-rec-say-full')).toBeNull();
     expect(screen.getByTestId('v2-card-body-carol')).toHaveTextContent('Carol. Composição A gordura desceu');
     fireEvent.click(toggle);
     expect(toggle).toHaveAttribute('aria-expanded', 'true');
     expect(toggle).toHaveTextContent('Ler menos');
-    expect(screen.getByTestId('v2-card-body-carol-full')).toHaveTextContent('treino de força duas vezes por semana');
+    expect(screen.getByTestId('v2-card-body-carol').querySelector('.v2-rec-say-full')).toHaveTextContent('treino de força duas vezes por semana');
   });
 
   it('«Ver tudo» mostra as outras medidas e as observações', () => {
@@ -102,12 +102,15 @@ describe('BodyAssessmentCard · Design v2', () => {
     await waitFor(() => expect(showToast).toHaveBeenCalledWith('Avaliação eliminada'));
     expect(fromMock).toHaveBeenCalledWith('body_assessments');
     expect(eqMock).toHaveBeenCalledWith('id', 'b1');
+    // Por defesa, além da RLS: o filtro do dono.
+    expect(eqMock).toHaveBeenCalledWith('user_id', expect.anything());
     expect(loadInitialData).toHaveBeenCalledWith('u1');
   });
 
   it('hideActions esconde Editar, Eliminar e a intervenção da Carol', () => {
     render(<BodyAssessmentCard assessment={A} onEdit={vi.fn()} hideActions />);
-    expect(screen.queryByTestId('v2-card-body-actions')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Editar' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Eliminar avaliação' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Editar' })).not.toBeInTheDocument();
     expect(screen.queryByTestId('carol-intervention')).not.toBeInTheDocument();
   });
@@ -120,7 +123,7 @@ describe('BodyAssessmentCard · Design v2', () => {
   it('defaultExpanded abre a análise toda e as medidas', () => {
     render(<BodyAssessmentCard assessment={A} defaultExpanded hideActions />);
     expect(screen.getByTestId('v2-card-body-carol-toggle')).toHaveAttribute('aria-expanded', 'true');
-    expect(screen.getByTestId('v2-card-body-carol-full')).toHaveTextContent('treino de força');
+    expect(screen.getByTestId('v2-card-body-carol').querySelector('.v2-rec-say-full')).toHaveTextContent('treino de força');
     expect(screen.getByTestId('v2-card-body-details')).toBeInTheDocument();
   });
 

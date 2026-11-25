@@ -33,7 +33,7 @@ export default function BodyAssessmentCard({ assessment, onEdit, defaultExpanded
     setShowDeleteConfirm(false);
     setIsDeleting(true);
     try {
-      const { error } = await supabase.from('body_assessments').delete().eq('id', assessment.id);
+      const { error } = await supabase.from('body_assessments').delete().eq('id', assessment.id).eq('user_id', (useAppStore.getState().session?.user?.id || profile?.id));
       if (error) throw error;
       if (profile?.id) {
         await loadInitialData(profile.id);

@@ -89,7 +89,7 @@ export default function GymSessionCard({ session, onEdit, defaultExpanded = fals
     setShowDeleteConfirm(false);
     setIsDeleting(true);
     try {
-      const { error } = await supabase.from('workout_sessions').delete().eq('id', session.id);
+      const { error } = await supabase.from('workout_sessions').delete().eq('id', session.id).eq('user_id', (useAppStore.getState().session?.user?.id || profile?.id));
       if (error) throw error;
       if (profile?.id) await loadInitialData(profile.id);
       showToast('Treino eliminado');

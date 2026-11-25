@@ -205,3 +205,26 @@ button.v2-sp:focus-visible { outline: 2px solid var(--v2-acc); outline-offset: -
 
 /* O cartão da prova de sempre no modo «extras» (a concluída, a jornada): vazio quando não há nada. */
 .v2-race-extras:empty { display: none; }
+
+/* ── Os cartões dos registos: o mesmo em todo o lado (uniformização, 2026-11-25) ── */
+/* O espaçamento interno, igual nos cinco (duplicado para ganhar às regras de cada cartão). */
+.v2-rec.v2-rec { padding: 12px 14px 0; }
+/* As ações: «Ver tudo», «Ler mais», «Editar», «Eliminar» — a mesma classe, a mesma cor, o mesmo
+   hover e foco, o mesmo alvo de 44 px. (.v2-say .v2-act ganha ao .v2-say button { all: unset }.) */
+.v2-act, .v2-say .v2-act {
+  all: unset; box-sizing: border-box; cursor: pointer; min-height: 44px; display: inline-flex; align-items: center;
+  padding: 0 2px; border-radius: 4px; font: 600 14px var(--v2-font); color: var(--v2-ink2); white-space: nowrap;
+}
+.v2-act:hover, .v2-say .v2-act:hover { color: var(--v2-ink); }
+.v2-act.is-acc, .v2-say .v2-act.is-acc { color: var(--v2-acc); }
+.v2-act.is-acc:hover { color: var(--coach-soft); }
+.v2-act.is-danger, .v2-say .v2-act.is-danger { color: var(--danger); }
+.v2-act:focus-visible, .v2-say .v2-act:focus-visible { outline: 2px solid var(--v2-acc); outline-offset: 2px; }
+.v2-act:disabled { opacity: .5; cursor: default; }
+/* A barra das ações: a mesma ordem nos cinco (Ver tudo, [Reanalisar], Editar ou Hub, Eliminar). */
+.v2-rec-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 0 18px; margin-top: 8px; border-top: 1px solid var(--v2-rule); }
+/* A linha da Carol (CarolLineV2): cortada a uma linha; aberta, o texto inteiro. */
+.v2-rec-say { margin-top: 10px; }
+.v2-rec-say-line { margin: 0; font-size: 14.5px; line-height: 1.45; display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden; }
+.v2-rec-say-full { font-size: 14.5px; line-height: 1.5; color: var(--v2-ink); }
+.v2-rec-say-full p { margin: 0 0 6px; }

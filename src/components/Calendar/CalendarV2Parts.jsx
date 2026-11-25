@@ -29,7 +29,7 @@ export function CalendarMonthV2({
         <button type="button" aria-label="Mês seguinte" onClick={onNext} className="v2-cal-nav"><ChevronRight size={18} /></button>
       </div>
 
-      <div className="v2-cal-grid" role="grid" aria-label={format(currentDate, 'MMMM yyyy', { locale: pt })}>
+      <div className="v2-cal-grid" role="group" aria-label={format(currentDate, 'MMMM yyyy', { locale: pt })}>
         {DIAS.map((d) => <span key={d} className="v2-cal-wd" aria-hidden="true">{d}</span>)}
         {Array.from({ length: firstWeekday }).map((_, i) => <span key={`e-${i}`} aria-hidden="true" />)}
         {daysInMonth.map((date) => {

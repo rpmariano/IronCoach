@@ -1,8 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
+import CarolLineV2 from '../shared/CarolLineV2';
 import '../../styles/v2-components.css';
 import '../../styles/v2-card-gym.css';
 import CarolMuscleAnatomy from '../GraphicsLibrary/CarolMuscleAnatomy';
-import CoachText from '../shared/CoachText';
 import ConfirmDeleteModal from '../shared/ConfirmDeleteModal';
 import CarolInterventionActions from '../shared/CarolInterventionActions';
 import { mapCategoriesToMuscles } from '../../utils/gym';
@@ -16,15 +16,6 @@ import { normalizeStartTime } from '../../utils/startTime';
    Eliminar discretos. Tudo o que o cartão de sempre mostra (métricas, músculos,
    prints, observações, séries) fica atrás de «Ver tudo». O estado e os fluxos
    (as fotos, a confirmação de eliminar, o Editar) vêm do GymSessionCard. */
-
-// A análise numa linha: sem os marcadores do markdown (## e **), só o texto.
-function plainText(text) {
-  return String(text || '')
-    .replace(/^#+\s+/gm, '')
-    .replace(/\*\*/g, '')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
 
 export default function GymSessionCardV2({
   session, onEdit, hideActions = false, defaultExpanded = false,
@@ -64,7 +55,7 @@ export default function GymSessionCardV2({
   if (isAula && session.duration_seconds) nums.push({ key: 'dur', n: formatDuration(session.duration_seconds), l: 'duração' });
 
   return (
-    <div className="v2-card-gym v2-panel" data-testid="gym-card-v2">
+    <div className="v2-card-gym v2-panel v2-rec" data-testid="gym-card-v2">
       <div className="v2-card-gym-head">
         <i className="v2-dot" style={{ background: 'var(--gym)' }} aria-hidden="true" />
         <span className="v2-card-gym-type">{isAula ? 'Aula' : 'Ginásio'}</span>
@@ -84,36 +75,19 @@ export default function GymSessionCardV2({
       )}
 
       {coachCommentary && (
-        <div className="v2-say v2-card-gym-say" data-testid="gym-v2-carol">
-          <i aria-hidden="true" />
-          <div className="v2-card-gym-say-body">
-            {carolOpen ? (
-              <div id={carolId} className="v2-card-gym-say-full">
-                <span className="v2-who">Carol.</span>
-                <CoachText>{coachCommentary}</CoachText>
-              </div>
-            ) : (
-              <p id={carolId} className="v2-card-gym-say-line">
-                <span className="v2-who">Carol.</span> {plainText(coachCommentary)}
-              </p>
-            )}
-            <button
-              type="button"
-              className="v2-card-gym-link is-acc"
-              aria-expanded={carolOpen}
-              aria-controls={carolId}
-              onClick={() => setCarolOpen((o) => !o)}
-            >
-              {carolOpen ? 'Ler menos' : 'Ler mais'}
-            </button>
-          </div>
-        </div>
+        <CarolLineV2
+          text={coachCommentary}
+          id={carolId}
+          open={carolOpen}
+          onToggle={() => setCarolOpen((o) => !o)}
+          testId="gym-v2-carol"
+        />
       )}
 
-      <div className="v2-card-gym-actions">
+      <div className="v2-card-gym-actions v2-rec-actions">
         <button
           type="button"
-          className="v2-card-gym-link"
+          className="v2-act is-acc"
           aria-expanded={detailsOpen}
           aria-controls={detailsId}
           onClick={() => setDetailsOpen((o) => !o)}
@@ -121,14 +95,14 @@ export default function GymSessionCardV2({
           {detailsOpen ? 'Ver menos' : 'Ver tudo'}
         </button>
         {!hideActions && onEdit && (
-          <button type="button" className="v2-card-gym-link" onClick={() => onEdit(session.id)}>
+          <button type="button" className="v2-act" onClick={() => onEdit(session.id)}>
             Editar
           </button>
         )}
         {!hideActions && (
           <button
             type="button"
-            className="v2-card-gym-link is-danger"
+            className="v2-act is-danger"
             onClick={() => setShowDeleteConfirm(true)}
             disabled={isDeleting}
             aria-label="Eliminar treino"

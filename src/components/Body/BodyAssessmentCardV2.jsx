@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { BODY_METRICS, BODY_METRIC_BY_KEY, fmtMetric, fmtMetricValue } from '../../utils/body';
 import ConfirmDeleteModal from '../shared/ConfirmDeleteModal';
-import CoachText from '../shared/CoachText';
+import CarolLineV2 from '../shared/CarolLineV2';
 import CarolInterventionActions from '../shared/CarolInterventionActions';
 import '../../styles/v2-card-body.css';
 
@@ -12,15 +12,6 @@ import '../../styles/v2-card-body.css';
    (BodyAssessmentCard), que decide entre as duas variantes: o fluxo é o mesmo. */
 
 const MAIN_KEYS = ['weight_kg', 'body_fat_pct'];
-
-/* A linha fechada da Carol: o texto corrido, sem as marcas de negrito e de título. */
-function plainText(text) {
-  return String(text || '')
-    .replace(/^#+\s*/gm, '')
-    .replace(/\*\*/g, '')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
 
 export default function BodyAssessmentCardV2({
   assessment,
@@ -49,10 +40,9 @@ export default function BodyAssessmentCardV2({
     .map((m) => ({ metric: m, val: assessment[m.key] }))
     .filter(({ val }) => val !== null && val !== undefined && val !== '');
 
-  const carolText = plainText(coachCommentary);
 
   return (
-    <article className="v2-panel v2-card-body" data-testid="v2-card-body">
+    <article className="v2-panel v2-card-body v2-rec" data-testid="v2-card-body">
       <header className="v2-card-body-head">
         <span className="v2-card-body-type">
           <i className="v2-dot" style={{ background: 'var(--body)' }} aria-hidden="true" data-testid="v2-card-body-dot" />
@@ -78,44 +68,45 @@ export default function BodyAssessmentCardV2({
         <p className="v2-card-body-empty">Sem peso nem gordura nesta avaliação.</p>
       )}
 
-      {carolText && (
-        <div className="v2-say v2-card-body-say" data-testid="v2-card-body-carol">
-          <i aria-hidden="true" />
-          <div className="v2-card-body-say-main">
-            {carolOpen ? (
-              <div id={carolId} className="v2-card-body-carol-full" data-testid="v2-card-body-carol-full">
-                <p><span className="v2-who">Carol.</span></p>
-                <CoachText>{coachCommentary}</CoachText>
-              </div>
-            ) : (
-              <p id={carolId} className="v2-card-body-carol-line">
-                <span className="v2-who">Carol.</span> {carolText}
-              </p>
-            )}
-            <button
-              type="button"
-              className="v2-card-body-link is-acc"
-              aria-expanded={carolOpen}
-              aria-controls={carolId}
-              data-testid="v2-card-body-carol-toggle"
-              onClick={() => setCarolOpen((o) => !o)}
-            >
-              {carolOpen ? 'Ler menos' : 'Ler mais'}
-            </button>
-          </div>
-        </div>
+      {coachCommentary && (
+        <CarolLineV2
+          text={coachCommentary}
+          id={carolId}
+          open={carolOpen}
+          onToggle={() => setCarolOpen((o) => !o)}
+          testId="v2-card-body-carol"
+          toggleTestId="v2-card-body-carol-toggle"
+        />
       )}
 
-      <button
-        type="button"
-        className="v2-card-body-link"
-        aria-expanded={detailsOpen}
-        aria-controls={detailsId}
-        data-testid="v2-card-body-details-toggle"
-        onClick={() => setDetailsOpen((o) => !o)}
-      >
-        {detailsOpen ? 'Ver menos' : 'Ver tudo'}
-      </button>
+      <div className="v2-card-body-actions v2-rec-actions" data-testid="v2-card-body-actions">
+        <button
+          type="button"
+          className="v2-act is-acc"
+          aria-expanded={detailsOpen}
+          aria-controls={detailsId}
+          data-testid="v2-card-body-details-toggle"
+          onClick={() => setDetailsOpen((o) => !o)}
+        >
+          {detailsOpen ? 'Ver menos' : 'Ver tudo'}
+        </button>
+        {!hideActions && onEdit && (
+          <button type="button" className="v2-act" onClick={() => onEdit(assessment.id)}>
+            Editar
+          </button>
+        )}
+        {!hideActions && (
+          <button
+            type="button"
+            className="v2-act is-danger"
+            onClick={onAskDelete}
+            disabled={isDeleting}
+            aria-label="Eliminar avaliação"
+          >
+            {isDeleting ? 'A eliminar…' : 'Eliminar avaliação'}
+          </button>
+        )}
+      </div>
 
       {detailsOpen && (
         <div id={detailsId} className="v2-card-body-details" data-testid="v2-card-body-details">
@@ -136,25 +127,6 @@ export default function BodyAssessmentCardV2({
       )}
 
       {!hideActions && <CarolInterventionActions record={assessment} type="body" />}
-
-      {!hideActions && (
-        <div className="v2-card-body-actions" data-testid="v2-card-body-actions">
-          {onEdit && (
-            <button type="button" className="v2-card-body-link" onClick={() => onEdit(assessment.id)}>
-              Editar
-            </button>
-          )}
-          <button
-            type="button"
-            className="v2-card-body-link is-danger"
-            onClick={onAskDelete}
-            disabled={isDeleting}
-            aria-label="Eliminar avaliação"
-          >
-            {isDeleting ? 'A eliminar…' : 'Eliminar avaliação'}
-          </button>
-        </div>
-      )}
 
       <ConfirmDeleteModal
         isOpen={showDeleteConfirm}

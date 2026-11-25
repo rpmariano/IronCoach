@@ -1,7 +1,7 @@
 import React, { useState, useId } from 'react';
 import { PersonStanding, Loader2 } from 'lucide-react';
 import { isWalk } from '@formulas/runKinds.ts';
-import CoachText from '../shared/CoachText';
+import CarolLineV2 from '../shared/CarolLineV2';
 import ConfirmDeleteModal from '../shared/ConfirmDeleteModal';
 import CarolInterventionActions from '../shared/CarolInterventionActions';
 import { formatDuration, formatPace } from '../../utils/run';
@@ -13,11 +13,6 @@ import '../../styles/v2-card-run.css';
    Editar e Eliminar discretos. Tudo o que o cartão de sempre mostra continua cá, atrás de «Ver
    tudo». O estado, os handlers e os valores derivados vêm do RunCard (os mesmos fluxos, o mesmo
    aviso de eliminar). Âmbar só na prova. */
-
-/** A Carol numa linha: o texto sem marcas de negrito nem quebras. */
-function oneLine(text) {
-  return String(text || '').replace(/\*\*/g, '').replace(/^##\s+/gm, '').replace(/\s+/g, ' ').trim();
-}
 
 export default function RunCardV2({
   run, onEdit, hideActions, defaultExpanded,
@@ -36,14 +31,15 @@ export default function RunCardV2({
   const title = run.title || run.name || (walk ? 'Caminhada' : 'Corrida');
   const isRace = run.kind === 'competicao' || !!run.race_id;
   const race = run.race_id ? (raceEvents || []).find((e) => e.id === run.race_id) : null;
-  const km = run.distance_km ? Number(run.distance_km).toFixed(2) : null;
+  // pt-PT: «8,04», «10» (sem os zeros a mais).
+  const km = run.distance_km ? new Intl.NumberFormat('pt-PT', { maximumFractionDigits: 2 }).format(Number(run.distance_km)) : null;
   const pace = paceVal ? formatPace(paceVal) : null;
   const extraChips = (chips || []).filter((c) => c.key !== 'dur');
   const hasPhotos = run.photo_paths?.length > 0;
   const hasBio = details.ground_contact_time_ms || details.vertical_oscillation_cm || details.asymmetry_pct || details.leg_stiffness_kn_m;
 
   return (
-    <article className="v2-panel v2-card-run" data-testid="run-card-v2">
+    <article className="v2-panel v2-card-run v2-rec" data-testid="run-card-v2">
       <div className="v2-card-run-head">
         <i className="v2-dot" style={{ background: 'var(--run)' }} aria-hidden="true" />
         {walk && <PersonStanding size={14} className="v2-card-run-walk" aria-label="Caminhada" data-testid="icone-caminhada" />}
@@ -62,36 +58,20 @@ export default function RunCardV2({
       )}
 
       {coachCommentary && (
-        <div className="v2-say v2-card-run-say" data-testid="run-card-v2-carol">
-          <i aria-hidden="true" />
-          <div className="min-w-0">
-            <div id={carolId}>
-              {carolOpen ? (
-                <div className="v2-card-run-carol-full">
-                  <span className="v2-who">Análise da Carol</span>
-                  <CoachText>{coachCommentary}</CoachText>
-                </div>
-              ) : (
-                <p className="v2-card-run-carol-line"><span className="v2-who">Carol.</span> {oneLine(coachCommentary)}</p>
-              )}
-            </div>
-            <button
-              type="button"
-              className="v2-link v2-link-inline v2-card-run-more"
-              aria-expanded={carolOpen}
-              aria-controls={carolId}
-              onClick={() => setCarolOpen((o) => !o)}
-            >
-              {carolOpen ? 'Ler menos' : 'Ler mais'}
-            </button>
-          </div>
-        </div>
+        <CarolLineV2
+          text={coachCommentary}
+          id={carolId}
+          open={carolOpen}
+          onToggle={() => setCarolOpen((o) => !o)}
+          testId="run-card-v2-carol"
+          label="Carol."
+        />
       )}
 
-      <div className="v2-card-run-actions">
+      <div className="v2-card-run-actions v2-rec-actions">
         <button
           type="button"
-          className="v2-card-run-act"
+          className="v2-act is-acc"
           aria-expanded={expanded}
           aria-controls={moreId}
           aria-label={expanded ? 'Fechar detalhes da corrida' : 'Ver detalhes da corrida'}
@@ -100,17 +80,17 @@ export default function RunCardV2({
           {expanded ? 'Ver menos' : 'Ver tudo'}
         </button>
         {!hideActions && hasPhotos && (
-          <button type="button" className="v2-card-run-act" onClick={handleReanalyze} disabled={isReanalyzing}>
+          <button type="button" className="v2-act" onClick={handleReanalyze} disabled={isReanalyzing}>
             {isReanalyzing ? 'A reanalisar…' : 'Reanalisar'}
           </button>
         )}
         {!hideActions && onEdit && (
-          <button type="button" className="v2-card-run-act" onClick={(e) => { e.stopPropagation(); onEdit(run.id); }}>
+          <button type="button" className="v2-act" onClick={(e) => { e.stopPropagation(); onEdit(run.id); }}>
             Editar
           </button>
         )}
         {!hideActions && (
-          <button type="button" className="v2-card-run-act is-danger" onClick={() => setShowDeleteConfirm(true)} disabled={isDeleting}>
+          <button type="button" className="v2-act is-danger" onClick={() => setShowDeleteConfirm(true)} disabled={isDeleting}>
             {isDeleting ? 'A eliminar…' : 'Eliminar'}
           </button>
         )}
@@ -165,7 +145,7 @@ export default function RunCardV2({
                 return (
                   <div key={i} className="v2-card-run-split">
                     <span>{i + 1}.</span>
-                    <span className="v2-num">{s.distance_km ? `${Number(s.distance_km).toFixed(2)} km` : '-'}</span>
+                    <span className="v2-num">{s.distance_km ? `${new Intl.NumberFormat('pt-PT', { maximumFractionDigits: 2 }).format(Number(s.distance_km))} km` : '-'}</span>
                     <span className="v2-num">{s.time_seconds ? formatDuration(s.time_seconds) : '-'}</span>
                     <span className="v2-num">{splitPace ? `${formatPace(splitPace)}/km` : ''}</span>
                   </div>
