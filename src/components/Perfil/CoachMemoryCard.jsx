@@ -5,6 +5,7 @@ import { useToast } from '../shared/ToastProvider';
 import Button from '../shared/Button';
 import PremiumModal from '../shared/PremiumModal';
 import { FieldSelect, FieldTextarea } from '../shared/registration/Field';
+import { useDesignV2 } from '../../utils/designV2';
 
 /* Memória de longo prazo partilhada com a Carol (tabela coach_notes).
 
@@ -71,6 +72,7 @@ function categoryLabel(key) {
 }
 
 export default function CoachMemoryCard() {
+  const v2 = useDesignV2();
   const { coachNotes, reloadCoachNotes, addCoachNote, updateCoachNote, deleteCoachNote,
           setCoachIntent, setActiveTab } = useAppStore();
   const { showToast } = useToast();
@@ -128,10 +130,10 @@ export default function CoachMemoryCard() {
   };
 
   return (
-    <div className="module-card-contrast">
+    <div className={v2 ? 'v2-perfil-sec' : 'module-card-contrast'}>
       <div className="flex items-center gap-2 mb-3">
-        <Brain size={16} className="text-[var(--mod-coach-to)]" />
-        <h3 className="text-sm font-semibold">Memória da Carol</h3>
+        {!v2 && <Brain size={16} className="text-[var(--mod-coach-to)]" />}
+        <h3 className={v2 ? 'v2-perfil-h' : 'text-sm font-semibold'} style={v2 ? { marginBottom: 0 } : undefined}>Memória da Carol</h3>
         <button
           type="button"
           onClick={() => setShowCategoryHelp(true)}
@@ -178,8 +180,8 @@ export default function CoachMemoryCard() {
           return (
           <div
             key={n.id}
-            className="rounded-xl border bg-[var(--surface-glass)] p-3"
-            style={{
+            className={v2 ? `v2-perfil-item${byCoach ? ' is-carol' : ''}` : 'rounded-xl border bg-[var(--surface-glass)] p-3'}
+            style={v2 ? undefined : {
               // Um filete na cor do coach chega para separar as duas autorias
               // de relance, sem transformar a lista num arco-íris.
               borderColor: byCoach
@@ -189,8 +191,8 @@ export default function CoachMemoryCard() {
           >
             <div className="flex items-center gap-2 mb-1.5">
               <span
-                className="text-[11px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded"
-                style={{
+                className={v2 ? `v2-perfil-cat${byCoach ? ' is-carol' : ''}` : 'text-[11px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded'}
+                style={v2 ? undefined : {
                   background: byCoach
                     ? 'color-mix(in srgb, var(--mod-coach-to) 12%, transparent)'
                     : 'rgb(38 38 38)',
@@ -298,7 +300,7 @@ export default function CoachMemoryCard() {
       </div>
 
       {adding ? (
-        <div className="rounded-xl border border-dashed border-[var(--mod-coach-to)]/40 p-3 flex flex-col gap-2">
+        <div className={v2 ? 'v2-perfil-add' : 'rounded-xl border border-dashed border-[var(--mod-coach-to)]/40 p-3 flex flex-col gap-2'}>
           <FieldSelect
             value={draftCat}
             onChange={e => setDraftCat(e.target.value)}
@@ -334,7 +336,7 @@ export default function CoachMemoryCard() {
           type="button"
           onClick={() => setAdding(true)}
           disabled={notes.length >= 40}
-          className="w-full min-h-[44px] border-2 border-dashed border-[var(--mod-coach-to)]/40 hover:border-[var(--mod-coach-to)]/70 hover:bg-[var(--mod-coach-to)]/10 text-[var(--mod-coach-to)] py-2.5 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition disabled:opacity-40 disabled:cursor-not-allowed"
+          className={v2 ? 'v2-btn is-quiet disabled:opacity-40 disabled:cursor-not-allowed' : 'w-full min-h-[44px] border-2 border-dashed border-[var(--mod-coach-to)]/40 hover:border-[var(--mod-coach-to)]/70 hover:bg-[var(--mod-coach-to)]/10 text-[var(--mod-coach-to)] py-2.5 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition disabled:opacity-40 disabled:cursor-not-allowed'}
         >
           <Plus size={15} />
           {notes.length >= 40 ? 'Memória cheia — remove uma nota primeiro' : 'Acrescentar um facto'}
@@ -356,7 +358,7 @@ export default function CoachMemoryCard() {
             veres de relance o que já lhe contaste.
           </p>
           {NOTE_CATEGORIES.filter(c => c.key !== 'outro').map(c => (
-            <div key={c.key} className="bg-[var(--surface-faint)] border border-[var(--border-glass)] rounded-xl p-3 shadow-sm">
+            <div key={c.key} className={v2 ? 'v2-perfil-item' : 'bg-[var(--surface-faint)] border border-[var(--border-glass)] rounded-xl p-3 shadow-sm'}>
               <p className="text-[12px] font-bold text-[var(--text-2)] mb-1">{c.label}</p>
               <p className="text-[11px] text-[var(--text-3)] leading-snug mb-2">{c.description}</p>
               <ul className="space-y-1">

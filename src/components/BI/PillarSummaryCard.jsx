@@ -5,6 +5,8 @@ import { useCountUp } from '../../utils/useCountUp';
 import { DUR_COUNT_REVEAL } from '../../utils/introAnimations';
 import { fmtNumber } from '../../utils/dashboardVerdicts';
 import { deltaColor } from './period/DeltaVsPrevious';
+import { useDesignV2 } from '../../utils/designV2';
+import '../../styles/v2-geral.css';
 
 /**
  * PillarSummaryCard — Card compacto para os 4 pilares do dashboard.
@@ -100,6 +102,60 @@ export default function PillarSummaryCard({
   const motion = reveal.active === true && !reveal.reduced;
   const zero = motion && (reveal.seen === false || reveal.armed === true);
   const parsed = useMemo(() => parseKpi(kpi), [kpi]);
+  const v2 = useDesignV2();
+
+  /* Design v2 (direção C · Painel): o cartão plano (painel, régua, raio 8, sem vidro nem sombra),
+     o título em texto simples e o estado sem pílula, em texto na cor do significado com um ponto. */
+  if (v2) {
+    const lines = (Array.isArray(subtitle) ? subtitle : [subtitle]).filter(Boolean);
+    return (
+      <button
+        type="button"
+        ref={motion ? reveal.ref : undefined}
+        onClick={onClick}
+        className="v2-geral-panel v2-geral-card"
+        data-testid="pillar-card-v2"
+      >
+        <span className="v2-geral-card-head">
+          <span className="v2-geral-card-title">
+            <span className="flex items-center leading-none shrink-0">{icon}</span>
+            <span>{title}</span>
+          </span>
+          <ChevronRight size={14} aria-hidden="true" style={{ color: 'var(--v2-ink2)', flexShrink: 0 }} />
+        </span>
+        <span className="v2-geral-card-kpi">
+          <b className="v2-num">
+            <KpiValue key={reveal.playKey} kpi={kpi} parsed={parsed} animate={motion && !!reveal.animate} zero={zero} />
+          </b>
+          {kpiUnit && <span>{kpiUnit}</span>}
+        </span>
+        {(badge || delta) && (
+          <span className="v2-geral-card-state">
+            {badge && (
+              <span data-testid="pillar-badge" style={{ color: badgeStyle.color }}>
+                <i className="v2-dot" aria-hidden="true" style={{ background: badgeStyle.color }} />
+                {badge.label}
+              </span>
+            )}
+            {delta && typeof delta === 'string' && <span style={{ color: 'var(--v2-ink2)' }}>{delta}</span>}
+            {delta && typeof delta === 'object' && (
+              <span
+                data-testid="pillar-delta"
+                data-direction={delta.direction}
+                style={{ color: deltaColor(delta.direction, delta.better || 'none') }}
+              >
+                <span aria-hidden="true">{`${DELTA_ARROW[delta.direction] || ''} ${delta.text}`.trim()}</span>
+                <span className="sr-only">{delta.spoken || delta.text}</span>
+              </span>
+            )}
+          </span>
+        )}
+        {lines.map((line, i) => (
+          <span key={i} className="v2-geral-card-sub" style={{ display: 'block' }}>{line}</span>
+        ))}
+      </button>
+    );
+  }
 
   return (
     <button

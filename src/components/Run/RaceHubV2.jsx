@@ -363,7 +363,8 @@ export function RaceDoneV2({
         )}
 
         <h2 className="v2-label">E agora?</h2>
-        <button type="button" className="v2-btn is-race" onClick={onNext}>Marcar a próxima prova</button>
+        {/* Âmbar só para registar a prova (decisão do Rui): marcar a próxima é discreto. */}
+        <button type="button" className="v2-btn is-quiet" data-testid="race-done-next" onClick={onNext}>Marcar a próxima prova</button>
         <button type="button" className="v2-btn is-quiet" data-testid="race-done-talk" onClick={onTalk}>Falar com a Carol</button>
         {onEditRun && (
           <button type="button" className="v2-link" data-testid="race-hub-edit-run" onClick={onEditRun}>Editar o registo</button>

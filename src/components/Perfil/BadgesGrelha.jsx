@@ -1,6 +1,7 @@
 import React from 'react';
 import { FAMILIAS } from '../../utils/badges';
 import BadgeRing, { corDoBadge } from '../shared/BadgeRing';
+import { useDesignV2 } from '../../utils/designV2';
 
 /* A grelha de badges agrupada por família — o desenho, sem opinião nenhuma
    sobre QUE badges mostrar.
@@ -75,6 +76,8 @@ export default function BadgesGrelha({
      exatamente como estava. */
   rodapeDoGrupo,
 }) {
+  // Design v2: o nome da família e a legenda em texto simples, sem maiúsculas espaçadas.
+  const v2 = useDesignV2();
   const grupos = agrupaPorFamilia(lista || []);
 
   return (
@@ -82,8 +85,8 @@ export default function BadgesGrelha({
       {grupos.map((grupo) => (
         <div key={grupo.key} data-testid={`badges-familia-${grupo.key}`}>
           <div
-            className="text-[10px] font-extrabold uppercase"
-            style={{ letterSpacing: 'var(--tracking-label)', color: 'var(--text-4)', padding: '2px 2px 4px' }}
+            className={v2 ? 'v2-perfil-cat' : 'text-[10px] font-extrabold uppercase'}
+            style={v2 ? { padding: '2px 2px 4px' } : { letterSpacing: 'var(--tracking-label)', color: 'var(--text-4)', padding: '2px 2px 4px' }}
           >
             {grupo.label}
           </div>
@@ -113,7 +116,7 @@ export default function BadgesGrelha({
                     {badge.name}
                   </span>
                   {legenda && (
-                    <span className="block w-full text-[9.5px] font-extrabold uppercase leading-none" style={{ letterSpacing: '.04em', color: badge.state === 'won' ? corDoBadge(badge) : 'var(--text-4)' }}>
+                    <span className={v2 ? 'block w-full text-[11px] font-semibold leading-none' : 'block w-full text-[9.5px] font-extrabold uppercase leading-none'} style={v2 ? { color: badge.state === 'won' ? corDoBadge(badge) : 'var(--text-4)' } : { letterSpacing: '.04em', color: badge.state === 'won' ? corDoBadge(badge) : 'var(--text-4)' }}>
                       {legenda}
                     </span>
                   )}

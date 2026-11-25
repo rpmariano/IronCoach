@@ -12,6 +12,8 @@ import { buildTrailModel } from '../../utils/homeModels';
 import { focusRace } from '@formulas/mainRace.ts';
 import { PILLAR_GLOSSARY } from '../../utils/glossary';
 import { readinessHint } from '../../utils/readinessHints';
+import { useDesignV2 } from '../../utils/designV2';
+import '../../styles/v2-geral.css';
 
 /* Ponto 3 do redesenho: os pilares tinham emoji (🏃 ⚡ 🥗 📈 🎯). Passam a
    lucide, cada um na cor do que mede — os dois de nutrição/energia no roxo
@@ -56,6 +58,7 @@ function CountPct({ value, animate, zero }) {
 
 export default function RaceReadinessCard({ runs, meals, bodyAssessments, gymSessions, raceEvents, profile, onClickRace, coachPlans, coachPlanItems }) {
   const [selectedPillar, setSelectedPillar] = useState(null);
+  const v2 = useDesignV2();
 
   const extraReady = useAppStore((st) => sliceReady(st, READINESS_EXTRA_SLICES));
   const reveal = useRevealAnimation({ ready: extraReady });
@@ -174,6 +177,174 @@ export default function RaceReadinessCard({ runs, meals, bodyAssessments, gymSes
   } : {
     className: "w-full text-left flex items-start gap-4"
   };
+
+  /* Design v2 (direção C · Painel): uma secção plana (painel, régua, raio 8, sem vidro nem brilho).
+     A prova em texto simples, com o âmbar só na contagem (a marca da prova); os pilares em linhas
+     planas separadas pela régua, com o nome INTEIRO (a 375 px ficava «Disponibilidade E…»: agora
+     parte em duas linhas), e cada pilar é um botão que abre a explicação. */
+  if (v2) {
+    const ringColor = cfg.color;
+    const HeadTag = HeaderComponent;
+    const headV2Props = HeadTag === 'button'
+      ? { type: 'button', onClick: () => onClickRace(nextRace.id), className: 'v2-geral-ready-head' }
+      : { className: 'v2-geral-ready-head' };
+    const daysText = daysLeft === 0 ? 'É hoje' : daysLeft === 1 ? 'Amanhã' : `Faltam ${daysLeft} dias`;
+    return (
+      <section ref={motion ? reveal.ref : undefined} className="v2-geral-panel v2-geral-ready" data-testid="readiness-v2">
+        <HeadTag {...headV2Props}>
+          <div className="relative shrink-0 w-20 h-20" style={fadeStyle}>
+            <svg viewBox="0 0 88 88" className="w-20 h-20 -rotate-90" aria-hidden="true">
+              <circle cx="44" cy="44" r={radius} fill="none" stroke="var(--v2-rule)" strokeWidth="8" strokeDasharray={calibrating ? '4 6' : undefined} />
+              <circle
+                cx="44" cy="44" r={radius}
+                fill="none"
+                stroke={ringColor}
+                strokeWidth="8"
+                strokeLinecap="round"
+                strokeDasharray={circumference}
+                strokeDashoffset={atFinal ? progress : circumference}
+                style={{ transition: animateIn ? `stroke-dashoffset ${DUR_COUNT_REVEAL}ms var(--ease-out)` : 'none' }}
+              />
+            </svg>
+            <div className="absolute inset-0 flex flex-col items-center justify-center">
+              <span className="v2-num" style={{ color: ringColor, font: '700 22px/1 var(--v2-font-num)' }}>{calibrating ? '—' : <CountPct key={reveal.playKey} value={readiness.score} animate={motion && !!reveal.animate} zero={hold} />}</span>
+              <span style={{ fontSize: 12, color: 'var(--v2-ink2)', marginTop: 2 }}>Prontidão</span>
+            </div>
+          </div>
+
+          <div className="flex-1 min-w-0">
+            {nextRace ? (
+              <>
+                <p className="v2-geral-ready-kicker">Próxima prova</p>
+                <p className="v2-geral-ready-name">{nextRace.name || nextRace.race_name || 'Prova'}</p>
+                <p className="v2-geral-ready-count v2-num" data-testid="readiness-race-countdown">{daysText}</p>
+                {trail?.phaseName && (
+                  <p data-testid="readiness-race-phase" className="v2-geral-ready-phase">
+                    {trail.phaseName}
+                    {trail.weekLabel ? ` · ${trail.weekLabel}` : ''}
+                  </p>
+                )}
+              </>
+            ) : (
+              <>
+                <p className="v2-geral-ready-kicker">Forma geral</p>
+                <p className="v2-geral-ready-name">Nenhuma prova agendada</p>
+                <p className="v2-geral-ready-sub">Adiciona uma prova para ver a prontidão direcionada</p>
+              </>
+            )}
+            <div className="v2-geral-ready-level">
+              <span>
+                <span style={{ fontWeight: 600, color: ringColor }} data-testid="readiness-level">
+                  Prontidão {cfg.label}
+                </span>
+                {nextRace && (
+                  <span style={{ color: 'var(--v2-ink2)' }}> · {nextRace.distance_km || '?'} km</span>
+                )}
+              </span>
+              {HeadTag === 'button' && (
+                <ChevronRight className="w-4 h-4" aria-hidden="true" style={{ color: 'var(--v2-ink2)', flexShrink: 0 }} />
+              )}
+            </div>
+          </div>
+        </HeadTag>
+
+        {hint && (
+          <p className="v2-geral-ready-hint" data-testid="readiness-hint">{hint}</p>
+        )}
+
+        {readiness.pillars.length > 0 && (
+          <div className="v2-geral-pillars" style={fadeStyle} data-testid="readiness-pillars-v2">
+            {readiness.pillars.map((pillar) => {
+              const noData = pillar.hasData === false;
+              const pCfg = noData ? NO_DATA : pillar.score >= 75 ? LEVEL_CONFIG.high : pillar.score >= 45 ? LEVEL_CONFIG.medium : LEVEL_CONFIG.low;
+              return (
+                <button
+                  type="button"
+                  key={pillar.key}
+                  className="v2-geral-pillar"
+                  data-testid={`readiness-pillar-${pillar.key}`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setSelectedPillar(pillar);
+                  }}
+                >
+                  <span className="v2-geral-pillar-head">
+                    <span className="v2-geral-pillar-name">
+                      {/* A tática levava o âmbar só por decoração: no v2 o âmbar é só a marca da prova. */}
+                      <span aria-hidden="true">{pillar.key === 'tactic' ? <Target size={13} style={{ color: 'var(--v2-ink2)' }} /> : PILLAR_ICONS[pillar.key]}</span>
+                      <span>{pillar.label}</span>
+                    </span>
+                    <span className="v2-geral-pillar-pct v2-num" style={{ color: pCfg.color }}>{noData ? '—' : <CountPct key={reveal.playKey} value={pillar.score} animate={motion && !!reveal.animate} zero={hold} />}</span>
+                  </span>
+                  <span className="v2-geral-pillar-bar" style={{ display: 'block' }}>
+                    <span
+                      style={{
+                        display: 'block',
+                        height: '100%',
+                        width: '100%',
+                        background: pCfg.color,
+                        transform: `scaleX(${noData || !atFinal ? 0 : Math.max(0, Math.min(100, pillar.score)) / 100})`,
+                        transformOrigin: 'left',
+                        transition: reduced || (motion && !animateIn) ? 'none' : 'transform var(--dur-bars) var(--ease-out)',
+                      }}
+                    />
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        {selectedPillar && (
+          <div
+            className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 fade-in"
+            onClick={(e) => {
+              e.stopPropagation();
+              setSelectedPillar(null);
+            }}
+          >
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="v2-geral-sheet-title"
+              className="v2-geral-panel v2-geral-sheet p-6 w-full max-w-sm scale-in"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between gap-3 mb-4">
+                <h3 id="v2-geral-sheet-title" className="v2-geral-sheet-t">{selectedPillar.label}</h3>
+                <span className="v2-num" style={{
+                  fontWeight: 700,
+                  fontSize: 16,
+                  color: selectedPillar.hasData === false ? 'var(--v2-ink2)'
+                    : selectedPillar.score >= 75 ? 'var(--ok)'
+                    : selectedPillar.score >= 45 ? 'var(--warn)' : 'var(--danger)',
+                }}>{selectedPillar.hasData === false ? 'Sem dados' : `${selectedPillar.score}%`}</span>
+              </div>
+              <p style={{ margin: '0 0 16px', fontSize: 14.5, lineHeight: 1.5, color: 'var(--v2-ink2)' }}>
+                {selectedPillar.desc}
+              </p>
+              {PILLAR_GLOSSARY[selectedPillar.key] && (
+                <p data-testid="pillar-glossary" style={{ margin: '0 0 20px', paddingTop: 12, borderTop: '1px solid var(--v2-rule)', fontSize: 13.5, lineHeight: 1.5, color: 'var(--v2-ink2)' }}>
+                  {PILLAR_GLOSSARY[selectedPillar.key]}
+                </p>
+              )}
+              <button
+                type="button"
+                className="v2-btn is-quiet"
+                style={{ width: '100%' }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setSelectedPillar(null);
+                }}
+              >
+                Fechar
+              </button>
+            </div>
+          </div>
+        )}
+      </section>
+    );
+  }
 
   return (
     <div ref={motion ? reveal.ref : undefined} className="w-full bg-[var(--surface-glass)] backdrop-blur-[20px] border border-white/60 rounded-2xl p-4 shadow-[0_16px_40px_rgba(0,0,0,0.3),inset_0_2px_10px_rgba(255,255,255,0.6)]">

@@ -6,6 +6,7 @@ import ConfirmDeleteModal from '../shared/ConfirmDeleteModal';
 import {
   listAssistantTokens, createAssistantToken, revokeAssistantToken, MAX_ASSISTANT_TOKENS,
 } from '../../lib/assistantTokens';
+import { useDesignV2 } from '../../utils/designV2';
 
 /* Perfil › Assistente executiva (specs/assistente-leitura-contrato.md, "App").
    Gera e revoga o acesso só de leitura da assistente. O token mostra-se UMA
@@ -26,6 +27,7 @@ const fmt = (iso) => {
 };
 
 export default function AssistantAccessCard() {
+  const v2 = useDesignV2();
   const userId = useAppStore((s) => s.session?.user?.id);
   const titleId = useId();
   const freshTitleId = useId();
@@ -100,16 +102,18 @@ export default function AssistantAccessCard() {
   if (!userId) return null;
 
   return (
-    <div className="module-card-contrast" data-testid="perfil-assistente" role="group" aria-labelledby={titleId}>
+    <div className={v2 ? 'v2-perfil-sec' : 'module-card-contrast'} data-testid="perfil-assistente" role="group" aria-labelledby={titleId}>
+      {v2 ? <h3 id={titleId} className="v2-perfil-h">Assistente executiva</h3> : (
       <div className="flex items-center gap-2 mb-3">
         <UserCheck size={16} className="text-[var(--mod-coach-to)]" aria-hidden="true" />
         <h3 id={titleId} className="text-sm font-semibold">Assistente executiva</h3>
       </div>
+      )}
       <p className="text-[11px] text-[var(--text-3)] mb-3 leading-relaxed">{ASSISTANT_TEXTO}</p>
 
       {fresh && (
-        <div role="region" aria-labelledby={freshTitleId} data-testid="perfil-assistente-novo" className="rounded-xl px-3 py-3 mb-3"
-          style={{ background: 'var(--surface-soft)', border: '1px solid var(--border-glass)' }}>
+        <div role="region" aria-labelledby={freshTitleId} data-testid="perfil-assistente-novo" className={v2 ? 'v2-perfil-item mb-3' : 'rounded-xl px-3 py-3 mb-3'}
+          style={v2 ? undefined : { background: 'var(--surface-soft)', border: '1px solid var(--border-glass)' }}>
           <p id={freshTitleId} className="text-[12px] font-bold" style={{ color: 'var(--text-1)' }}>Este código só aparece agora</p>
           <p className="text-[11px] mt-0.5 leading-relaxed" style={{ color: 'var(--text-2)' }}>
             Copia-o e entrega-o à assistente. Depois de fechares isto, não o voltas a ver — se o perderes, revoga e gera outro.
@@ -136,13 +140,13 @@ export default function AssistantAccessCard() {
       )}
 
       {loaded && tokens.length > 0 && (
-        <ul className="space-y-2 mb-3" aria-label="Acessos ativos" data-testid="perfil-assistente-lista">
+        <ul className={v2 ? 'mb-3' : 'space-y-2 mb-3'} aria-label="Acessos ativos" data-testid="perfil-assistente-lista">
           {tokens.map((t) => {
             const criado = fmt(t.created_at);
             const usado = fmt(t.last_used_at);
             return (
-              <li key={t.id} className="flex items-center gap-3 rounded-xl px-3 py-2"
-                style={{ background: 'var(--surface-soft)', border: '1px solid var(--border-glass)', minHeight: 44 }}>
+              <li key={t.id} className={v2 ? 'v2-perfil-item flex items-center gap-3' : 'flex items-center gap-3 rounded-xl px-3 py-2'}
+                style={v2 ? { minHeight: 44 } : { background: 'var(--surface-soft)', border: '1px solid var(--border-glass)', minHeight: 44 }}>
                 <KeyRound size={14} aria-hidden="true" className="shrink-0 text-[var(--text-3)]" />
                 <span className="flex-1 min-w-0">
                   <span className="block text-[12.5px] font-bold" style={{ color: 'var(--text-1)' }}>{t.token_prefix}…</span>

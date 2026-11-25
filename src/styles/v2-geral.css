@@ -1,0 +1,80 @@
+/* A Evolução · Geral no Design v2 (OverviewDashboard e os cartões que só ele usa: RaceReadinessCard,
+   PillarSummaryCard, SmartInsightsBanner). Só as classes .v2-geral-*, que os componentes só põem
+   com o v2 ligado. Secções planas: o fundo do painel, a régua como borda, raio 8, sem vidro, sem
+   brilho, sem sombra. Tokens em v2.css; peças partilhadas em v2-components.css. */
+
+/* ── As secções planas ───────────────────────────────────────────────────── */
+.v2-geral-panel {
+  background: var(--v2-panel);
+  border: 1px solid var(--v2-rule);
+  border-radius: var(--v2-radius);
+  box-shadow: none;
+  color: var(--v2-ink);
+}
+
+/* ── A prontidão: o anel, a prova e os pilares ───────────────────────────── */
+.v2-geral-ready { padding: 16px; }
+.v2-geral-ready-head { width: 100%; display: flex; align-items: flex-start; gap: 16px; text-align: left; background: none; border: 0; padding: 0; color: inherit; font: inherit; }
+button.v2-geral-ready-head { cursor: pointer; min-height: 44px; border-radius: var(--v2-radius); }
+button.v2-geral-ready-head:focus-visible { outline: 2px solid var(--v2-acc); outline-offset: 2px; }
+.v2-geral-ready-kicker { margin: 0 0 2px; font-size: 13.5px; font-weight: 600; color: var(--v2-ink2); }
+.v2-geral-ready-name { margin: 0; font-size: 16px; font-weight: 700; line-height: 1.25; color: var(--v2-ink); overflow-wrap: anywhere; }
+.v2-geral-ready-phase { margin: 2px 0 0; font-size: 13.5px; color: var(--v2-ink2); }
+/* A marca da prova (a contagem): o único âmbar do cartão. */
+.v2-geral-ready-count { margin: 2px 0 0; font: 700 17px/1.2 var(--v2-font-num); color: var(--race); }
+.v2-geral-ready-sub { margin: 2px 0 0; font-size: 13.5px; color: var(--v2-ink2); }
+.v2-geral-ready-level { margin-top: 8px; display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 13.5px; }
+.v2-geral-ready-hint { margin: 12px 0 0; font-size: 13.5px; line-height: 1.45; color: var(--v2-ink2); }
+
+/* Os pilares: linhas planas separadas pela régua, o nome inteiro (até duas linhas), sem caixa. */
+.v2-geral-pillars { margin-top: 12px; display: grid; grid-template-columns: 1fr 1fr; column-gap: 16px; }
+.v2-geral-pillar {
+  display: block; width: 100%; min-height: 44px; min-width: 0;
+  padding: 10px 0; border: 0; border-top: 1px solid var(--v2-rule); background: none;
+  color: inherit; font: inherit; text-align: left; cursor: pointer;
+}
+.v2-geral-pillar:focus-visible { outline: 2px solid var(--v2-acc); outline-offset: 2px; border-radius: 4px; }
+.v2-geral-pillar-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
+.v2-geral-pillar-name { display: flex; align-items: flex-start; gap: 6px; min-width: 0; font-size: 13.5px; font-weight: 600; line-height: 1.25; color: var(--v2-ink2); white-space: normal; overflow-wrap: anywhere; }
+.v2-geral-pillar-name > span:first-child { padding-top: 2px; flex: none; display: flex; }
+.v2-geral-pillar-pct { flex: none; font: 700 16px/1.1 var(--v2-font-num); }
+.v2-geral-pillar-bar { height: 4px; background: var(--v2-rule); border-radius: 2px; overflow: hidden; }
+
+/* A explicação do pilar: a folha plana. */
+.v2-geral-sheet { border-radius: var(--v2-radius) !important; box-shadow: none !important; border-color: var(--v2-rule) !important; }
+.v2-geral-sheet-t { font-size: 16px; font-weight: 700; color: var(--v2-ink); margin: 0; }
+
+/* ── Os avisos da Carol (o «Dia da Prova» e os outros): secções planas ───── */
+.v2-geral-insights { display: grid; gap: 8px; }
+.v2-geral-insight { padding: 14px 16px; }
+.v2-geral-insight-t { margin: 0; display: flex; align-items: center; gap: 8px; font-size: 15px; font-weight: 700; line-height: 1.3; color: var(--v2-ink); }
+.v2-geral-insight-t > span { display: flex; flex: none; }
+.v2-geral-insight .v2-say { margin-top: 10px; }
+
+/* ── O período e a lista do «O que falta para começar» ───────────────────── */
+.v2-geral-period { padding: 8px 12px; }
+.v2-geral-checklist { padding: 2px 16px; }
+.v2-geral-check-row { display: flex; align-items: center; gap: 12px; border-bottom: 1px solid var(--v2-rule); }
+.v2-geral-check-row:last-child { border-bottom: 0; }
+.v2-geral-check-btn:focus-visible { outline: 2px solid var(--v2-acc); outline-offset: 2px; border-radius: 4px; }
+
+/* ── Os quatro pilares da semana: cartões planos ─────────────────────────── */
+.v2-geral-card {
+  display: block; width: 100%; min-height: 44px; padding: 12px; text-align: left; cursor: pointer; font: inherit;
+}
+.v2-geral-card:focus-visible { outline: 2px solid var(--v2-acc); outline-offset: 2px; }
+.v2-geral-card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 6px; margin-bottom: 8px; }
+.v2-geral-card-title { display: flex; align-items: center; gap: 6px; font-size: 13.5px; font-weight: 600; color: var(--v2-ink2); }
+.v2-geral-card-kpi { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px; margin-bottom: 4px; }
+.v2-geral-card-kpi > b { font: 700 26px/1 var(--v2-font-num); color: var(--v2-ink); }
+.v2-geral-card-kpi > span { font-size: 13px; color: var(--v2-ink2); }
+/* O estado do pilar: texto na cor do significado com um ponto, sem pílula. */
+.v2-geral-card-state { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; margin-bottom: 6px; font-size: 13px; font-weight: 600; }
+.v2-geral-card-state .v2-dot { margin-right: 4px; }
+.v2-geral-card-sub { margin: 0; font-size: 13px; line-height: 1.35; color: var(--v2-ink2); }
+.v2-geral-card-sub + .v2-geral-card-sub { margin-top: 2px; }
+
+/* ── O ritmo da página: secções com 12 px entre si, cada título colado ao que intitula ── */
+.v2-geral { display: flex; flex-direction: column; gap: 12px; }
+.v2-geral > .v2-label { margin: 8px 4px -4px; }
+.v2-geral > .v2-label:first-child { margin-top: 0; }

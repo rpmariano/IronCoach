@@ -1,4 +1,5 @@
 import React from 'react';
+import { useDesignV2 } from '../../utils/designV2';
 import { clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 
@@ -74,6 +75,8 @@ export function Button({
   style,
   ...props
 }) {
+  // O Design v2: o botão destrutivo em vermelho liso (branco sobre #dc2626: 4,8:1, AA; o botão contra o painel: 3,4:1).
+  const v2 = useDesignV2();
   // Base classes (layout, transitions, and touch feedback)
   const baseClasses = 'inline-flex items-center justify-center font-bold transition-all active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none disabled:active:scale-100';
 
@@ -120,7 +123,7 @@ export function Button({
 
   return (
     <button
-      className={cn(baseClasses, variants[variant], sizes[size], className)}
+      className={cn(baseClasses, v2 && variant === 'danger' ? 'v2-btn-danger' : variants[variant], sizes[size], className)}
       disabled={disabled || isLoading}
       style={inlineStyle}
       {...props}

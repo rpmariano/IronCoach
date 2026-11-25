@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { useDesignV2 } from '../../utils/designV2';
 import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 
@@ -18,6 +19,9 @@ import { X } from 'lucide-react';
    seus gradientes próprios (--grad-race já dava 5,73:1; --grad-coach-legible
    é o --grad-coach travado no degrau que a tinta ainda lê). */
 const deep = (c) => `color-mix(in srgb, ${c} 85%, var(--bg-app))`;
+
+// No v2, a cor do ícone de cada tema (o cabeçalho é o painel, sem gradiente).
+const V2_ICON = { danger: 'var(--danger)', warn: 'var(--warn)', race: 'var(--race)', coach: 'var(--coach)' };
 
 const THEMES = {
   coach: {
@@ -75,6 +79,7 @@ export default function PremiumModal({
   enableDrag = true,
   testId,
 }) {
+  const v2 = useDesignV2();
   const [isClosing, setIsClosing] = useState(false);
   const [dragY, setDragY] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
@@ -178,7 +183,10 @@ export default function PremiumModal({
 
   if (!renderOpen) return null;
 
-  const activeTheme = THEMES[theme] || THEMES.neutral;
+  const baseTheme = THEMES[theme] || THEMES.neutral;
+  /* O Design v2 (utils/designV2.js): sem a faixa em gradiente; o painel, o título na tinta e o ícone
+     na cor do tema (no perigo, o vermelho). */
+  const activeTheme = v2 ? { bg: 'var(--v2-panel)', subColor: 'var(--v2-ink)', icon: V2_ICON[theme] || 'var(--v2-ink2)' } : baseTheme;
   const isDialog = variant === 'dialog';
   const overlayAnimation = isClosing ? 'opacity-0 backdrop-blur-none' : 'opacity-100 backdrop-blur-sm';
   
@@ -218,7 +226,9 @@ export default function PremiumModal({
         role="dialog"
         aria-modal="true"
         aria-labelledby={title ? "modal-title" : undefined}
-        className={`relative z-10 w-full ${maxWidth} bg-[var(--bg-sheet)] backdrop-blur-[20px] border border-[var(--border-glass)] flex flex-col shadow-[inset_0_2px_10px_rgba(255,255,255,0.05),0_30px_60px_rgba(0,0,0,0.4)] overflow-hidden ${
+        className={v2
+          ? `relative z-10 w-full ${maxWidth} flex flex-col overflow-hidden v2-modal ${isDialog ? 'is-dialog max-h-[90vh]' : 'is-sheet max-h-[90vh] pb-safe'}`
+          : `relative z-10 w-full ${maxWidth} bg-[var(--bg-sheet)] backdrop-blur-[20px] border border-[var(--border-glass)] flex flex-col shadow-[inset_0_2px_10px_rgba(255,255,255,0.05),0_30px_60px_rgba(0,0,0,0.4)] overflow-hidden ${
           isDialog ? 'rounded-2xl max-h-[90vh]' : 'rounded-t-[28px] max-h-[90vh] pb-safe'
         }`}
         style={transformStyle}
@@ -240,7 +250,7 @@ export default function PremiumModal({
           <div className="flex items-center gap-3 pr-2">
             {Icon && (
               <div className="w-10 h-10 shrink-0 rounded-full bg-white/20 flex items-center justify-center backdrop-blur-md border border-white/30 shadow-sm">
-                <Icon className="w-5 h-5" style={{ color: activeTheme.subColor }} strokeWidth={2.5} />
+                <Icon className="w-5 h-5" style={{ color: activeTheme.icon || activeTheme.subColor }} strokeWidth={2.5} />
               </div>
             )}
             <div className="flex-1 min-w-0 pr-4">
