@@ -85,4 +85,13 @@ describe('Layout — o menu do «+» no v2', () => {
     expect(v2.querySelector('svg.lucide-carol')).toBeNull();
     expect(v2).toHaveTextContent('Carol');
   });
+
+  it('a data do cabeçalho no v2 cabe numa linha: «qua, 25 nov»', async () => {
+    const { shortDatePt } = await import('./Layout');
+    expect(shortDatePt(new Date(2026, 10, 25))).toBe('qua, 25 nov');
+    act(() => setDesignV2(true));
+    render(<Layout><div /></Layout>);
+    expect(document.querySelector('header[data-app-header] p').textContent).toBe(shortDatePt(new Date()));
+  });
 });
+

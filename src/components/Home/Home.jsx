@@ -242,6 +242,7 @@ export default function Home() {
           onCompleteItem={handleCompleteItem}
           onOpenMeals={() => setMealDay({ dateISO: today, items: todayPlanItems })}
           onGettingStarted={handleGettingStarted}
+          onRegisterMeal={registerMeal}
           onOpenAllRaces={() => setActiveTab('provas')}
         />
         </Suspense>

@@ -228,3 +228,9 @@ button.v2-sp:focus-visible { outline: 2px solid var(--v2-acc); outline-offset: -
 .v2-rec-say-line { margin: 0; font-size: 14.5px; line-height: 1.45; display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden; }
 .v2-rec-say-full { font-size: 14.5px; line-height: 1.5; color: var(--v2-ink); }
 .v2-rec-say-full p { margin: 0 0 6px; }
+
+/* O foco do Início v2 (2026-11-25): a prova por registar numa linha; o estado vazio em vez do 0. */
+.v2-pending { margin-top: 8px; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding-top: 2px; padding-bottom: 2px; font-size: 14.5px; }
+.v2-pending .v2-dot { margin-right: 8px; }
+.v2-empty { display: grid; gap: 4px; font-size: 14.5px; line-height: 1.45; color: var(--v2-ink2); }
+.v2-empty .v2-act { justify-self: start; }

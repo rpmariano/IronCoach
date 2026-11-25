@@ -45,6 +45,20 @@ const ALIASES = { holistica: 'hub' };
 
 const plural = (n, one, many) => (n === 1 ? one : many);
 
+// O estado vazio de cada área (o dado principal a zero) e a ação que o resolve.
+const EMPTY_TEXT = {
+  corrida: 'Ainda sem corridas neste período',
+  ginasio: 'Ainda sem treinos neste período',
+  nutricao: 'Ainda sem refeições neste período',
+  corpo: 'Ainda sem avaliações',
+};
+const REGISTAR = {
+  corrida: { tab: 'corrida', mode: 'run', label: 'Registar uma corrida' },
+  ginasio: { tab: 'ginasio', mode: 'workout', label: 'Registar um treino' },
+  nutricao: { tab: 'nutricao', mode: 'meal', label: 'Registar uma refeição' },
+  corpo: { tab: 'corpo', mode: 'assessment', label: 'Registar uma avaliação' },
+};
+
 /* As siglas saem do texto visível do v2 (a fórmula partilhada não muda: só a frase mostrada).
    A ordem conta: «Z3+» antes de «Z3». Os travessões também saem (direção C). */
 const PLAIN = [
@@ -188,13 +202,27 @@ function Area({ area }) {
   // A vista do Corpo ainda pode vir do tipo anterior durante a troca: só vale a do tipo atual.
   const v = view && view.kind === cal.kind ? view : null;
   const hero = heroOf(area, v, title);
+  /* Zero não é herói (crítica de design de 2026-11-25): «0 kcal», «0 avaliações» davam um número
+     enorme a dizer nada. Com o dado principal a zero, um estado vazio que diz o que fazer. */
+  const heroVazio = hero && Number(String(hero.n).replace(/\s/g, '').replace(',', '.')) === 0;
+  const registar = REGISTAR[area];
   const say = plainVerdict(v?.verdict?.text);
 
   return (
     <div className="v2-evo-area" role="tabpanel" id={`evo-v2-panel-${area}`} aria-labelledby={`evo-v2-tab-${area}`} data-testid={`evo-v2-area-${area}`}>
       <PeriodBar area={area} cal={cal} />
       <div className="v2-evo-top v2-enter">
-        {hero && (
+        {heroVazio && (
+          <section className="v2-panel v2-empty" data-testid="evo-v2-empty">
+            <span>{EMPTY_TEXT[area]}{title ? ` (${title})` : ''}.</span>
+            {registar && (
+              <button type="button" className="v2-act is-acc" onClick={() => { const st = useAppStore.getState(); if (st.setActiveTab?.(registar.tab) !== false) st.setOpenCreationMode?.(registar.mode); }}>
+                {registar.label}
+              </button>
+            )}
+          </section>
+        )}
+        {hero && !heroVazio && (
           <section className="v2-hero" data-testid="evo-v2-hero" aria-label={`${label}, ${title}`}>
             <div className="min-w-0">
               <div className="v2-evo-hero-n">

@@ -39,6 +39,13 @@ function navIndexFor(activeTab) {
 const moduleGradient = (mod) =>
   `linear-gradient(135deg, var(--mod-${mod}-from), var(--mod-${mod}-to))`;
 
+const DIAS_CURTOS = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'];
+const MESES_CURTOS = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+/** «qua, 25 nov» — a data do cabeçalho no Design v2. */
+export function shortDatePt(d) {
+  return `${DIAS_CURTOS[d.getDay()]}, ${d.getDate()} ${MESES_CURTOS[d.getMonth()]}`;
+}
+
 export default function Layout({ children }) {
   /* Seletores por campo, não o store inteiro (2026-10-04): `useAppStore()` sem
      seletor subscreve tudo, e cada alteração — um deslize entre separadores da
@@ -117,6 +124,8 @@ export default function Layout({ children }) {
   }, [activeTab, openCreationMode, editingRunId, editingRaceId, scrollToTop]);
 
   const todayLabel = new Date().toLocaleDateString('pt-PT', { weekday: 'long', day: 'numeric', month: 'long' });
+  // No v2 a data cabe numa linha a 375 px: «qua, 25 nov» (a longa partia em duas).
+  const todayLabelV2 = shortDatePt(new Date());
 
   const handleLogoClick = () => {
     setLogoPlays((n) => n + 1);
@@ -225,7 +234,7 @@ export default function Layout({ children }) {
             </button>
             <div>
               <h1 className="text-base font-bold tracking-tight leading-none" style={{ color: 'var(--brand)' }}>IronCoach</h1>
-              <p className="text-[11px] leading-none mt-1" style={{ color: 'var(--brd-700)' }}>{todayLabel}</p>
+              <p className="text-[11px] leading-none mt-1" style={{ color: 'var(--brd-700)' }}>{v2 ? todayLabelV2 : todayLabel}</p>
             </div>
           </div>
           <div className="flex items-center gap-2">

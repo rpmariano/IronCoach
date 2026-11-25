@@ -9,7 +9,7 @@ import { prescriptionExercises } from '../../utils/prescriptionView';
 import { mealNutrients } from '../../utils/nutrition';
 import { raceForecast } from '../../utils/raceTimes';
 import { findRaceRun } from '../../utils/run';
-import { upcomingRaces } from '../../utils/upcomingRaces';
+import { heroRaceOf, pendingRaceOf, homeMoment, carolMessagesForMoment } from '../../utils/homeV2Focus';
 import { useCupListing } from '../../utils/useCup';
 import CheckinCard from './CheckinCard';
 import GettingStartedCard from './GettingStartedCard';
@@ -182,20 +182,26 @@ function WeekStrip({ days, today, raceDate }) {
   );
 }
 
-export default function HomeV2({ today, gauges, notices, onOpenRace, onRegisterRace, onCreateRace, onCompleteItem, onOpenMeals = null, onGettingStarted = null, onOpenAllRaces = null }) {
+export default function HomeV2({ today, gauges, notices, onOpenRace, onRegisterRace, onCreateRace, onCompleteItem, onOpenMeals = null, onGettingStarted = null, onOpenAllRaces = null, onRegisterMeal = null }) {
   const { raceEvents, runs, profile, coachPlans, coachPlanItems, loadDailySummary, meals, dailyCheckins, dailySummaryNotice, setActiveTab } = useAppStore();
   const messages = useCoachDailyMessages();
   const [carolAberta, setCarolAberta] = useState(false);
   useEffect(() => { loadDailySummary?.(); }, [today]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  /* A próxima prova: a mesma do «Para onde vou» (utils/upcomingRaces.js) — a de hoje e as dos
-     últimos 7 dias ficam até estarem registadas; as jornadas fixas do Troféu futuras saem. */
+  /* Uma só prova manda no ecrã (utils/homeV2Focus.js): a de hoje, a de amanhã, ou a próxima (a
+     principal na janela de afinação). Uma que já passou e falta registar não é o herói: fica numa
+     linha por baixo, com a ação dela. As jornadas fixas do Troféu futuras saem, como sempre. */
   const { listing: cupListing } = useCupListing();
   const cupFixed = cupListing ? cupListing.isFixed : null;
-  const race = useMemo(() => {
+  const { race, porRegistar } = useMemo(() => {
     const registadas = new Set((raceEvents || []).filter((e) => findRaceRun(runs, e)).map((e) => e.id));
-    return upcomingRaces({ raceEvents, today, isRegistered: (id) => registadas.has(id), cupFixed, limit: 1 })[0] || null;
+    const isRegistered = (id) => registadas.has(id);
+    return {
+      race: heroRaceOf({ raceEvents, today, isRegistered, cupFixed }),
+      porRegistar: pendingRaceOf({ raceEvents, today, isRegistered }),
+    };
   }, [raceEvents, runs, today, cupFixed]);
+  const momento = homeMoment(race, today);
   const forecast = useMemo(() => (race ? raceForecast({ race, runs, profile }) : null), [race, runs, profile]);
 
   // A semana do plano (segunda a domingo); o dia de hoje sai dela.
@@ -210,7 +216,7 @@ export default function HomeV2({ today, gauges, notices, onOpenRace, onRegisterR
   const hoje = semana.find((d) => d.dateISO === today)?.items || [];
   const raceDateISO = race?.date?.slice(0, 10) || null;
   // O nome da prova de hoje (pela agenda, como o cartão de sempre), mesmo que o herói seja outra.
-  const raceName = raceForDate(raceEvents, today)?.name || (raceDateISO === today ? race.name : null);
+  const raceName = raceDateISO === today ? race.name : (raceForDate(raceEvents, today)?.name || null);
   const cHoje = dayCell(hoje, 'hoje', raceName);
   const pendenteHoje = trainingItems(liveItems(hoje)).find((i) => i.status === 'pendente' && !isRacePlanItem(i) && !i.isRace);
   const checkinFeito = (dailyCheckins || []).some((c) => c?.date === today);
@@ -256,9 +262,7 @@ export default function HomeV2({ today, gauges, notices, onOpenRace, onRegisterR
     const right = forecast?.target
       ? { v: forecast.target.timeLabel, l: 'objetivo' }
       : forecast?.predicted ? { v: forecast.predicted.timeLabel, l: 'o treino aponta' } : null;
-    hero = dias < 0
-      ? { n: 'Por registar', l: `${race.name}, ${dias === -1 ? 'ontem' : `há ${-dias} dias`}`, right, race: true, small: true }
-      : dias === 0
+    hero = dias === 0
       ? { n: kmText(race.distance_km) || 'Hoje', l: `${race.name}${hora ? `, às ${hora}` : ', hoje'}`, right, race: true }
       : { n: dias === 1 ? 'Amanhã' : `${dias} dias`, l: `para a ${race.name}${kmText(race.distance_km) ? `, ${kmText(race.distance_km)}` : ''}`, right, race: true };
   } else {
@@ -267,11 +271,12 @@ export default function HomeV2({ today, gauges, notices, onOpenRace, onRegisterR
 
   /* A ação principal é a do dia: registar a prova (no dia dela, ou por registar), começar o treino
      de hoje; num dia sem treino por fazer, abrir a prova, ou o check-in se ainda não está feito. */
-  const raceToRegister = race && raceDateISO <= today;
+  const raceToRegister = race && raceDateISO === today;
   // O pedido de check-in do store (o mesmo das boas-vindas da manhã): o CheckinCard ouve-o e abre a folha.
   const abrirCheckin = () => { useAppStore.getState().requestCheckin?.(); };
   const action = raceToRegister
-    ? { label: 'Registar a prova', cls: 'is-race', onClick: () => onRegisterRace(race.id) }
+    // O botão diz qual prova regista: a do herói (é a mesma, sempre).
+    ? { label: `Registar a prova: ${race.name}`, cls: 'is-race', onClick: () => onRegisterRace(race.id) }
     : pendenteHoje
       ? { label: pendenteHoje.kind === 'ginasio' ? 'Começar o treino' : 'Começar a corrida de hoje', cls: '', onClick: () => onCompleteItem(pendenteHoje) }
       : race
@@ -282,9 +287,12 @@ export default function HomeV2({ today, gauges, notices, onOpenRace, onRegisterR
   // «Abrir a prova» como link no herói quando a ação principal é outra.
   const heroLink = race && !raceToRegister && action.label !== 'Abrir a prova';
 
+  /* A Carol do momento do herói (utils/homeV2Focus.js): num dia de prova, nada de treinos nem da
+     véspera de outra prova; na véspera, só a prova de amanhã. A mais específica primeiro. */
+  const doMomento = useMemo(() => carolMessagesForMoment(messages, momento), [messages, momento]);
   // Sem travessões no texto (direção C): as frases do cartão da Carol trazem-nos.
-  const carol = messages[0]?.text ? messages[0].text.replace(/\s+—\s+/g, ': ') : null;
-  const carolLonga = !!carol && (carol.length > 140 || messages.length > 1);
+  const carol = doMomento[0]?.text ? doMomento[0].text.replace(/\s+—\s+/g, ': ') : null;
+  const carolLonga = !!carol && (carol.length > 140 || doMomento.length > 1);
 
   return (
     <div className="v2-screen v2-enter pb-2" data-testid="home-v2">
@@ -301,6 +309,14 @@ export default function HomeV2({ today, gauges, notices, onOpenRace, onRegisterR
           </div>
         )}
       </section>
+
+      {/* A prova que já passou e falta registar: uma linha secundária, com a ação dela. */}
+      {porRegistar && porRegistar.id !== race?.id && (
+        <div className="v2-panel v2-pending" data-testid="home-v2-pending-race">
+          <span><i className="v2-dot" style={{ background: 'var(--race)' }} aria-hidden="true" />Falta registar: {porRegistar.name}</span>
+          <button type="button" className="v2-act is-acc" onClick={() => onRegisterRace(porRegistar.id)} aria-label={`Registar a prova: ${porRegistar.name}`}>Registar</button>
+        </div>
+      )}
 
       {/* O que o cartão da prova de sempre diz além da próxima prova: a prova concluída do dia a
           seguir e a jornada do Troféu (RaceCard only="extras", a mesma lógica e o mesmo
@@ -321,10 +337,10 @@ export default function HomeV2({ today, gauges, notices, onOpenRace, onRegisterR
           <i aria-hidden="true" />
           <div className="min-w-0">
             <p id="home-v2-carol-text" style={carolAberta ? undefined : { display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
-              <span className="v2-who">Carol.</span> <MessageText m={{ ...messages[0], text: carol }} />
+              <span className="v2-who">Carol.</span> <MessageText m={{ ...doMomento[0], text: carol }} />
             </p>
-            <CarolMessageActions m={messages[0]} onOpenRace={onOpenRace} />
-            {carolAberta && messages.slice(1).map((m) => (
+            <CarolMessageActions m={doMomento[0]} onOpenRace={onOpenRace} />
+            {carolAberta && doMomento.slice(1).map((m) => (
               <div key={m.key} data-testid="home-v2-carol-more">
                 <p className="v2-say-more">
                   <span className="v2-say-label" style={m.color === 'var(--warn)' ? { color: 'var(--warn)' } : undefined}>{m.label}.</span>{' '}
@@ -369,6 +385,13 @@ export default function HomeV2({ today, gauges, notices, onOpenRace, onRegisterR
       <WeekStrip days={semana} today={today} raceDate={raceDateISO} />
 
       <h2 className="v2-label">Nutrição de hoje</h2>
+      {kcal && prot && !(kcal.value > 0) && !(prot.value > 0) ? (
+        <div className="v2-panel v2-empty" data-testid="home-v2-nutrition-empty">
+          <span>Ainda sem refeições hoje. O objetivo são {nf0.format(kcal.target)} kcal e {nf0.format(prot.target)} g de proteína.</span>
+          {onRegisterMeal && <button type="button" className="v2-act is-acc" onClick={onRegisterMeal}>Registar uma refeição</button>}
+        </div>
+      ) : (
+      <>
       <div className="v2-grid" data-testid="home-v2-grid" style={{ marginTop: 0 }}>
         {kcal && <Cell testId="home-v2-kcal" onClick={onOpenMeals} label={onOpenMeals ? `${nf0.format(kcal.value)} de ${nf0.format(kcal.target)} kcal. Ver as refeições de hoje` : null} big={nf0.format(kcal.value)} small={`de ${nf0.format(kcal.target)} kcal`} dot="var(--nutrition)" pct={kcal.target ? (kcal.value / kcal.target) * 100 : 0} />}
         {prot && <Cell testId="home-v2-proteina" onClick={onOpenMeals} label={onOpenMeals ? `${nf0.format(prot.value)} de ${nf0.format(prot.target)} g de proteína. Ver as refeições de hoje` : null} big={`${nf0.format(prot.value)} g`} small={`de ${nf0.format(prot.target)} g de proteína`} dot="var(--nutrition)" pct={prot.target ? (prot.value / prot.target) * 100 : 0} />}
@@ -391,6 +414,8 @@ export default function HomeV2({ today, gauges, notices, onOpenRace, onRegisterR
         )}
         <span className="v2-meals-go">Ver as refeições de hoje</span>
       </button>
+      </>
+      )}
 
       {/* O que falta para começar (só enquanto falta alguma coisa: o próprio cartão decide). Depois
           do dia: o que interessa primeiro é o treino de hoje. */}
