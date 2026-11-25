@@ -47,4 +47,26 @@ describe('Layout — o menu do «+» no v2', () => {
     fireEvent.click(within(screen.getByTestId('fab-sheet-v2')).getByRole('button', { name: 'Fechar' }));
     expect(screen.queryByTestId('fab-sheet-v2')).toBeNull();
   });
+
+  it('o foco: abre na primeira linha, fica preso na folha, o Escape fecha e volta ao «+»', () => {
+    act(() => setDesignV2(true));
+    render(<Layout><div /></Layout>);
+    const mais = screen.getByRole('button', { name: 'Registar novo item' });
+    mais.focus();
+    fireEvent.click(mais);
+    const sheet = screen.getByTestId('fab-sheet-v2');
+    expect(sheet).toHaveAttribute('aria-modal', 'true');
+    expect(document.activeElement).toBe(within(sheet).getByTestId('fab-v2-run'));
+    // O Tab no fim volta ao princípio (o ✕); o Shift+Tab no princípio vai ao fim.
+    const botoes = within(sheet).getAllByRole('button');
+    botoes[botoes.length - 1].focus();
+    fireEvent.keyDown(document, { key: 'Tab' });
+    expect(document.activeElement).toBe(botoes[0]);
+    fireEvent.keyDown(document, { key: 'Tab', shiftKey: true });
+    expect(document.activeElement).toBe(botoes[botoes.length - 1]);
+    // O Escape fecha, e o foco volta ao «+».
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(screen.queryByTestId('fab-sheet-v2')).toBeNull();
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Registar novo item' }));
+  });
 });

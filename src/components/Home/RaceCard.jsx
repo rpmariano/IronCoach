@@ -210,7 +210,11 @@ export function RaceMilestoneLine({ raceId, days, prioridade, flags, comPlano, c
   );
 }
 
-export default function RaceCard({ raceEvents = [], runs = [], profile = {}, onOpenRace, onCreateRace, onRegisterRace, onOpenAllRaces }) {
+/* `only="extras"` (Início v2, 2026-11-25): o herói do v2 já diz a próxima prova; daqui só sai o
+   que o cartão de sempre diz além dela, com a mesma lógica — a prova concluída do dia a seguir
+   (ProvaConcluidaCard), a próxima jornada do Troféu (CupNextLine / CupNextCard, que seguem o
+   interruptor da Taça pelo useCupListing). Sem `only`, o cartão é o de sempre. */
+export default function RaceCard({ raceEvents = [], runs = [], profile = {}, onOpenRace, onCreateRace, onRegisterRace, onOpenAllRaces, only = null }) {
   const today = todayISO();
   // O Troféu: null sem inscrição (nem pista dela) — e então nada muda.
   const { view: cupView, listing: cupListing } = useCupListing();
@@ -333,6 +337,8 @@ export default function RaceCard({ raceEvents = [], runs = [], profile = {}, onO
     ? <CupNextLine view={cupView} round={cupRound} loading={cupListing.loading} onOpen={openCupRound} />
     : null;
 
+  if (only === 'extras' && race) return cupLine;
+
   if (!race && concluida) {
     return (
       <ProvaConcluidaCard
@@ -354,6 +360,8 @@ export default function RaceCard({ raceEvents = [], runs = [], profile = {}, onO
   if (!race && cupListing && cupView?.catalogReady && cupRound) {
     return <CupNextCard view={cupView} round={cupRound} onOpen={openCupRound} footer={<AllRacesLink onOpen={onOpenAllRaces} />} />;
   }
+
+  if (!race && only === 'extras') return cupLine;
 
   if (!race) {
     return (

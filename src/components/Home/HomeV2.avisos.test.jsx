@@ -118,6 +118,30 @@ describe('Início — os avisos da v1 também na v2', () => {
     expect(r.v2).toEqual(r.v1);
   });
 
+  it('a prova concluída no dia a seguir (ProvaConcluidaCard), sem outra prova marcada', async () => {
+    const ontem = inDays(-1);
+    useAppStore.setState({
+      raceEvents: [{ id: 'rc', name: 'São Silvestre', date: ontem, status: 'concluida', distance_km: 10, target_time_seconds: 3000 }],
+      runs: [{ id: 'run-c', race_id: 'rc', kind: 'competicao', date: ontem, distance_km: 10, duration_seconds: 2998, details: { official_time_seconds: 2998 } }],
+    });
+    const r = await emAmbos(() => screen.queryByTestId('race-card-completed')?.textContent || null);
+    expect(r.v1).toMatch(/São Silvestre/);
+    expect(r.v2).toBe(r.v1);
+  });
+
+  it('«Fazer o check-in» abre o check-in pelo pedido do store, sem mexer no DOM', async () => {
+    act(() => setDesignV2(true));
+    useAppStore.setState({ dailyCheckins: [], checkinRequested: false });
+    render(<ToastProvider><Home /></ToastProvider>);
+    await screen.findByTestId('home-v2');
+    const acao = screen.getByTestId('home-v2-action');
+    expect(acao).toHaveTextContent('Fazer o check-in');
+    act(() => { acao.click(); });
+    // O CheckinCard ouve o pedido, abre a folha e limpa-o.
+    expect(await screen.findByRole('dialog')).toBeInTheDocument();
+    expect(useAppStore.getState().checkinRequested).toBe(false);
+  });
+
   it('o aviso da quota do resumo', async () => {
     useAppStore.setState({ dailySummary: { date: today, recap: 'Ontem correste.' }, dailySummaryNotice: { text: 'Hoje já usei os pedidos todos; amanhã há mais.', day: today } });
     const r = await emAmbos(() => screen.queryByTestId('carol-quota-notice')?.textContent || null);

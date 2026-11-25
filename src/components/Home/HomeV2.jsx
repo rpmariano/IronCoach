@@ -15,7 +15,7 @@ import CheckinCard from './CheckinCard';
 import GettingStartedCard from './GettingStartedCard';
 import { useCoachDailyMessages, MessageAction, MessageActions, MessageText } from './CarolCard';
 import { pendingProposalsText, useDayDoneMoment, noPlanCopy } from './DayPlanCard';
-import { useRaceCardModel, RaceMilestoneLine } from './RaceCard';
+import RaceCard, { useRaceCardModel, RaceMilestoneLine } from './RaceCard';
 import WeekDoneRibbon from './WeekDoneRibbon';
 import { weekDone } from './weekDone';
 import { isQuotaNoticeActive } from '../../utils/quotaNotice';
@@ -182,7 +182,7 @@ function WeekStrip({ days, today, raceDate }) {
   );
 }
 
-export default function HomeV2({ today, gauges, notices, onOpenRace, onRegisterRace, onCreateRace, onCompleteItem, onOpenMeals = null, onGettingStarted = null }) {
+export default function HomeV2({ today, gauges, notices, onOpenRace, onRegisterRace, onCreateRace, onCompleteItem, onOpenMeals = null, onGettingStarted = null, onOpenAllRaces = null }) {
   const { raceEvents, runs, profile, coachPlans, coachPlanItems, loadDailySummary, meals, dailyCheckins, dailySummaryNotice, setActiveTab } = useAppStore();
   const messages = useCoachDailyMessages();
   const [carolAberta, setCarolAberta] = useState(false);
@@ -268,7 +268,8 @@ export default function HomeV2({ today, gauges, notices, onOpenRace, onRegisterR
   /* A ação principal é a do dia: registar a prova (no dia dela, ou por registar), começar o treino
      de hoje; num dia sem treino por fazer, abrir a prova, ou o check-in se ainda não está feito. */
   const raceToRegister = race && raceDateISO <= today;
-  const abrirCheckin = () => { document.querySelector('[data-testid="checkin-card"]')?.click(); };
+  // O pedido de check-in do store (o mesmo das boas-vindas da manhã): o CheckinCard ouve-o e abre a folha.
+  const abrirCheckin = () => { useAppStore.getState().requestCheckin?.(); };
   const action = raceToRegister
     ? { label: 'Registar a prova', cls: 'is-race', onClick: () => onRegisterRace(race.id) }
     : pendenteHoje
@@ -300,6 +301,13 @@ export default function HomeV2({ today, gauges, notices, onOpenRace, onRegisterR
           </div>
         )}
       </section>
+
+      {/* O que o cartão da prova de sempre diz além da próxima prova: a prova concluída do dia a
+          seguir e a jornada do Troféu (RaceCard only="extras", a mesma lógica e o mesmo
+          interruptor da Taça). */}
+      <div className="v2-embed v2-race-extras" data-testid="home-v2-race-extras">
+        <RaceCard only="extras" raceEvents={raceEvents} runs={runs} profile={profile} onOpenRace={onOpenRace} onCreateRace={onCreateRace} onRegisterRace={onRegisterRace} onOpenAllRaces={onOpenAllRaces} />
+      </div>
 
       {/* O marco da contagem (100, 50, 30, 14, 7, 3 dias), como no cartão da prova de sempre. */}
       {race && raceModel.model && !raceToRegister && (

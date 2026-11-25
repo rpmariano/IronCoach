@@ -202,3 +202,6 @@ button.v2-sp:focus-visible { outline: 2px solid var(--v2-acc); outline-offset: -
   background: var(--race) !important; color: var(--race-ink) !important; font: 700 15px var(--v2-font); text-decoration: none; cursor: pointer;
 }
 .v2-say .v2-say-act button:focus-visible, .v2-say .v2-say-act a:focus-visible { outline: 2px solid var(--v2-ink); outline-offset: 2px; }
+
+/* O cartão da prova de sempre no modo «extras» (a concluída, a jornada): vazio quando não há nada. */
+.v2-race-extras:empty { display: none; }
