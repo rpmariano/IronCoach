@@ -1,4 +1,5 @@
 import React, { useMemo } from 'react';
+import { runHex, runRgb } from '../../utils/designV2';
 import { Doughnut } from 'react-chartjs-2';
 import ChartJS from '../../lib/chartSetup';
 import MetricInfo from './MetricInfo';
@@ -19,8 +20,8 @@ import { useAppStore, sliceReady } from '../../store';
       acima do alvo, porque aí é mesmo um aviso. Nunca âmbar: o âmbar é da
       prova. */
 
-const RUN = '#2ee0ff';           // --run
-const RUN_SOFT = 'rgba(46, 224, 255, 0.4)';
+// A cor da corrida: --run na v1, o ouro velho no v2 (utils/designV2.js).
+const runSoft = () => `rgba(${runRgb()}, 0.4)`;
 const WARN = '#fb7c4d';          // --warn
 
 /* 2026-10-04 (fase 5): `hint` diz de que período é e sobre quantas corridas
@@ -31,14 +32,14 @@ export default function IntensityDonut({ distribution = {}, targetLowPct, hint, 
   const target = targetLowPct ?? distribution.targetLowPct ?? 80;
   const targetHigh = 100 - target;
   const overTarget = highIntensityPct > targetHigh;
-  const highColor = overTarget ? WARN : RUN_SOFT;
+  const highColor = overTarget ? WARN : runSoft();
 
   const data = useMemo(() => ({
     labels: ['Z1-Z2', 'Z3+'],
     datasets: [
       {
         data: [lowIntensityPct, highIntensityPct],
-        backgroundColor: [RUN, highColor],
+        backgroundColor: [runHex(), highColor],
         borderWidth: 0,
         hoverOffset: 4
       }
@@ -87,7 +88,7 @@ export default function IntensityDonut({ distribution = {}, targetLowPct, hint, 
       valueColor={overTarget ? 'var(--warn)' : 'var(--text-1)'}
       delta={{ text: `alvo ${target}%`, tone: overTarget ? 'warn' : 'ok' }}
       legend={[
-        { label: 'Z1-Z2 (fácil)', color: RUN },
+        { label: 'Z1-Z2 (fácil)', color: runHex() },
         { label: `Z3+ (forte) ${highIntensityPct}%`, color: highColor },
       ]}
       height={168}

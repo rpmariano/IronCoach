@@ -1,4 +1,5 @@
 import React, { useMemo } from 'react';
+import { runHex, runRgb } from '../../utils/designV2';
 import { Scatter } from 'react-chartjs-2';
 import ChartJS from '../../lib/chartSetup';
 import MetricInfo from './MetricInfo';
@@ -14,7 +15,7 @@ import { axisDate } from './crossPeriod';
    apesar do comentário dizer --mod-corrida. Passa ao ciano da corrida,
    mais opaco nas sessões recentes (tintas da cor do módulo). */
 
-const RUN_RGB = '46, 224, 255';   // --run #2ee0ff
+// A cor da corrida em RGB: --run na v1, o ouro velho no v2 (utils/designV2.js).
 
 /* R3 (2026-10-04): os pontos chegam pela ordem do store, que carrega as
    corridas por data DESCENDENTE (store/index.js, order('date', desc)) — e
@@ -61,11 +62,11 @@ export default function ScatterTrendChart({ data: recebidos = [], scope, classNa
       {
         label: 'Sessões',
         data: data.map(d => ({ x: d.paceSecondsPerKm, y: d.avgHR, rawDate: d.date, rawLabel: d.label })),
-        backgroundColor: data.map((d, i) => `rgba(${RUN_RGB}, ${(0.3 + 0.5 * (i / Math.max(data.length - 1, 1))).toFixed(2)})`),
-        borderColor: data.map((d, i) => (i === lastIndex ? '#ffffff' : `rgba(${RUN_RGB}, ${(0.5 + 0.5 * (i / Math.max(data.length - 1, 1))).toFixed(2)})`)),
+        backgroundColor: data.map((d, i) => `rgba(${runRgb()}, ${(0.3 + 0.5 * (i / Math.max(data.length - 1, 1))).toFixed(2)})`),
+        borderColor: data.map((d, i) => (i === lastIndex ? '#ffffff' : `rgba(${runRgb()}, ${(0.5 + 0.5 * (i / Math.max(data.length - 1, 1))).toFixed(2)})`)),
         // Pedido do Rui (2026-11-01): a mais recente não pode ser só um pouco mais opaca —
         // maior, cheia e com contorno branco (e nomeada na legenda, com a data).
-        pointBackgroundColor: data.map((d, i) => (i === lastIndex ? `rgb(${RUN_RGB})` : `rgba(${RUN_RGB}, ${(0.3 + 0.5 * (i / Math.max(data.length - 1, 1))).toFixed(2)})`)),
+        pointBackgroundColor: data.map((d, i) => (i === lastIndex ? `rgb(${runRgb()})` : `rgba(${runRgb()}, ${(0.3 + 0.5 * (i / Math.max(data.length - 1, 1))).toFixed(2)})`)),
         pointBorderWidth: data.map((d, i) => (i === lastIndex ? 2 : 1)),
         pointRadius: data.map((d, i) => (i === lastIndex ? 8 : 5)),
         pointHoverRadius: 9,
@@ -148,7 +149,7 @@ export default function ScatterTrendChart({ data: recebidos = [], scope, classNa
       legend={latest
         ? [
           { label: `Última · ${axisDate(latest.date)}`, color: 'var(--run)' },
-          ...(data.length > 1 ? [{ label: 'Anteriores (mais claras, mais antigas)', color: `rgba(${RUN_RGB}, 0.4)` }] : []),
+          ...(data.length > 1 ? [{ label: 'Anteriores (mais claras, mais antigas)', color: `rgba(${runRgb()}, 0.4)` }] : []),
           ...(trend ? [{ label: 'Tendência', color: 'rgba(255, 255, 255, 0.6)', shape: 'dash' }] : []),
         ]
         : []}

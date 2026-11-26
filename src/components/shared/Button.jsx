@@ -63,6 +63,9 @@ export function resolveModuleInk(moduleColor) {
  * @param {React.ReactNode} [props.children]
  * @param {React.ReactNode} [props.icon] - Ícone opcional (ex: Lucide)
  */
+// As cores de módulo que, no v2, já não enchem um botão (a prova e a Carol ficam de fora).
+const MODULE_FILL_RE = /--(mod-(corrida|ginasio|nutricao|corpo|descanso)|run|gym|nutrition|body)\b/;
+
 export function Button({
   children,
   className,
@@ -116,14 +119,20 @@ export function Button({
     icon: 'w-11 h-11 rounded-full flex-shrink-0'
   };
 
+  /* Design v2 (P2 da 2.ª crítica, 2026-11-26): as cores dos módulos (corrida, ginásio, nutrição,
+     corpo) deixam de encher botões; o botão fica discreto (o painel, o filete, a tinta) e a cor do
+     módulo fica só no ícone. A Carol, a prova e a tinta neutra continuam como estão. */
+  const moduleQuiet = v2 && variant === 'module' && typeof moduleColor === 'string' && MODULE_FILL_RE.test(moduleColor);
   // Suporte para variante 'module' com cor injetada
-  const inlineStyle = variant === 'module'
+  const inlineStyle = moduleQuiet
+    ? style
+    : variant === 'module'
     ? { color: resolveModuleInk(moduleColor), ...(moduleColor ? { background: moduleColor } : null), ...style }
     : style;
 
   return (
     <button
-      className={cn(baseClasses, v2 && variant === 'danger' ? 'v2-btn-danger' : variants[variant], sizes[size], className)}
+      className={cn(baseClasses, v2 && variant === 'danger' ? 'v2-btn-danger' : moduleQuiet ? 'v2-btn-module' : variants[variant], sizes[size], className)}
       disabled={disabled || isLoading}
       style={inlineStyle}
       {...props}
@@ -131,7 +140,7 @@ export function Button({
       {isLoading ? (
         <span className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent shrink-0" />
       ) : icon ? (
-        <span className={cn("shrink-0", children ? '' : '')}>{icon}</span>
+        <span className={cn("shrink-0", children ? '' : '')} style={moduleQuiet ? { color: moduleColor } : undefined}>{icon}</span>
       ) : null}
       {children}
     </button>

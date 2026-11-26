@@ -1,4 +1,5 @@
 import React, { useMemo } from 'react';
+import { runHex, runRgb } from '../../utils/designV2';
 import { Chart } from 'react-chartjs-2';
 import ChartJS from '../../lib/chartSetup';
 import MetricInfo from './MetricInfo';
@@ -33,8 +34,8 @@ const TONE_COLOR = {
 };
 const DELTA_TONE = { safe: 'ok', caution: 'warn', danger: 'danger', neutral: 'neutral' };
 
-const RUN = '#2ee0ff'; // --run
-const RUN_SOFT = 'rgba(46, 224, 255, 0.18)';
+// A cor da corrida: --run na v1, o ouro velho no v2 (utils/designV2.js).
+const runSoft = () => `rgba(${runRgb()}, 0.18)`;
 
 /* A zona → o tom do KPI (acwrStatusLabel): 'undertrained' é "Carga baixa",
    neutro — nem perigo nem "ideal". */
@@ -60,16 +61,16 @@ function hatch(ctx2d) {
     c.width = 8;
     c.height = 8;
     const g = c.getContext('2d');
-    if (!g) return RUN_SOFT;
-    g.strokeStyle = 'rgba(46, 224, 255, 0.85)';
+    if (!g) return runSoft();
+    g.strokeStyle = `rgba(${runRgb()}, 0.85)`;
     g.lineWidth = 1.6;
     g.beginPath();
     g.moveTo(-2, 10);
     g.lineTo(10, -2);
     g.stroke();
-    return ctx2d.createPattern(c, 'repeat') || RUN_SOFT;
+    return ctx2d.createPattern(c, 'repeat') || runSoft();
   } catch {
-    return RUN_SOFT;
+    return runSoft();
   }
 }
 
@@ -157,8 +158,8 @@ export default function ACWRChart({ weeklyData = [], acwr, className = '' }) {
         label: 'Carga semanal',
         data: loads,
         // A semana em curso às riscas: está fora das contas (R1).
-        backgroundColor: (c) => (c.dataIndex === inProgressIdx ? hatch(c.chart.ctx) : RUN),
-        borderColor: RUN,
+        backgroundColor: (c) => (c.dataIndex === inProgressIdx ? hatch(c.chart.ctx) : runHex()),
+        borderColor: runHex(),
         borderWidth: (c) => (c.dataIndex === inProgressIdx ? 1.5 : 0),
         borderRadius: 6,
         borderSkipped: false,

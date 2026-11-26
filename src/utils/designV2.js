@@ -13,6 +13,14 @@ export const DESIGN_V2_KEY = 'ironcoach.designV2';
 export const DESIGN_V2_CLASS = 'design-v2';
 const EVENT = 'ironcoach:design-v2';
 
+/* A corrida no Design v2 (P2 da 2.ª crítica, 2026-11-26): um ouro velho próprio, longe do ciano da
+   Carol e do âmbar da prova. #b8994a: 6,8:1 sobre o fundo v2, 6,0:1 sobre o painel, e a tinta
+   escura (#1f1704) sobre a cor cheia a 6,5:1 (AA). Na v1, o --run de sempre (#2ee0ff). */
+export const V2_RUN_HEX = '#b8994a';
+export const V2_RUN_RGB = '184, 153, 74';
+export function runHex() { return isDesignV2() ? V2_RUN_HEX : '#2ee0ff'; }
+export function runRgb() { return isDesignV2() ? V2_RUN_RGB : '46, 224, 255'; }
+
 export function isDesignV2() {
   try {
     return typeof window !== 'undefined' && window.localStorage?.getItem(DESIGN_V2_KEY) === '1';

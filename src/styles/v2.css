@@ -241,3 +241,45 @@ html.design-v2:not([data-keyboard="open"]) body:has([data-testid="action-bar"]):
 .v2-screen-title .v2-title { margin: 0; }
 .v2-screen-back { all: unset; box-sizing: border-box; cursor: pointer; width: 44px; height: 44px; margin-left: -12px; display: grid; place-items: center; border-radius: 6px; color: var(--v2-ink2); }
 .v2-screen-back:hover { color: var(--v2-ink); }
+
+/* ── A corrida tem cor própria (P2 da 2.ª crítica, decisão do Rui, 2026-11-26) ──────────────────
+   O --run (#2ee0ff) era quase o --coach (#22d3ee): o ciano deixava de ser só da Carol. No v2 a
+   corrida passa a um ouro velho dessaturado, longe do âmbar da prova (#fbbf24, saturação 96% contra
+   44%) e do coral --warn. Contraste (AA): #b8994a a 6,8:1 sobre o fundo #0d1420 e a 6,0:1 sobre o
+   painel #152031; a tinta escura #1f1704 sobre a cor cheia a 6,5:1. O --run global não muda (a v1
+   usa-o); aqui redefine-se só dentro do html.design-v2, e os gráficos usam runHex() (designV2.js). */
+html.design-v2 {
+  --v2-run: #b8994a;
+  --v2-run-ink: #1f1704;
+  --run: var(--v2-run);
+  --run-ink: var(--v2-run-ink);
+  --tint-run-bg: rgba(184, 153, 74, .16);
+  --tint-run-bd: rgba(184, 153, 74, .40);
+  /* A ligação e o número que não são da Carol: a tinta neutra (o ciano fica para a Carol e o foco). */
+  --v2-link: var(--v2-ink);
+}
+
+/* Os links e o objetivo deixam de ser ciano: a tinta neutra; os links sublinhados. */
+html.design-v2 .v2-hero-r b { color: var(--v2-ink); }
+html.design-v2 .v2-link-inline,
+html.design-v2 .v2-meals-go,
+html.design-v2 .v2-act.is-acc,
+html.design-v2 .v2-card-body .v2-card-body-link.is-acc,
+html.design-v2 .v2-card-gym .v2-card-gym-link.is-acc,
+html.design-v2 .v2-card-meal .v2-card-meal-link.is-acc,
+html.design-v2 .v2-card-race-link,
+html.design-v2 .v2-card-race-site a,
+html.design-v2 .v2-evo-back { color: var(--v2-link); text-decoration: underline; text-underline-offset: 3px; text-decoration-thickness: 1px; }
+/* O que é da Carol (dentro da linha dela) continua ciano, sem sublinhado. */
+html.design-v2 .v2-say .v2-act.is-acc,
+html.design-v2 .v2-say-home .v2-say-actions .v2-link-inline,
+html.design-v2 .v2-card-race .v2-say .v2-card-race-link { color: var(--v2-acc); text-decoration: none; }
+/* Estados que não são ligações: a tinta, não o ciano. */
+html.design-v2 .v2-today-state { color: var(--v2-ink); }
+html.design-v2 .v2-cal-day.is-today .v2-cal-n { color: var(--v2-ink); }
+html.design-v2 .v2-cal-day.is-today { border-color: var(--v2-ink2); }
+
+/* A cor do módulo já não enche botões (Button variant="module" com um módulo): discreto, com a cor
+   só no ícone (o Button passa-a ao ícone). */
+.v2-btn-module { background: transparent; color: var(--v2-ink); border: 1px solid var(--v2-rule); font-weight: 600; }
+.v2-btn-module:hover { background: var(--v2-panel); }

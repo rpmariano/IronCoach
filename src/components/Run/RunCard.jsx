@@ -76,6 +76,9 @@ export default function RunCard({ run, onEdit, onDelete, defaultExpanded = false
      corrida ao verde do "dentro do alvo" e daí ao coral do aviso e ao vermelho,
      sem tocar no âmbar. */
   const effortColors = ['#2ee0ff', '#35dbef', '#3cd6df', '#34d399', '#6ed092', '#a7cd85', '#fb9d6d', '#fb7c4d', '#f4603f', '#f87171'];
+  /* Design v2 (P2 da 2.ª crítica): só os tokens. Leve na tinta neutra, moderado no --ok, duro no
+     --warn, o máximo no --danger: sem os verdes e laranjas intermédios fora da paleta. */
+  const effortColorsV2 = ['var(--v2-ink2)', 'var(--v2-ink2)', 'var(--v2-ink2)', 'var(--ok)', 'var(--ok)', 'var(--ok)', 'var(--warn)', 'var(--warn)', 'var(--warn)', 'var(--danger)'];
 
   const { profile, loadInitialData, runs, setRuns, raceEvents } = useAppStore();
   /* Apagar a última corrida de uma prova concluída põe a prova de volta a
@@ -224,7 +227,7 @@ export default function RunCard({ run, onEdit, onDelete, defaultExpanded = false
         hrZones={hrZones}
         splits={splits}
         chips={activeChips.filter((c) => c.key !== 'dist' && c.key !== 'pace').map((c) => ({ key: c.key, label: c.label }))}
-        effortColors={effortColors}
+        effortColors={effortColorsV2}
       />
     );
   }

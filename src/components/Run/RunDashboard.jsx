@@ -1,4 +1,5 @@
 import React, { useMemo } from 'react';
+import { runRgb } from '../../utils/designV2';
 import { useFeature } from '../../utils/features';
 import { useAppStore, sliceReady } from '../../store';
 import { useShallow } from 'zustand/react/shallow';
@@ -76,12 +77,14 @@ const ACWR_ROW_STATUS = { safe: 'ok', caution: 'above', danger: 'above', undertr
 const cap = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
 const corridas = (n) => `${n} ${plural(n, 'corrida', 'corridas')}`;
 
+// A cor da corrida: o --run (ciano) na v1, o ouro velho no v2 (runRgb, utils/designV2.js).
 const GRADIENT = (context) => {
   const { ctx, chartArea } = context.chart;
-  if (!chartArea) return 'rgba(46, 224, 255, 0.6)';
+  const rgb = runRgb();
+  if (!chartArea) return `rgba(${rgb}, 0.6)`;
   const gradient = ctx.createLinearGradient(0, chartArea.bottom, 0, chartArea.top);
-  gradient.addColorStop(0, 'rgba(46, 224, 255, 0.25)');
-  gradient.addColorStop(1, 'rgba(46, 224, 255, 0.9)');
+  gradient.addColorStop(0, `rgba(${rgb}, 0.25)`);
+  gradient.addColorStop(1, `rgba(${rgb}, 0.9)`);
   return gradient;
 };
 

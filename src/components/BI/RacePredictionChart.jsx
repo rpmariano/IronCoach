@@ -1,4 +1,5 @@
 import React, { useMemo } from 'react';
+import { runHex, runRgb } from '../../utils/designV2';
 import { Line } from 'react-chartjs-2';
 import ChartJS from '../../lib/chartSetup';
 import MetricInfo from './MetricInfo';
@@ -19,7 +20,7 @@ import { axisDate } from './crossPeriod';
      é forma de corrida. A série passa ao ciano da corrida (--run); o âmbar
      fica só no número da PREVISÃO, que é mesmo da prova. */
 
-const RUN = '#2ee0ff';   // --run
+// A cor da corrida: --run na v1, o ouro velho no v2 (utils/designV2.js).
 
 const MESES_CURTOS = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
 
@@ -84,8 +85,8 @@ export default function RacePredictionChart({ vdotTrend = [], prediction, compar
       {
         label: 'Forma atual',
         data: vdots,
-        borderColor: RUN,
-        backgroundColor: 'rgba(46, 224, 255, 0.15)',
+        borderColor: runHex(),
+        backgroundColor: `rgba(${runRgb()}, 0.15)`,
         fill: true,
         tension: 0.4,
         pointRadius: 0,
@@ -117,7 +118,7 @@ export default function RacePredictionChart({ vdotTrend = [], prediction, compar
       // Pedido do Rui (2026-11-01): o VDOT na vertical, com escala; as datas vão nos cantos (axis).
       y: {
         grid: { color: 'rgba(255, 255, 255, 0.05)' },
-        ticks: { display: true, color: RUN, maxTicksLimit: 4, font: { size: 10 }, padding: 4, callback: (v) => fmtNumber(v, Number.isInteger(v) ? 0 : 1) },
+        ticks: { display: true, color: runHex(), maxTicksLimit: 4, font: { size: 10 }, padding: 4, callback: (v) => fmtNumber(v, Number.isInteger(v) ? 0 : 1) },
         border: { display: false },
       }
     }
@@ -141,7 +142,7 @@ export default function RacePredictionChart({ vdotTrend = [], prediction, compar
      VDOT, e diz-se que o valor é o do último treino de qualidade. O eixo x passa a ter as datas do
      primeiro e do último ponto (antes os cantos eram o mínimo e o máximo do VDOT). */
   // Sem a sigla à vista (v1 lite, pedido do Rui): «forma atual», a previsão pelo treino.
-  const legend = [{ label: `Forma atual${lastVdot !== null ? ` · último ${fmtNumber(lastVdot, 1)}` : ''}`, color: RUN, shape: 'line' }];
+  const legend = [{ label: `Forma atual${lastVdot !== null ? ` · último ${fmtNumber(lastVdot, 1)}` : ''}`, color: runHex(), shape: 'line' }];
   const dateAxis = hasTrend ? (() => {
     const first = deduped[0].date;
     const last = deduped[deduped.length - 1].date;

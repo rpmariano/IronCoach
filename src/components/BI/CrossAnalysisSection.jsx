@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import { runHex, runRgb } from '../../utils/designV2';
 import { ChevronDown, BarChart2 } from 'lucide-react';
 import CrossMetricsChart from './CrossMetricsChart';
 import { periodRange } from './crossPeriod';
@@ -166,7 +167,7 @@ export default function CrossAnalysisSection({ runs, gymSessions, meals, bodyAss
   const vdotSeries = useMemo(() => ({
     label: 'VDOT',
     data: vdotVsWeightData.map(d => ({ x: d.date, y: d.right })),
-    color: '#2ee0ff', // --run
+    color: runHex(), // --run (o ouro velho no v2)
     unit: ''
   }), [vdotVsWeightData]);
   const gymVolumeSeries = useMemo(() => ({
@@ -182,7 +183,7 @@ export default function CrossAnalysisSection({ runs, gymSessions, meals, bodyAss
   const runRpeSeries = useMemo(() => ({
     label: 'Esforço Corrida (RPE)',
     data: gymRunSeries.map(d => ({ x: d.date, y: d.runRPE })),
-    color: '#2ee0ff', // --run
+    color: runHex(), // --run (o ouro velho no v2)
     unit: 'RPE'
   }), [gymRunSeries]);
 
