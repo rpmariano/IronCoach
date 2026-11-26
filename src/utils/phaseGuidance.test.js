@@ -86,7 +86,7 @@ describe('phaseGuidance — construção', () => {
 
   it('o ritmo-alvo, quando há — só ao avançado, que é quem tem blocos a ritmo de prova', () => {
     expect(phaseGuidance({ ...meia, phaseId: 'build', experienceLevel: 'avancado', targetPaceSeconds: 320 }))
-      .toContain('O teu ritmo-alvo é 5.20/km');
+      .toContain('O teu ritmo-alvo é 5:20/km');
     for (const experienceLevel of ['iniciante', 'basico', 'medio']) {
       expect(phaseGuidance({ ...meia, phaseId: 'build', experienceLevel, targetPaceSeconds: 320 })).not.toContain('ritmo-alvo');
     }

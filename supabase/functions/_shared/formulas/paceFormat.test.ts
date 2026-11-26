@@ -11,3 +11,10 @@ for (const { fn, name, input, expect } of golden) {
     assertEquals(result, expect);
   });
 }
+
+Deno.test("formatPaceMinKm — nunca «:60», em todo o intervalo de 2:00 a 12:00 ao décimo de segundo", () => {
+  for (let t = 1200; t <= 7200; t++) {
+    const out = formatPaceMinKm(t / 10);
+    assertEquals(/^\d+:[0-5]\d$/.test(out), true, `${t / 10} → ${out}`);
+  }
+});

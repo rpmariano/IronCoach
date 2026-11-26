@@ -794,6 +794,9 @@ Fecha os dois itens que a Fase E deixou documentados como fora de âmbito.
   com dois pontos, `"5:20/km"`, na lista de corridas que a Carol lê).
   **Decisão do utilizador**: tratar no mesmo lote. As três passam a delegar
   aqui e o backend passa a mostrar o formato de PONTO que o atleta vê.
+  **2026-11-26 (decisão do Rui):** o formato canónico passa a DOIS PONTOS
+  (`"5:09"`, `"5:09/km"`) em toda a app e na Carol — ver «Ritmo com dois
+  pontos» abaixo.
 - [x] **`racePhases.ts`** — fronteiras das 4 fases de treino (45%/20% do
   bloco pré-taper) e estado temporal de cada uma. Era o que faltava para o
   `racePhaseEvaluation` servir para alguma coisa: a Carol sabia avaliar uma
@@ -912,11 +915,13 @@ anotados:
 
 ### Achados documentados, não corrigidos
 
-- **`paceFormat`: arredondamento a 60s.** Com segundos fracionários ≥ 59,5 o
-  resultado é `"4.60"` em vez de `"5.00"`. As duas implementações originais
-  tinham exatamente o mesmo comportamento — portado tal como estava e fixado
-  em vetor dourado, para a correção ser uma decisão consciente e não um
-  efeito secundário desta consolidação.
+- **`paceFormat`: arredondamento a 60s — CORRIGIDO a 2026-11-26.** Com
+  segundos fracionários ≥ 59,5 o resultado era `"4.60"` em vez de `"5.00"`
+  (as duas implementações originais tinham o mesmo comportamento, portado e
+  fixado em vetor dourado). Corrigido com a mudança para dois pontos:
+  arredonda-se o total de segundos antes de partir em minutos e segundos —
+  299,7 s dá `"5:00"`. Vetor dourado e um teste de varrimento (2:00 a 12:00
+  ao décimo de segundo, nunca `":60"`).
 - **`determinePhaseState` e `evaluatePhasePerformance` tinham parâmetros
   mortos** (`startW`/`endW` e `phaseName`, passados em todas as chamadas e
   nunca usados) — removidos ao migrar.
@@ -975,3 +980,31 @@ holístico, distribuição de treino, etc.) a confirmar, para cada gráfico/
 métrica, se já está em texto no prompt, atrás de uma tool call, ou em falta.
 Qualquer cálculo novo que essa auditoria exigir deve nascer diretamente em
 `_shared/formulas/`, nunca duplicado.
+
+---
+
+## Ritmo com dois pontos (2026-11-26)
+
+Decisão do Rui: o ritmo escreve-se `5:09 /km` em toda a app, incluindo a
+Carol. Antes era `5.09` (Fase D), que se lia como um decimal.
+
+- [x] `@formulas/paceFormat.ts`: `formatPaceMinKm` → `"5:09"`,
+  `formatPaceFromDistance` → `"5:09/km"`; arredondamento corrigido (acima).
+  `src/utils/run.js` `formatPace` delega aqui, por isso o ecrã e a Carol
+  mudam juntos.
+- [x] Formatações à mão: `analyze-run` (os parciais e o «Pace» do prompt
+  estavam em `5'20"` — e o «Pace» sem zero à esquerda, `5'5"`) passa ao
+  formato canónico; as regras do badge O Passo (`badges.js`), os
+  placeholders (`RunAgenda`, `RunRegistration`) e o cartão de exemplo da
+  biblioteca gráfica.
+- [x] Prompts da Carol: nenhuma instrução mandava escrever o ritmo com
+  ponto; o único exemplo no prompt (os parciais do `analyze-run`) vem do
+  mesmo formatador.
+- [x] Entrada: `parsePaceToSeconds` aceita ponto, vírgula e dois pontos
+  (`5.09`, `5,09`, `5:09`); a calculadora de ritmo usa a máscara do
+  `DurationInput` (só dígitos, os `:` nascem sozinhos). O servidor não lê
+  ritmos em texto (as ferramentas da Carol recebem segundos).
+- [x] Os tempos (h:mm:ss) não mudam.
+- Nota: as avaliações de fase (`racePhaseEvaluation`, `metrics.avgPace`)
+  são calculadas na hora, não ficam gravadas — não há valores antigos com
+  ponto na BD para migrar.

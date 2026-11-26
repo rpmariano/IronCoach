@@ -102,7 +102,7 @@ A IA extrai e valida as seguintes métricas na base de dados:
 * **Campos Obrigatórios**: Data, local, nome, tipo, distância (kms), tempo-alvo e ritmo-alvo.
 * **Cálculos Dinâmicos**: A edição do campo Tempo-Alvo atualiza automaticamente o Ritmo-Alvo (pace) correspondente com base na distância escolhida, e vice-versa.
 * **Fórmula de Conversão de Ritmo**:
-  O pace é representado com um ponto decimal (ex: `5.20` representa 5 minutos e 20 segundos por quilómetro).
+  O pace é representado com dois pontos (ex: `5:20 /km` representa 5 minutos e 20 segundos por quilómetro). Ao escrever um ritmo, podes usar `5:20` ou `5.20` — a app lê os dois.
 * **Desnível Trail (D+)**: O campo de desnível positivo acumulado só fica visível e disponível para edição se o tipo de prova for `trail`. Uma prova de `estrada` tem a check constraint na base de dados a forçar desnível nulo.
 
 ---

@@ -13,7 +13,7 @@ import { fmtNumber } from '../../utils/dashboardVerdicts';
    mínimo, máximo, tendência) —, para a Carol não ter de adivinhar.
 
    `explain`: { title, period?, series: [{ label, unit?, values: (number|null)[], decimals?, format? }], note? }
-   (`format(v)` escreve um valor à maneira da série — o ritmo «5.24/km» em vez de 324 segundos). */
+   (`format(v)` escreve um valor à maneira da série — o ritmo «5:24/km» em vez de 324 segundos). */
 
 /* A tendência (revisão de 2026-11-02): o primeiro ponto contra o último era ruído — numa série
    diária (as kcal do mês) dois dias soltos decidiam «a subir» ou «a descer». A partir de

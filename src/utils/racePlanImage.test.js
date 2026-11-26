@@ -39,7 +39,7 @@ describe('racePlanImageModel — o que a imagem diz', () => {
     expect(m.basis).toBe(basisLabel(plan));
     expect(m.rows).toHaveLength(plan.rows.length);
     expect(m.rows[0]).toMatchObject({ km: 'km 0 a 1', label: 'controlar', tone: 'muted' });
-    expect(m.rows[0].pace).toMatch(/^\d\.\d\d\/km$/);
+    expect(m.rows[0].pace).toMatch(/^\d:\d\d\/km$/);
     // O último troço acaba na distância da prova, com a vírgula da app.
     expect(m.rows.at(-1).km).toMatch(/^km \d+ a 21,1$/);
     // O ponto de decisão leva a cor da prova; acelerar, a de ganhar tempo.

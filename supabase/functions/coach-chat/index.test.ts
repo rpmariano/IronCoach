@@ -3178,7 +3178,7 @@ Deno.test("buildRaceEventsContext: a previsão do treino entra com tempo e ritmo
   // Em duas partes de propósito: o número é o que interessa proteger, a
   // frase à volta pode mudar sem partir o teste — e já partiu uma vez.
   assertStringIncludes(ctx!, "PREVISÃO DE TEMPO:");
-  assertStringIncludes(ctx!, "o treino aponta para 1:46:10 (10.37/km)");
+  assertStringIncludes(ctx!, "o treino aponta para 1:46:10 (10:37/km)");
   assertStringIncludes(ctx!, "ainda não fixou tempo-alvo");
 });
 
@@ -3671,21 +3671,21 @@ Deno.test("parseRaceOutcome: lixo cai para null, não para erro", () => {
 Deno.test("buildRaceOutcomeContext: os números e o veredicto, em maiúsculas onde a Carol tem de reparar", () => {
   const ctx = buildRaceOutcomeContext(outcome());
   assertStringIncludes(ctx, "Prova: Meia de Lisboa, 2027-03-08, Estrada, 21.1 km (meia).");
-  assertStringIncludes(ctx, "Tempo oficial: 1:53:42 (5.23/km) · posição 412 · RPE 8.");
-  assertStringIncludes(ctx, "Objetivo: 1:52:00 (5.18/km) → 1:42 ACIMA do objetivo (1,5%).");
-  assertStringIncludes(ctx, "Previsão pelo treino (Riegel, só corridas anteriores à prova): 2:01:22 (5.45/km) → 7:40 mais rápido do que a previsão — ACIMA do que o treino perspetivava.");
-  assertStringIncludes(ctx, "Melhor anterior na meia: 1:57:46 (5.35/km) · 2026-10-11 → RECORDE PESSOAL por 4:04.");
+  assertStringIncludes(ctx, "Tempo oficial: 1:53:42 (5:23/km) · posição 412 · RPE 8.");
+  assertStringIncludes(ctx, "Objetivo: 1:52:00 (5:18/km) → 1:42 ACIMA do objetivo (1,5%).");
+  assertStringIncludes(ctx, "Previsão pelo treino (Riegel, só corridas anteriores à prova): 2:01:22 (5:45/km) → 7:40 mais rápido do que a previsão — ACIMA do que o treino perspetivava.");
+  assertStringIncludes(ctx, "Melhor anterior na meia: 1:57:46 (5:35/km) · 2026-10-11 → RECORDE PESSOAL por 4:04.");
   assertStringIncludes(ctx, "Veredicto: PERTO DO OBJETIVO.");
 });
 
 /* O ritmo do melhor anterior sai da distância DELE. A categoria é larga
    ("meia" vai de 11,1 a 22,5 km): dividir 1:00:00 pela distância desta prova
-   dava 2.51/km, fisicamente impossível, e a Carol repetia-o em voz alta
+   dava 2:51/km, fisicamente impossível, e a Carol repetia-o em voz alta
    (revisão pré-deploy de 2026-09-21). */
 Deno.test("buildRaceOutcomeContext: o melhor anterior noutra distância leva o ritmo dele e diz a distância", () => {
   const ctx = buildRaceOutcomeContext(outcome({ previous_best_seconds: 3600, previous_best_distance_km: 12, is_personal_record: false }));
-  assertStringIncludes(ctx, "Melhor anterior na meia: 1:00:00 (5.00/km) em 12 km");
-  assertEquals(ctx.includes("2.51/km"), false);
+  assertStringIncludes(ctx, "Melhor anterior na meia: 1:00:00 (5:00/km) em 12 km");
+  assertEquals(ctx.includes("2:51/km"), false);
 });
 
 Deno.test("buildRaceOutcomeContext: sem a distância do recorde, o tempo vai sem ritmo em vez de um ritmo falso", () => {
@@ -3695,7 +3695,7 @@ Deno.test("buildRaceOutcomeContext: sem a distância do recorde, o tempo vai sem
 
 Deno.test("buildRaceOutcomeContext: objetivo batido, sem previsão nem histórico", () => {
   const ctx = buildRaceOutcomeContext(outcome({ verdict: "superado", target_seconds: 6900, predicted_seconds: null, vs_training: null, previous_best_seconds: null, previous_best_date: null, is_personal_record: false }));
-  assertStringIncludes(ctx, "Objetivo: 1:55:00 (5.27/km) → 1:18 ABAIXO do objetivo (batido).");
+  assertStringIncludes(ctx, "Objetivo: 1:55:00 (5:27/km) → 1:18 ABAIXO do objetivo (batido).");
   assertStringIncludes(ctx, "Previsão pelo treino: sem corridas anteriores que a sustentem.");
   assertStringIncludes(ctx, "Melhor anterior na meia: nenhum — primeira prova nesta distância.");
   assertStringIncludes(ctx, "Veredicto: OBJETIVO SUPERADO.");
@@ -3802,11 +3802,11 @@ Deno.test("buildRacePlanContext: a tabela troço a troço, a base, o percurso e 
   const ctx = buildRacePlanContext(PLANO_MEIA, "Meia de Lisboa", 1)!;
   assertStringIncludes(ctx, "=== PLANO PARA O DIA DA PROVA");
   assertStringIncludes(ctx, "Prova: Meia de Lisboa — é amanhã.");
-  assertStringIncludes(ctx, "Base: o objetivo, 1:52:00 (5.18/km).");
+  assertStringIncludes(ctx, "Base: o objetivo, 1:52:00 (5:18/km).");
   // A subida da Calçada abranda um km: o plano tira-o ao resto e a chegada dá o objetivo (bug #122).
-  assertStringIncludes(ctx, "Chegada planeada: 1:52:00. Primeiro km: 5.26/km. Ponto de decisão: km 15.");
+  assertStringIncludes(ctx, "Chegada planeada: 1:52:00. Primeiro km: 5:26/km. Ponto de decisão: km 15.");
   assertStringIncludes(ctx, "Percurso: conhecido");
-  assertStringIncludes(ctx, "- km 0–1 · 5.26/km · passagem 5:26 · controlar");
+  assertStringIncludes(ctx, "- km 0–1 · 5:26/km · passagem 5:26 · controlar");
   assertStringIncludes(ctx, "· subida · subida da Calçada da Ajuda — Subida: desacelera");
   assertStringIncludes(ctx, "Abastecimento: km 5 água");
   assertEquals(buildRacePlanContext(null, "X", 1), null);
@@ -3817,8 +3817,8 @@ Deno.test("buildRacePlanContext (revisão do #122): com troços, distingue a mé
     .map(([km, g]) => ({ km_marker: km - 1, description: "GPX", elevation: g > 0 ? "sobe" : "desce" }));
   const plan = buildRacePacingPlan({ distanceKm: 21.0975, raceType: "trail", targetSeconds: 9957, routeSegments: segs, routeSource: "gpx" })!;
   const ctx = buildRacePlanContext(plan, "Meia de trail", 3)!;
-  assertStringIncludes(ctx, "Base: o objetivo, 2:45:57 (7.52/km).");
-  assertStringIncludes(ctx, `Ritmo nos km planos (o «ritmo» da tabela): ${sharedFormatPaceMinKmForTest(plan.flatPaceSecPerKm)}/km — o 7.52/km de cima é a MÉDIA, com as subidas, as descidas, o arranque e o final lá dentro.`);
+  assertStringIncludes(ctx, "Base: o objetivo, 2:45:57 (7:52/km).");
+  assertStringIncludes(ctx, `Ritmo nos km planos (o «ritmo» da tabela): ${sharedFormatPaceMinKmForTest(plan.flatPaceSecPerKm)}/km — o 7:52/km de cima é a MÉDIA, com as subidas, as descidas, o arranque e o final lá dentro.`);
   // Sem troços e menos de 2 s de diferença (só arredondamento): sem a linha.
   for (const [km, t] of [[10, 3000], [21.1, 7200], [21.0975, 6720]]) {
     assertEquals(buildRacePlanContext(buildRacePacingPlan({ distanceKm: km, targetSeconds: t }), "X", 3)!.includes("Ritmo nos km planos"), false, String(km));
@@ -3837,7 +3837,8 @@ Deno.test("buildRacePlanContext (revisão do #122): com troços, distingue a mé
 });
 
 function sharedFormatPaceMinKmForTest(s: number): string {
-  return `${Math.floor(s / 60)}.${String(Math.round(s % 60)).padStart(2, "0")}`;
+  const t = Math.round(s);
+  return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, "0")}`;
 }
 
 Deno.test("buildRacePlanContext: objetivo ambicioso diz-o; percurso desconhecido proíbe inventar", () => {
@@ -3859,8 +3860,8 @@ Deno.test("buildSplitsComparisonContext: os km com desvio e a leitura (arranque 
   const splits = [{ distance_km: 1, time_seconds: 290 }, { distance_km: 5, time_seconds: 1208 }, { distance_km: 10, time_seconds: 1560 }];
   const ctx = buildSplitsComparisonContext(compareSplitsToPlan(plan, splits), plan, splits.length)!;
   assertStringIncludes(ctx, "=== PARCIAIS FACE AO PLANO PARA O DIA");
-  assertStringIncludes(ctx, "- km 1: fez 4.50/km, o plano dizia 5.06/km (16 s/km mais rápido).");
-  assertStringIncludes(ctx, "- km 10: fez 5.12/km, o plano dizia 4.52/km (20 s/km mais lento).");
+  assertStringIncludes(ctx, "- km 1: fez 4:50/km, o plano dizia 5:06/km (16 s/km mais rápido).");
+  assertStringIncludes(ctx, "- km 10: fez 5:12/km, o plano dizia 4:52/km (20 s/km mais lento).");
   assertStringIncludes(ctx, "Leitura: arrancou acima do plano.");
   assertStringIncludes(ctx, "Leitura: quebrou na parte final.");
   const flat = buildSplitsComparisonContext([], plan, 2)!;
@@ -4191,7 +4192,7 @@ const TEJO = { id: "r1", name: "Corrida do Tejo", date: "2099-09-13", distance_k
 Deno.test("update_race_event: pelo nome, o tempo novo grava tempo, texto e ritmo pela distância", async () => {
   const { sb, updates } = makeRaceSb([TEJO]);
   const result = await runUpdateRaceEvent(sb, "user-1", { race_name: "tejo", target_time_seconds: 3420, reason: "objetivo revisto" });
-  assertStringIncludes(result, 'Prova atualizada: "Corrida do Tejo" (2099-09-13) — objetivo 57:00 (5.42/km)');
+  assertStringIncludes(result, 'Prova atualizada: "Corrida do Tejo" (2099-09-13) — objetivo 57:00 (5:42/km)');
   assertEquals(updates.length, 1);
   assertEquals(updates[0].id, "r1");
   assertEquals(updates[0].patch, { target_time_seconds: 3420, target_time: "57:00", target_pace_seconds_per_km: 342 });
@@ -4250,7 +4251,7 @@ Deno.test("loadProfileRequested (revisão de 5fea1e4e): o termo do perfil escolh
 Deno.test("update_race_event: ritmo, hora, prioridade e nível; recusa o que não faz sentido", async () => {
   const { sb, updates } = makeRaceSb([TEJO]);
   const result = await runUpdateRaceEvent(sb, "user-1", { race_id: "r1", target_pace_seconds_per_km: 330, start_time: "9:00", race_priority: "b", experience_level: "medio" });
-  assertStringIncludes(result, "ritmo-alvo 5.30/km (55:00)");
+  assertStringIncludes(result, "ritmo-alvo 5:30/km (55:00)");
   assertStringIncludes(result, "partida às 09:00");
   assertEquals(updates[0].patch.target_time_seconds, 3300);
   assertEquals(updates[0].patch.start_time, "09:00");

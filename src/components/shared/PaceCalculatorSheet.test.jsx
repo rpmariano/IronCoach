@@ -22,7 +22,7 @@ describe('PaceCalculatorSheet — escreve um, sai o outro', () => {
     expect(distancia()).toHaveValue('10');
     expect(ritmo()).toHaveValue('5:30');
     expect(tempo()).toHaveValue('55:00');
-    expect(resultado()).toBe('10 km a 5.30/km são 55:00');
+    expect(resultado()).toBe('10 km a 5:30/km são 55:00');
   });
 
   it('o ritmo escrito dá o tempo total — 5 km a 5:00 são 25:00', () => {
@@ -30,14 +30,14 @@ describe('PaceCalculatorSheet — escreve um, sai o outro', () => {
     fireEvent.change(distancia(), { target: { value: '5' } });
     fireEvent.change(ritmo(), { target: { value: '500' } });
     expect(tempo()).toHaveValue('25:00');
-    expect(resultado()).toBe('5 km a 5.00/km são 25:00');
+    expect(resultado()).toBe('5 km a 5:00/km são 25:00');
   });
 
   it('o tempo escrito dá o ritmo — 10 km em 45:00 são 4:30/km', () => {
     abrir();
     fireEvent.change(tempo(), { target: { value: '4500' } });
     expect(ritmo()).toHaveValue('4:30');
-    expect(resultado()).toBe('10 km a 4.30/km são 45:00');
+    expect(resultado()).toBe('10 km a 4:30/km são 45:00');
   });
 
   it('mudar a distância mantém o que foi escrito e recalcula o outro', () => {
@@ -81,7 +81,7 @@ describe('PaceCalculatorSheet — escreve um, sai o outro', () => {
     fireEvent.change(distancia(), { target: { value: '21,1' } });
     fireEvent.change(ritmo(), { target: { value: '500' } });
     expect(tempo()).toHaveValue('1:45:30');
-    expect(resultado()).toBe('21,1 km a 5.00/km são 1:45:30');
+    expect(resultado()).toBe('21,1 km a 5:00/km são 1:45:30');
   });
 
   it('fecha por onClose — a persiana trata da saída, não se desmonta à bruta', () => {

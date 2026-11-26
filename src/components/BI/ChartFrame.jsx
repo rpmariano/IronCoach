@@ -203,10 +203,10 @@ function isPlotInViewNow(el) {
  *  o valor verdadeiro fica num texto só para o leitor de ecrã. Um valor que
  *  não é número ("5:41") não tem zero: fica transparente. */
 export function BigNumber({ value, unit, color = 'var(--text-1)', size = 'var(--text-num)', animate = false, duration = DUR_COUNT, zero = false, style, ...rest }) {
-  // 2026-10-04: um texto com ponto é um ritmo no formato canónico da app
-  // ("5.20" = 5 min 20 s, formatPace), não um decimal — os números da app
-  // usam vírgula. Contá-lo passava por "3", "4" e saltava para "5.20"; agora
-  // não conta, como "5:41".
+  // 2026-10-04: um texto com ponto não é um decimal — os números da app usam
+  // vírgula. Era o ritmo no formato antigo ("5.20"; desde 2026-11-26 é "5:20",
+  // que já não conta por não ser número). Contá-lo passava por "3", "4" e
+  // saltava para "5.20"; não conta, como "5:41".
   const text = String(value ?? '');
   const numeric = typeof value === 'number'
     ? value

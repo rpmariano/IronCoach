@@ -2855,7 +2855,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
           <div className="v2-runreg-bigf">
             <span id="v2-reg-ritmo-t" className="v2-runreg-biglbl">Ritmo médio</span>
             <output aria-labelledby="v2-reg-ritmo-t" data-testid="v2-reg-pace" className={`v2-num v2-runreg-pace${pace ? '' : ' is-empty'}`}>
-              {pace || '0.00/km'}
+              {pace || '0:00/km'}
             </output>
           </div>
         </div>

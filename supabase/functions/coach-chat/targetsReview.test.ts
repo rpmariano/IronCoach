@@ -45,7 +45,7 @@ Deno.test("revisão dos objetivos: 3% ou mais, ou sem objetivo, é diferença �
   assert(diffs[0].deviation! > 0.24);
   assertEquals(diffs[0].reference, { date: "2026-09-13", distance_km: 10.11, time_s: 3088 });
   const text = buildTargetsReviewTurn(diffs, "plan_accepted");
-  assertStringIncludes(text, "«Cascais Oeiras Lisboa» (08/11, 10 km): 1:03:32 (6.21/km) → 50:50 (5.05/km); referência: a corrida de 13/09, 10,11 km em 51:28");
+  assertStringIncludes(text, "«Cascais Oeiras Lisboa» (08/11, 10 km): 1:03:32 (6:21/km) → 50:50 (5:05/km); referência: a corrida de 13/09, 10,11 km em 51:28");
   assertStringIncludes(text, "«Corrida sem objetivo» (15/11, 10 km): sem objetivo → 50:50");
   assertStringIncludes(text, "NÃO chames update_race_event neste turno");
   assertStringIncludes(buildTargetsReviewTurn(diffs, "race_after"), "sem voltar ao balanço");
@@ -122,7 +122,7 @@ Deno.test("«Atualiza os objetivos»: lê a proposta da revisão das últimas 24
 
 Deno.test("confirmação do «Atualiza»: só confirma — sem rever o plano nem propor ajustes (ponto 9)", () => {
   // O texto real do runUpdateRaceEvent traz o conselho do turno normal: sai.
-  const real = 'Prova atualizada: "Cascais Oeiras Lisboa" (2026-11-08) — objetivo 50:50 (5.05/km). O plano km a km do hub e a véspera passam a usar estes valores. ' +
+  const real = 'Prova atualizada: "Cascais Oeiras Lisboa" (2026-11-08) — objetivo 50:50 (5:05/km). O plano km a km do hub e a véspera passam a usar estes valores. ' +
     "Diz ao atleta numa frase o que ficou gravado na prova. Se houver plano de treino aceite, confirma se continua a fazer sentido e propõe o ajustado se não fizer.";
   const text = buildTargetsAppliedInstruction([{ name: "Cascais Oeiras Lisboa", result: real }]);
   assertStringIncludes(text, "O servidor GRAVOU: «Cascais Oeiras Lisboa»: Prova atualizada");

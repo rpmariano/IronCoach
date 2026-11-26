@@ -18,7 +18,7 @@ describe('timeLine — o tempo e o ritmo', () => {
     const l = timeLine(3000, 10);
     expect(l.timeLabel).toBe('50:00');
     expect(l.paceSeconds).toBe(300);
-    expect(l.paceLabel).toBe('5.00/km');
+    expect(l.paceLabel).toBe('5:00/km');
   });
 
   it('prefere o ritmo dado ao derivado — no trail não são o mesmo', () => {
@@ -36,7 +36,7 @@ describe('targetLine — o objetivo', () => {
   it('lê a coluna numérica e o ritmo-alvo', () => {
     const l = targetLine({ target_time_seconds: 3000, target_pace_seconds_per_km: 300, distance_km: 10 });
     expect(l.timeLabel).toBe('50:00');
-    expect(l.paceLabel).toBe('5.00/km');
+    expect(l.paceLabel).toBe('5:00/km');
   });
 
   /* O hub mostrava o objetivo só quando o campo de TEXTO estava preenchido,
@@ -59,9 +59,9 @@ describe('raceForecast — antes da prova', () => {
   it('objetivo quase alcançado: diz a diferença e chama-lhe alinhado', () => {
     const f = forecast({ name: 'Volkswagen Run', race_type: 'estrada', distance_km: 10, target_time_seconds: 3000 });
     expect(f.target.timeLabel).toBe('50:00');
-    expect(f.target.paceLabel).toBe('5.00/km');
+    expect(f.target.paceLabel).toBe('5:00/km');
     expect(f.predicted.timeLabel).toBe('50:52');
-    expect(f.predicted.paceLabel).toBe('5.05/km');
+    expect(f.predicted.paceLabel).toBe('5:05/km');
     expect(f.stance).toBe('alinhado');
     expect(f.line).toContain('0:52');
   });
@@ -88,7 +88,7 @@ describe('raceForecast — antes da prova', () => {
     expect(Math.round(f.effectiveDistanceKm * 10) / 10).toBe(29.8);
     expect(f.predicted.timeLabel).toBe('2:41:52');
     // O ritmo é sobre a distância REAL, que é a que ele vai correr.
-    expect(f.predicted.paceLabel).toBe('7.40/km');
+    expect(f.predicted.paceLabel).toBe('7:40/km');
   });
 
   it('avisa quando a previsão é uma extrapolação longa', () => {
@@ -121,11 +121,11 @@ describe('raceTimesBreakdown — depois da prova', () => {
     const b = raceTimesBreakdown(outcome, RACE);
 
     expect(b.real.timeLabel).toBe('51:51');
-    expect(b.real.paceLabel).toBe('5.11/km');
+    expect(b.real.paceLabel).toBe('5:11/km');
 
     const objetivo = b.rows.find((r) => r.key === 'objetivo');
     expect(objetivo.timeLabel).toBe('55:00');
-    expect(objetivo.paceLabel).toBe('5.30/km');
+    expect(objetivo.paceLabel).toBe('5:30/km');
     // Bateu o objetivo por 3:09 — negativo porque foi mais rápido.
     expect(objetivo.delta).toBe(-189);
     expect(describeDelta(objetivo.delta)).toBe('3:09 mais rápido');
@@ -168,8 +168,8 @@ describe('raceTimesBreakdown — o ritmo do melhor anterior', () => {
     };
     const { rows } = raceTimesBreakdown(outcome, { distance_km: 21.0975 });
     const melhor = rows.find((r) => r.key === 'melhor');
-    // 1:00:00 em 12 km = 5.00/km. Pela distância da prova dariam 2.51/km.
-    expect(melhor.paceLabel).toBe('5.00/km');
+    // 1:00:00 em 12 km = 5:00/km. Pela distância da prova dariam 2:51/km.
+    expect(melhor.paceLabel).toBe('5:00/km');
   });
 
   it('sem a distância do recorde, mostra o tempo sem ritmo em vez de um ritmo falso', () => {
@@ -193,18 +193,18 @@ describe('targetLine — a cascata do objetivo', () => {
   it('a coluna numérica manda', () => {
     const l = targetLine({ distance_km: 21.1, target_time_seconds: 6720, target_pace_seconds_per_km: 318, target_time: '2:00:00' });
     expect(l.timeLabel).toBe('1:52:00');
-    expect(l.paceLabel).toBe('5.18/km');
+    expect(l.paceLabel).toBe('5:18/km');
   });
 
   it('sem coluna numérica, lê o texto livre do rascunho', () => {
     const l = targetLine({ distance_km: 21.1, target_time: '1:52:00', target_pace: '5.18' });
     expect(l.timeLabel).toBe('1:52:00');
-    expect(l.paceLabel).toBe('5.18/km');
+    expect(l.paceLabel).toBe('5:18/km');
   });
 
   it('com o tempo em texto e sem ritmo, deriva o ritmo da distância', () => {
     const l = targetLine({ distance_km: 21.1, target_time: '1:52:00' });
-    expect(l.paceLabel).toBe('5.18/km');
+    expect(l.paceLabel).toBe('5:18/km');
   });
 
   it('sem objetivo nenhum, null', () => {

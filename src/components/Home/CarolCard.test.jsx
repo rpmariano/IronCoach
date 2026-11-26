@@ -580,9 +580,9 @@ describe('CarolCard — o cartão da Carol no Início', () => {
       // O pequeno-almoço das 6:15 já passou: não se manda tomar.
       expect(aviso.textContent).toMatch(/^Hoje é dia de prova: Corrida do Tejo, partida às 9:00\. Chegada às 8:00, água até às 8:15 e aquecimento às 8:35\./);
       expect(aviso.textContent).not.toMatch(/pequeno-almoço/i);
-      // O primeiro km é mais lento que a base (48:00 → 4.48, +6 s), na
-      // grafia de ritmo da app (formatPace: "4.54", não "4:54/km").
-      expect(aviso.textContent).toMatch(/O teu plano km a km está no hub da prova: arrancas a 4\.54\.$/);
+      // O primeiro km é mais lento que a base (48:00 → 4:48, +6 s), na
+      // grafia de ritmo da app (formatPace: "4:54", sem o "/km").
+      expect(aviso.textContent).toMatch(/O teu plano km a km está no hub da prova: arrancas a 4:54\.$/);
       expect(screen.getByTestId('carol-card-action')).toHaveTextContent('Abrir o plano da prova');
       // No dia da prova a água é a do horário dela; e o item do plano não se
       // repete: a frase da prova já disse o que é hoje.

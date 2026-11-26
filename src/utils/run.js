@@ -215,10 +215,11 @@ export function formatTargetTimeLabel(targetTime) {
 // ---------------------------------------------------------------------------
 // Ritmo (min/km)
 // ---------------------------------------------------------------------------
-// Convenção da app: o ritmo é SEMPRE apresentado com ponto a separar minutos de
-// segundos — "5.20" são 5min20s/km, não 5,2 minutos. Na entrada aceitamos ponto,
-// vírgula ou dois-pontos, porque o utilizador escreve as três; à saída
-// normalizamos sempre para ponto.
+// Convenção da app: o ritmo é SEMPRE apresentado com dois pontos a separar
+// minutos de segundos — "5:20" são 5min20s/km (decisão do Rui, 2026-11-26; até
+// aí era com ponto, "5.20", que se lia como 5,2 minutos). Na entrada aceitamos
+// ponto, vírgula ou dois-pontos, porque o utilizador escreve as três; à saída
+// normalizamos sempre para dois pontos.
 
 export function parsePaceToSeconds(paceStr) {
   if (!paceStr) return null;
@@ -239,8 +240,8 @@ export function parsePaceToSeconds(paceStr) {
 }
 
 // Delega em @formulas/paceFormat.ts (T1.5) — única implementação, partilhada
-// com a Carol (specs/formulas-checklist.md Fase F). O formato de PONTO
-// ("5.20") é o canónico da app desde a Fase D.
+// com a Carol (specs/formulas-checklist.md Fase F). O formato de DOIS PONTOS
+// ("5:20") é o canónico da app desde 2026-11-26.
 export function formatPace(secondsPerKm) {
   return sharedFormatPaceMinKm(secondsPerKm);
 }

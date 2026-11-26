@@ -104,7 +104,7 @@ export default function PaceCalculatorSheet({ onClose }) {
           />
         </div>
 
-        {/* O resultado por extenso, na convenção da app para o ritmo (5.20/km).
+        {/* O resultado por extenso, na convenção da app para o ritmo (5:20/km).
             Não repete os campos por decoração: é a frase que se lê de uma vez,
             e é ela que confirma qual das três coisas mudou. */}
         <GlassCard tone="run" glow padding={14} radius={20}>

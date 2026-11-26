@@ -9,7 +9,7 @@ const run = (distance_km, duration_seconds) => ({ id: 'r1', distance_km, duratio
 
 describe('doneLine', () => {
   it('a corrida feita, com o ritmo, e cumprida', () => {
-    expect(doneLine(corrida(), { runs: [run(8.2, 8.2 * 331)] })).toEqual({ text: '8,2 km a 5.31 por km.', verdict: 'Cumprido.' });
+    expect(doneLine(corrida(), { runs: [run(8.2, 8.2 * 331)] })).toEqual({ text: '8,2 km a 5:31 por km.', verdict: 'Cumprido.' });
   });
 
   it('abaixo do pedido diz quanto; bem acima também', () => {

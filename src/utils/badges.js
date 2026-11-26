@@ -826,7 +826,7 @@ function badgeDeNiveis({
   centroCompara = true,
   /* A ESCALA QUE DESCE. Todos os outros badges de níveis sobem — mais
      metros, mais quilómetros, mais VDOT — e o degrau ganha-se com `>=`. O
-     Passo é o único que desce: 4.15/km é melhor do que 6.00/km, e o degrau
+     Passo é o único que desce: 4:15/km é melhor do que 6:00/km, e o degrau
      ganha-se com `<=`. Em vez de um segundo motor, é este parâmetro que
      vira as três comparações que dependem do sentido (o degrau atingido, o
      que falta para o seguinte, e a proporção do anel). Com `false` — o
@@ -834,8 +834,8 @@ function badgeDeNiveis({
   menorEMelhor = false,
   /* Como se escreve a DISTÂNCIA até ao degrau seguinte, quando ela não se
      escreve como um valor. Num acumulado a diferença é da mesma espécie que
-     o total (faltam "300 m"), mas num passo não é: a diferença entre 6.00 e
-     5.00 são 60 segundos por km, não um ritmo de "1.00/km". Por omissão usa
+     o total (faltam "300 m"), mas num passo não é: a diferença entre 6:00 e
+     5:00 são 60 segundos por km, não um ritmo de "1:00/km". Por omissão usa
      o mesmo `fmtValor` de sempre. */
   fmtDiferenca = null,
 }) {
@@ -911,7 +911,7 @@ function badgeDeNiveis({
       state: emCurso ? 'progress' : 'empty',
       // A proporção do caminho até ao bronze, pelo lado certo da divisão: a
       // subir é quanto já se tem do alvo, a descer é quanto o alvo já é do
-      // que se tem (6.30/km com o bronze em 6.00 lê-se 95% do caminho).
+      // que se tem (6:30/km com o bronze em 6:00 lê-se 95% do caminho).
       ring: emCurso ? Math.min(menorEMelhor ? alvo / totalAtual : totalAtual / alvo, 0.99) : 0,
       centro: emCurso && centroCompara
         ? `${fmtCentroValor(totalAtual)}/${fmtCentroValor(alvo)}`
@@ -2566,7 +2566,7 @@ function sequencia({ completed, raceEvents, runs, today }) {
 
 /* chave     melhor_passo
    regra     "O teu passo mais rápido de sempre, de prova ou de treino:
-             6.00/km (bronze), 5.00/km (prata), 4.15/km (ouro)."
+             6:00/km (bronze), 5:00/km (prata), 4:15/km (ouro)."
    campo     runs.distance_km + runs.duration_seconds (e, quando existirem,
              os parciais de runs.details.splits) — a medida é a do
              `computeBestPace` (@formulas/bestPace.ts), a mesma que o
@@ -2577,7 +2577,7 @@ function sequencia({ completed, raceEvents, runs, today }) {
              este badge, é uma corrida que ele não sabe ler.
    cor       --run (ciano) — ver abaixo.
    família   desempenho — é velocidade pura, a medida mais direta que há.
-   níveis    sim: bronze 6.00/km, prata 5.00/km, ouro 4.15/km.
+   níveis    sim: bronze 6:00/km, prata 5:00/km, ouro 4:15/km.
 
    ── DE ONDE VEM ─────────────────────────────────────────────────────────
    Era um dos seis encaixes do medalhão "Os Níveis" (o antigo
@@ -2611,7 +2611,7 @@ const PASSO_LIMIARES = [360, 300, 255];
 
 /* Abaixo disto não é um atleta a correr: é o GPS a delirar, uma saída de
    bicicleta mal classificada, ou um tempo escrito em minutos onde deviam
-   estar horas. O recorde mundial dos 10 000 m anda nos ~157 s/km (2.37/km),
+   estar horas. O recorde mundial dos 10 000 m anda nos ~157 s/km (2:37/km),
    e 150 fica um pouco abaixo disso — o suficiente para nunca cortar um
    registo humano, que é o erro que não se pode cometer, e para apanhar o
    lixo que é ordens de grandeza mais rápido.
@@ -2693,7 +2693,7 @@ function melhorPasso({ runs, today }) {
   return badgeDeNiveis({
     key: 'melhor_passo',
     name: 'O Passo',
-    rule: 'O teu passo mais rápido de sempre, de prova ou de treino — 6.00/km para bronze, 5.00/km para prata, 4.15/km para ouro.',
+    rule: 'O teu passo mais rápido de sempre, de prova ou de treino — 6:00/km para bronze, 5:00/km para prata, 4:15/km para ouro.',
     familia: 'desempenho',
     cor: 'run',
     glifo: 'zap',
@@ -2707,7 +2707,7 @@ function melhorPasso({ runs, today }) {
     menorEMelhor: true,
     fmtValor: (v) => `${formatPace(v)}/km`,
     // A diferença entre dois passos são segundos por km, não um passo: "60 s
-    // por km" e nunca "1.00/km", que era o mesmo número a dizer outra coisa.
+    // por km" e nunca "1:00/km", que era o mesmo número a dizer outra coisa.
     fmtDiferenca: (d) => `${Math.max(1, Math.round(d))} s por km`,
     fmtCentroValor: (v) => formatPace(v),
     // "6.30/6.00" não cabe no anel; mostra-se só o corrente, e é o arco que
