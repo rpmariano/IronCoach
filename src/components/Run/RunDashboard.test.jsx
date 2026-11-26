@@ -169,7 +169,7 @@ describe('R3 — "na última" é a corrida mais recente', () => {
   it('com os dados por data descendente (como o store), mostra a de 3 out', () => {
     render(<ScatterTrendChart data={pontos} />);
     const f = screen.getByTestId('chart-frame');
-    expect(within(f).getByTestId('chart-frame-value')).toHaveTextContent('5.00');
+    expect(within(f).getByTestId('chart-frame-value')).toHaveTextContent('5:00');
     expect(within(f).getByTestId('chart-frame-unit')).toHaveTextContent('/km a 150 bpm na última');
   });
 
@@ -215,7 +215,7 @@ describe('R3 — "na última" é a corrida mais recente', () => {
 });
 
 describe('R4 — Pace médio só com corridas com distância e tempo, e diz "N de M"', () => {
-  it('10 km a 5:00 mais 10 km sem tempo dá 5.00/km, não 2.30/km, e diz "1 de 2 com tempo"', () => {
+  it('10 km a 5:00 mais 10 km sem tempo dá 5:00/km, não 2:30/km, e diz "1 de 2 com tempo"', () => {
     monta({
       runs: [
         corrida({ id: 'a', distance_km: 10, duration_seconds: 3000 }),
@@ -223,7 +223,7 @@ describe('R4 — Pace médio só com corridas com distância e tempo, e diz "N d
       ],
     });
     const l = linha('Pace médio');
-    expect(within(l).getByTestId('row-value')).toHaveTextContent('5.00/km');
+    expect(within(l).getByTestId('row-value')).toHaveTextContent('5:00/km');
     expect(l).toHaveTextContent('1 de 2 com tempo');
   });
 
@@ -235,7 +235,7 @@ describe('R4 — Pace médio só com corridas com distância e tempo, e diz "N d
       ],
     });
     const l = linha('Pace médio');
-    expect(within(l).getByTestId('row-value')).toHaveTextContent('5.00/km');
+    expect(within(l).getByTestId('row-value')).toHaveTextContent('5:00/km');
     expect(l).toHaveTextContent('1 de 2 com tempo');
   });
 

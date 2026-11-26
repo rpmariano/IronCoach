@@ -21,7 +21,7 @@ A aplicação React utiliza o framework de testes **Vitest** emparelhado com o *
 
 ### 🧪 Lista de Ficheiros de Teste
 1. `src/utils/run.test.js`:
-   * Testa a conversão bidirecional de ritmos (min/km com ponto decimal) e a correspondência do enum `RACE_TYPES` com os constrangimentos do banco de dados Postgres.
+   * Testa a conversão bidirecional de ritmos (min/km com dois pontos à saída; ponto, vírgula ou dois pontos à entrada) e a correspondência do enum `RACE_TYPES` com os constrangimentos do banco de dados Postgres.
 2. `src/utils/body.test.js`:
    * Testa o cálculo dinâmico da idade a partir de `birth_date` em hora local.
 3. `src/utils/nutrition.test.js`:

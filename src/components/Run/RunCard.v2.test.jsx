@@ -49,7 +49,7 @@ describe('RunCard v2 — o cartão plano', () => {
     expect(within(card).getByText('Corrida de Hoje')).toBeInTheDocument();
     expect(within(card).getByText(/07:30/)).toBeInTheDocument();
     expect(within(card).getByText('10')).toBeInTheDocument();
-    expect(within(card).getByText('5.00')).toBeInTheDocument();
+    expect(within(card).getByText('5:00')).toBeInTheDocument();
     expect(within(card).getByText('/km')).toBeInTheDocument();
   });
 

@@ -52,11 +52,11 @@ Deno.test("computeRunRecordContext: sem candidatos, tudo null", () => {
 });
 
 Deno.test("computeRunRecordContext: bate o ritmo no escalão dos 10 km — recorde de pace", () => {
-  const candidates = [{ date: "2026-08-01", distance_km: 10, duration_seconds: 3000 }]; // 5.00/km
-  const run = { id: "n", date: "2026-09-20", distance_km: 10, duration_seconds: 2880, details: null }; // 4.48/km
+  const candidates = [{ date: "2026-08-01", distance_km: 10, duration_seconds: 3000 }]; // 5:00/km
+  const run = { id: "n", date: "2026-09-20", distance_km: 10, duration_seconds: 2880, details: null }; // 4:48/km
   const { bestPacesLine, personalRecordKind } = computeRunRecordContext(run, candidates);
   assertEquals(personalRecordKind, "pace");
-  assertStringIncludes(bestPacesLine!, "10k 5.00 (2026-08-01)");
+  assertStringIncludes(bestPacesLine!, "10k 5:00 (2026-08-01)");
 });
 
 Deno.test("computeRunRecordContext: mais longa do que sempre, com pelo menos três corridas antes — recorde de distância", () => {
@@ -70,11 +70,11 @@ Deno.test("computeRunRecordContext: mais longa do que sempre, com pelo menos tr�
 });
 
 Deno.test("computeRunRecordContext: mais lenta do que o melhor não é recorde, mas os melhores por escalão aparecem na mesma", () => {
-  const candidates = [{ date: "2026-08-01", distance_km: 10, duration_seconds: 2800 }]; // 4.40/km
-  const run = { id: "n", date: "2026-09-20", distance_km: 10, duration_seconds: 3000, details: null }; // 5.00/km
+  const candidates = [{ date: "2026-08-01", distance_km: 10, duration_seconds: 2800 }]; // 4:40/km
+  const run = { id: "n", date: "2026-09-20", distance_km: 10, duration_seconds: 3000, details: null }; // 5:00/km
   const { bestPacesLine, personalRecordKind } = computeRunRecordContext(run, candidates);
   assertEquals(personalRecordKind, null);
-  assertStringIncludes(bestPacesLine!, "10k 4.40 (2026-08-01)");
+  assertStringIncludes(bestPacesLine!, "10k 4:40 (2026-08-01)");
 });
 
 Deno.test("resolveReanalysisTypes: o corpo válido ganha; inválido ou ausente fica o gravado; tipo de outro kind nunca passa", () => {
@@ -165,9 +165,9 @@ Deno.test("formatSplitsLine: o ritmo de cada volta, com o número da volta mesmo
       { distance_km: 1, time_seconds: 312 },
       { distance_km: 0.5, time_seconds: 160 },
     ]),
-    "Parciais (ritmo de cada volta, por km): 1: 5'00\" · 3: 5'12\" · 4 (500 m): 5'20\". Km mais rápido: o 1 (5'00\"); mais lento: o 3 (5'12\")" +
+    "Parciais (ritmo de cada volta, por km): 1: 5:00 · 3: 5:12 · 4 (500 m): 5:20. Km mais rápido: o 1 (5:00); mais lento: o 3 (5:12)" +
       ". As voltas que não são de 1 km (4: 500 m) nunca são «um km» — nem o mais rápido, nem o mais lento, nem «o último km», nem " +
-      "«1 km em …»; se falares de uma, diz a distância («os 500 m da volta 4 a 5'20\"/km»)",
+      "«1 km em …»; se falares de uma, diz a distância («os 500 m da volta 4 a 5:20/km»)",
   );
 });
 
@@ -192,14 +192,14 @@ Deno.test("formatSplitsLine: o resto de 0,02 km (relógio a parar) não é uma v
       { distance_km: 1, time_seconds: 387 },
       { distance_km: 0.02, time_seconds: 6 },
     ]),
-    "Parciais (ritmo de cada volta, por km): 1: 6'25\" · 2: 6'27\". Km mais rápido: o 1 (6'25\"); mais lento: o 2 (6'27\")",
+    "Parciais (ritmo de cada volta, por km): 1: 6:25 · 2: 6:27. Km mais rápido: o 1 (6:25); mais lento: o 2 (6:27)",
   );
 });
 
-Deno.test("formatSplitsLine: 4'59,6\" arredonda para 5'00\", não 4'60\"", () => {
+Deno.test("formatSplitsLine: 4:59,6 arredonda para 5:00, nunca 4:60", () => {
   assertEquals(
     formatSplitsLine([{ distance_km: 1, time_seconds: 299.6 }, { distance_km: 1, time_seconds: 305 }]),
-    "Parciais (ritmo de cada volta, por km): 1: 5'00\" · 2: 5'05\". Km mais rápido: o 1 (5'00\"); mais lento: o 2 (5'05\")",
+    "Parciais (ritmo de cada volta, por km): 1: 5:00 · 2: 5:05. Km mais rápido: o 1 (5:00); mais lento: o 2 (5:05)",
   );
 });
 
@@ -262,7 +262,7 @@ Deno.test("caminhada: nunca é recorde de corrida, e não esconde os recordes da
   );
   assertEquals(walk.personalRecordKind, null);
   // A "caminhada" absurda a 3'/km não é o melhor dos 5 km.
-  assertStringIncludes(walk.bestPacesLine ?? "", "5k 5.00");
+  assertStringIncludes(walk.bestPacesLine ?? "", "5k 5:00");
 });
 
 Deno.test("TRAINING_TYPE_KEYS: a ativação pré-prova grava-se como tipo de treino (bug #84)", () => {
@@ -275,20 +275,20 @@ const RUI_SPLITS = [
   { distance_km: 1, time_seconds: 317 }, { distance_km: 1, time_seconds: 325 }, { distance_km: 0.12, time_seconds: 35 },
 ];
 
-Deno.test("formatSplitsLine (bug #94): a sobra de 0,12 km não é um km — o mais rápido é o de 5'17\"", () => {
+Deno.test("formatSplitsLine (bug #94): a sobra de 0,12 km não é um km — o mais rápido é o de 5:17", () => {
   const line = formatSplitsLine(RUI_SPLITS)!;
-  assert(line.includes("6 (120 m): 4'52\""), line);
-  assert(line.includes("Km mais rápido: o 3 (5'17\"); mais lento: o 1 (5'33\")"), line);
-  assert(line.includes("nunca são «um km»") && line.includes("«os 120 m da volta 6 a 4'52\"/km»"), line);
-  assert(!line.includes("6: 4'52"), line);
+  assert(line.includes("6 (120 m): 4:52"), line);
+  assert(line.includes("Km mais rápido: o 3 (5:17); mais lento: o 1 (5:33)"), line);
+  assert(line.includes("nunca são «um km»") && line.includes("«os 120 m da volta 6 a 4:52/km»"), line);
+  assert(!line.includes("6: 4:52"), line);
 });
 
 Deno.test("formatSplitsLine: voltas de 400 m (intervalos) — sem «km mais rápido», com a distância", () => {
   const line = formatSplitsLine([{ distance_km: 0.4, time_seconds: 100 }, { distance_km: 0.4, time_seconds: 98 }, { distance_km: 0.4, time_seconds: 101 }])!;
-  assert(line.startsWith("Parciais (ritmo de cada volta, por km): 1 (400 m): 4'10\" · 2 (400 m): 4'05\""), line);
+  assert(line.startsWith("Parciais (ritmo de cada volta, por km): 1 (400 m): 4:10 · 2 (400 m): 4:05"), line);
   assert(!line.includes("Km mais rápido"), line);
   // 0,98 km do GPS é um km.
-  assert(formatSplitsLine([{ distance_km: 0.98, time_seconds: 300 }, { distance_km: 1.02, time_seconds: 310 }])!.includes("Km mais rápido: o 2 (5'04\"); mais lento: o 1 (5'06\")"));
+  assert(formatSplitsLine([{ distance_km: 0.98, time_seconds: 300 }, { distance_km: 1.02, time_seconds: 310 }])!.includes("Km mais rápido: o 2 (5:04); mais lento: o 1 (5:06)"));
 });
 
 Deno.test("buildYesterdaySection (bug #94): só ginásio ontem — nada de «0 km de corrida», cardio à parte", () => {
@@ -323,7 +323,7 @@ Deno.test("formatSplitsLine (bug #101): a subida de cada parcial, quando a leitu
     { distance_km: 1, time_seconds: 312 }, { distance_km: 1, time_seconds: 356, elevation_gain_m: 24 },
     { distance_km: 1, time_seconds: 359, elevation_gain_m: 21.6 }, { distance_km: 1, time_seconds: 317, elevation_gain_m: 0 },
   ])!;
-  assert(line.includes("1: 5'12\" · 2: 5'56\" (+24 m) · 3: 5'59\" (+22 m) · 4: 5'17\" (+0 m)"), line);
+  assert(line.includes("1: 5:12 · 2: 5:56 (+24 m) · 3: 5:59 (+22 m) · 4: 5:17 (+0 m)"), line);
   // Sem subida por parcial, nada muda.
   assert(!formatSplitsLine([{ distance_km: 1, time_seconds: 312 }, { distance_km: 1, time_seconds: 356 }])!.includes(" m)"));
 });

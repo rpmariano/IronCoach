@@ -6,11 +6,11 @@ export default function RunningCard({
   tag = "Contínuo",
   distance = "11.32 km",
   time = "1h 05m",
-  pace = "5'45\"",
+  pace = "5:45",
   date = "30 jul 2026",
   isCollapsed: initialCollapsed = true,
   effortValue = 4,
-  coachAnalysis = "Hoje fixaste os 11.32 km num pace de 6'19\"/km com um RPE de 4/10 e FC de 142 bpm, o que fica 16s/km mais lento do que a tua média recente de 6'03\"/km, embora alinhado com a tendência geral de melhoria de ~20s/km face ao teu histórico mais antigo. O teu esforço percebido de 4/10 hoje foi significativamente mais baixo do que os 7/10 que registaste no mesmo percurso e pace no treino de ontem (com apenas 1 dia de intervalo), o que mostra uma recuperação neurológica rápida, mas a tua cadência de 146 spm continua criticamente baixa para este ritmo e exige atenção imediata para evitar sobrecarga nas articulações. Com uma média de 39.3 km/semana e corridas de 11.3 km em dias consecutivos (28, 29 e 30 de julho), estás a acumular bastante volume linear, pelo que o risco atual não é a falta de forma, mas sim a ineficiência da passada. Para o próximo treino, faz 8 km a ritmo suave, mas foca-te exclusivamente em manter a cadência acima dos 160 spm, encurtando o passo sem aumentar a velocidade.",
+  coachAnalysis = "Hoje fixaste os 11.32 km num pace de 6:19/km com um RPE de 4/10 e FC de 142 bpm, o que fica 16s/km mais lento do que a tua média recente de 6:03/km, embora alinhado com a tendência geral de melhoria de ~20s/km face ao teu histórico mais antigo. O teu esforço percebido de 4/10 hoje foi significativamente mais baixo do que os 7/10 que registaste no mesmo percurso e pace no treino de ontem (com apenas 1 dia de intervalo), o que mostra uma recuperação neurológica rápida, mas a tua cadência de 146 spm continua criticamente baixa para este ritmo e exige atenção imediata para evitar sobrecarga nas articulações. Com uma média de 39.3 km/semana e corridas de 11.3 km em dias consecutivos (28, 29 e 30 de julho), estás a acumular bastante volume linear, pelo que o risco atual não é a falta de forma, mas sim a ineficiência da passada. Para o próximo treino, faz 8 km a ritmo suave, mas foca-te exclusivamente em manter a cadência acima dos 160 spm, encurtando o passo sem aumentar a velocidade.",
   photos = [
     'https://images.unsplash.com/photo-1476480862126-209bfaa8edc8?w=300&q=80',
     'https://images.unsplash.com/photo-1502224562085-639556652f33?w=300&q=80'
@@ -111,7 +111,7 @@ export default function RunningCard({
               </div>
               <div className="rc-exp-metric-pill pace">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 2v2"/><path d="M12 20v2"/><path d="M4.93 4.93l1.41 1.41"/><path d="M17.66 17.66l1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="M6.34 17.66l-1.41 1.41"/><path d="M19.07 4.93l-1.41 1.41"/><path d="m12 12 5-5"/></svg>
-                <span>6'19"/km</span>
+                <span>6:19/km</span>
               </div>
             </div>
 

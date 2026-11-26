@@ -109,10 +109,10 @@ describe('Registo de corrida a partir do print · Design v2 (P2a)', () => {
     expect(dist).toHaveValue(10.04);
     expect(dist).toHaveClass('v2-num');
     expect(within(confirma).getByLabelText('Tempo')).toHaveValue('49:58');
-    expect(within(confirma).getByTestId('v2-reg-pace')).toHaveTextContent('4.59/km');
+    expect(within(confirma).getByTestId('v2-reg-pace')).toHaveTextContent('4:59/km');
     // Continua editável: corrigir a distância recalcula o ritmo.
     fireEvent.change(dist, { target: { value: '10' } });
-    expect(within(confirma).getByTestId('v2-reg-pace')).not.toHaveTextContent('4.59/km');
+    expect(within(confirma).getByTestId('v2-reg-pace')).not.toHaveTextContent('4:59/km');
 
     // Por baixo: o tipo de treino (Contínuo, como sempre), a data e a hora.
     expect(document.getElementById('rr-tipo-de-treino')).toHaveValue('continuo');

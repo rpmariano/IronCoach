@@ -43,16 +43,23 @@ describe('parsePaceToSeconds', () => {
 });
 
 describe('formatPace', () => {
-  it('apresenta sempre com ponto, segundos a dois dígitos', () => {
-    expect(formatPace(320)).toBe('5.20');
-    expect(formatPace(245)).toBe('4.05');
-    expect(formatPace(300)).toBe('5.00');
+  it('apresenta sempre com dois pontos, segundos a dois dígitos (2026-11-26)', () => {
+    expect(formatPace(320)).toBe('5:20');
+    expect(formatPace(245)).toBe('4:05');
+    expect(formatPace(300)).toBe('5:00');
   });
 
-  it('é o inverso de parsePaceToSeconds', () => {
-    for (const s of ['4.05', '5.20', '6.00']) {
+  it('59,5 s ou mais soma um minuto: 5:00, nunca 4:60', () => {
+    expect(formatPace(299.7)).toBe('5:00');
+    expect(formatPace(299.4)).toBe('4:59');
+  });
+
+  it('é o inverso de parsePaceToSeconds — e o atleta pode escrever com ponto ou dois pontos', () => {
+    for (const s of ['4:05', '5:20', '6:00']) {
       expect(formatPace(parsePaceToSeconds(s))).toBe(s);
     }
+    expect(formatPace(parsePaceToSeconds('5.09'))).toBe('5:09');
+    expect(formatPace(parsePaceToSeconds('5:09'))).toBe('5:09');
   });
 
   it('devolve vazio quando não há ritmo', () => {

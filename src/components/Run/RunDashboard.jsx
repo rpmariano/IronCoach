@@ -45,8 +45,8 @@ const dayLabel = (iso) => `${Number(iso.slice(8, 10))} ${MONTHS_ABBR[Number(iso.
    o gráfico "últimas 12 semanas"; o VDOT e os recordes são "de sempre". */
 
 // Antes deste ecrã tinha o seu próprio formatPace, com um formato visível
-// diferente do resto da app ("5:20/km" em vez de "5.20") — unificado por
-// pedido explícito (specs/formulas-checklist.md Fase D). paceLabel() só
+// diferente do resto da app — unificado por pedido explícito
+// (specs/formulas-checklist.md Fase D; o canónico é "5:20" desde 2026-11-26). paceLabel() só
 // acrescenta o "—" para dados em falta e o "/km", que aqui fazem parte do
 // texto (o formatPace canónico devolve só o número).
 function paceLabel(secPerKm) {

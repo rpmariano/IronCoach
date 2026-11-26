@@ -954,17 +954,17 @@ describe('Os Níveis — a escala VDOT', () => {
    PLAUSIBILIDADE — `user_badges` é append-only, e um ouro cunhado por um
    GPS a delirar ficava lá para sempre. */
 describe('O Passo — o passo mais rápido de sempre', () => {
-  // 10 km em 50:00 = 300 s/km, que é o limiar da prata (5.00/km).
+  // 10 km em 50:00 = 300 s/km, que é o limiar da prata (5:00/km).
   const rapido = (date, over = {}) => treino(date, { distance_km: 10, duration_seconds: 3000, ...over });
 
-  it('10 km a 5.00/km dão prata, e o prémio guarda os segundos por km', () => {
+  it('10 km a 5:00/km dão prata, e o prémio guarda os segundos por km', () => {
     const r = compute({ runs: [rapido('2026-05-01')] });
     const b = bad(r, 'melhor_passo');
     expect(b.state).toBe('won');
     expect(b.tier).toBe('prata');
     expect(b.familia).toBe('desempenho');
-    // O número do anel é um PASSO, não um número solto: "5.00" e não "300".
-    expect(b.centro).toBe('5.00');
+    // O número do anel é um PASSO, não um número solto: "5:00" e não "300".
+    expect(b.centro).toBe('5:00');
     expect(b.linha).toBe('Prata · faltam 45 s por km para ouro');
 
     // Um degrau é um prémio: quem chega à prata ganha também o bronze, os
@@ -974,7 +974,7 @@ describe('O Passo — o passo mais rápido de sempre', () => {
     expect(due[1]).toMatchObject({
       tier: 'prata', periodKey: '', value: 300, valueUnit: 'seconds', awardedOn: '2026-05-01',
     });
-    expect(due[1].line).toContain('5.00/km');
+    expect(due[1].line).toContain('5:00/km');
   });
 
   /* A lei da cor, e a razão de ele não ser âmbar: conta treino também. */
@@ -1001,23 +1001,23 @@ describe('O Passo — o passo mais rápido de sempre', () => {
   it('só a corrida que baixa o passo conta, venha ela antes ou depois', () => {
     const r = compute({
       runs: [
-        treino('2026-03-01', { distance_km: 10, duration_seconds: 3600 }), // 6.00/km
-        rapido('2026-05-01'), // 5.00/km — baixa
-        treino('2026-07-01', { distance_km: 10, duration_seconds: 3300 }), // 5.30/km — não baixa
+        treino('2026-03-01', { distance_km: 10, duration_seconds: 3600 }), // 6:00/km
+        rapido('2026-05-01'), // 5:00/km — baixa
+        treino('2026-07-01', { distance_km: 10, duration_seconds: 3300 }), // 5:30/km — não baixa
       ],
     });
     const b = bad(r, 'melhor_passo');
     expect(b.tier).toBe('prata');
-    expect(b.centro).toBe('5.00');
+    expect(b.centro).toBe('5:00');
     expect(estados(b, 'conta').map((s) => s.date)).toEqual(['2026-05-01', '2026-03-01']);
     expect(estados(b, 'falhou').map((s) => s.date)).toEqual(['2026-07-01']);
     expect(estados(b, 'indeterminada')).toHaveLength(0);
-    // O prémio do bronze é do dia em que o passo passou os 6.00/km, não do
+    // O prémio do bronze é do dia em que o passo passou os 6:00/km, não do
     // dia do recorde: é o primeiro dia em que os dados o provam.
     expect(dueDe(r, 'melhor_passo').map((d) => d.awardedOn)).toEqual(['2026-03-01', '2026-05-01']);
   });
 
-  it('a escala inteira: 6.00 bronze, 5.00 prata, 4.15 ouro', () => {
+  it('a escala inteira: 6:00 bronze, 5:00 prata, 4:15 ouro', () => {
     const tier = (segundos) => bad(compute({
       runs: [treino('2026-05-01', { distance_km: 10, duration_seconds: segundos * 10 })],
     }), 'melhor_passo').tier;
@@ -1029,20 +1029,20 @@ describe('O Passo — o passo mais rápido de sempre', () => {
     expect(tier(200)).toBe('ouro');
 
     const b = bad(compute({ runs: [treino('2026-05-01', { distance_km: 10, duration_seconds: 2550 })] }), 'melhor_passo');
-    expect(b.centro).toBe('4.15');
+    expect(b.centro).toBe('4:15');
     expect(b.linha).toBe('Ouro — o degrau mais alto');
   });
 
   it('a caminho do bronze diz quantos segundos por km faltam', () => {
     const r = compute({
-      runs: [treino('2026-05-01', { distance_km: 10, duration_seconds: 3900 })], // 6.30/km
+      runs: [treino('2026-05-01', { distance_km: 10, duration_seconds: 3900 })], // 6:30/km
     });
     const b = bad(r, 'melhor_passo');
     expect(b.state).toBe('progress');
-    expect(b.centro).toBe('6.30');
+    expect(b.centro).toBe('6:30');
     expect(b.linha).toBe('faltam 30 s por km para bronze');
-    // O anel mede o caminho pelo lado certo da divisão: 6.30/km está perto
-    // dos 6.00, não a 108% deles.
+    // O anel mede o caminho pelo lado certo da divisão: 6:30/km está perto
+    // dos 6:00, não a 108% deles.
     expect(b.ring).toBeGreaterThan(0.9);
     expect(b.ring).toBeLessThan(1);
     expect(dueDe(r, 'melhor_passo')).toEqual([]);
@@ -1051,7 +1051,7 @@ describe('O Passo — o passo mais rápido de sempre', () => {
   it('sem corridas que se possam medir, fica por ganhar e diz o que falta', () => {
     const b = bad(compute(), 'melhor_passo');
     expect(b.state).toBe('empty');
-    expect(b.centro).toBe('6.00');
+    expect(b.centro).toBe('6:00');
     expect(b.linha).toContain('5, 10 ou 21 km');
     expect(b.ring).toBe(0);
   });
@@ -1060,7 +1060,7 @@ describe('O Passo — o passo mais rápido de sempre', () => {
      parcial cai nos escalões) não conta contra ninguém. */
   it('uma saída de 3 km fica indeterminada, não falhada', () => {
     const b = bad(compute({
-      runs: [treino('2026-05-01', { distance_km: 3, duration_seconds: 900 })], // 5.00/km, mas 3 km
+      runs: [treino('2026-05-01', { distance_km: 3, duration_seconds: 900 })], // 5:00/km, mas 3 km
     }), 'melhor_passo');
     expect(b.state).toBe('empty');
     expect(b.indeterminadas.n).toBe(1);
@@ -1073,7 +1073,7 @@ describe('O Passo — o passo mais rápido de sempre', () => {
      mesmo depois de o atleta corrigir a corrida. */
   it('um GPS a delirar não cunha ouro nenhum', () => {
     const r = compute({
-      runs: [treino('2026-05-01', { distance_km: 10, duration_seconds: 1200 })], // 2.00/km
+      runs: [treino('2026-05-01', { distance_km: 10, duration_seconds: 1200 })], // 2:00/km
     });
     const b = bad(r, 'melhor_passo');
     expect(b.state).toBe('empty');
@@ -1086,11 +1086,11 @@ describe('O Passo — o passo mais rápido de sempre', () => {
      o limite fica ABAIXO do recorde mundial dos 10 000 m (~157 s/km). */
   it('um passo de recorde mundial passa: o teto fica abaixo dele', () => {
     const b = bad(compute({
-      runs: [treino('2026-05-01', { distance_km: 10, duration_seconds: 1570 })], // 2.37/km
+      runs: [treino('2026-05-01', { distance_km: 10, duration_seconds: 1570 })], // 2:37/km
     }), 'melhor_passo');
     expect(b.state).toBe('won');
     expect(b.tier).toBe('ouro');
-    expect(b.centro).toBe('2.37');
+    expect(b.centro).toBe('2:37');
   });
 
   /* Um parcial de 5 km vale como esforço: é a régua do `computeBestPace`,
@@ -1098,12 +1098,12 @@ describe('O Passo — o passo mais rápido de sempre', () => {
   it('um parcial de 5 km dentro de uma corrida longa conta', () => {
     const b = bad(compute({
       runs: [treino('2026-05-01', {
-        distance_km: 15, duration_seconds: 5400, // 6.00/km na saída inteira
-        details: { splits: [{ distance_km: 5, time_seconds: 1400 }] }, // 4.40/km
+        distance_km: 15, duration_seconds: 5400, // 6:00/km na saída inteira
+        details: { splits: [{ distance_km: 5, time_seconds: 1400 }] }, // 4:40/km
       })],
     }), 'melhor_passo');
     expect(b.tier).toBe('prata');
-    expect(b.centro).toBe('4.40');
+    expect(b.centro).toBe('4:40');
     expect(estados(b, 'conta')[0].meta).toContain('parcial');
   });
 });

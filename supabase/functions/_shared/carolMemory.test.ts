@@ -146,12 +146,12 @@ Deno.test("retrato da época: meses, tendência de 12 semanas, a mais longa, gin
 // Ação 5.3: melhores ritmos por escalão e forma aeróbica (VDOT) no retrato.
 Deno.test("retrato da época: melhores ritmos por escalão e forma aeróbica, com o rodapé só quando há alguma das duas", () => {
   const runs = [
-    { date: "2026-03-10", distance_km: 10, duration_seconds: 3000, kind: "competicao" }, // 5.00/km
-    { date: "2026-08-10", distance_km: 10, duration_seconds: 2700, kind: "competicao" }, // 4.30/km, mais rápida
-    { date: "2026-09-01", distance_km: 5, duration_seconds: 1200, kind: "treino", training_type: "tempo" }, // 4.00/km
+    { date: "2026-03-10", distance_km: 10, duration_seconds: 3000, kind: "competicao" }, // 5:00/km
+    { date: "2026-08-10", distance_km: 10, duration_seconds: 2700, kind: "competicao" }, // 4:30/km, mais rápida
+    { date: "2026-09-01", distance_km: 5, duration_seconds: 1200, kind: "treino", training_type: "tempo" }, // 4:00/km
   ];
   const text = buildAthletePortrait({ runs, gymDates: [], body: [], racesCompleted: 0 }, "2026-09-18")!;
-  assertStringIncludes(text, "- Melhores ritmos da época: 5k 4.00 (2026-09-01) · 10k 4.30 (2026-08-10)");
+  assertStringIncludes(text, "- Melhores ritmos da época: 5k 4:00 (2026-09-01) · 10k 4:30 (2026-08-10)");
   assertStringIncludes(text, "- Forma aeróbica: ");
   assertStringIncludes(text, "em set).");
   assertStringIncludes(text, "Os melhores ritmos e a forma são para dar medida, não para elogiar por rotina.");
@@ -182,7 +182,7 @@ Deno.test("fetchPortraitBlock: as quatro consultas (com projeção details->spli
   });
   const text = await fetchPortraitBlock(sb, "u1", "2026-09-18");
   assertStringIncludes(text!, "- Corrida: 20 km em 2 corridas nos últimos 12 meses");
-  assertStringIncludes(text!, "- Melhores ritmos da época: 10k 4.30 (2026-08-10)");
+  assertStringIncludes(text!, "- Melhores ritmos da época: 10k 4:30 (2026-08-10)");
   assertStringIncludes(text!, "- Ginásio: 1 sessões em 12 meses");
   assertStringIncludes(text!, "- Provas concluídas em 12 meses: 1");
   assertStringIncludes(text!, "- Peso: 77.5 kg a 2026-01-05 → 74 kg a 2026-09-10 (-3.5 kg); massa gorda -3 pontos");

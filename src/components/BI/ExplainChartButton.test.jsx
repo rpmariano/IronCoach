@@ -28,11 +28,11 @@ describe('buildChartExplainText', () => {
     const t = buildChartExplainText({
       title: 'X',
       series: [
-        { label: 'Ritmo', values: [330], format: (v) => `${Math.floor(v / 60)}.${String(v % 60).padStart(2, '0')}/km` },
+        { label: 'Ritmo', values: [330], format: (v) => `${Math.floor(v / 60)}:${String(v % 60).padStart(2, '0')}/km` },
         { label: 'Nada', values: [null] },
       ],
     });
-    expect(t).toBe('Explica-me a leitura do gráfico «X». Ritmo: 5.30/km (um só ponto).');
+    expect(t).toBe('Explica-me a leitura do gráfico «X». Ritmo: 5:30/km (um só ponto).');
   });
 
   it('seriesSummary: estável quando quase não mexe', () => {

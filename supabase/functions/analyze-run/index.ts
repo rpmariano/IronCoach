@@ -569,19 +569,19 @@ export const SPLIT_ANOMALY_RULE =
  *  distância ou sem tempo fica de fora, mas os outros mantêm o número da volta. */
 export function formatSplitsLine(splits: unknown): string | null {
   if (!Array.isArray(splits)) return null;
-  // O formato do "Pace" deste prompt (5'20"), não o "5.20" do ecrã — no
-  // mesmo texto, os dois lado a lado liam-se como 5,2 minutos. Arredonda
-  // o total de segundos, para 4'59,6" dar 5'00" e não 4'60".
-  const fmt = (sec: number) => `${Math.floor(sec / 60)}'${String(sec % 60).padStart(2, "0")}"`;
+  // O ritmo no formato canónico da app ("5:20", @formulas/paceFormat.ts) — o
+  // mesmo do ecrã e do resto deste prompt (2026-11-26; antes era 5'20").
+  // Arredonda o total de segundos: 4:59,6 dá 5:00, nunca 4:60.
+  const fmt = (sec: number) => formatPaceMinKm(sec);
   // Menos de 0,1 km é o relógio a parar (bug #61: 0,02 km em 6 s virava um
-  // "pico a 5'00"" que a Carol criticava): não é uma volta, fica de fora.
+  // "pico a 5:00" que a Carol criticava): não é uma volta, fica de fora.
   const laps = splits.filter((s) => Number(s?.distance_km) >= 0.1).slice(0, 45).map((s, i) => {
     const d = Number(s?.distance_km);
     const t = Number(s?.time_seconds);
     if (!(d > 0 && t > 0)) return null;
     // Bug #94: só uma volta de ~1 km é «um km». A sobra final (0,12 km em
     // 35 s) ou uma volta de 400 m mostra a distância, para nunca passar por
-    // «o último quilómetro a 4'52"».
+    // «o último quilómetro a 4:52».
     const full = d >= FULL_KM_MIN && d <= FULL_KM_MAX;
     const dist = d < 1 ? `${Math.round(d * 1000)} m` : `${String(Math.round(d * 100) / 100).replace(".", ",")} km`;
     const g = Number(s?.elevation_gain_m);
@@ -724,10 +724,12 @@ async function generateCoachNotes(
   const paceSec = run.distance_km && run.distance_km > 0 && run.duration_seconds
     ? run.duration_seconds / run.distance_km
     : null;
-  const paceStr = paceSec ? `${Math.floor(paceSec / 60)}'${Math.round(paceSec % 60)}"` : "—";
+  // O formato canónico ("5:49", @formulas/paceFormat.ts) — o 5'49" de antes
+  // também não tinha o zero à esquerda (5'5" para 5:05).
+  const paceStr = paceSec ? formatPaceMinKm(paceSec) : "—";
 
   // Caminhada (2026-10-05, runKinds.ts): a mesma análise, mas lida como
-  // caminhada. O que se evitava: "corrida pontual a 5'49" dita como falha
+  // caminhada. O que se evitava: "corrida pontual a 5:49 dita como falha
   // numa caminhada de recuperação de um pós-operatório.
   const walking = isWalk(run);
   const walkSection = walking ? buildWalkAnalysisSection(run.duration_seconds) : "";

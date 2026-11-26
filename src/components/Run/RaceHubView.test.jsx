@@ -460,7 +460,7 @@ describe('RaceHubView — plano para o dia', () => {
     // os últimos 10% (mínimo 1 km): da meia, do km 18 em diante
     expect(linhas).toHaveTextContent('km 18 a 21,1');
     // O arranque: o ritmo do plano + 8 s (o plano ajusta-se para a soma dar o objetivo — bug #122).
-    expect(linhas).toHaveTextContent('5.27/km');
+    expect(linhas).toHaveTextContent('5:27/km');
     // Os rótulos do plano, do arranque ao final.
     expect(linhas).toHaveTextContent('controlar');
     expect(linhas).toHaveTextContent('decidir');
@@ -731,7 +731,7 @@ describe('RaceHubView — o objetivo do rascunho da agenda', () => {
 
     const bloco = screen.getByTestId('race-forecast');
     expect(bloco.textContent).toContain('1:52:00');
-    expect(bloco.textContent).toContain('5.18/km');
+    expect(bloco.textContent).toContain('5:18/km');
     // E deixa de mandar marcar um objetivo que ele acabou de escrever.
     expect(bloco.textContent).not.toContain('Marca um objetivo');
     expect(screen.getByTestId('race-forecast-delta')).toBeInTheDocument();

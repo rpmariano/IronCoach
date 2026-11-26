@@ -1480,7 +1480,7 @@ export default function RunAgenda({ onClose }) {
                   <FieldInput id="ra-objetivo-pace"
                     type="text"
                     maxLength={20}
-                    placeholder="Ex.: 5.20 /km"
+                    placeholder="Ex.: 5:20 /km"
                     value={draft.target_pace}
                     onChange={e => { handleTargetPaceChange(e.target.value) }}
                   />

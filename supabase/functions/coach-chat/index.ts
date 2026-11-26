@@ -2797,11 +2797,8 @@ const RUN_TRAINING_TYPE_LABELS: Record<string, string> = {
   intervalos: "Intervalos", sprints: "Sprints", caminhada: "Caminhada",
 };
 
-// Delega em @formulas/paceFormat.ts (T1.5). ATE 2026-08-26 devolvia o
-// formato ANTIGO com dois pontos ("5:20/km") na lista de corridas que a
-// Carol le, enquanto a Fase D ja tinha unificado toda a UI no formato de
-// PONTO ("5.20") — residuo por fechar dessa fase. Agora os dois lados
-// mostram o mesmo (specs/formulas-checklist.md Fase F).
+// Delega em @formulas/paceFormat.ts (T1.5) — o mesmo formato que o atleta vê
+// no ecrã ("5:20/km", dois pontos desde 2026-11-26; specs/formulas-checklist.md).
 function formatPace(distanceKm: number | null, durationSeconds: number | null): string | null {
   return formatPaceFromDistance(distanceKm, durationSeconds);
 }
@@ -5954,8 +5951,8 @@ const MEAL_DOCTRINE =
   `concretos para os calculares — o texto que o atleta lê continua ` +
   `generalizado por categoria, os números é que têm de ser a sério.`;
 
-// Ritmo em min/km. Convenção da app: ponto a separar minutos de segundos —
-// "5.20" são 5min20s/km. Ver formatPace() em src/utils/run.js.
+// Ritmo em min/km. Convenção da app: dois pontos a separar minutos de segundos —
+// "5:20" são 5min20s/km. Ver formatPace() em src/utils/run.js.
 // Delega em @formulas/paceFormat.ts (T1.5) — era byte-equivalente ao
 // formatPace de src/utils/run.js (specs/formulas-checklist.md Fase F).
 function formatPaceMinKm(secondsPerKm: number): string {
