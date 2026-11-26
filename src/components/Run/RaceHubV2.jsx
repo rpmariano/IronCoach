@@ -166,8 +166,22 @@ export default function RaceHubV2({
     const right = target && predicted && moment === 'longe' ? null
       : target ? { v: target.timeLabel, l: 'objetivo' } : predicted ? { v: predicted.timeLabel, l: 'o treino aponta' } : null;
     hero = { n: moment === 'dia' ? 'Hoje' : countdown, l: phaseLine, right, race: true };
+  } else if (target) {
+    /* Com objetivo (decisão do Rui, 2.ª crítica, 2026-11-26): o número grande é o objetivo. A chegada
+       planeada (a soma dos troços) contradizia-o quando era outra; fica numa linha secundária, só
+       quando difere do objetivo em mais de 5 s. À direita, o que o treino aponta. */
+    const plannedS = Math.round(plan.plannedFinishSeconds);
+    const differs = Number.isFinite(plannedS) && plannedS > 0 && Math.abs(plannedS - target.seconds) > 5;
+    hero = {
+      n: target.timeLabel,
+      l: `${moment === 'dia' ? 'Objetivo' : `Objetivo, ${daysToRace === 1 ? 'amanhã' : `daqui a ${daysToRace} dias`}`}${plan.effortMode ? ', por esforço' : ''}`,
+      plano: differs ? `Plano dos ritmos: ${formatDuration(plannedS)}${plan.ambitious && plan.decisionKm ? `, decide ao km ${kmN(plan.decisionKm)}` : ''}` : null,
+      right: predicted ? { v: predicted.timeLabel, l: 'o treino aponta' } : null,
+      race: false,
+      testId: 'race-hub-target-hero',
+    };
   } else {
-    // A chegada planeada é a soma dos troços (racePacing.ts), não o objetivo.
+    // Sem objetivo: a chegada planeada é a soma dos troços (racePacing.ts), como sempre.
     const finish = formatDuration(Math.round(plan.plannedFinishSeconds));
     // À direita, o número que não é a chegada: num objetivo ambicioso o plano monta-se sobre a
     // previsão (a chegada é ela), e o que fica a ver é o objetivo.
@@ -184,6 +198,20 @@ export default function RaceHubV2({
   const ambitious = plan?.ambitious ? plan.notes?.[0] : null;
   const [showWhy, setShowWhy] = useState(false);
   const longeComDois = moment === 'longe' && target && predicted;
+  // O ⓘ do objetivo ambicioso: junto do «decide ao km» (na linha do plano, quando o herói é o objetivo).
+  const whyToggle = (
+    <button
+      type="button"
+      className="v2-info"
+      data-testid="race-pacing-ambitious-toggle"
+      aria-label="Porque decide ao km"
+      aria-expanded={showWhy}
+      aria-controls="race-pacing-ambitious"
+      onClick={() => setShowWhy((v) => !v)}
+    >
+      <Info size={15} aria-hidden="true" />
+    </button>
+  );
 
   return (
     <div className="v2-screen" data-testid="race-hub-prerace" data-moment={moment} data-design="v2">
@@ -195,27 +223,21 @@ export default function RaceHubV2({
 
         <section className="v2-hero" data-testid="race-hub-v2-hero">
           <div className="min-w-0">
-            <div className={`v2-hero-n v2-num${hero.race ? ' is-race' : ''}`} data-testid={plan && moment !== 'longe' ? 'race-pacing-finish' : 'race-hub-countdown'}>{hero.n}</div>
+            <div className={`v2-hero-n v2-num${hero.race ? ' is-race' : ''}`} data-testid={hero.testId || (plan && moment !== 'longe' ? 'race-pacing-finish' : 'race-hub-countdown')}>{hero.n}</div>
             <div className="v2-hero-l" data-testid="race-hub-phase">{hero.l}</div>
+            {hero.plano && (
+              <div className="v2-hero-l" data-testid="race-hub-plan-finish">
+                {hero.plano}
+                {ambitious && moment !== 'longe' && whyToggle}
+              </div>
+            )}
           </div>
           {hero.right && (
             <div className="v2-hero-r">
               <b className="v2-num">{hero.right.v}</b>
               <span>
                 {hero.right.l}
-                {ambitious && moment !== 'longe' && (
-                  <button
-                    type="button"
-                    className="v2-info"
-                    data-testid="race-pacing-ambitious-toggle"
-                    aria-label="Porque decide ao km"
-                    aria-expanded={showWhy}
-                    aria-controls="race-pacing-ambitious"
-                    onClick={() => setShowWhy((v) => !v)}
-                  >
-                    <Info size={15} aria-hidden="true" />
-                  </button>
-                )}
+                {ambitious && moment !== 'longe' && !hero.plano && whyToggle}
               </span>
             </div>
           )}
@@ -319,6 +341,12 @@ export function RaceDoneV2({
   const escalaoPos = n(details?.age_group_position);
   const escalao = typeof details?.age_group === 'string' ? details.age_group.trim() : '';
   const frase = doneSentence(breakdown);
+  /* O tempo feito contra o objetivo, numa linha (2.ª crítica, 2026-11-26): «objetivo 47:00, +1:12».
+     O delta é o real menos o objetivo (raceTimesBreakdown): + mais lento, − mais rápido. */
+  const objRow = breakdown?.rows?.find((r) => r.key === 'objetivo');
+  const vsTarget = objRow && finalSeconds > 0
+    ? `objetivo ${objRow.timeLabel}, ${objRow.delta === 0 ? 'no segundo' : `${objRow.delta > 0 ? '+' : '−'}${formatDuration(Math.abs(objRow.delta))}`}`
+    : null;
   const texto = carolText ? semTravessao(carolText) : null;
 
   return (
@@ -332,6 +360,7 @@ export function RaceDoneV2({
         {finalSeconds > 0 ? (
           <section className="v2-res" data-testid="race-done-v2-hero">
             <div className="v2-res-n v2-num" data-testid="race-final-time">{formatDuration(Math.round(finalSeconds))}</div>
+            {vsTarget && <p className="v2-res-vs" data-testid="race-done-v2-vs-target">{vsTarget}</p>}
             <p className="v2-res-d" data-testid="race-done-v2-sentence">
               {oficial ? 'Tempo oficial.' : 'Tempo da corrida.'}{frase ? ` ${frase}` : ''}
             </p>

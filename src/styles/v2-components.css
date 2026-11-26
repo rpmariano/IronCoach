@@ -242,3 +242,6 @@ button.v2-sp:focus-visible { outline: 2px solid var(--v2-acc); outline-offset: -
 .v2-embed [data-testid="getting-started"] > div:first-child > :first-child { font: 600 13.5px var(--v2-font) !important; color: var(--v2-ink2) !important; }
 .v2-embed [data-testid="getting-started"] > div:nth-child(2) { background: var(--v2-panel) !important; border: 0 !important; border-radius: var(--v2-radius) !important; }
 .v2-embed [data-testid="checkin-card"] { background: var(--v2-panel) !important; border: 0 !important; border-radius: var(--v2-radius) !important; }
+
+/* O tempo feito contra o objetivo, por baixo do número grande da prova concluída. */
+.v2-res-vs { margin: 4px 0 0; font: 600 16px var(--v2-font-num); color: var(--v2-ink2); }

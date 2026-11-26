@@ -72,22 +72,26 @@ describe('RaceHubView — Design v2', () => {
     expect(onGoToEdit).toHaveBeenCalled();
   });
 
-  it('última semana: o herói é a chegada planeada, e os troços todos à vista', async () => {
+  it('última semana, com objetivo: o herói é o objetivo, a chegada planeada numa linha, e os troços todos à vista', async () => {
     render(<RaceHubView race={race(4)} runs={TREINO} profile={PROFILE} />);
     await screen.findByTestId('race-hub-v2-main');
     expect(screen.getByTestId('race-hub-prerace')).toHaveAttribute('data-moment', 'semana');
-    expect(screen.getByTestId('race-pacing-finish').textContent).toMatch(/^\d:\d\d:\d\d$/);
-    expect(screen.getByTestId('race-hub-phase')).toHaveTextContent('chegada planeada, daqui a 4 dias');
+    // Decisão do Rui (2026-11-26): com objetivo, o número grande é o objetivo.
+    expect(screen.getByTestId('race-hub-target-hero')).toHaveTextContent(/^1:45:00$/);
+    expect(screen.getByTestId('race-hub-phase')).toHaveTextContent('Objetivo, daqui a 4 dias');
+    expect(screen.queryByTestId('race-pacing-finish')).toBeNull();
+    // O objetivo é ambicioso: o plano monta-se sobre a previsão e a chegada dele difere; diz-se numa linha.
+    const plano = screen.getByTestId('race-hub-plan-finish');
+    expect(plano).toHaveTextContent(/^Plano dos ritmos: \d:\d\d:\d\d, decide ao km 15$/);
+    const chegada = plano.textContent.match(/\d:\d\d:\d\d/)[0];
     const troços = screen.getAllByTestId('race-hub-v2-split');
     expect(troços.length).toBeGreaterThan(3);
     // Sem «Ver todos os km»: estão todos.
     expect(screen.queryByTestId('race-pacing-all-rows')).toBeNull();
     // O último troço chega à meta (21,1 km) com a chegada planeada.
     expect(troços[troços.length - 1]).toHaveTextContent(/a 21,1/);
-    expect(troços[troços.length - 1]).toHaveTextContent(screen.getByTestId('race-pacing-finish').textContent);
+    expect(troços[troços.length - 1]).toHaveTextContent(chegada);
     expect(screen.queryByTestId('race-hub-register')).toBeNull();
-    // O objetivo é ambicioso: a chegada é a previsão, e à direita fica o objetivo (não o mesmo número).
-    expect(screen.getByTestId('race-hub-v2-hero')).toHaveTextContent('1:45:00objetivo, decide ao km 15');
     // A frase inteira do objetivo ambicioso num ⓘ, recolhida.
     const why = screen.getByTestId('race-pacing-ambitious');
     expect(why).not.toBeVisible();
@@ -170,3 +174,66 @@ describe('RaceHubView — Design v2', () => {
     expect(screen.getByTestId('race-hub-v2-main').textContent).not.toMatch(/—/);
   });
 });
+
+describe('O herói do hub: o objetivo é o número grande (decisão do Rui, 2026-11-26)', () => {
+  it('sem objetivo: fica a chegada planeada, como estava', async () => {
+    render(<RaceHubView race={race(4, { target_time: null, target_time_seconds: null })} runs={TREINO} profile={PROFILE} />);
+    await screen.findByTestId('race-hub-v2-main');
+    expect(screen.queryByTestId('race-hub-target-hero')).toBeNull();
+    expect(screen.getByTestId('race-pacing-finish').textContent).toMatch(/^\d:\d\d:\d\d$/);
+    expect(screen.getByTestId('race-hub-phase')).toHaveTextContent('chegada planeada, daqui a 4 dias');
+    expect(screen.queryByTestId('race-hub-plan-finish')).toBeNull();
+  });
+
+  it('plano igual ao objetivo (até 5 s): o objetivo em grande e nenhuma linha do plano', async () => {
+    // Um objetivo folgado: o plano monta-se sobre ele e a chegada planeada é o próprio objetivo.
+    render(<RaceHubView race={race(4, { target_time: '2:20:00', target_time_seconds: 8400 })} runs={TREINO} profile={PROFILE} />);
+    await screen.findByTestId('race-hub-v2-main');
+    expect(screen.getByTestId('race-hub-target-hero')).toHaveTextContent(/^2:20:00$/);
+    expect(screen.queryByTestId('race-hub-plan-finish')).toBeNull();
+  });
+
+  it('no dia, com objetivo: «Objetivo» como etiqueta', async () => {
+    render(<RaceHubView race={race(0)} runs={TREINO} profile={PROFILE} />);
+    await screen.findByTestId('race-hub-v2-main');
+    expect(screen.getByTestId('race-hub-target-hero')).toHaveTextContent(/^1:45:00$/);
+    expect(screen.getByTestId('race-hub-phase')).toHaveTextContent(/^Objetivo$/);
+  });
+
+  it('v1: o hub de sempre, sem o herói do objetivo', () => {
+    act(() => setDesignV2(false));
+    render(<RaceHubView race={race(4)} runs={TREINO} profile={PROFILE} />);
+    expect(screen.queryByTestId('race-hub-target-hero')).toBeNull();
+    expect(screen.queryByTestId('race-hub-plan-finish')).toBeNull();
+    expect(screen.getByTestId('race-hub-prerace')).not.toHaveAttribute('data-design');
+  });
+});
+
+describe('Depois da prova: o tempo feito contra o objetivo', () => {
+  const props = (delta, finalSeconds) => ({
+    race: { id: 'r1', name: 'Corrida do Tejo', distance_km: 10 },
+    finalSeconds,
+    breakdown: { real: { seconds: finalSeconds }, rows: [{ key: 'objetivo', label: 'Objetivo', timeLabel: '47:00', seconds: 2820, delta }] },
+    details: {},
+  });
+
+  it('mais lento: «objetivo 47:00, +1:12» por baixo do tempo', async () => {
+    const { RaceDoneV2 } = await import('./RaceHubV2');
+    render(<RaceDoneV2 {...props(72, 2892)} />);
+    expect(screen.getByTestId('race-final-time')).toHaveTextContent('48:12');
+    expect(screen.getByTestId('race-done-v2-vs-target')).toHaveTextContent(/^objetivo 47:00, \+1:12$/);
+  });
+
+  it('mais rápido: com o sinal de menos', async () => {
+    const { RaceDoneV2 } = await import('./RaceHubV2');
+    render(<RaceDoneV2 {...props(-30, 2790)} />);
+    expect(screen.getByTestId('race-done-v2-vs-target')).toHaveTextContent(/^objetivo 47:00, −0:30$/);
+  });
+
+  it('sem objetivo, não há a linha', async () => {
+    const { RaceDoneV2 } = await import('./RaceHubV2');
+    render(<RaceDoneV2 race={{ id: 'r1', name: 'X', distance_km: 10 }} finalSeconds={2892} breakdown={{ real: { seconds: 2892 }, rows: [] }} details={{}} />);
+    expect(screen.queryByTestId('race-done-v2-vs-target')).toBeNull();
+  });
+});
+
