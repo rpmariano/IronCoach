@@ -56,7 +56,7 @@ Deno.test("computeRunRecordContext: bate o ritmo no escalão dos 10 km — recor
   const run = { id: "n", date: "2026-09-20", distance_km: 10, duration_seconds: 2880, details: null }; // 4:48/km
   const { bestPacesLine, personalRecordKind } = computeRunRecordContext(run, candidates);
   assertEquals(personalRecordKind, "pace");
-  assertStringIncludes(bestPacesLine!, "10k 5:00 (2026-08-01)");
+  assertStringIncludes(bestPacesLine!, "10k 5:00/km (2026-08-01)");
 });
 
 Deno.test("computeRunRecordContext: mais longa do que sempre, com pelo menos três corridas antes — recorde de distância", () => {
@@ -74,7 +74,7 @@ Deno.test("computeRunRecordContext: mais lenta do que o melhor não é recorde, 
   const run = { id: "n", date: "2026-09-20", distance_km: 10, duration_seconds: 3000, details: null }; // 5:00/km
   const { bestPacesLine, personalRecordKind } = computeRunRecordContext(run, candidates);
   assertEquals(personalRecordKind, null);
-  assertStringIncludes(bestPacesLine!, "10k 4:40 (2026-08-01)");
+  assertStringIncludes(bestPacesLine!, "10k 4:40/km (2026-08-01)");
 });
 
 Deno.test("resolveReanalysisTypes: o corpo válido ganha; inválido ou ausente fica o gravado; tipo de outro kind nunca passa", () => {
@@ -262,7 +262,7 @@ Deno.test("caminhada: nunca é recorde de corrida, e não esconde os recordes da
   );
   assertEquals(walk.personalRecordKind, null);
   // A "caminhada" absurda a 3'/km não é o melhor dos 5 km.
-  assertStringIncludes(walk.bestPacesLine ?? "", "5k 5:00");
+  assertStringIncludes(walk.bestPacesLine ?? "", "5k 5:00/km");
 });
 
 Deno.test("TRAINING_TYPE_KEYS: a ativação pré-prova grava-se como tipo de treino (bug #84)", () => {
@@ -316,7 +316,7 @@ Deno.test("buildYesterdaySection / gymFacts: zeros e ausentes não entram", () =
 });
 
 // ── Bug #101 (corrida de 30-10): os km 4 e 5 foram a subir ────────────────
-import { SPLIT_ANOMALY_RULE } from "./index.ts";
+import { previousRunLine, recentPaceLine, sameDayRunLine, SPLIT_ANOMALY_RULE } from "./index.ts";
 
 Deno.test("formatSplitsLine (bug #101): a subida de cada parcial, quando a leitura a trouxe", () => {
   const line = formatSplitsLine([
@@ -354,4 +354,34 @@ Deno.test("computeRunRecordContext: uma sessão de intervalos não inventa um re
   const { personalRecordKind } = computeRunRecordContext(run, candidates);
   // Os primeiros 5 km com as paragens: 1650 s, 5:30/km — mais lento do que 5:20.
   assertEquals(personalRecordKind, null);
+});
+
+// Revisão do f363cb5d: as três linhas do prompt que ainda faziam o ritmo à mão
+// (5'3", sem o zero à esquerda, e 4'60") e os melhores por escalão sem «/km».
+Deno.test("analyze-run (revisão do f363cb5d): corridas anteriores, média e outras corridas hoje no formato 5:03/km", () => {
+  // 10 km em 50:30 → 5:03/km; 10 km em 49:57 → 299,7 s/km → 5:00, nunca 4:60.
+  assertEquals(
+    previousRunLine({ date: "2026-09-01", distance_km: 10, duration_seconds: 3030, effort_rpe: 5, details: { avg_heart_rate_bpm: 150 } }),
+    "- 2026-09-01: 10.00km a 5:03/km RPE 5/10 FC 150",
+  );
+  assertEquals(previousRunLine({ date: "2026-09-02", distance_km: 10, duration_seconds: 2997, details: null }), "- 2026-09-02: 10.00km a 5:00/km");
+  assertEquals(previousRunLine({ date: "2026-09-03", distance_km: null, duration_seconds: 2997, details: null }), "- 2026-09-03: ?km a —");
+  assertEquals(recentPaceLine(303), "Média de pace recente: 5:03/km\n");
+  assertEquals(recentPaceLine(299.7), "Média de pace recente: 5:00/km\n");
+  assertEquals(recentPaceLine(null), "");
+  assertEquals(sameDayRunLine({ name: "Rodagem", distance_km: 5, duration_seconds: 1515, effort_rpe: 4 }), "Rodagem - 5.0km, Pace: 5:03/km, RPE: 4/10");
+  assertEquals(sameDayRunLine({ distance_km: 5, duration_seconds: null }), "Corrida - 5.0km, Pace: ?, RPE: ?/10");
+  // Nenhuma das três volta ao formato antigo.
+  for (const line of [
+    previousRunLine({ date: "2026-09-01", distance_km: 10, duration_seconds: 3030, details: null }),
+    recentPaceLine(303),
+    sameDayRunLine({ distance_km: 5, duration_seconds: 1515 }),
+  ]) assert(!/\d'\d/.test(line), line);
+});
+
+Deno.test("computeRunRecordContext (revisão do f363cb5d): os melhores por escalão levam «/km», para não se lerem como tempos", () => {
+  const candidates = [{ date: "2026-08-01", distance_km: 5, duration_seconds: 1545 }]; // 5:09/km
+  const run = { id: "n", date: "2026-09-20", distance_km: 5, duration_seconds: 1600, details: null };
+  const { bestPacesLine } = computeRunRecordContext(run, candidates);
+  assertEquals(bestPacesLine, "5k 5:09/km (2026-08-01)");
 });
