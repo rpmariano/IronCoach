@@ -471,7 +471,8 @@ export function computeRunRecordContext(
   const bestPacesByBucket: string[] = [];
   for (const bucket of [5, 10, 21] as BestPaceBucket[]) {
     const best = computeBestPace(candidates, bucket);
-    if (best) bestPacesByBucket.push(`${bucket}k ${formatPaceMinKm(best.pace)} (${best.date})`);
+    // Com «/km» (revisão do f363cb5d): «5k 5:09» lia-se como um tempo de 5 km.
+    if (best) bestPacesByBucket.push(`${bucket}k ${formatPaceMinKm(best.pace)}/km (${best.date})`);
   }
   const bestPacesLine = bestPacesByBucket.length ? bestPacesByBucket.join(" · ") : null;
   // deno-lint-ignore no-explicit-any
@@ -563,6 +564,43 @@ export const SPLIT_ANOMALY_RULE =
   "provável: diz-lo como hipótese e pergunta-lhe se esses km foram a subir. Sem nenhum dado que o explique, NUNCA lhe " +
   "atribuas uma causa (cansaço, o treino da véspera, má gestão do ritmo): pergunta-lhe numa frase o que aconteceu " +
   "nesse km (subida, um semáforo, abrandou de propósito?).";
+
+/* O ritmo de uma corrida no formato canónico ("5:03", @formulas/paceFormat.ts),
+   ou null sem distância ou sem tempo. Revisão do f363cb5d: estas três linhas
+   do prompt ainda faziam o ritmo à mão em 5'3" — sem o zero à esquerda e com
+   o «4'60"» —, ao lado do «Pace: 5:49» da mesma corrida. */
+// deno-lint-ignore no-explicit-any
+function runPaceSec(r: any): number | null {
+  const d = Number(r?.distance_km);
+  const t = Number(r?.duration_seconds);
+  return d > 0 && t > 0 ? t / d : null;
+}
+
+/** Uma corrida anterior do grupo: «- 2026-09-01: 10.00km a 5:03/km RPE 5/10 FC 150». */
+// deno-lint-ignore no-explicit-any
+export function previousRunLine(r: any): string {
+  const d = r.distance_km?.toFixed(2) || "?";
+  const p = runPaceSec(r);
+  const pStr = p ? `${formatPaceMinKm(p)}/km` : "—";
+  const eStr = r.effort_rpe ? `RPE ${r.effort_rpe}/10` : "";
+  const hrStr = (r.details as Record<string, unknown>)?.avg_heart_rate_bpm
+    ? `FC ${(r.details as Record<string, unknown>).avg_heart_rate_bpm}`
+    : "";
+  return `- ${r.date}: ${d}km a ${pStr} ${eStr} ${hrStr}`.trim();
+}
+
+/** «Média de pace recente: 5:03/km» (com a quebra de linha), ou "" sem média. */
+export function recentPaceLine(avgSecPerKm: number | null): string {
+  return avgSecPerKm ? `Média de pace recente: ${formatPaceMinKm(avgSecPerKm)}/km\n` : "";
+}
+
+/** Uma das OUTRAS CORRIDAS HOJE: «Corrida - 5.0km, Pace: 5:03/km, RPE: 4/10». */
+// deno-lint-ignore no-explicit-any
+export function sameDayRunLine(r: any): string {
+  const p = runPaceSec(r);
+  const ps = p ? `${formatPaceMinKm(p)}/km` : "?";
+  return `${r.name || "Corrida"} - ${r.distance_km?.toFixed(1) || "?"}km, Pace: ${ps}, RPE: ${r.effort_rpe || "?"}/10`;
+}
 
 /** Os parciais em ritmo por volta — é daqui que ela lê a gestão do esforço
  *  (saída rápida demais, quebra no fim, final mais forte). Um parcial sem
@@ -693,7 +731,7 @@ async function generateCoachNotes(
   geminiKey: string,
   memoryBlock: string | null = null,
   // Melhores ritmos por escalão (5/10/21 km) neste grupo, já formatados —
-  // "5k 4.51 (2026-08-02) · 10k ...". null quando não há nenhum. Substitui o
+  // "5k 4:51/km (2026-08-02) · 10k ...". null quando não há nenhum. Substitui o
   // antigo bestPaceStr/trendStr (mín. pace de qualquer distância, sem
   // escalão nem margem — ação 5.3).
   bestPacesLine: string | null = null,
@@ -755,16 +793,7 @@ async function generateCoachNotes(
     previousContext = recentRuns
       .slice()
       .reverse()
-      .map((r) => {
-        const d = r.distance_km?.toFixed(2) || "?";
-        const pSec = r.distance_km && r.distance_km > 0 && r.duration_seconds ? r.duration_seconds / r.distance_km : null;
-        const pStr = pSec ? `${Math.floor(pSec / 60)}'${Math.round(pSec % 60)}"` : "—";
-        const eStr = r.effort_rpe ? `RPE ${r.effort_rpe}/10` : "";
-        const hrStr = (r.details as Record<string, unknown>)?.avg_heart_rate_bpm
-          ? `FC ${(r.details as Record<string, unknown>).avg_heart_rate_bpm}`
-          : "";
-        return `- ${r.date}: ${d}km a ${pStr}/km ${eStr} ${hrStr}`.trim();
-      })
+      .map(previousRunLine)
       .join("\n");
 
     const sumDist = recentRuns.reduce((acc, r) => acc + (r.distance_km || 0), 0);
@@ -800,7 +829,7 @@ async function generateCoachNotes(
   const contextSection = previousContext.trim()
     ? `\nBase de comparação usada: ${historyLabel}.\n` +
       `\nÚltimas ${recentRuns.length} ${walking ? "caminhadas" : "corridas"} deste grupo (mais antiga primeiro, mais recente por último):\n${previousContext}\n` +
-      (avgRecentPace ? `Média de pace recente: ${Math.floor(avgRecentPace / 60)}'${Math.round(avgRecentPace % 60)}"/km\n` : "") +
+      recentPaceLine(avgRecentPace) +
       (paceDeltaStr ? `Pace desta corrida vs. média: ${paceDeltaStr}\n` : "") +
       (daysSinceLastRun !== null ? `Dias desde a corrida anterior deste grupo: ${daysSinceLastRun}\n` : "") +
       (weeklyVolumeStr ? `- Volume semanal: ${weeklyVolumeStr}\n` : "") +
@@ -826,11 +855,7 @@ async function generateCoachNotes(
     : ``;
 
   const sameDayRunsSection = sameDayRuns.length > 0
-    ? `\nOUTRAS CORRIDAS HOJE: O atleta já registou mais ${sameDayRuns.length} corrida(s) neste mesmo dia (além desta): ` + sameDayRuns.map(r => {
-        const p = r.distance_km && r.duration_seconds && r.distance_km > 0 ? r.duration_seconds / r.distance_km : null;
-        const ps = p ? `${Math.floor(p / 60)}'${Math.round(p % 60)}"/km` : '?';
-        return `${r.name || 'Corrida'} - ${r.distance_km?.toFixed(1) || '?'}km, Pace: ${ps}, RPE: ${r.effort_rpe || '?'}/10`;
-      }).join('; ') + `. Isto é um volume enorme para um único dia! Deves OBRIGATORIAMENTE comentar sobre o volume total acumulado hoje, o risco de lesão e sobretreino, e sugerir fortemente que o atleta fale com a Coach para ajustar o plano.\n`
+    ? `\nOUTRAS CORRIDAS HOJE: O atleta já registou mais ${sameDayRuns.length} corrida(s) neste mesmo dia (além desta): ` + sameDayRuns.map(sameDayRunLine).join('; ') + `. Isto é um volume enorme para um único dia! Deves OBRIGATORIAMENTE comentar sobre o volume total acumulado hoje, o risco de lesão e sobretreino, e sugerir fortemente que o atleta fale com a Coach para ajustar o plano.\n`
     : ``;
 
   const zonesLine = formatHrZonesLine(details.hr_zones);
