@@ -66,9 +66,12 @@ describe('O cartão da prova (Calendário e Início): um estado de cada vez', ()
     expect(screen.queryByText('Concluída')).toBeNull();
   });
 
-  it('marcada como concluída: sem «Registar a prova» nem «por registar»', () => {
+  it('marcada como concluída, sem corrida: o «Registar a prova» discreto (não o âmbar) e sem «por registar»', () => {
     card({ ...RACE, status: 'concluida' });
-    expect(screen.queryByRole('button', { name: 'Registar a prova' })).toBeNull();
+    const b = screen.getByTestId('race-agenda-v2-register-quiet');
+    expect(b).toHaveTextContent('Registar a prova');
+    expect(b).toHaveClass('is-quiet');
+    expect(screen.getAllByRole('button', { name: 'Registar a prova' })).toHaveLength(1);
     expect(screen.getByTestId('race-agenda-v2')).not.toHaveTextContent('por registar');
   });
 });

@@ -80,6 +80,10 @@ export default function RaceAgendaCardV2({
       {canRegister && onRegisterRace && !done && (
         <button type="button" className="v2-btn is-race" onClick={() => onRegisterRace(ev)}>Registar a prova</button>
       )}
+      {/* Marcada à mão, sem corrida: «Concluída», e o registo fica à mão, discreto (como no hub). */}
+      {done && !raceRun && onRegisterRace && (
+        <button type="button" className="v2-btn is-quiet" data-testid="race-agenda-v2-register-quiet" onClick={() => onRegisterRace(ev)}>Registar a prova</button>
+      )}
 
       <div className="v2-card-race-actions v2-rec-actions">
         <button type="button" className="v2-act is-acc" aria-expanded={tudo} aria-controls={detalhesId} onClick={() => setTudo((t) => !t)} data-testid="race-agenda-v2-more">

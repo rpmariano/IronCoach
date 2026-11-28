@@ -303,3 +303,9 @@ html.design-v2 [data-testid="coach-insight-button"] > svg { width: 20px; height:
 html.design-v2 [data-testid="coach-insight-button"] > span.rounded-full { right: auto !important; left: -8px !important; top: -8px !important; font-size: 12px !important; }
 html.design-v2 [data-testid="coach-insight-button"] > :not(.coach-wave-ring):not(span):not(style) { width: 24px !important; height: 24px !important; min-width: 0 !important; }
 .v2-modal:focus { outline: none; }
+
+/* O foco programático na caixa do diálogo (tabIndex -1) não leva o contorno global do :focus-visible. */
+html.design-v2 .v2-modal:focus, html.design-v2 .v2-modal:focus-visible { outline: none !important; }
+/* O alvo de toque da aba: 44 x 52 px. A parte à vista tem 32 px; uma área invisível de 12 px à esquerda completa os 44. */
+html.design-v2 [data-testid="coach-insight-button"] { overflow: visible !important; }
+html.design-v2 [data-testid="coach-insight-button"]::before { content: ""; position: absolute; top: 0; bottom: 0; left: -12px; width: 12px; }

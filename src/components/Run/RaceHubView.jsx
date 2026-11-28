@@ -1260,7 +1260,7 @@ export default function RaceHubView({
           {/* A frase da Carol do dia («É dia de prova…») vale agora: logo a seguir ao plano. */}
           <p className="rh-hub-day-line" data-testid="race-hub-day-line">{carolAnalysis.overviewText}</p>
           {extras}
-          <HubCollapsible id="carol" title="Como chegaste aqui" summary={readinessTextV2(readiness)} testId="race-hub-carol-section">
+          <HubCollapsible id="carol" title="Como chegaste aqui" summary={v2 ? readinessTextV2(readiness) : (calibrating ? 'Prontidão a calibrar' : `Prontidão ${readinessTitle} (${readiness.score}%)`)} testId="race-hub-carol-section">
             {carol}
           </HubCollapsible>
         </>

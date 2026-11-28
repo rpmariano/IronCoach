@@ -5,6 +5,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { setDesignV2 } from '../../utils/designV2';
 import PremiumModal from './PremiumModal';
+import { Sheet, closeTopOverlay } from './Sheet';
 
 /* Acessibilidade de base no v2 (2.ª crítica, 2026-11-28): o PremiumModal fecha com Escape, leva o
    foco para dentro ao abrir, prende-o lá e devolve-o a quem o abriu. Na v1, como sempre. */
@@ -87,3 +88,50 @@ describe('v2.css — nada abaixo de 12 px e a bolha que não tapa texto', () => 
     expect(css).toMatch(/\[data-testid="coach-insight-button"\] \{\s*right: 0 !important; width: 32px !important; height: 52px !important;/);
   });
 });
+
+describe('PremiumModal — o Escape pela pilha partilhada (Sheet.jsx)', () => {
+  it('um Sheet aberto por cima de um PremiumModal fecha primeiro com o Escape; depois o modal', async () => {
+    act(() => setDesignV2(true));
+    const fecharModal = vi.fn();
+    const fecharSheet = vi.fn();
+    function Ambos() {
+      const [sheet, setSheet] = useState(true);
+      return (
+        <>
+          <PremiumModal isOpen onClose={fecharModal} title="Modal de baixo" variant="dialog"><button type="button">Dentro</button></PremiumModal>
+          {sheet && <Sheet title="Persiana de cima" onClose={() => { setSheet(false); fecharSheet(); }}><p>conteúdo</p></Sheet>}
+        </>
+      );
+    }
+    render(<Ambos />);
+    fireEvent.keyDown(window, { key: 'Escape' });
+    await waitFor(() => expect(fecharSheet).toHaveBeenCalled(), { timeout: 1500 });
+    expect(fecharModal).not.toHaveBeenCalled();
+    fireEvent.keyDown(window, { key: 'Escape' });
+    await waitFor(() => expect(fecharModal).toHaveBeenCalled(), { timeout: 1500 });
+  });
+
+  it('o voltar do telemóvel (closeTopOverlay) também fecha o PremiumModal do v2', async () => {
+    act(() => setDesignV2(true));
+    const fechar = vi.fn();
+    render(<PremiumModal isOpen onClose={fechar} title="Sozinho" variant="dialog"><button type="button">Dentro</button></PremiumModal>);
+    expect(closeTopOverlay()).toBe(true);
+    await waitFor(() => expect(fechar).toHaveBeenCalled(), { timeout: 1500 });
+  });
+
+  it('v1: o PremiumModal não entra na pilha', () => {
+    render(<PremiumModal isOpen onClose={vi.fn()} title="v1" variant="dialog"><button type="button">Dentro</button></PremiumModal>);
+    expect(closeTopOverlay()).toBe(false);
+  });
+
+  it('o foco programático na caixa não leva o contorno global', () => {
+    const css = readFileSync(resolve(__dirname, '../../styles/v2.css'), 'utf8');
+    expect(css).toMatch(/html\.design-v2 \.v2-modal:focus, html\.design-v2 \.v2-modal:focus-visible \{ outline: none !important; \}/);
+  });
+
+  it('a aba da Carol tem 44 px de largura útil (32 à vista e 12 invisíveis)', () => {
+    const css = readFileSync(resolve(__dirname, '../../styles/v2.css'), 'utf8');
+    expect(css).toMatch(/\[data-testid="coach-insight-button"\]::before \{ content: ""; position: absolute; top: 0; bottom: 0; left: -12px; width: 12px; \}/);
+  });
+});
+

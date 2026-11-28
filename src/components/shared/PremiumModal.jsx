@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useDesignV2 } from '../../utils/designV2';
+import { pushCloseStack, isTopOfCloseStack } from './Sheet';
 import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 
@@ -66,9 +67,6 @@ const THEMES = {
   }
 };
 
-// Os diálogos do v2 abertos, por ordem: o Escape e o Tab só valem para o de cima.
-const MODAL_STACK = [];
-
 export default function PremiumModal({
   isOpen,
   onClose,
@@ -99,30 +97,25 @@ export default function PremiumModal({
     onCloseRef.current = onClose;
   }, [onClose]);
 
-  /* Design v2 (2.ª crítica, 2026-11-28), o padrão do FabSheetV2: o Escape fecha (só o diálogo de
-     cima, numa pilha); ao abrir o foco entra no próprio diálogo (que se anuncia pelo título), e não
-     num botão: num diálogo de eliminar, um Enter apagava logo; fica preso lá dentro (o Tab anda
-     pelos botões); ao fechar volta a quem o abriu. Na v1, como sempre. */
+  /* Design v2 (2.ª crítica, 2026-11-28), o padrão do FabSheetV2: o Escape fecha pela pilha
+     partilhada do Sheet.jsx (closeStack), a mesma das persianas, dos diálogos, do useEscapeClose e
+     do voltar do telemóvel (closeTopOverlay): o que está por cima fecha primeiro. Ao abrir o foco
+     entra no próprio diálogo (que se anuncia pelo título), e não num botão: num diálogo de eliminar,
+     um Enter apagava logo; o Tab fica preso lá dentro enquanto ele está por cima; ao fechar volta a
+     quem o abriu. Na v1, como sempre. */
   const dismissRef = useRef(null);
   useEffect(() => {
     if (!v2 || !isOpen) return undefined;
     const box = dragAreaRef.current;
     if (!box) return undefined;
     const back = document.activeElement;
-    const token = {};
-    MODAL_STACK.push(token);
+    const requestClose = () => dismissRef.current?.();
+    const popClose = pushCloseStack(requestClose);
     const SEL = 'button:not([disabled]), [href], input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
     const focusables = () => [...box.querySelectorAll(SEL)].filter((el) => !el.closest('[hidden]'));
     box.focus?.({ preventScroll: true });
     const onKey = (e) => {
-      if (MODAL_STACK[MODAL_STACK.length - 1] !== token) return;
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        e.stopPropagation();
-        dismissRef.current?.();
-        return;
-      }
-      if (e.key !== 'Tab') return;
+      if (e.key !== 'Tab' || !isTopOfCloseStack(requestClose)) return;
       const list = focusables();
       if (!list.length) { e.preventDefault(); box.focus?.(); return; }
       const firstEl = list[0];
@@ -138,8 +131,7 @@ export default function PremiumModal({
     document.addEventListener('keydown', onKey);
     return () => {
       document.removeEventListener('keydown', onKey);
-      const i = MODAL_STACK.indexOf(token);
-      if (i >= 0) MODAL_STACK.splice(i, 1);
+      popClose();
       if (back && back !== document.body && document.contains(back)) back.focus?.();
     };
   }, [v2, isOpen, renderOpen]); // eslint-disable-line react-hooks/exhaustive-deps

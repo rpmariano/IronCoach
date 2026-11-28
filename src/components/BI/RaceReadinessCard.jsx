@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { readinessTextV2 } from '../../utils/raceReadinessV2';
+import { readinessTextV2, trainingTodayOf } from '../../utils/raceReadinessV2';
 import { Trophy, Flag, ChevronRight, Footprints, Zap, Utensils, TrendingUp, Target, Sunrise } from 'lucide-react';
 import { differenceInCalendarDays, parseISO } from 'date-fns';
 import { calculateReadinessIndex } from '../../utils/biEngine';
@@ -109,15 +109,8 @@ export default function RaceReadinessCard({ runs, meals, bodyAssessments, gymSes
   // pilar não o afirma (revisão pré-deploy de 2026-09-26). Um plano só de
   // refeições (dias de `descanso`, save_meal_suggestions) não conta: não
   // decide descansos (segunda revisão).
-  const trainingToday = useMemo(() => {
-    const comTreino = new Set((coachPlanItems || []).filter((i) => (i?.kind === 'corrida' || i?.kind === 'ginasio') && i.status !== 'cancelado').map((i) => i.plan_id));
-    const emVigor = (coachPlans || []).filter((p) => p?.status === 'aceite' && comTreino.has(p.id)
-      && String(p.period_start || '').slice(0, 10) <= today && String(p.period_end || '').slice(0, 10) >= today);
-    if (!emVigor.length) return undefined;
-    const aceites = new Set(emVigor.map((p) => p.id));
-    return (coachPlanItems || []).some((i) => i && aceites.has(i.plan_id) && i.planned_date === today
-      && (i.kind === 'corrida' || i.kind === 'ginasio') && i.status !== 'cancelado');
-  }, [coachPlans, coachPlanItems, today]);
+  // A mesma régua do hub e do cartão da prova (utils/raceReadinessV2.js): uma só fonte.
+  const trainingToday = useMemo(() => trainingTodayOf(coachPlans, coachPlanItems, today), [coachPlans, coachPlanItems, today]);
   const goalHistory = useAppStore((s) => s.goalHistory);
   const readiness = useMemo(() =>
     calculateReadinessIndex(runs, meals, bodyAssessments, gymSessions, profile, nextRace, dailyCheckins, trainingToday, goalHistory),

@@ -43,7 +43,7 @@ const DIALOG_MS = 220;
    por baixo continuava no topo da pilha e respondia também.) */
 const closeStack = [];
 
-function pushCloseStack(requestClose) {
+export function pushCloseStack(requestClose) {
   closeStack.push(requestClose);
   const onKey = (e) => {
     if (e.key !== 'Escape') return;
@@ -61,6 +61,11 @@ function pushCloseStack(requestClose) {
  *  inteiro a abrir). Devolve false se não houver nada aberto. O "voltar" do
  *  telemóvel passa por aqui antes de mudar de separador — sem isto, voltar
  *  de "Entrar nas tabelas" saía do Perfil para o Início (bug #43). */
+/** É este o que está por cima de tudo? (o PremiumModal do v2 só prende o Tab quando o é) */
+export function isTopOfCloseStack(requestClose) {
+  return closeStack[closeStack.length - 1] === requestClose;
+}
+
 export function closeTopOverlay() {
   const top = closeStack[closeStack.length - 1];
   if (!top) return false;

@@ -237,3 +237,19 @@ describe('Depois da prova: o tempo feito contra o objetivo', () => {
   });
 });
 
+describe('A prontidão no hub: a v1 com o texto de sempre', () => {
+  it('v1, no dia da prova: «Prontidão X (N%)» ou «Prontidão a calibrar», nunca a frase do v2', () => {
+    act(() => setDesignV2(false));
+    render(<RaceHubView race={race(0)} runs={TREINO} profile={PROFILE} />);
+    const sec = screen.getByTestId('race-hub-carol-section');
+    expect(sec.textContent).toMatch(/Prontidão (a calibrar|(Alta|Média|Baixa) \(\d+%\))/);
+    expect(sec.textContent).not.toMatch(/Prontidão (alta|média|baixa), \d+%/);
+  });
+
+  it('v2: a frase única', async () => {
+    render(<RaceHubView race={race(0)} runs={TREINO} profile={PROFILE} />);
+    await screen.findByTestId('race-hub-v2-main');
+    expect(screen.getByTestId('race-hub-carol-section').textContent).toMatch(/Prontidão (a calibrar|(alta|média|baixa), \d+%)/);
+  });
+});
+
