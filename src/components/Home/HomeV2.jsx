@@ -296,6 +296,9 @@ export default function HomeV2({ today, gauges, notices, onOpenRace, onRegisterR
 
   return (
     <div className="v2-screen v2-enter pb-2" data-testid="home-v2">
+      {/* Um h1 por ecrã (2.ª crítica): o Início não tem título à vista, o herói é o número; para o
+          leitor de ecrã, o nome do ecrã. A marca do cabeçalho já não é h1 no v2. */}
+      <h1 className="sr-only">Início</h1>
       <section className="v2-hero" data-testid="home-v2-hero" aria-label={race ? `Próxima prova: ${race.name}` : 'O treino de hoje'}>
         <div className="min-w-0">
           <div className={`v2-hero-n v2-num${hero.race ? ' is-race' : ''}${hero.small ? ' is-small' : ''}`}>{hero.n}</div>

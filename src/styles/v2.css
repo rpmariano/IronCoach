@@ -283,3 +283,23 @@ html.design-v2 .v2-cal-day.is-today { border-color: var(--v2-ink2); }
    só no ícone (o Button passa-a ao ícone). */
 .v2-btn-module { background: transparent; color: var(--v2-ink); border: 1px solid var(--v2-rule); font-weight: 600; }
 .v2-btn-module:hover { background: var(--v2-panel); }
+
+/* ── Acessibilidade de base (P2 da 2.ª crítica, 2026-11-28) ──────────────────────────────────────
+   Nada abaixo de 12 px no v2: o token --text-xs e os tamanhos fixos de 9 a 11,5 px dos ecrãs ainda
+   por migrar sobem a 12 px. A exceção são os números .v2-num (os rótulos dos gráficos). */
+html.design-v2 { --text-xs: 12px; }
+html.design-v2 :is(.text-\[9px\], .text-\[9\.5px\], .text-\[10px\], .text-\[10\.5px\], .text-\[11px\], .text-\[11\.5px\]):not(.v2-num) { font-size: 12px !important; }
+html.design-v2 .v2-week-l { font-size: 12px; }
+
+/* A bolha da Carol não tapa texto: no v2 é uma aba encostada à margem direita (32 px de largura, dentro
+   da margem de 16 px do ecrã e do padding dos painéis), com o número à esquerda. O alvo fica com 52 px de
+   altura. As ondas saem (o pulso do aviso urgente fica). */
+html.design-v2 [data-testid="coach-insight-button"] {
+  right: 0 !important; width: 32px !important; height: 52px !important;
+  border-radius: 10px 0 0 10px !important;
+}
+html.design-v2 [data-testid="coach-insight-button"] .coach-wave-ring { display: none !important; }
+html.design-v2 [data-testid="coach-insight-button"] > svg { width: 20px; height: 20px; }
+html.design-v2 [data-testid="coach-insight-button"] > span.rounded-full { right: auto !important; left: -8px !important; top: -8px !important; font-size: 12px !important; }
+html.design-v2 [data-testid="coach-insight-button"] > :not(.coach-wave-ring):not(span):not(style) { width: 24px !important; height: 24px !important; min-width: 0 !important; }
+.v2-modal:focus { outline: none; }

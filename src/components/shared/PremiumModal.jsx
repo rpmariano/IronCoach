@@ -66,6 +66,9 @@ const THEMES = {
   }
 };
 
+// Os diálogos do v2 abertos, por ordem: o Escape e o Tab só valem para o de cima.
+const MODAL_STACK = [];
+
 export default function PremiumModal({
   isOpen,
   onClose,
@@ -96,6 +99,51 @@ export default function PremiumModal({
     onCloseRef.current = onClose;
   }, [onClose]);
 
+  /* Design v2 (2.ª crítica, 2026-11-28), o padrão do FabSheetV2: o Escape fecha (só o diálogo de
+     cima, numa pilha); ao abrir o foco entra no próprio diálogo (que se anuncia pelo título), e não
+     num botão: num diálogo de eliminar, um Enter apagava logo; fica preso lá dentro (o Tab anda
+     pelos botões); ao fechar volta a quem o abriu. Na v1, como sempre. */
+  const dismissRef = useRef(null);
+  useEffect(() => {
+    if (!v2 || !isOpen) return undefined;
+    const box = dragAreaRef.current;
+    if (!box) return undefined;
+    const back = document.activeElement;
+    const token = {};
+    MODAL_STACK.push(token);
+    const SEL = 'button:not([disabled]), [href], input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+    const focusables = () => [...box.querySelectorAll(SEL)].filter((el) => !el.closest('[hidden]'));
+    box.focus?.({ preventScroll: true });
+    const onKey = (e) => {
+      if (MODAL_STACK[MODAL_STACK.length - 1] !== token) return;
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        dismissRef.current?.();
+        return;
+      }
+      if (e.key !== 'Tab') return;
+      const list = focusables();
+      if (!list.length) { e.preventDefault(); box.focus?.(); return; }
+      const firstEl = list[0];
+      const lastEl = list[list.length - 1];
+      if (e.shiftKey && (document.activeElement === firstEl || !box.contains(document.activeElement))) {
+        e.preventDefault();
+        lastEl.focus();
+      } else if (!e.shiftKey && (document.activeElement === lastEl || !box.contains(document.activeElement))) {
+        e.preventDefault();
+        firstEl.focus();
+      }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      const i = MODAL_STACK.indexOf(token);
+      if (i >= 0) MODAL_STACK.splice(i, 1);
+      if (back && back !== document.body && document.contains(back)) back.focus?.();
+    };
+  }, [v2, isOpen, renderOpen]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Handle open state transitions
   useEffect(() => {
     if (isOpen) {
@@ -119,6 +167,7 @@ export default function PremiumModal({
       onCloseRef.current?.();
     }, 400); // match animation duration
   };
+  dismissRef.current = handleDismiss;
 
   useEffect(() => {
     if (!renderOpen || variant !== 'bottom-sheet' || !enableDrag) return;
@@ -226,6 +275,7 @@ export default function PremiumModal({
         role="dialog"
         aria-modal="true"
         aria-labelledby={title ? "modal-title" : undefined}
+        tabIndex={v2 ? -1 : undefined}
         className={v2
           ? `relative z-10 w-full ${maxWidth} flex flex-col overflow-hidden v2-modal ${isDialog ? 'is-dialog max-h-[90vh]' : 'is-sheet max-h-[90vh] pb-safe'}`
           : `relative z-10 w-full ${maxWidth} bg-[var(--bg-sheet)] backdrop-blur-[20px] border border-[var(--border-glass)] flex flex-col shadow-[inset_0_2px_10px_rgba(255,255,255,0.05),0_30px_60px_rgba(0,0,0,0.4)] overflow-hidden ${

@@ -305,3 +305,21 @@ describe('dayCell', () => {
     expect(dayCell([{ kind: 'ginasio', categories: ['Força'], target_duration_min: 45, status: 'pendente' }], 'hoje')).toMatchObject({ big: '45 min', small: 'hoje, força' });
   });
 });
+
+describe('Início v2: um só h1 (2.ª crítica, 2026-11-28)', () => {
+  it('v2: um h1 «Início», visualmente oculto', async () => {
+    act(() => setDesignV2(true));
+    renderHome();
+    await screen.findByTestId('home-v2');
+    const h1s = screen.getAllByRole('heading', { level: 1 });
+    expect(h1s).toHaveLength(1);
+    expect(h1s[0]).toHaveTextContent('Início');
+    expect(h1s[0]).toHaveClass('sr-only');
+  });
+
+  it('v1: sem o h1 novo', () => {
+    renderHome();
+    expect(screen.queryByRole('heading', { level: 1, name: 'Início' })).toBeNull();
+  });
+});
+
