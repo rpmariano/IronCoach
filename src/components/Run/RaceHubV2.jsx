@@ -354,7 +354,9 @@ export function RaceDoneV2({
       <div className="v2-enter" data-testid="race-done-v2-main">
         <header style={{ padding: '2px 4px 10px' }}>
           <h1 className="v2-title">{race?.name || 'Prova'}</h1>
-          <p className="v2-sub">Concluída</p>
+          {/* Um estado de cada vez (P2 da 2.ª crítica): «Concluída» só com o tempo, ou marcada à mão;
+              por registar, o estado é o número grande, em baixo. */}
+          {(finalSeconds > 0 || race?.status === 'concluida') && <p className="v2-sub" data-testid="race-done-v2-state">Concluída</p>}
         </header>
 
         {finalSeconds > 0 ? (
@@ -373,10 +375,20 @@ export function RaceDoneV2({
           </section>
         ) : (
           <section className="v2-res" data-testid="race-done-v2-hero">
-            <div className="v2-res-n v2-num is-race">Por registar</div>
-            <p className="v2-res-d">Não tenho a corrida desta prova. Regista-a e mostro-te o tempo final ao lado do objetivo.</p>
-            <button type="button" className="v2-btn is-race" onClick={onRegister}>Registar a prova</button>
-            {markCompleted}
+            {race?.status === 'concluida' ? (
+              <>
+                <p className="v2-res-d" data-testid="race-done-v2-no-time">Sem tempo registado. Se quiseres, regista a corrida e mostro-te o tempo ao lado do objetivo.</p>
+                <button type="button" className="v2-btn is-quiet" onClick={onRegister}>Registar a prova</button>
+              </>
+            ) : (
+              <>
+                <div className="v2-res-n v2-num is-race" data-testid="race-done-v2-por-registar">Por registar</div>
+                <p className="v2-res-d">Não tenho a corrida desta prova. Regista-a e mostro-te o tempo final ao lado do objetivo.</p>
+                <button type="button" className="v2-btn is-race" onClick={onRegister}>Registar a prova</button>
+                {/* A saída secundária, para quem não quer registar. */}
+                {markCompleted && <div className="v2-done-secondary" data-testid="race-done-v2-mark">{markCompleted}</div>}
+              </>
+            )}
           </section>
         )}
 

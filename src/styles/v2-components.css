@@ -245,3 +245,7 @@ button.v2-sp:focus-visible { outline: 2px solid var(--v2-acc); outline-offset: -
 
 /* O tempo feito contra o objetivo, por baixo do número grande da prova concluída. */
 .v2-res-vs { margin: 4px 0 0; font: 600 16px var(--v2-font-num); color: var(--v2-ink2); }
+
+/* «Marcar como concluída» no hub depois da prova: a saída secundária, discreta (P2 da 2.ª crítica). */
+.v2-done-secondary { margin-top: 8px; }
+.v2-done-secondary button { background: transparent !important; border: 1px solid var(--v2-rule) !important; color: var(--v2-ink) !important; border-radius: var(--v2-radius) !important; font: 600 14px var(--v2-font) !important; min-height: 44px; }

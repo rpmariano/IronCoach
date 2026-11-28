@@ -1,4 +1,5 @@
 import React, { Suspense, lazy, useEffect, useMemo, useState } from 'react';
+import { readinessTextV2, trainingTodayOf } from '../../utils/raceReadinessV2';
 import { useFeature } from '../../utils/features';
 import CoachAvatar from '../Coach/CoachAvatar';
 import {
@@ -195,8 +196,9 @@ export default function RaceHubView({
   const dailyCheckins = useAppStore((s) => s.dailyCheckins);
   const goalHistory = useAppStore((s) => s.goalHistory);
   const readiness = useMemo(() =>
-    calculateReadinessIndex(runs, meals, bodyAssessments, gymSessions, profile, race, dailyCheckins, undefined, goalHistory),
-  [runs, meals, bodyAssessments, gymSessions, profile, race, dailyCheckins, goalHistory]);
+    // No v2, com o treino de hoje como o Geral (raceReadinessV2.js): o mesmo número nos três sítios.
+    calculateReadinessIndex(runs, meals, bodyAssessments, gymSessions, profile, race, dailyCheckins, v2 ? trainingTodayOf(storePlans, storePlanItems) : undefined, goalHistory),
+  [runs, meals, bodyAssessments, gymSessions, profile, race, dailyCheckins, goalHistory, v2, storePlans, storePlanItems]);
 
   // Sem pilares com dados (readinessIndex.ts, 2026-10-04), nenhuma luz acende
   // e a pílula diz "a calibrar" — não "Baixa (0%)".
@@ -1234,7 +1236,7 @@ export default function RaceHubView({
         fetchingWebInfo={fetchingWebInfo}
         extras={extras}
         carolSection={(
-          <HubCollapsible id="carol" title="Como chegaste aqui" summary={calibrating ? 'Prontidão a calibrar' : `Prontidão ${readinessTitle} (${readiness.score}%)`} testId="race-hub-carol-section">
+          <HubCollapsible id="carol" title="Como chegaste aqui" summary={readinessTextV2(readiness)} testId="race-hub-carol-section">
             {carol}
           </HubCollapsible>
         )}
@@ -1258,7 +1260,7 @@ export default function RaceHubView({
           {/* A frase da Carol do dia («É dia de prova…») vale agora: logo a seguir ao plano. */}
           <p className="rh-hub-day-line" data-testid="race-hub-day-line">{carolAnalysis.overviewText}</p>
           {extras}
-          <HubCollapsible id="carol" title="Como chegaste aqui" summary={calibrating ? 'Prontidão a calibrar' : `Prontidão ${readinessTitle} (${readiness.score}%)`} testId="race-hub-carol-section">
+          <HubCollapsible id="carol" title="Como chegaste aqui" summary={readinessTextV2(readiness)} testId="race-hub-carol-section">
             {carol}
           </HubCollapsible>
         </>

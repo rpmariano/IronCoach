@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { readinessTextV2 } from '../../utils/raceReadinessV2';
 import { Trophy, Flag, ChevronRight, Footprints, Zap, Utensils, TrendingUp, Target, Sunrise } from 'lucide-react';
 import { differenceInCalendarDays, parseISO } from 'date-fns';
 import { calculateReadinessIndex } from '../../utils/biEngine';
@@ -235,7 +236,7 @@ export default function RaceReadinessCard({ runs, meals, bodyAssessments, gymSes
             <div className="v2-geral-ready-level">
               <span>
                 <span style={{ fontWeight: 600, color: ringColor }} data-testid="readiness-level">
-                  Prontidão {cfg.label}
+                  {readinessTextV2(readiness)}
                 </span>
                 {nextRace && (
                   <span style={{ color: 'var(--v2-ink2)' }}> · {nextRace.distance_km || '?'} km</span>

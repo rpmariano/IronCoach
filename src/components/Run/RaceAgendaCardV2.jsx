@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { readinessTextV2, useRaceReadinessV2 } from '../../utils/raceReadinessV2';
 import '../../styles/v2-card-race.css';
 import CarolLineV2 from '../shared/CarolLineV2';
 import AddToCalendar from './AddToCalendar';
@@ -31,7 +32,12 @@ export default function RaceAgendaCardV2({
       ? plan.carolAnalysis.overviewText
       : (plan.currentPhase?.evaluation?.summary || plan.carolAnalysis.overviewText)
   );
-  const contagem = done ? 'Concluída'
+  /* Um estado de cada vez (P2 da 2.ª crítica): passada a data, sem corrida e sem a marcar, a prova
+     está «Por registar» (com «Registar a prova»; «Marcar como concluída» fica dentro de «Ver tudo»,
+     como saída secundária). Com corrida, «Concluída» e o tempo; marcada à mão, «Concluída». */
+  const porRegistar = !done && !raceRun && isPast;
+  const readiness = useRaceReadinessV2(done || porRegistar ? null : ev);
+  const contagem = done ? 'Concluída' : porRegistar ? 'Por registar'
     : plan.daysToRace === 0 ? 'É hoje' : plan.daysToRace === 1 ? 'Amanhã'
       : plan.daysToRace > 0 ? `Faltam ${plan.daysToRace} dias`
         : plan.daysToRace === -1 ? 'Ontem' : `Há ${Math.abs(plan.daysToRace)} dias`;
@@ -46,7 +52,7 @@ export default function RaceAgendaCardV2({
         <i className="v2-dot" style={{ background: 'var(--race)' }} aria-hidden="true" />
         <span className="v2-card-race-type">Prova</span>
         <span className="v2-card-race-when">
-          {dateLabel}{startTime ? `, ${startTime}` : ''}{isPast && !done ? ', já passou' : ''}
+          {dateLabel}{startTime ? `, ${startTime}` : ''}{porRegistar ? ', por registar' : ''}
         </span>
       </header>
       <h3 className="v2-card-race-title">{ev.name}</h3>
@@ -71,7 +77,7 @@ export default function RaceAgendaCardV2({
         />
       )}
 
-      {canRegister && onRegisterRace && (
+      {canRegister && onRegisterRace && !done && (
         <button type="button" className="v2-btn is-race" onClick={() => onRegisterRace(ev)}>Registar a prova</button>
       )}
 
@@ -94,8 +100,9 @@ export default function RaceAgendaCardV2({
           {!done && plan.trainingStatus !== 'not_started' && plan.currentPhase?.weeksLabel && (
             <div data-testid="race-agenda-v2-phase-weeks"><dt>Semanas da fase</dt><dd>{plan.currentPhase.weeksLabel}</dd></div>
           )}
-          {!done && plan.trainingStatus !== 'not_started' && plan.carolAnalysis?.readinessLabel && (
-            <div data-testid="race-agenda-v2-readiness"><dt>Prontidão</dt><dd>{plan.carolAnalysis.readinessLabel}</dd></div>
+          {!done && !porRegistar && plan.trainingStatus !== 'not_started' && readiness && (
+            // A frase única da prontidão (raceReadinessV2.js), a mesma do hub e do Geral.
+            <div data-testid="race-agenda-v2-readiness"><dt>Prontidão</dt><dd>{readinessTextV2(readiness).replace(/^Prontidão /, '')}</dd></div>
           )}
           {ev.target_time && ev.target_pace_seconds_per_km && (
             <div data-testid="race-agenda-v2-target-pace"><dt>Ritmo-alvo</dt><dd>{`${formatPace(ev.target_pace_seconds_per_km)}/km`}</dd></div>
